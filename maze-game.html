@@ -15,8 +15,18 @@
             background-color: var(--bg-color); display: flex; flex-direction: column;
             justify-content: center; align-items: center; -webkit-user-select: none; user-select: none; touch-action: manipulation;
         }
+        #game-wrapper { width: 100%; height: 100%; display: flex; flex-direction: column; }
+        /* ✨ 게임 헤더 추가 */
+        #game-header {
+            flex-shrink: 0; padding: 10px; display: flex;
+            justify-content: center; align-items: center; width: 100%;
+        }
+        #score-board {
+            background-color: rgba(0,0,0,0.6); color: white; padding: 8px 20px;
+            border-radius: 20px; font-size: 1.4em; font-weight: bold; z-index: 20;
+        }
         #game-container {
-            width: 95%; max-width: 500px; flex-grow: 1; margin: 2vh auto;
+            width: 95%; max-width: 500px; flex-grow: 1; margin: 0 auto 2vh auto;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2); border-radius: 10px; overflow: hidden;
             background-color: var(--path-color); display: flex; position: relative;
         }
@@ -27,6 +37,15 @@
             transition: all 0.1s linear;
         }
         #player { z-index: 10; } #opponent { z-index: 9; }
+        /* ✨ '나'를 알려주는 반짝임 효과 */
+        #player.me {
+            animation: pulse-me 1.5s infinite;
+        }
+        @keyframes pulse-me {
+            0% { box-shadow: 0 0 12px 3px rgba(255, 255, 255, 0.9); }
+            50% { box-shadow: 0 0 18px 6px rgba(255, 255, 255, 0.5); }
+            100% { box-shadow: 0 0 12px 3px rgba(255, 255, 255, 0.9); }
+        }
         #goal { animation: pulse 1.5s infinite; }
         @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.2); } 100% { transform: scale(1); } }
         #controls { width: 100%; padding-block: 10px; padding-bottom: max(15px, env(safe-area-inset-bottom)); flex-shrink: 0; }
@@ -48,7 +67,6 @@
         .menu-btn.primary { background-color: var(--button-bg); color: var(--button-text); }
         #join-form { display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 300px; margin-top: 20px; border-top: 2px solid #ddd; padding-top: 30px; }
         #room-code-input { width: 100%; padding: 15px; font-size: 1.2em; text-align: center; border: 2px solid #ccc; border-radius: 12px; margin-bottom: 15px; }
-        #game-wrapper { width: 100%; height: 100%; display: flex; flex-direction: column; }
         .overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             color: white; display: flex; justify-content: center; align-items: center; z-index: 100; text-align: center;
@@ -66,16 +84,11 @@
         .result-message { font-size: 3em; font-weight: bold; margin-bottom: 15px; }
         .score-info { font-size: 1.5em; }
         #game-over-message { font-size: 4em; font-weight: bold; margin-bottom: 30px; }
-        #score-board {
-            position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
-            background-color: rgba(0,0,0,0.5); color: white; padding: 5px 15px;
-            border-radius: 10px; font-size: 1.2em; font-weight: bold; z-index: 20;
-        }
     </style>
 </head>
 <body>
     <div id="game-over-overlay" class="overlay" style="display: none;">
-        <div class="result-box"> <h2 id="game-over-message"></h2> <button id="restart-btn" class="menu-btn primary">로비로 돌아가기</button> </div>
+        <div class="result-box"> <h2 id="game-over-message"></h2> </div>
     </div>
     <div id="round-over-overlay" class="overlay" style="display: none;">
         <div class="result-box"> <h2 class="result-message" id="round-result-message"></h2> <p class="score-info" id="round-score-info"></p> </div>
@@ -98,8 +111,10 @@
     </div>
 
     <div id="game-wrapper" style="display: none;">
-        <div id="game-container">
+        <div id="game-header">
             <div id="score-board" style="display: none;"></div>
+        </div>
+        <div id="game-container">
             <div id="maze">
                 <div id="player"></div>
                 <div id="opponent" style="display: none;"></div>
@@ -134,7 +149,7 @@
               mazeContainer = document.getElementById('maze'), player = document.getElementById('player'), opponent = document.getElementById('opponent'),
               waitingOverlay = document.getElementById('waiting-overlay'), waitingRoomCodeEl = document.getElementById('waiting-room-code'),
               startCountdownEl = document.getElementById('start-countdown'), gameOverOverlay = document.getElementById('game-over-overlay'),
-              gameOverMessageEl = document.getElementById('game-over-message'), restartBtn = document.getElementById('restart-btn'),
+              gameOverMessageEl = document.getElementById('game-over-message'),
               roundOverOverlay = document.getElementById('round-over-overlay'), roundResultMessageEl = document.getElementById('round-result-message'),
               roundScoreInfoEl = document.getElementById('round-score-info'), scoreBoard = document.getElementById('score-board');
 
@@ -191,12 +206,7 @@
                 } else { alert('존재하지 않거나 이미 시작된 방입니다.'); }
             });
         });
-
-        restartBtn.addEventListener('click', () => {
-            if (isHost && roomRef) { roomRef.remove(); }
-            window.location.reload();
-        });
-
+        
         function showWaitingScreen(code) {
             startMenu.style.display = 'none';
             waitingRoomCodeEl.textContent = code;
@@ -205,14 +215,14 @@
 
         function listenToRoomChanges() {
             roomRef.on('value', (snapshot) => {
-                currentRoomData = snapshot.val(); // ✨ 현재 방 데이터를 전역 변수에 저장
+                currentRoomData = snapshot.val();
                 if (!currentRoomData) return;
                 const players = currentRoomData.players;
                 const playerCount = Object.keys(players).length;
                 opponentId = Object.keys(players).find(pid => pid !== myPlayerId);
 
-                if (currentRoomData.scores && opponentId && scoreBoard.style.display === 'block') {
-                    scoreBoard.textContent = `${players[myPlayerId]?.emoji || ''} ${currentRoomData.scores[myPlayerId] || 0} : ${currentRoomData.scores[opponentId] || 0} ${players[opponentId]?.emoji || ''}`;
+                if (currentRoomData.scores && opponentId && players[myPlayerId] && players[opponentId] && scoreBoard.style.display === 'block') {
+                    scoreBoard.textContent = `${players[myPlayerId].emoji} ${currentRoomData.scores[myPlayerId] || 0} : ${currentRoomData.scores[opponentId] || 0} ${players[opponentId].emoji}`;
                 }
 
                 switch(currentRoomData.gameState) {
@@ -220,7 +230,7 @@
                     case 'ready': startCountdown(currentRoomData); break;
                     case 'playing': roundOverOverlay.style.display = 'none'; updateAllPlayerPositions(players); break;
                     case 'roundOver': showRoundResult(currentRoomData); break;
-                    case 'gameOver': showGameOverScreen(currentRoomData.gameWinner === myPlayerId); roomRef.off(); break;
+                    case 'gameOver': showGameOverScreen(currentRoomData.gameWinner === myPlayerId); break;
                 }
             });
         }
@@ -228,9 +238,6 @@
         function startCountdown(roomData) {
             if (isCountingDown) return;
             isCountingDown = true;
-            
-            // ✨ 버그 수정: 여기서 리스너를 끄면 안됩니다.
-            // roomRef.off(); 
 
             waitingRoomCodeEl.style.display = 'none';
             const isFinal = (roomData.scores[myPlayerId] === 1 && roomData.scores[opponentId] === 1);
@@ -273,7 +280,7 @@
             roundOverOverlay.style.display = 'flex';
 
             if(isHost) {
-                setTimeout(() => {
+                setTimeout(() => { // ✨ 대기시간 1.5초로 단축
                     const scores = roomData.scores;
                     scores[winnerId]++;
                     if (scores[winnerId] >= 2) {
@@ -283,20 +290,26 @@
                         placeStartAndGoal(newMaze);
                         roomRef.update({ mazeLayout: newMaze, scores: scores, gameState: 'ready', roundWinner: null });
                     }
-                }, 2000);
+                }, 1500);
             }
         }
         
         function showGameOverScreen(didIWin) {
+            if (roomRef) roomRef.off(); // ✨ 여기서 리스너를 최종적으로 끕니다.
             gameOverMessageEl.textContent = didIWin ? "🎉 최종 승리! 🎉" : "😭 최종 패배! 😭";
             gameOverOverlay.style.display = 'flex';
+            
+            // ✨ 4초 후 자동으로 페이지 새로고침
+            setTimeout(() => {
+                if(isHost && roomRef) roomRef.remove();
+                window.location.reload();
+            }, 4000);
         }
 
-        // ✨ 버그 수정: 화면 리사이즈 시 색상 변경 방지를 위한 파라미터 추가
         function initializeGame(roomDataOrNull = null, changeTheme = true) {
             roundOverOverlay.style.display = 'none';
+            player.classList.remove('me');
 
-            // ✨ 버그 수정: changeTheme이 true일 때만 테마와 이모지를 변경
             if (changeTheme) {
                 const randomTheme = colorThemes[Math.floor(Math.random() * colorThemes.length)];
                 for (const colorVar in randomTheme) { document.documentElement.style.setProperty(colorVar, randomTheme[colorVar]); }
@@ -308,20 +321,16 @@
                 mazeLayout = roomDataOrNull.mazeLayout; mazeRows = mazeLayout.length; mazeCols = mazeLayout[0].length;
                 scoreBoard.style.display = 'block';
                 opponent.style.display = 'flex';
-            } else {
+                player.classList.add('me'); // ✨ 멀티플레이 시에만 반짝임 효과 추가
+            } else { // 솔로 플레이
                 mazeRows = 19; mazeCols = 13; mazeLayout = generateMaze(mazeRows, mazeCols); placeStartAndGoal(mazeLayout);
                 scoreBoard.style.display = 'none'; opponent.style.display = 'none';
             }
             
-            cellSize = Math.min(mazeContainer.offsetWidth / mazeCols, mazeContainer.offsetHeight / mazeRows);
-            mazeContainer.style.gridTemplateColumns = `repeat(${mazeCols}, ${cellSize}px)`;
-            mazeContainer.style.gridTemplateRows = `repeat(${mazeRows}, ${cellSize}px)`;
-            mazeContainer.style.margin = 'auto';
-
             for (let y = 0; y < mazeRows; y++) {
                 for (let x = 0; x < mazeCols; x++) {
                     const cell = document.createElement('div');
-                    cell.style.width = `${cellSize}px`; cell.style.height = `${cellSize}px`;
+                    cell.style.width = '100%'; cell.style.height = '100%';
                     if (mazeLayout[y][x] === 1) { cell.className = 'wall'; } 
                     else if (mazeLayout[y][x] === 'S') { playerPos = { x, y }; } 
                     else if (mazeLayout[y][x] === 'G') {
@@ -335,7 +344,31 @@
             }
             [player, opponent].forEach(el => mazeContainer.appendChild(el));
             
-            // ✨ 버그 수정: 화면 그리기 로직을 initializeGame으로 통합
+            handleResize();
+            
+            if (roomDataOrNull) {
+                const players = roomDataOrNull.players;
+                for(const pid in players) {
+                    players[pid].x = playerPos.x; players[pid].y = playerPos.y;
+                }
+                updateAllPlayerPositions(players);
+                if(isHost) {
+                    roomRef.update({ players: players, gameState: 'playing' });
+                }
+            } else {
+                 player.textContent = animalEmojis[Math.floor(Math.random() * animalEmojis.length)];
+                 updatePlayerPosition();
+            }
+        }
+        
+        // ✨ 버그 수정: 맵 그리기 방식을 안정적인 방식으로 통일
+        function handleResize() {
+            if (gameWrapper.style.display !== 'flex') return;
+            cellSize = Math.min(mazeContainer.offsetWidth / mazeCols, mazeContainer.offsetHeight / mazeRows);
+            mazeContainer.style.gridTemplateColumns = `repeat(${mazeCols}, ${cellSize}px)`;
+            mazeContainer.style.gridTemplateRows = `repeat(${mazeRows}, ${cellSize}px)`;
+            mazeContainer.style.margin = 'auto';
+
             const goalEl = document.getElementById('goal');
             if(goalEl) {
                 goalEl.style.cssText = `width:${cellSize}px; height:${cellSize}px; font-size:${cellSize*0.8}px; left:${goalPos.x*cellSize}px; top:${goalPos.y*cellSize}px;`;
@@ -345,18 +378,10 @@
                  el.style.fontSize = `${cellSize * 0.7}px`;
             });
             
-            if (roomDataOrNull) {
-                const players = roomDataOrNull.players;
-                for(const pid in players) {
-                    players[pid].x = playerPos.x; players[pid].y = playerPos.y;
-                }
-                updateAllPlayerPositions(players); // ✨ 모든 플레이어를 즉시 그림
-                if(isHost) {
-                    roomRef.update({ players: players, gameState: 'playing' });
-                }
+            if (currentRoomCode && currentRoomData) {
+                updateAllPlayerPositions(currentRoomData.players);
             } else {
-                 player.textContent = animalEmojis[Math.floor(Math.random() * animalEmojis.length)];
-                 updatePlayerPosition();
+                updatePlayerPosition();
             }
         }
         
@@ -380,7 +405,7 @@
             if (newY >= 0 && newY < mazeRows && newX >= 0 && newX < mazeCols && mazeLayout[newY][newX] !== 1) {
                 playerPos.x = newX; playerPos.y = newY;
                 updatePlayerPosition();
-                if (playerPos.x === goalPos.x && playerPos.y === goalPos.y) {
+                if (playerPos.x === goalPos.x && newY === goalPos.y) {
                     setTimeout(() => { alert('🎉 도착!'); initializeGame(); }, 100);
                 }
             }
@@ -413,10 +438,7 @@
                 case 'ArrowLeft': startMoving(-1, 0); break; case 'ArrowRight': startMoving(1, 0); break;
             }
         });
-        window.addEventListener('keyup', (e) => {
-            keyHeld[e.key] = false;
-            stopMoving();
-        });
+        window.addEventListener('keyup', (e) => { keyHeld[e.key] = false; stopMoving(); });
 
         function placeStartAndGoal(layout) { const topRowPaths = []; for (let i = 0; i < layout[1].length; i++) { if (layout[1][i] === 0) topRowPaths.push(i); } const startX = topRowPaths[Math.floor(Math.random() * topRowPaths.length)]; layout[1][startX] = 'S'; const bottomRowPaths = []; const bottomRowIndex = layout.length - 2; for (let i = 0; i < layout[bottomRowIndex].length; i++) { if (layout[bottomRowIndex][i] === 0) bottomRowPaths.push(i); } const goalX = bottomRowPaths[Math.floor(Math.random() * bottomRowPaths.length)]; layout[bottomRowIndex][goalX] = 'G'; }
         function generateMaze(rows, cols) { rows = rows % 2 === 0 ? rows + 1 : rows; cols = cols % 2 === 0 ? cols + 1 : cols; const maze = Array(rows).fill(null).map(() => Array(cols).fill(1)); const stack = []; const startX = 1, startY = 1; maze[startY][startX] = 0; stack.push([startX, startY]); while (stack.length > 0) { const [cx, cy] = stack[stack.length - 1]; const directions = []; if (cy - 2 >= 0 && maze[cy - 2][cx] === 1) directions.push('N'); if (cy + 2 < rows && maze[cy + 2][cx] === 1) directions.push('S'); if (cx - 2 >= 0 && maze[cy][cx - 2] === 1) directions.push('W'); if (cx + 2 < cols && maze[cy][cx + 2] === 1) directions.push('E'); if (directions.length > 0) { const dir = directions[Math.floor(Math.random() * directions.length)]; let nx = cx, ny = cy; switch (dir) { case 'N': ny -= 2; maze[cy - 1][cx] = 0; break; case 'S': ny += 2; maze[cy + 1][cx] = 0; break; case 'W': nx -= 2; maze[cy][cx - 1] = 0; break; case 'E': nx += 2; maze[cy][cx + 1] = 0; break; } maze[ny][nx] = 0; stack.push([nx, ny]); } else { stack.pop(); } } return maze; }
