@@ -3,343 +3,456 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>캐릭터 미로찾기 게임 (랜덤 생성)</title>
+    <title>캐릭터 미로찾기 게임</title>
     <style>
-        /* 기본 스타일 */
         :root {
-            --bg-color: #f0f2f5;
-            --wall-color: #34495e;
-            --path-color: #ecf0f1;
-            --button-bg: #2c3e50;
-            --button-text: #ffffff;
-            --button-hover: #3e5771;
+            --bg-color: #f0f2f5; --wall-color: #34495e; --path-color: #ecf0f1;
+            --button-bg: #2c3e50; --button-text: #ffffff; --button-hover: #3e5771;
         }
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
         html, body {
-            width: 100%;
-            height: 100%;
-            overflow: hidden; /* 스크롤 방지 */
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background-color: var(--bg-color);
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between; /* 콘텐츠를 위아래로 분산 배치 */
-            align-items: center;
-            -webkit-user-select: none; /* 드래그 선택 방지 */
-            user-select: none;
-            touch-action: manipulation; /* 터치 지연 제거 */
+            width: 100%; height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: var(--bg-color); display: flex; flex-direction: column;
+            justify-content: center; align-items: center; -webkit-user-select: none; user-select: none; touch-action: manipulation;
         }
-        /* 게임 컨테이너 */
         #game-container {
-            width: 95%;
-            max-width: 500px; /* 데스크탑/태블릿 최대 너비 */
-            flex-grow: 1; /* 남은 세로 공간을 모두 차지하도록 설정 */
-            margin: 2vh auto; /* 상하 여백 및 가로 중앙 정렬 */
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-            border-radius: 10px;
-            overflow: hidden;
-            background-color: var(--path-color);
-            display: flex; /* 내부 미로 정렬을 위해 추가 */
+            width: 95%; max-width: 500px; flex-grow: 1; margin: 2vh auto;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2); border-radius: 10px; overflow: hidden;
+            background-color: var(--path-color); display: flex; position: relative;
         }
-        
-        /* 미로 */
-        #maze {
-            position: relative;
-            width: 100%;
-            height: 100%;
-            display: grid;
-        }
-        
-        /* 미로 구성 요소 (벽) */
-        .wall {
-            background-color: var(--wall-color);
-        }
-        /* 플레이어 캐릭터 & 목표 지점 */
-        #player, #goal {
-            position: absolute;
-            display: flex;
-            justify-content: center;
-            align-items: center;
+        #maze { position: relative; width: 100%; height: 100%; display: grid; }
+        .wall { background-color: var(--wall-color); }
+        #player, #opponent, #goal {
+            position: absolute; display: flex; justify-content: center; align-items: center;
             transition: all 0.1s linear;
         }
-        #player {
-            z-index: 10;
-        }
-        #goal {
-            animation: pulse 1.5s infinite;
-        }
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.2); }
-            100% { transform: scale(1); }
-        }
-        /* 터치 조작 버튼 */
-        #controls {
-            width: 100%;
-            padding-block: 10px; /* 상하 패딩 */
-            padding-bottom: max(15px, env(safe-area-inset-bottom)); /* 아이폰 하단 노치 대응 */
-            flex-shrink: 0; /* 컨트롤러 크기가 줄어들지 않도록 */
-        }
-        #controls .button-row {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            margin-top: 5px; /* 버튼 행 간격 */
-        }
-        
-        #controls .button-row-bottom {
-            gap: 15px; /* 하단 버튼 3개 사이의 간격 */
-        }
+        #player { z-index: 10; } #opponent { z-index: 9; }
+        #goal { animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.2); } 100% { transform: scale(1); } }
+        #controls { width: 100%; padding-block: 10px; padding-bottom: max(15px, env(safe-area-inset-bottom)); flex-shrink: 0; }
+        #controls .button-row { display: flex; justify-content: center; align-items: center; margin-top: 5px; }
+        #controls .button-row-bottom { gap: 15px; }
         #controls button {
-            width: 60px; /* 버튼 크기 약간 줄임 */
-            height: 60px;
-            border-radius: 50%;
-            border: none;
-            background-color: var(--button-bg);
-            color: var(--button-text);
-            font-size: 24px; /* 아이콘 크기 조정 */
-            font-weight: bold;
-            cursor: pointer;
-            box-shadow: 0 3px 8px rgba(0,0,0,0.3);
+            width: 60px; height: 60px; border-radius: 50%; border: none; background-color: var(--button-bg);
+            color: var(--button-text); font-size: 24px; font-weight: bold; cursor: pointer; box-shadow: 0 3px 8px rgba(0,0,0,0.3);
         }
-        
-        #controls button:active {
-             transform: scale(0.95);
-             background-color: var(--button-hover);
+        #controls button:active { transform: scale(0.95); background-color: var(--button-hover); }
+        #start-menu { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 100%; padding: 20px; }
+        #start-menu h1 { font-size: 3em; color: var(--wall-color); margin-bottom: 40px; }
+        .menu-btn {
+            width: 100%; max-width: 300px; padding: 15px; font-size: 1.2em; font-weight: bold;
+            border-radius: 12px; border: none; cursor: pointer; margin-bottom: 15px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.1s;
+        }
+        .menu-btn:active { transform: scale(0.98); }
+        .menu-btn.primary { background-color: var(--button-bg); color: var(--button-text); }
+        #join-form { display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 300px; margin-top: 20px; border-top: 2px solid #ddd; padding-top: 30px; }
+        #room-code-input { width: 100%; padding: 15px; font-size: 1.2em; text-align: center; border: 2px solid #ccc; border-radius: 12px; margin-bottom: 15px; }
+        #game-wrapper { width: 100%; height: 100%; display: flex; flex-direction: column; }
+        .overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            color: white; display: flex; justify-content: center; align-items: center; z-index: 100; text-align: center;
+        }
+        #waiting-overlay { background-color: rgba(0, 0, 0, 0.7); }
+        .waiting-box, .result-box { padding: 20px; }
+        #waiting-room-code {
+            font-size: 3em; font-weight: bold; background-color: #fff; color: #333; padding: 10px 30px;
+            border-radius: 10px; margin: 15px 0; display: inline-block;
+        }
+        #start-countdown { font-size: 2.5em; font-weight: bold; }
+        .spinner { margin: 20px auto; border: 4px solid rgba(255, 255, 255, 0.3); border-radius: 50%; border-top: 4px solid #fff; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        #round-over-overlay, #game-over-overlay { background-color: rgba(0, 0, 0, 0.8); }
+        .result-message { font-size: 3em; font-weight: bold; margin-bottom: 15px; }
+        .score-info { font-size: 1.5em; }
+        #game-over-message { font-size: 4em; font-weight: bold; margin-bottom: 30px; }
+        #score-board {
+            position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+            background-color: rgba(0,0,0,0.5); color: white; padding: 5px 15px;
+            border-radius: 10px; font-size: 1.2em; font-weight: bold; z-index: 20;
         }
     </style>
 </head>
 <body>
-    <div id="game-container">
-        <div id="maze">
-            <div id="player">🚀</div>
+    <div id="game-over-overlay" class="overlay" style="display: none;">
+        <div class="result-box">
+            <h2 id="game-over-message">승리!</h2>
+            <button id="restart-btn" class="menu-btn primary">로비로 돌아가기</button>
         </div>
     </div>
-    <div id="controls">
-        <div class="button-row">
-            <button id="up">▲</button>
+    <div id="round-over-overlay" class="overlay" style="display: none;">
+        <div class="result-box">
+            <h2 class="result-message" id="round-result-message"></h2>
+            <p class="score-info" id="round-score-info"></p>
         </div>
-        <div class="button-row button-row-bottom">
-            <button id="left">◀</button>
-            <button id="down">▼</button>
-            <button id="right">▶</button>
+    </div>
+    <div id="waiting-overlay" class="overlay" style="display: none;">
+        <div class="waiting-box">
+            <h2>친구를 기다리는 중...</h2>
+            <p>친구에게 아래 코드를 알려주세요!</p>
+            <div id="waiting-room-code">1234</div>
+            <div class="spinner"></div>
+            <p id="start-countdown"></p>
         </div>
     </div>
 
-<script>
+    <div id="start-menu">
+        <h1>🚀 미로 찾기</h1>
+        <button id="play-solo-btn" class="menu-btn">혼자 하기</button>
+        <button id="create-room-btn" class="menu-btn primary">친구와 같이하기 (방 만들기)</button>
+        <div id="join-form">
+            <input type="number" id="room-code-input" placeholder="게임 코드 입력">
+            <button id="join-room-btn" class="menu-btn">코드로 참가하기</button>
+        </div>
+    </div>
+
+    <div id="game-wrapper" style="display: none;">
+        <div id="game-container">
+            <div id="score-board" style="display: none;"></div>
+            <div id="maze">
+                <div id="player"></div>
+                <div id="opponent" style="display: none;"></div>
+            </div>
+        </div>
+        <div id="controls">
+            <div class="button-row"> <button id="up">▲</button> </div>
+            <div class="button-row button-row-bottom">
+                <button id="left">◀</button>
+                <button id="down">▼</button>
+                <button id="right">▶</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    
+    <script>
     document.addEventListener('DOMContentLoaded', () => {
-        // ✨ 여기에 랜덤으로 보여줄 동물 이모지 배열을 추가합니다.
+        const firebaseConfig = {
+            apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw", authDomain: "goodluck-7c14b.firebaseapp.com",
+            databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com", projectId: "goodluck-7c14b",
+            storageBucket: "goodluck-7c14b.firebasestorage.app", messagingSenderId: "858281658455",
+            appId: "1:858281658455:web:9131280a459be983933b12", measurementId: "G-9K2BE1X5D6"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+        const gameRoomsRef = database.ref('gameRooms');
+
+        const startMenu = document.getElementById('start-menu'), playSoloBtn = document.getElementById('play-solo-btn'),
+              createRoomBtn = document.getElementById('create-room-btn'), roomCodeInput = document.getElementById('room-code-input'),
+              joinRoomBtn = document.getElementById('join-room-btn'), gameWrapper = document.getElementById('game-wrapper'),
+              mazeContainer = document.getElementById('maze'), player = document.getElementById('player'), opponent = document.getElementById('opponent'),
+              waitingOverlay = document.getElementById('waiting-overlay'), waitingRoomCodeEl = document.getElementById('waiting-room-code'),
+              startCountdownEl = document.getElementById('start-countdown'), gameOverOverlay = document.getElementById('game-over-overlay'),
+              gameOverMessageEl = document.getElementById('game-over-message'), restartBtn = document.getElementById('restart-btn'),
+              roundOverOverlay = document.getElementById('round-over-overlay'), roundResultMessageEl = document.getElementById('round-result-message'),
+              roundScoreInfoEl = document.getElementById('round-score-info'), scoreBoard = document.getElementById('score-board');
+
         const animalEmojis = ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🐔', '🐧', '🐦', '🐤', '🦄'];
-// ✨ 여기에 랜덤으로 적용할 컬러 테마 배열을 추가합니다.
-            const colorThemes = [
-                { // 기본 테마
-                    '--bg-color': '#f0f2f5',
-                    '--wall-color': '#34495e',
-                    '--path-color': '#ecf0f1',
-                    '--button-bg': '#2c3e50',
-                },
-                { // 숲 테마
-                    '--bg-color': '#e8f5e9',
-                    '--wall-color': '#2e7d32',
-                    '--path-color': '#c8e6c9',
-                    '--button-bg': '#1b5e20',
-                },
-                { // 바다 테마
-                    '--bg-color': '#e3f2fd',
-                    '--wall-color': '#0d47a1',
-                    '--path-color': '#bbdefb',
-                    '--button-bg': '#1565c0',
-                },
-                { // 사막 테마
-                    '--bg-color': '#fff3e0',
-                    '--wall-color': '#d84315',
-                    '--path-color': '#ffe0b2',
-                    '--button-bg': '#bf360c',
-                },
-                { // 캔디 테마
-                    '--bg-color': '#fce4ec',
-                    '--wall-color': '#c2185b',
-                    '--path-color': '#f8bbd0',
-                    '--button-bg': '#880e4f',
-                }
-            ];
-        const mazeContainer = document.getElementById('maze');
-            const player = document.getElementById('player');
-
-            // ✨ 게임 상태 관련 변수들을 상위 스코프로 이동
-            let playerPos = { x: 0, y: 0 };
-            let goalPos = { x: 0, y: 0 };
-            let cellSize = 0;
-            let mazeLayout = [];
-            let mazeRows, mazeCols;
-
-            // ✨ 미로 생성 함수 (Recursive Backtracker 알고리즘)
-            function generateMaze(rows, cols) {
-                // 미로 크기는 항상 홀수여야 벽 구조가 예쁘게 나옵니다.
-                rows = rows % 2 === 0 ? rows + 1 : rows;
-                cols = cols % 2 === 0 ? cols + 1 : cols;
-                
-                // 1. 모든 칸을 벽(1)으로 채운 미로판 생성
-                const maze = Array(rows).fill(null).map(() => Array(cols).fill(1));
-                
-                const stack = [];
-                // 2. 시작점 (1,1) 설정
-                const startX = 1, startY = 1;
-                maze[startY][startX] = 0; // 시작점을 길(0)으로 만듦
-                stack.push([startX, startY]);
-
-                while (stack.length > 0) {
-                    const [cx, cy] = stack[stack.length - 1];
-                    
-                    // 3. 현재 위치에서 갈 수 있는 (방문 안 한) 방향 찾기
-                    const directions = [];
-                    // 위
-                    if (cy - 2 >= 0 && maze[cy - 2][cx] === 1) directions.push('N');
-                    // 아래
-                    if (cy + 2 < rows && maze[cy + 2][cx] === 1) directions.push('S');
-                    // 왼쪽
-                    if (cx - 2 >= 0 && maze[cy][cx - 2] === 1) directions.push('W');
-                    // 오른쪽
-                    if (cx + 2 < cols && maze[cy][cx + 2] === 1) directions.push('E');
-
-                    if (directions.length > 0) {
-                        // 4. 갈 수 있는 방향 중 하나를 무작위로 선택
-                        const dir = directions[Math.floor(Math.random() * directions.length)];
-                        let nx = cx, ny = cy;
-
-                        // 5. 선택한 방향으로 두 칸 이동하고, 그 사이 벽을 허뭄
-                        switch (dir) {
-                            case 'N': ny -= 2; maze[cy - 1][cx] = 0; break;
-                            case 'S': ny += 2; maze[cy + 1][cx] = 0; break;
-                            case 'W': nx -= 2; maze[cy][cx - 1] = 0; break;
-                            case 'E': nx += 2; maze[cy][cx + 1] = 0; break;
-                        }
-                        
-                        maze[ny][nx] = 0;
-                        stack.push([nx, ny]);
-                    } else {
-                        // 6. 더 이상 갈 곳이 없으면 스택에서 꺼내 되돌아감 (Backtrack)
-                        stack.pop();
-                    }
-                }
-                return maze;
-            }
-            
-            function initializeGame() {
- const randomEmoji = animalEmojis[Math.floor(Math.random() * animalEmojis.length)];
-    player.textContent = randomEmoji;
- // ✨ 컬러 테마 배열에서 랜덤으로 하나를 선택합니다.
-        const randomTheme = colorThemes[Math.floor(Math.random() * colorThemes.length)];
+        const colorThemes = [ { '--bg-color': '#f0f2f5', '--wall-color': '#34495e', '--path-color': '#ecf0f1', '--button-bg': '#2c3e50', }, { '--bg-color': '#e8f5e9', '--wall-color': '#2e7d32', '--path-color': '#c8e6c9', '--button-bg': '#1b5e20', }, { '--bg-color': '#e3f2fd', '--wall-color': '#0d47a1', '--path-color': '#bbdefb', '--button-bg': '#1565c0', }];
         
-        // ✨ 선택된 테마의 색상들을 실제 스타일에 적용합니다.
-        for (const colorVar in randomTheme) {
-            document.documentElement.style.setProperty(colorVar, randomTheme[colorVar]);
+        let myPlayerId = getPlayerId(), opponentId;
+        let currentRoomCode, roomRef;
+        let playerPos = { x: 0, y: 0 }, goalPos = { x: 0, y: 0 }, cellSize = 0, mazeLayout = [], mazeRows, mazeCols;
+        let isHost = false, gameElements = [];
+        let moveInterval = null, isCountingDown = false; // ✨ 이동 인터벌, 카운트다운 플래그 변수 추가
+
+        function getPlayerId() {
+            let playerId = sessionStorage.getItem('mazePlayerId');
+            if (!playerId) { playerId = Math.random().toString(36).substr(2, 9); sessionStorage.setItem('mazePlayerId', playerId); }
+            return playerId;
         }
-                mazeContainer.innerHTML = '';
-                
-                // ✨ 미로 크기 설정 (세로로 긴 형태)
-                mazeRows = 19;
-                mazeCols = 13;
 
-                // ✨ 게임 시작 시 새로운 미로 생성
-                mazeLayout = generateMaze(mazeRows, mazeCols);
-
-                // ✨ 시작점('S')과 도착점('G')을 미로에 배치
-                // 시작점은 맨 위쪽 길 중 하나에 랜덤 배치
-                let startX = 2 * Math.floor(Math.random() * Math.floor(mazeCols / 2)) + 1;
-                mazeLayout[1][startX] = 'S';
-                // 도착점은 맨 아래쪽 길 중 하나에 랜덤 배치
-                let goalX = 2 * Math.floor(Math.random() * Math.floor(mazeCols / 2)) + 1;
-                mazeLayout[mazeRows - 2][goalX] = 'G';
-                
-                // 셀 크기는 가로/세로 중 더 작은 쪽에 맞춰 계산하여 비율 유지
-                cellSize = Math.min(mazeContainer.offsetWidth / mazeCols, mazeContainer.offsetHeight / mazeRows);
-                
-                mazeContainer.style.gridTemplateColumns = `repeat(${mazeCols}, ${cellSize}px)`;
-                mazeContainer.style.gridTemplateRows = `repeat(${mazeRows}, ${cellSize}px)`;
-                // 미로를 컨테이너 중앙에 배치
-                mazeContainer.style.margin = 'auto';
-
-                for (let y = 0; y < mazeRows; y++) {
-                    for (let x = 0; x < mazeCols; x++) {
-                        const cell = document.createElement('div');
-                        cell.style.width = `${cellSize}px`;
-                        cell.style.height = `${cellSize}px`;
-                        
-                        if (mazeLayout[y][x] === 1) {
-                            cell.className = 'wall';
-                        } else {
-                            if (mazeLayout[y][x] === 'S') {
-                                playerPos = { x, y };
-                            } else if (mazeLayout[y][x] === 'G') {
-                                goalPos = { x, y };
-                                const goalElement = document.createElement('div');
-                                goalElement.id = 'goal';
-                                goalElement.textContent = '🏠';
-                                goalElement.style.width = `${cellSize}px`;
-                                goalElement.style.height = `${cellSize}px`;
-                                goalElement.style.fontSize = `${cellSize * 0.8}px`;
-                                goalElement.style.left = `${x * cellSize}px`;
-                                goalElement.style.top = `${y * cellSize}px`;
-                                mazeContainer.appendChild(goalElement);
-                            }
-                        }
-                        mazeContainer.appendChild(cell);
-                    }
-                }
-                
-                mazeContainer.appendChild(player);
-                updatePlayerPosition();
-            }
-
-            function updatePlayerPosition() {
-                player.style.width = `${cellSize * 0.9}px`;
-                player.style.height = `${cellSize * 0.9}px`;
-                player.style.fontSize = `${cellSize * 0.7}px`;
-                player.style.left = `${playerPos.x * cellSize + (cellSize * 0.05)}px`;
-                player.style.top = `${playerPos.y * cellSize + (cellSize * 0.05)}px`;
-            }
-
-            function movePlayer(dx, dy) {
-                const newX = playerPos.x + dx;
-                const newY = playerPos.y + dy;
-                if (newY >= 0 && newY < mazeRows && newX >= 0 && newX < mazeCols && mazeLayout[newY][newX] !== 1) {
-                    playerPos.x = newX;
-                    playerPos.y = newY;
-                    updatePlayerPosition();
-                    if (playerPos.x === goalPos.x && playerPos.y === goalPos.y) {
-                        setTimeout(() => {
-                            alert('🎉 도착! 미션을 완료했습니다! 🎉');
-                            initializeGame(); // ✨ 클리어 후 새 게임 시작 (새 미로 생성)
-                        }, 100);
-                    }
-                }
-            }
-
-            // 이벤트 리스너 설정
-            document.getElementById('up').addEventListener('click', (e) => { e.preventDefault(); movePlayer(0, -1); });
-            document.getElementById('down').addEventListener('click', (e) => { e.preventDefault(); movePlayer(0, 1); });
-            document.getElementById('left').addEventListener('click', (e) => { e.preventDefault(); movePlayer(-1, 0); });
-            document.getElementById('right').addEventListener('click', (e) => { e.preventDefault(); movePlayer(1, 0); });
-            window.addEventListener('keydown', (e) => {
-                switch (e.key) {
-                    case 'ArrowUp': movePlayer(0, -1); break;
-                    case 'ArrowDown': movePlayer(0, 1); break;
-                    case 'ArrowLeft': movePlayer(-1, 0); break;
-                    case 'ArrowRight': movePlayer(1, 0); break;
-                }
-            });
-
-            // 화면 크기 변경 시 미로 다시 그리기
-            window.addEventListener('resize', initializeGame);
-
-            // 게임 시작
+        playSoloBtn.addEventListener('click', () => {
+            startMenu.style.display = 'none'; gameWrapper.style.display = 'flex';
             initializeGame();
         });
+
+        createRoomBtn.addEventListener('click', () => {
+            isHost = true; currentRoomCode = Math.floor(1000 + Math.random() * 9000).toString();
+            roomRef = gameRoomsRef.child(currentRoomCode);
+            mazeRows = 19; mazeCols = 13;
+            const generatedMazeLayout = generateMaze(mazeRows, mazeCols);
+            placeStartAndGoal(generatedMazeLayout);
+            const myEmoji = animalEmojis[Math.floor(Math.random() * animalEmojis.length)];
+            const newRoomData = {
+                mazeLayout: generatedMazeLayout, players: { [myPlayerId]: { emoji: myEmoji, x: 0, y: 0, isHost: true } },
+                scores: { [myPlayerId]: 0 }, gameState: 'waiting', createdAt: firebase.database.ServerValue.TIMESTAMP
+            };
+            roomRef.set(newRoomData).then(() => {
+                showWaitingScreen(currentRoomCode);
+                listenToRoomChanges();
+            });
+        });
+
+        joinRoomBtn.addEventListener('click', () => {
+            const enteredCode = roomCodeInput.value;
+            if (!enteredCode || enteredCode.length !== 4) { alert('4자리 게임 코드를 정확히 입력하세요.'); return; }
+            const potentialRoomRef = gameRoomsRef.child(enteredCode);
+            potentialRoomRef.once('value', (snapshot) => {
+                const roomData = snapshot.val();
+                if (snapshot.exists() && roomData.gameState === 'waiting' && Object.keys(roomData.players).length < 2) {
+                    currentRoomCode = enteredCode; roomRef = potentialRoomRef;
+                    const myEmoji = animalEmojis[Math.floor(Math.random() * animalEmojis.length)];
+                    roomRef.child('players/' + myPlayerId).set({ emoji: myEmoji, x: 0, y: 0 });
+                    roomRef.child('scores/' + myPlayerId).set(0);
+                    listenToRoomChanges();
+                    showWaitingScreen(currentRoomCode);
+                } else { alert('존재하지 않거나 이미 시작된 방입니다.'); }
+            });
+        });
+
+        restartBtn.addEventListener('click', () => {
+            if (isHost && roomRef) { roomRef.remove(); }
+            window.location.reload();
+        });
+
+        function showWaitingScreen(code) {
+            startMenu.style.display = 'none';
+            waitingRoomCodeEl.textContent = code;
+            waitingOverlay.style.display = 'flex';
+        }
+
+        function listenToRoomChanges() {
+            roomRef.on('value', (snapshot) => {
+                const roomData = snapshot.val();
+                if (!roomData) return;
+                const players = roomData.players;
+                const playerCount = Object.keys(players).length;
+                opponentId = Object.keys(players).find(pid => pid !== myPlayerId);
+
+                if (roomData.scores && scoreBoard.style.display === 'block') {
+                    scoreBoard.textContent = `${players[myPlayerId]?.emoji || ''} ${roomData.scores[myPlayerId] || 0} : ${roomData.scores[opponentId] || 0} ${players[opponentId]?.emoji || ''}`;
+                }
+
+                switch(roomData.gameState) {
+                    case 'waiting': if (isHost && playerCount === 2) roomRef.child('gameState').set('ready'); break;
+                    case 'ready': startCountdown(roomData); break;
+                    case 'playing': roundOverOverlay.style.display = 'none'; updateAllPlayerPositions(players); break;
+                    case 'roundOver': showRoundResult(roomData); break;
+                    case 'gameOver': showGameOverScreen(roomData.gameWinner === myPlayerId); roomRef.off(); break;
+                }
+            });
+        }
+
+        function startCountdown(roomData) {
+            if (isCountingDown) return; // ✨ 중복 카운트다운 방지
+            isCountingDown = true;
+
+            waitingRoomCodeEl.style.display = 'none';
+            const isFinal = (roomData.scores[myPlayerId] === 1 && roomData.scores[opponentId] === 1);
+            let count = 3;
+            startCountdownEl.innerHTML = isFinal ? "🔥 마지막 라운드! 🔥" : `곧 시작합니다!`;
+            
+            setTimeout(() => {
+                const interval = setInterval(() => {
+                    if (count > 0) {
+                        startCountdownEl.textContent = count;
+                    } else {
+                        clearInterval(interval);
+                        waitingOverlay.style.display = 'none';
+                        gameWrapper.style.display = 'flex';
+                        initializeGame(roomData);
+                        listenToRoomChanges();
+                        isCountingDown = false;
+                    }
+                    count--;
+                }, 1000);
+            }, 1000);
+        }
+
+        function updateAllPlayerPositions(players) {
+            for (const pid in players) {
+                const pData = players[pid];
+                const element = (pid === myPlayerId) ? player : opponent;
+                if (!element) continue;
+                element.style.display = 'flex'; element.textContent = pData.emoji;
+                element.style.left = `${pData.x * cellSize + (cellSize * 0.05)}px`;
+                element.style.top = `${pData.y * cellSize + (cellSize * 0.05)}px`;
+            }
+        }
+
+        function showRoundResult(roomData) {
+            const winnerId = roomData.roundWinner;
+            if (!winnerId || !roomData.players[winnerId]) return;
+            const winnerEmoji = roomData.players[winnerId].emoji;
+            roundResultMessageEl.innerHTML = `${winnerEmoji}님이 이번 라운드에서<br>승리했습니다!`;
+            roundScoreInfoEl.textContent = `현재 점수 ${roomData.scores[myPlayerId] || 0} : ${roomData.scores[opponentId] || 0}`;
+            roundOverOverlay.style.display = 'flex';
+
+            if(isHost) {
+                setTimeout(() => { // ✨ 대기시간 2초로 단축
+                    const scores = roomData.scores;
+                    scores[winnerId]++;
+                    if (scores[winnerId] >= 2) {
+                        roomRef.update({ gameState: 'gameOver', gameWinner: winnerId });
+                    } else {
+                        const newMaze = generateMaze(mazeRows, mazeCols);
+                        placeStartAndGoal(newMaze);
+                        roomRef.update({ mazeLayout: newMaze, scores: scores, gameState: 'ready', roundWinner: null });
+                    }
+                }, 2000);
+            }
+        }
+        
+        function showGameOverScreen(didIWin) {
+            gameOverMessageEl.textContent = didIWin ? "🎉 최종 승리! 🎉" : "😭 최종 패배! 😭";
+            gameOverOverlay.style.display = 'flex';
+        }
+
+        function initializeGame(roomDataOrNull = null) {
+            roundOverOverlay.style.display = 'none';
+            const randomTheme = colorThemes[Math.floor(Math.random() * colorThemes.length)];
+            for (const colorVar in randomTheme) { document.documentElement.style.setProperty(colorVar, randomTheme[colorVar]); }
+            mazeContainer.innerHTML = ''; gameElements = [];
+
+            if(roomDataOrNull) {
+                mazeLayout = roomDataOrNull.mazeLayout; mazeRows = mazeLayout.length; mazeCols = mazeLayout[0].length;
+                scoreBoard.style.display = 'block';
+                opponent.style.display = 'flex';
+            } else {
+                mazeRows = 19; mazeCols = 13; mazeLayout = generateMaze(mazeRows, mazeCols); placeStartAndGoal(mazeLayout);
+                scoreBoard.style.display = 'none'; opponent.style.display = 'none';
+            }
+            
+            cellSize = Math.min(mazeContainer.offsetWidth / mazeCols, mazeContainer.offsetHeight / mazeRows);
+
+            for (let y = 0; y < mazeRows; y++) {
+                for (let x = 0; x < mazeCols; x++) {
+                    if (mazeLayout[y][x] === 'S') { playerPos = { x, y }; } 
+                    else if (mazeLayout[y][x] === 'G') {
+                        goalPos = { x, y };
+                        const goalElement = document.createElement('div');
+                        goalElement.id = 'goal'; goalElement.textContent = '🏠';
+                        mazeContainer.appendChild(goalElement);
+                        gameElements.push({ element: goalElement, isGoal: true });
+                    }
+                }
+            }
+            [player, opponent].forEach(el => mazeContainer.appendChild(el));
+            
+            handleResize();
+
+            if (roomDataOrNull) {
+                const players = roomDataOrNull.players;
+                for(const pid in players) {
+                    players[pid].x = playerPos.x; players[pid].y = playerPos.y;
+                }
+                if(isHost) {
+                    roomRef.update({ players: players, gameState: 'playing' });
+                }
+            } else {
+                 updatePlayerPosition();
+            }
+        }
+
+        function handleResize() {
+            if (gameWrapper.style.display !== 'flex') return;
+            cellSize = Math.min(mazeContainer.offsetWidth / mazeCols, mazeContainer.offsetHeight / mazeRows);
+            mazeContainer.style.gridTemplateColumns = `repeat(${cellSize}px)`;
+            mazeContainer.style.gridTemplateRows = `repeat(${cellSize}px)`;
+            mazeContainer.querySelectorAll('.wall').forEach(w => w.remove());
+            for (let y = 0; y < mazeRows; y++) {
+                for (let x = 0; x < mazeCols; x++) {
+                    if (mazeLayout[y][x] === 1) {
+                         const wall = document.createElement('div'); wall.className = 'wall';
+                         wall.style.cssText = `width:${cellSize}px; height:${cellSize}px; grid-column:${x+1}; grid-row:${y+1};`;
+                         mazeContainer.appendChild(wall);
+                    }
+                }
+            }
+            gameElements.forEach(item => {
+                if (item.isGoal) {
+                    item.element.style.cssText = `width:${cellSize}px; height:${cellSize}px; font-size:${cellSize*0.8}px; left:${goalPos.x*cellSize}px; top:${goalPos.y*cellSize}px;`;
+                }
+            });
+            [player, opponent].forEach(el => {
+                 el.style.width = `${cellSize * 0.9}px`; el.style.height = `${cellSize * 0.9}px`;
+                 el.style.fontSize = `${cellSize * 0.7}px`;
+            });
+            if (currentRoomCode && roomRef) {
+                roomRef.child('players').once('value', (s) => {
+                    if (s.exists()) updateAllPlayerPositions(s.val());
+                });
+            } else { updatePlayerPosition(); }
+        }
+        
+        function movePlayer(dx, dy) {
+            const newX = playerPos.x + dx; const newY = playerPos.y + dy;
+            if (newY >= 0 && newY < mazeRows && newX >= 0 && newX < mazeCols && mazeLayout[newY][newX] !== 1) {
+                playerPos.x = newX; playerPos.y = newY;
+                roomRef.child('players/' + myPlayerId).update({ x: newX, y: newY });
+                if (newX === goalPos.x && newY === goalPos.y) {
+                    roomRef.child('gameState').once('value', (gameStateSnap) => {
+                        if(gameStateSnap.val() === 'playing') {
+                            roomRef.update({ gameState: 'roundOver', roundWinner: myPlayerId });
+                        }
+                    });
+                }
+            }
+        }
+
+        function soloMove(dx, dy) {
+            const newX = playerPos.x + dx; const newY = playerPos.y + dy;
+            if (newY >= 0 && newY < mazeRows && newX >= 0 && newX < mazeCols && mazeLayout[newY][newX] !== 1) {
+                playerPos.x = newX; playerPos.y = newY;
+                updatePlayerPosition();
+                if (playerPos.x === goalPos.x && playerPos.y === goalPos.y) {
+                    setTimeout(() => { alert('🎉 도착!'); initializeGame(); }, 100);
+                }
+            }
+        }
+        function updatePlayerPosition() { player.style.left = `${playerPos.x * cellSize + (cellSize * 0.05)}px`; player.style.top = `${playerPos.y * cellSize + (cellSize * 0.05)}px`; }
+        
+        // ✨ 연속 이동을 위한 함수들
+        function startMoving(dx, dy) {
+            stopMoving();
+            const moveFn = currentRoomCode ? movePlayer : soloMove;
+            moveFn(dx, dy); // 즉시 1회 이동
+            moveInterval = setInterval(() => moveFn(dx, dy), 150); // 150ms 마다 반복
+        }
+
+        function stopMoving() {
+            clearInterval(moveInterval);
+        }
+
+        // ✨ 조작 이벤트 리스너: 연속 이동 방식으로 변경
+        ['up', 'down', 'left', 'right'].forEach(dir => {
+            const btn = document.getElementById(dir);
+            let dx = 0, dy = 0;
+            if (dir === 'up') dy = -1;
+            if (dir === 'down') dy = 1;
+            if (dir === 'left') dx = -1;
+            if (dir === 'right') dx = 1;
+
+            btn.addEventListener('mousedown', () => startMoving(dx, dy));
+            btn.addEventListener('touchstart', (e) => { e.preventDefault(); startMoving(dx, dy); });
+        });
+        document.addEventListener('mouseup', stopMoving);
+        document.addEventListener('touchend', stopMoving);
+        
+        // ✨ 키보드 이벤트 리스너: 연속 이동 방식으로 변경
+        let keyHeld = {};
+        window.addEventListener('keydown', (e) => {
+            if (keyHeld[e.key]) return;
+            keyHeld[e.key] = true;
+            switch (e.key) {
+                case 'ArrowUp': startMoving(0, -1); break;
+                case 'ArrowDown': startMoving(0, 1); break;
+                case 'ArrowLeft': startMoving(-1, 0); break;
+                case 'ArrowRight': startMoving(1, 0); break;
+            }
+        });
+        window.addEventListener('keyup', (e) => {
+            keyHeld[e.key] = false;
+            stopMoving();
+        });
+
+        function placeStartAndGoal(layout) { const topRowPaths = []; for (let i = 0; i < layout[1].length; i++) { if (layout[1][i] === 0) topRowPaths.push(i); } const startX = topRowPaths[Math.floor(Math.random() * topRowPaths.length)]; layout[1][startX] = 'S'; const bottomRowPaths = []; const bottomRowIndex = layout.length - 2; for (let i = 0; i < layout[bottomRowIndex].length; i++) { if (layout[bottomRowIndex][i] === 0) bottomRowPaths.push(i); } const goalX = bottomRowPaths[Math.floor(Math.random() * bottomRowPaths.length)]; layout[bottomRowIndex][goalX] = 'G'; }
+        function generateMaze(rows, cols) { rows = rows % 2 === 0 ? rows + 1 : rows; cols = cols % 2 === 0 ? cols + 1 : cols; const maze = Array(rows).fill(null).map(() => Array(cols).fill(1)); const stack = []; const startX = 1, startY = 1; maze[startY][startX] = 0; stack.push([startX, startY]); while (stack.length > 0) { const [cx, cy] = stack[stack.length - 1]; const directions = []; if (cy - 2 >= 0 && maze[cy - 2][cx] === 1) directions.push('N'); if (cy + 2 < rows && maze[cy + 2][cx] === 1) directions.push('S'); if (cy - 2 >= 0 && maze[cy][cx - 2] === 1) directions.push('W'); if (cx + 2 < cols && maze[cy][cx + 2] === 1) directions.push('E'); if (directions.length > 0) { const dir = directions[Math.floor(Math.random() * directions.length)]; let nx = cx, ny = cy; switch (dir) { case 'N': ny -= 2; maze[cy - 1][cx] = 0; break; case 'S': ny += 2; maze[cy + 1][cx] = 0; break; case 'W': nx -= 2; maze[cy][cx - 1] = 0; break; case 'E': nx += 2; maze[cy][cx + 1] = 0; break; } maze[ny][nx] = 0; stack.push([nx, ny]); } else { stack.pop(); } } return maze; }
+        window.addEventListener('resize', handleResize);
+    });
     </script>
 </body>
 </html>
