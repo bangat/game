@@ -1,792 +1,1075 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <title>타워 디펜스 (이미지 적용 & 반응형)</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>타워 디펜스 V3.0 (반응형)</title>
     <style>
-        :root{
-            --bg:#0e0e10;
-            --panel:#1f1f22;
-            --accent:#33ff99;
-            --muted:#9aa0a6;
-            --danger:#ff6b6b;
-            --glass: rgba(255,255,255,0.06);
-            --glass-strong: rgba(255,255,255,0.08);
-            --shop-bg: rgba(40,40,45,0.85);
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
+        :root {
+            /* 컬러 팔레트 개선: 대비 강화 */
+            --bg-color: #0b1a0b;        /* 전체 배경 */
+            --build-area: #1f3a1f;      /* 타워 배치 가능한 캔버스 배경 (어두운 녹색) */
+            --path-color: #5d4037;      /* 몬스터 경로 색상 (짙은 갈색) */
+            --ui-bg: #2c2c2c;           /* UI 패널 배경 */
+            --border-color: #33ff99;    /* 하이라이트/액센트 (밝은 녹색) */
+            --text-color: #fff;
+            --highlight-color: #33ff99;
+            --danger-color: #f00;
+            --font-main: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            --header-height: 50px;
         }
-        *{box-sizing:border-box; margin:0; padding:0;}
-        html,body{height:100%; width:100%; background:var(--bg); color:#fff; overflow:hidden; -webkit-font-smoothing:antialiased;}
-        /* 상단 고정 헤더 */
-        header#topbar{
-            position:fixed; top:0; left:0; right:0; height:64px; display:flex; align-items:center;
-            gap:16px; padding:8px 16px; z-index:120; backdrop-filter: blur(6px);
-            background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
-            border-bottom: 1px solid rgba(255,255,255,0.04);
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%; height: 100%; overflow: hidden; background-color: var(--bg-color);
+            color: var(--text-color); font-family: var(--font-main);
+            -webkit-user-select: none; user-select: none; touch-action: manipulation;
         }
-        #branding { display:flex; align-items:center; gap:12px; }
-        #branding h1 { font-size:1.05rem; color:var(--accent); text-shadow:0 0 8px rgba(51,255,153,0.08); }
-        #stats { display:flex; gap:16px; margin-left:auto; align-items:center; font-weight:700; color:var(--muted); }
-        .stat { padding:6px 10px; background:var(--glass); border-radius:8px; font-size:0.95rem; color:#fff; box-shadow:inset 0 -2px 0 rgba(0,0,0,0.2); }
-        /* 조합법 설명서 (반투명) */
-        #recipe {
-            position:absolute; left:16px; top:74px; z-index:110; padding:10px 14px; border-radius:10px;
-            background: rgba(0,0,0,0.45); color: #ddd; font-size:0.9rem; border:1px solid rgba(255,255,255,0.03);
-            max-width:360px; backdrop-filter: blur(4px);
+        .screen {
+            width: 100%; height: 100%; position: absolute; top: 0; left: 0;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            transition: opacity 0.3s ease; background-color: var(--bg-color); z-index: 10;
         }
-        #game-wrap { position:absolute; inset:96px 0 88px 0; display:flex; justify-content:center; align-items:stretch; }
-        canvas#game-canvas{ width:100%; height:100%; display:block; background:linear-gradient(180deg,#0b0b0c,#0f0f11); image-rendering: auto; cursor:crosshair; }
-        /* 하단 UI (상점) */
-        nav#bottom-shop {
-            position:fixed; bottom:0; left:0; right:0; height:88px; display:flex; align-items:center; padding:10px 18px; z-index:130;
-            background: var(--shop-bg); border-top:1px solid rgba(255,255,255,0.04);
+        .hidden { opacity: 0; pointer-events: none; }
+        h1 { font-size: clamp(2.5rem, 8vw, 4rem); color: var(--highlight-color); text-shadow: 0 0 15px var(--highlight-color); margin-bottom: 40px; }
+        .menu-btn {
+            padding: 15px 30px; font-size: 1.2em; font-weight: bold; border-radius: 12px;
+            border: 2px solid var(--highlight-color); cursor: pointer; margin: 10px;
+            background-color: rgba(0, 0, 0, 0.5); color: var(--highlight-color);
+            transition: all 0.2s; text-shadow: 0 0 5px var(--highlight-color);
+            width: 80%; max-width: 300px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
         }
-        .shop-left { width:220px; display:flex; gap:8px; align-items:center; }
-        .shop-left .hint { font-size:0.9rem; color:var(--muted); }
-        .shop-grid { flex:1; display:flex; gap:12px; justify-content:flex-end; align-items:center; padding-right:18px; }
+        
+        /* --- Game Screen Layout --- */
+        #game-screen { flex-direction: column; justify-content: flex-start; align-items: stretch; padding-top: var(--header-height); }
+        #game-header {
+            position: fixed; top: 0; left: 0; width: 100%; height: var(--header-height);
+            background-color: var(--ui-bg); border-bottom: 3px solid var(--highlight-color);
+            display: flex; justify-content: space-around; align-items: center; z-index: 20;
+            padding: 0 10px;
+        }
+        #game-header div { font-size: clamp(0.9rem, 3.5vw, 1.1rem); font-weight: bold; }
+        #game-canvas { flex-grow: 1; width: 100%; background-color: var(--build-area); image-rendering: pixelated; cursor: pointer; }
+        
+        #ui-panel {
+            padding: 10px; width: 100%; background-color: var(--ui-bg);
+            display: flex; flex-direction: column; border-top: 3px solid var(--highlight-color);
+            flex-shrink: 0;
+        }
+        #tower-shop { width: 100%; }
+        .panel-title { margin: 0 0 8px 0; padding-bottom: 5px; color: var(--highlight-color); font-weight: bold; font-size: clamp(0.9rem, 3vw, 1rem); }
+        .buttons-container { display: flex; gap: 8px; justify-content: space-around; flex-grow: 1; flex-wrap: wrap; }
         .control-button {
-            background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
-            border:1px solid rgba(255,255,255,0.04); padding:8px 12px; border-radius:10px; min-width:120px;
-            display:flex; gap:10px; align-items:center; cursor:pointer; transition:all .12s; color:#fff;
+            flex: 1 1 23%; min-width: 80px; /* 모바일/PC 반응형 */
+            padding: 8px 4px; background-color: #3e3e3e; border: 2px solid #555; color: #fff;
+            cursor: pointer; border-radius: 8px; text-align: center; margin-bottom: 5px;
+            display: flex; flex-direction: column; justify-content: center; align-items: center; transition: all 0.2s;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
         }
-        .control-button:hover { transform:translateY(-3px); box-shadow:0 6px 18px rgba(0,0,0,0.5); }
-        .control-button.selected { border-color: var(--accent); box-shadow:0 0 18px rgba(51,255,153,0.08); transform:scale(1.02); }
-        .control-button img { width:40px; height:40px; object-fit:contain; filter: drop-shadow(0 6px 10px rgba(0,0,0,0.6)); }
-        .control-button .meta { text-align:left; }
-        .control-button strong { display:block; font-size:0.95rem; }
-        .control-button small { color:var(--muted); font-size:0.8rem; }
-        /* 반응형 */
-        @media (max-width:720px){
-            header#topbar{ height:68px; padding:8px 12px; }
-            #recipe { display:none; }
-            .control-button img { width:36px; height:36px; }
-            nav#bottom-shop { padding:8px 10px; height:96px; }
+        .control-button:hover { background-color: #555; }
+        .control-button.selected { border-color: var(--highlight-color); background-color: #555; box-shadow: 0 0 10px var(--highlight-color); transform: scale(1.05); }
+        .control-button strong { font-size: clamp(0.8rem, 3vw, 1rem); margin: 5px 0 2px 0; line-height: 1.2; }
+        .control-button small { display: block; color: #ccc; font-size: clamp(0.6rem, 2.5vw, 0.8rem); }
+        
+        #message-overlay {
+            position: fixed; top: var(--header-height); left: 50%; transform: translateX(-50%); font-size: 2em;
+            font-weight: bold; color: #ff0; text-shadow: 0 0 10px #000, 0 0 20px #ffc107; pointer-events: none; z-index: 100;
+            opacity: 0; transition: opacity 0.5s, transform 0.5s;
         }
-        /* 안내 레이어 (placement highlight) */
-        .hintLayer { position:absolute; inset:96px 0 88px 0; pointer-events:none; z-index:115; }
+
+        /* --- Recipe Overlay --- */
+        #recipe-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0, 0, 0, 0.9); z-index: 50; /* 투명도 강화 */
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            opacity: 0; pointer-events: none; transition: opacity 0.3s ease;
+            overflow-y: auto; padding: 20px;
+        }
+        #recipe-overlay.active { opacity: 1; pointer-events: auto; }
+        #recipe-content {
+            background-color: var(--ui-bg); border: 3px solid var(--highlight-color);
+            padding: 20px; border-radius: 15px; max-width: 90%; width: 600px;
+            max-height: 90%; overflow-y: auto;
+            box-shadow: 0 0 20px rgba(51, 255, 153, 0.5);
+        }
+        #recipe-content h2 { color: var(--highlight-color); margin-bottom: 20px; text-align: center; }
+        .recipe-group { margin-bottom: 20px; padding: 10px; border: 1px dashed #444; border-radius: 8px; }
+        .recipe-group h3 { color: #87CEEB; margin-bottom: 10px; font-size: 1.2em; }
+        .recipe-item { margin-bottom: 5px; font-size: 1em; line-height: 1.5; }
+        .recipe-item strong { color: #fff; }
+        .close-btn { 
+            margin-top: 20px; padding: 10px 20px; font-size: 1em; font-weight: bold; 
+            border: 2px solid var(--danger-color); background-color: #444; color: #fff;
+            cursor: pointer; border-radius: 8px; transition: background-color 0.2s;
+        }
+        .close-btn:hover { background-color: #666; }
+
+        /* Tower Image Style in Shop */
+        .tower-img { 
+            height: 35px; width: auto; display: block; image-rendering: pixelated; 
+            margin: 0 auto;
+        }
     </style>
 </head>
 <body>
-    <!-- 상단 고정 헤더 -->
-    <header id="topbar">
-        <div id="branding">
-<!-- 조합법 버튼 추가 -->
-<button id="recipe-toggle" style="
-    padding:6px 12px;
-    border-radius:8px;
-    background:rgba(255,255,255,0.05);
-    border:1px solid rgba(255,255,255,0.1);
-    color:#fff;
-    cursor:pointer;
-">
-  조합법
-</button>
-            <h1>타워디펜스</h1>
-        </div>
 
-        <div id="stats" aria-live="polite">
-            <div id="round-stat" class="stat">Round: 0</div>
-            <div id="lives-stat" class="stat">❤️ Lives: 20</div>
-            <div id="gold-stat" class="stat">💰 Gold: 250</div>
-        </div>
-<!-- 조합법 팝업 (초기에는 숨김) -->
-<div id="recipe-modal" style="
-    position:fixed;
-    top:50%; left:50%;
-    transform:translate(-50%, -50%);
-    min-width:280px;
-    background:rgba(0,0,0,0.75);
-    border:1px solid rgba(255,255,255,0.08);
-    border-radius:12px;
-    padding:16px 20px;
-    backdrop-filter:blur(8px);
-    color:#eee;
-    font-size:0.9rem;
-    display:none;
-    z-index:999;
-">
-    <strong style="color:#33ff99; display:block; margin-bottom:8px;">조합법 가이드</strong>
-    <div>
-        • 같은 티어 타워 3개 조합 → 티어2<br>
-        • 티어2 + 티어2 융합 → 특수 융합타워 (전설보다 약함)<br>
-        • 전설 타워(랜덤): 기본계열에서 낮은 확률로 등장
+    <div id="start-menu" class="screen">
+        <h1>🚀 타워 디펜스</h1>
+        <button id="play-solo-btn" class="menu-btn">게임 시작</button>
     </div>
-</div>
 
-    </header>
-
-
-    
-    <!-- 게임 영역 -->
-    <div id="game-wrap">
+    <div id="game-screen" class="screen hidden">
+        <div id="game-header">
+            <div id="round-stat">Round: 0</div>
+            <div id="lives-stat">❤️ 20</div>
+            <div id="gold-stat">💰 250</div>
+            <button id="recipe-btn" class="control-button" style="flex: 0 0 auto; width: 100px; padding: 5px; margin: 0; background-color: #444;">조합법</button>
+        </div>
         <canvas id="game-canvas"></canvas>
-        <div class="hintLayer" id="hint-layer"></div>
+        <div id="ui-panel">
+            <div id="tower-shop">
+                <h3 class="panel-title">타워 상점 (ESC로 건설/융합/이동 취소)</h3>
+                <div class="buttons-container">
+                    <button class="control-button" data-type="basic" data-cost="50"><img src="/img/기본타워.png" alt="기본" class="tower-img"><strong>기본 타워</strong><small>Cost: 50</small></button>
+                    <button class="control-button" data-type="splash" data-cost="120"><img src="/img/광역타워.png" alt="광역" class="tower-img"><strong>광역 타워</strong><small>Cost: 120</small></button>
+                    <button class="control-button" data-type="slow" data-cost="80"><img src="/img/슬로우타워.png" alt="슬로우" class="tower-img"><strong>슬로우 타워</strong><small>Cost: 80</small></button>
+                    <button class="control-button" data-type="sniper" data-cost="150"><img src="/img/저격타워.png" alt="저격" class="tower-img"><strong>저격 타워</strong><small>Cost: 150</small></button>
+                </div>
+            </div>
+        </div>
+        <div id="message-overlay"></div>
     </div>
 
-    <!-- 하단 상점 -->
-    <nav id="bottom-shop">
-        <div class="shop-left">
-            <div class="hint">ESC: 선택 취소 · 클릭: 설치 / 타워 클릭: 이동·업그레이드</div>
+    <div id="recipe-overlay">
+        <div id="recipe-content">
+            <h2>타워 조합 및 융합법</h2>
+            <div class="recipe-group">
+                <h3>🧪 Tier 2 조합 (같은 종류 Tier 1 타워 3개 필요)</h3>
+                <div class="recipe-item"><strong>🔫 기본 타워 x 3</strong> ➡️ 🤖 **개틀링 타워 (Gatling)**</div>
+                <div class="recipe-item"><strong>💣 광역 타워 x 3</strong> ➡️ 💥 **클러스터 타워 (Cluster)**</div>
+                <div class="recipe-item"><strong>❄️ 슬로우 타워 x 3</strong> ➡️ 🥶 **블리자드 타워 (Blizzard)**</div>
+                <div class="recipe-item"><strong>🎯 저격 타워 x 3</strong> ➡️ 🛰️ **레일건 타워 (Railgun)**</div>
+            </div>
+            <div class="recipe-group">
+                <h3>⚛️ Tier 3 융합 (다른 종류 Tier 2 타워 2개 필요)</h3>
+                <div class="recipe-item">🤖 **개틀링** + 💥 **클러스터** ➡️ 🔥 **화염 방사기 (Flamethrower)**</div>
+                <div class="recipe-item">🤖 **개틀링** + 🥶 **블리자드** ➡️ 🧊 **극저온 총 (Cryo Gun)**</div>
+                <div class="recipe-item">🤖 **개틀링** + 🛰️ **레일건** ➡️ ☄️ **레이저 캐논 (Laser Cannon)**</div>
+                <div class="recipe-item">💥 **클러스터** + 🥶 **블리자드** ➡️ 🌨️ **우박 폭풍 (Hailstorm)**</div>
+                <div class="recipe-item">💥 **클러스터** + 🛰️ **레일건** ➡️ 🚀 **미사일 발사기 (Missile Launcher)**</div>
+                <div class="recipe-item">🥶 **블리자드** + 🛰️ **레일건** ➡️ 🔮 **플라즈마 건 (Plasma Gun)**</div>
+            </div>
+            <div class="recipe-group">
+                <h3>✨ 전설 타워 (Tier 1 타워 건설 시 5% 확률로 획득)</h3>
+                <div class="recipe-item">**Lightning** (기본) / **Volcano** (광역) / **Ice Shard** (슬로우) / **Ion Cannon** (저격)</div>
+            </div>
+            <button class="close-btn" id="close-recipe-btn">닫기</button>
         </div>
-        <div class="shop-grid" id="shop-grid">
-            <button class="control-button" data-type="basic" data-cost="50"><img src="/img/기본타워.png" alt="기본"><div class="meta"><strong>기본 타워</strong><small>Cost: 50</small></div></button>
-            <button class="control-button" data-type="splash" data-cost="120"><img src="/img/광역타워.png" alt="광역"><div class="meta"><strong>광역 타워</strong><small>Cost: 120</small></div></button>
-            <button class="control-button" data-type="slow" data-cost="80"><img src="/img/슬로우타워.png" alt="슬로우"><div class="meta"><strong>슬로우 타워</strong><small>Cost: 80</small></div></button>
-            <button class="control-button" data-type="sniper" data-cost="150"><img src="/img/저격타워.png" alt="저격"><div class="meta"><strong>저격 타워</strong><small>Cost: 150</small></div></button>
-        </div>
-    </nav>
+    </div>
 
+    <div id="game-over-screen" class="screen hidden"></div>
+    
     <script>
-    document.addEventListener('DOMContentLoaded', ()=> {
-        // 캔버스 설정
+    document.addEventListener('DOMContentLoaded', () => {
+        // --- DOM Elements ---
+        const screens = { start: document.getElementById('start-menu'), game: document.getElementById('game-screen'), gameOver: document.getElementById('game-over-screen') };
         const canvas = document.getElementById('game-canvas');
-        const ctx = canvas.getContext('2d', { alpha: true });
-        const hintLayer = document.getElementById('hint-layer');
+        const ctx = canvas.getContext('2d');
+        const messageOverlay = document.getElementById('message-overlay');
+        const recipeOverlay = document.getElementById('recipe-overlay');
+        const shopButtons = document.querySelectorAll('#tower-shop .control-button');
 
-        // UI 요소
-        const roundStat = document.getElementById('round-stat');
-        const livesStat = document.getElementById('lives-stat');
-        const goldStat = document.getElementById('gold-stat');
-        const shopButtons = Array.from(document.querySelectorAll('.control-button'));
+        // --- Game State ---
+        let localGameState = {};
+        let animationFrameId, lastTime = 0;
+        let enemies = [], projectiles = [], towers = [], splashEffects = [];
+        let roundInProgress = false, timeToNextWave = 0;
+        let selectedTowerForPlacement = null; // 타워 건설 선택
+        let selectedTowerForUpgrade = null; // 업그레이드/판매/조합/융합/이동 선택된 타워
+        let selectedTowerForMove = null; // 이동 기능 활성화 타워
+        let playerLayout = {}; // 그리드 크기, 경로 등 레이아웃 정보
+        let activeMenuButtons = []; // 동적 메뉴 버튼
+        let isCombining = false; // 조합 모드 (Tier 1 -> Tier 2) - 현재 사용 안함
+        let isFusing = false; // 융합 모드 (Tier 2 -> Tier 3)
+        let firstFusionTower = null; // 융합 대상 타워
+        let mouseX = 0, mouseY = 0; // 마우스/터치 위치 저장
 
-        // 게임 상태
-        let localGameState = { gameState: 'idle', round: 0, lives: 20, gold: 250 };
-        let towers = [], enemies = [], projectiles = [], splashEffects = [];
-        let lastTime = 0, animId = null, roundInProgress = false, timeToNextWave = 4000;
-        let selectedTowerForPlacement = null; // {type,cost}
-        let movingTower = null; // when player selects a placed tower to move
-        let activeMenuButtons = [];
-        let isCombining = false, firstCombineTower = null;
-
-        // 배치영역(Placement area) — 캔버스 크기에 따라 동적
-        let placementArea = { x:0,y:0,w:0,h:0, cols:10, rows:10, cellW:0, cellH:0, cells:[] };
-
-        // 이미지 프리로드 (파일명은 업로드한 이름 기준)
-        const towerImages = {
-            basic: loadImg('/img/기본타워.png'),
-            splash: loadImg('/img/광역타워.png'),
-            slow: loadImg('/img/슬로우타워.png'),
-            sniper: loadImg('/img/저격타워.png'),
-            // 전설 이미지들 (랜덤 전설용)
-            legendary_basic: loadImg('/img/기본전설타워.png'),
-            legendary_splash: loadImg('/img/전설광역타워.png'),
-            legendary_slow: loadImg('/img/전설슬로우타워.png'),
-            legendary_sniper: loadImg('/img/전설저격타워.png'),
-            // tier2/융합 이미지(없으면 기본을 사용)
-            gatling: loadImg('/img/기본타워.png'),
-            cluster: loadImg('/img/광역타워.png'),
-            blizzard: loadImg('/img/슬로우타워.png'),
-            railgun: loadImg('/img/저격타워.png'),
-        };
-
-        function loadImg(src){
-            const i = new Image();
-            i.src = src;
-            return i;
-        }
-
-        // 반응형 리사이즈
-        function resize() {
-            const top = document.getElementById('topbar').offsetHeight + 8;
-            const bottom = document.getElementById('bottom-shop').offsetHeight + 8;
-            const wrap = document.getElementById('game-wrap');
-            const rect = wrap.getBoundingClientRect();
-            canvas.width = rect.width;
-            canvas.height = rect.height;
-            // 배치영역은 캔버스 중앙의 76% 영역으로 설정 (경로와 UI 제외)
-            const pad = 24;
-            placementArea.x = pad;
-            placementArea.y = pad;
-            placementArea.w = Math.max( Math.floor(canvas.width * 0.76) - pad*2, 200 );
-            placementArea.h = Math.max( Math.floor(canvas.height * 0.76) - pad*2, 200 );
-            // 중앙에 배치
-            placementArea.x = Math.floor((canvas.width - placementArea.w) / 2);
-            placementArea.y = Math.floor((canvas.height - placementArea.h) / 2);
-            placementArea.cellW = placementArea.w / placementArea.cols;
-            placementArea.cellH = placementArea.h / placementArea.rows;
-            // rebuild cells
-            placementArea.cells = [];
-            for(let r=0;r<placementArea.rows;r++){
-                for(let c=0;c<placementArea.cols;c++){
-                    placementArea.cells.push({
-                        r,c,
-                        x: placementArea.x + c*placementArea.cellW,
-                        y: placementArea.y + r*placementArea.cellH,
-                        cx: placementArea.x + c*placementArea.cellW + placementArea.cellW/2,
-                        cy: placementArea.y + r*placementArea.cellH + placementArea.cellH/2,
-                        occupied: false
-                    });
-                }
-            }
-            // update occupancy based on existing towers
-            towers.forEach(t => {
-                const cell = findCellAt(t.x, t.y);
-                if(cell) cell.occupied = true;
+        // --- Constants & Config (이미지 로드 및 밸런스 조정) ---
+        const TOWER_IMAGES = {};
+        const IMAGE_SOURCES = [
+            // Tier 1
+            { type: 'basic', src: '/img/기본타워.png' }, { type: 'splash', src: '/img/광역타워.png' },
+            { type: 'slow', src: '/img/슬로우타워.png' }, { type: 'sniper', src: '/img/저격타워.png' },
+            // Legendary (Tier 99)
+            { type: 'lightning', src: '/img/전설기본타워.png' }, { type: 'volcano', src: '/img/전설광역타워.png' },
+            { type: 'ice_shard', src: '/img/전설슬로우타워.png' }, { type: 'ion_cannon', src: '/img/전설저격타워.png' },
+        ];
+        
+        function loadImages() {
+            let loadedCount = 0;
+            IMAGE_SOURCES.forEach(item => {
+                const img = new Image();
+                img.onload = () => {
+                    TOWER_IMAGES[item.type] = img;
+                    loadedCount++;
+                    if (loadedCount === IMAGE_SOURCES.length) { showScreen('start'); }
+                };
+                img.onerror = () => {
+                    console.error(`이미지 로드 실패: ${item.src}. 이모지 대체.`);
+                    TOWER_IMAGES[item.type] = null; // 실패 시 null로 설정
+                    loadedCount++;
+                    if (loadedCount === IMAGE_SOURCES.length) { showScreen('start'); }
+                };
+                img.src = item.src;
             });
         }
-
-        // 시작 버튼 대체: 바로 게임 시작
-        function startGame(){
-            localGameState.round = 0; localGameState.lives = 20; localGameState.gold = 250;
-            towers = []; enemies = []; projectiles = []; splashEffects = [];
-            roundInProgress = false; timeToNextWave = 3000; lastTime = 0;
-            updateUI();
-            resize();
-            if(animId) cancelAnimationFrame(animId);
-            animId = requestAnimationFrame(loop);
+        
+        function getTowerConfig(type) {
+            const rangeMultiplier = playerLayout.gridSize || 20;
+            // 밸런스 조정: Tier 2 타워의 능력치를 전설(Tier 99)보다 낮게 유지
+            const configs = {
+                // Tier 1 
+                basic: { emoji: '🔫', damage: 35, range: rangeMultiplier * 8, fireRate: 700, color: '#00ffff', splashRadius: 0, damageCost: 30, rangeCost: 40, tier: 1, combineTo: 'gatling', img: TOWER_IMAGES.basic },
+                splash: { emoji: '💣', damage: 40, range: rangeMultiplier * 7, fireRate: 1500, color: '#ffa500', splashRadius: rangeMultiplier * 4, damageCost: 80, rangeCost: 100, tier: 1, combineTo: 'cluster', img: TOWER_IMAGES.splash },
+                slow: { emoji: '❄️', damage: 5, range: rangeMultiplier * 7.5, fireRate: 1000, color: '#87CEEB', splashRadius: rangeMultiplier * 3, slowEffect: { power: 0.3, duration: 2000 }, damageCost: 60, rangeCost: 70, tier: 1, combineTo: 'blizzard', img: TOWER_IMAGES.slow },
+                sniper: { emoji: '🎯', damage: 150, range: rangeMultiplier * 15, fireRate: 1800, color: '#ff00ff', splashRadius: 0, damageCost: 120, rangeCost: 150, tier: 1, combineTo: 'railgun', img: TOWER_IMAGES.sniper },
+                // Tier 2 
+                gatling: { emoji: '🤖', damage: 60, range: rangeMultiplier * 9, fireRate: 350, color: '#00ffff', splashRadius: 0, damageCost: 150, rangeCost: 200, tier: 2, combineTo: null },
+                cluster: { emoji: '💥', damage: 80, range: rangeMultiplier * 8, fireRate: 1200, color: '#ffa500', splashRadius: rangeMultiplier * 6, damageCost: 300, rangeCost: 350, tier: 2, combineTo: null },
+                blizzard: { emoji: '🥶', damage: 10, range: rangeMultiplier * 8.5, fireRate: 700, color: '#87CEEB', splashRadius: rangeMultiplier * 4.5, slowEffect: { power: 0.4, duration: 2200 }, damageCost: 250, rangeCost: 300, tier: 2, combineTo: null },
+                railgun: { emoji: '🛰️', damage: 350, range: rangeMultiplier * 20, fireRate: 1500, color: '#ff00ff', splashRadius: 0, damageCost: 500, rangeCost: 600, tier: 2, combineTo: null },
+                // Tier 3
+                flamethrower: { emoji: '🔥', damage: 150, range: rangeMultiplier * 8, fireRate: 200, color: '#FF4500', splashRadius: rangeMultiplier * 2, tier: 3 },
+                cryo_gun: { emoji: '🧊', damage: 100, range: rangeMultiplier * 9, fireRate: 500, color: '#ADD8E6', splashRadius: 0, slowEffect: { power: 0.4, duration: 1000 }, tier: 3 },
+                laser_cannon: { emoji: '☄️', damage: 600, range: rangeMultiplier * 22, fireRate: 1000, color: '#FF0000', splashRadius: 0, tier: 3 },
+                hailstorm: { emoji: '🌨️', damage: 120, range: rangeMultiplier * 10, fireRate: 1500, color: '#FFFFFF', splashRadius: rangeMultiplier * 7, slowEffect: { power: 0.6, duration: 3000 }, tier: 3 },
+                missile_launcher: { emoji: '🚀', damage: 800, range: rangeMultiplier * 18, fireRate: 2500, color: '#FFA500', splashRadius: rangeMultiplier * 8, tier: 3 },
+                plasma_gun: { emoji: '🔮', damage: 500, range: rangeMultiplier * 15, fireRate: 1200, color: '#DA70D6', splashRadius: rangeMultiplier * 3, slowEffect: { power: 0.2, duration: 1000 }, tier: 3 },
+                // Legendary (Tier 99)
+                lightning: { emoji: '⚡️', damage: 50, range: rangeMultiplier * 10, fireRate: 300, color: '#FFFF00', splashRadius: 0, damageCost: 400, rangeCost: 500, tier: 99, img: TOWER_IMAGES.lightning },
+                volcano: { emoji: '🌋', damage: 75, range: rangeMultiplier * 9, fireRate: 1400, color: '#FF4500', splashRadius: rangeMultiplier * 5, damageCost: 500, rangeCost: 600, tier: 99, img: TOWER_IMAGES.volcano },
+                ice_shard: { emoji: '💎', damage: 20, range: rangeMultiplier * 12, fireRate: 1500, color: '#FFFFFF', splashRadius: 0, slowEffect: { power: 0.6, duration: 3000 }, damageCost: 500, rangeCost: 500, tier: 99, img: TOWER_IMAGES.ice_shard },
+                ion_cannon: { emoji: '☢️', damage: 500, range: rangeMultiplier * 25, fireRate: 2500, color: '#00FF00', splashRadius: 0, damageCost: 600, rangeCost: 700, tier: 99, img: TOWER_IMAGES.ion_cannon },
+            };
+            // 이미지 객체 참조를 업데이트 (이미지 로드가 나중에 완료될 경우 대비)
+            const config = configs[type];
+            if (config && config.tier === 1) config.img = TOWER_IMAGES[type];
+            if (config && config.tier === 99) config.img = TOWER_IMAGES[type];
+            return config;
         }
 
-        // UI shop 버튼 클릭 처리
-        shopButtons.forEach(btn => {
-            btn.addEventListener('click', ()=>{
-                shopButtons.forEach(b=>b.classList.remove('selected'));
-                btn.classList.add('selected');
-                selectedTowerForPlacement = { type: btn.dataset.type, cost: Number(btn.dataset.cost) };
-                movingTower = null;
-                isCombining = false; firstCombineTower = null;
-                // hint: highlight available cells
-                renderHintLayer();
-            });
-        });
+        // --- Core Functions ---
+        function showScreen(screenName) {
+            Object.values(screens).forEach(s => s.classList.add('hidden'));
+            screens[screenName].classList.remove('hidden');
+            if (screenName === 'game') setTimeout(resizeCanvas, 50);
+        }
 
-        // ESC 누르면 선택 취소
-        window.addEventListener('keydown', e=>{
-            if(e.key === 'Escape'){ cancelSelections(); renderHintLayer(); }
-        });
+        function startGame() {
+            showScreen('game');
+            roundInProgress = false; timeToNextWave = 5000; lastTime = 0;
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
 
-        function cancelSelections(){
+        function cancelAllSelections() {
+            selectedTowerForUpgrade = null; activeMenuButtons = [];
+            isCombining = false; firstFusionTower = null; isFusing = false;
+            selectedTowerForMove = null;
+            shopButtons.forEach(b => b.classList.remove('selected'));
             selectedTowerForPlacement = null;
-            movingTower = null;
-            shopButtons.forEach(b=>b.classList.remove('selected'));
-            isCombining = false; firstCombineTower = null;
-            renderHintLayer();
         }
 
-        // 마우스 클릭 : 설치/이동/업그레이드/융합 처리
-        canvas.addEventListener('click', (e)=>{
-            const rect = canvas.getBoundingClientRect();
-            const mx = (e.clientX - rect.left);
-            const my = (e.clientY - rect.top);
+        // --- Event Listeners ---
+        document.getElementById('play-solo-btn').addEventListener('click', () => {
+            localGameState = { gameState: 'playing', round: 0, lives: 20, gold: 250 };
+            towers = []; enemies = []; projectiles = []; splashEffects = [];
+            startGame();
+        });
 
-            // 우선 기존 타워 클릭 (이동/업그레이드 선택)
-            const clicked = towers.find(t => Math.hypot(t.x - mx, t.y - my) < Math.min(placementArea.cellW, placementArea.cellH) * 0.6);
-            if(clicked && !selectedTowerForPlacement){
-                // 선택한 타워를 이동 준비 (한번 더 클릭해서 이동셀 선택)
-                movingTower = clicked;
-                // unselect shop UI
-                shopButtons.forEach(b=>b.classList.remove('selected'));
-                renderHintLayer();
+        document.getElementById('recipe-btn').addEventListener('click', () => {
+            recipeOverlay.classList.add('active');
+        });
+
+        document.getElementById('close-recipe-btn').addEventListener('click', () => {
+            recipeOverlay.classList.remove('active');
+        });
+
+        shopButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                // 이미 선택된 버튼 재클릭 시 해제
+                if (button.classList.contains('selected')) {
+                    cancelAllSelections();
+                    return;
+                }
+                cancelAllSelections();
+                button.classList.add('selected');
+                selectedTowerForPlacement = { 
+                    type: button.dataset.type, 
+                    cost: parseInt(button.dataset.cost), 
+                    // 이미지 정보는 getTowerConfig에서 가져옴
+                };
+                displayMessage(`"${button.querySelector('strong').textContent}" 건설 모드 활성화. 배치할 구역을 클릭하세요.`);
+            });
+        });
+
+        window.addEventListener('keydown', (e) => { if (e.key === 'Escape') cancelAllSelections(); });
+        
+        // Canvas Click Listener
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const clickX = (e.clientX - rect.left) * (canvas.width / rect.width);
+            const clickY = (e.clientY - rect.top) * (canvas.height / rect.height);
+            
+            const gridX = Math.floor(clickX / playerLayout.gridSize);
+            const gridY = Math.floor(clickY / playerLayout.gridSize);
+
+            // 그리드 중앙 좌표
+            const centerX = (gridX + 0.5) * playerLayout.gridSize;
+            const centerY = (gridY + 0.5) * playerLayout.gridSize;
+
+            // 0. 타워 메뉴 클릭 처리
+            if (handleMenuClick(clickX, clickY)) { 
+                // 메뉴 클릭 시, 선택된 타워는 유지하고, 다른 모드만 해제
+                selectedTowerForPlacement = null;
+                selectedTowerForMove = null;
+                return;
+            } 
+
+            // 1. 타워 융합 중일 때 (두 번째 타워 선택)
+            if (isFusing) { handleFusionClick(clickX, clickY); return; }
+
+            // 2. 타워 이동 중일 때 (새 위치 선택)
+            if (selectedTowerForMove) {
+                if (isTooCloseToPath(centerX, centerY)) { displayMessage("경로와 너무 가깝습니다!"); return; }
+                // 이동 타워 자신을 제외하고 점유된 위치인지 확인
+                if (isOccupied(centerX, centerY, selectedTowerForMove)) { displayMessage("다른 타워가 있습니다!"); return; }
+                
+                selectedTowerForMove.x = centerX;
+                selectedTowerForMove.y = centerY;
+                displayMessage("타워 이동 완료!");
+                cancelAllSelections();
                 return;
             }
 
-            // 설치 또는 이동 시: 셀 클릭으로 스냅
-            const cell = findCellAt(mx,my);
-            if(cell && !cell.occupied){
-                // 설치
-                if(selectedTowerForPlacement){
-                    if(localGameState.gold < selectedTowerForPlacement.cost){ flashMsg("골드 부족"); cancelSelections(); return; }
-                    // 랜덤 전설 스폰 처리 (5% 확률)
-                    let finalType = selectedTowerForPlacement.type;
-                    if(Math.random() < 0.05){
-                        // map to legendary variants
-                        const mapLegend = { basic: 'legendary_basic', splash: 'legendary_splash', slow: 'legendary_slow', sniper: 'legendary_sniper' };
-                        finalType = mapLegend[selectedTowerForPlacement.type] || finalType;
-                        flashMsg("✨ 전설 타워 등장! ✨");
-                    }
-                    const cfg = getTowerConfig(finalType);
-                    const tw = {
-                        ...cfg,
-                        id:'T'+Date.now(),
-                        x:cell.cx, y:cell.cy, type: finalType,
-                        cooldown:0, damageLevel:1, rangeLevel:1, totalSpent:selectedTowerForPlacement.cost,
-                        img: cfg.img  // 이미지 참조
-                    };
-                    towers.push(tw);
-                    cell.occupied = true;
-                    localGameState.gold -= selectedTowerForPlacement.cost;
-                    updateUI();
-                    cancelSelections();
-                    return;
-                }
-                // 이동: 선택된 기존 타워가 있다면 이동
-                if(movingTower){
-                    // mark old cell free and new occupied
-                    const oldCell = findCellAt(movingTower.x, movingTower.y);
-                    if(oldCell) oldCell.occupied = false;
-                    movingTower.x = cell.cx; movingTower.y = cell.cy;
-                    cell.occupied = true;
-                    movingTower = null;
-                    renderHintLayer();
-                    return;
-                }
-            } else {
-                // 클릭한 셀이 유효하지 않을때: 융합/업그레이드 처리 (타워가 클릭되었을 때 케어)
-                if(clicked){
-                    // 기존 로직: 선택해서 메뉴 렌더
-                    // here we set selectedTowerForUpgrade as clicked and let draw() show radial menu
-                    selectedTowerForPlacement = null;
-                    movingTower = clicked;
-                    renderHintLayer();
+            const clickedTower = towers.find(t => Math.hypot(t.x - clickX, t.y - clickY) < playerLayout.gridSize / 2); 
+
+            // 3. 타워 클릭 (업그레이드/판매/이동 메뉴 활성화)
+            if (clickedTower) {
+                // 이미 선택된 타워를 다시 클릭하거나, 다른 모드가 활성화된 상태라면 선택 해제
+                if (selectedTowerForUpgrade && selectedTowerForUpgrade.id === clickedTower.id) {
+                    cancelAllSelections();
                 } else {
-                    // 아무 것도 없을 때 취소
-                    cancelSelections();
+                    cancelAllSelections(); 
+                    selectedTowerForUpgrade = clickedTower;
+                    displayMessage(`${clickedTower.emoji} 타워 선택됨`);
                 }
+                return;
             }
+
+            // 4. 타워 건설 중일 때 (빈 공간에 배치)
+            if (selectedTowerForPlacement) {
+                const cost = selectedTowerForPlacement.cost;
+                if (localGameState.gold < cost) { displayMessage("골드가 부족합니다!"); cancelAllSelections(); return; }
+                if (isTooCloseToPath(centerX, centerY)) { displayMessage("경로와 너무 가깝습니다!"); return; }
+                if (isOccupied(centerX, centerY)) { displayMessage("다른 타워와 너무 가깝습니다!"); return; }
+                
+                let finalTowerType = selectedTowerForPlacement.type;
+                const baseType = selectedTowerForPlacement.type;
+                
+                // 전설 타워 5% 확률
+                if (Math.random() < 0.05) {
+                    if (baseType === 'basic') finalTowerType = 'lightning'; else if (baseType === 'splash') finalTowerType = 'volcano';
+                    else if (baseType === 'sniper') finalTowerType = 'ion_cannon'; else if (baseType === 'slow') finalTowerType = 'ice_shard';
+                    if (finalTowerType !== baseType) displayMessage("✨ 전설 타워 등장! ✨");
+                }
+                
+                const newConfig = getTowerConfig(finalTowerType);
+                
+                towers.push({ 
+                    ...newConfig, 
+                    id: 'T' + Date.now(), 
+                    x: centerX, // 그리드 중앙에 배치
+                    y: centerY, 
+                    type: finalTowerType, 
+                    cooldown: 0, 
+                    damageLevel: 1, 
+                    rangeLevel: 1, 
+                    totalSpent: cost,
+                    img: newConfig.tier === 99 || newConfig.tier === 1 ? TOWER_IMAGES[finalTowerType] : null // 이미지 재할당
+                });
+                localGameState.gold -= cost;
+                updateGameUI(localGameState);
+                cancelAllSelections(); // 건설 후 선택 해제
+                return;
+            }
+            
+            // 5. 빈 공간 클릭 (선택 해제)
+            cancelAllSelections();
+        });
+        
+        // Mouse/Touch Move Listener (건설/이동 힌트용)
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mouseX = (e.clientX - rect.left) * (canvas.width / rect.width);
+            mouseY = (e.clientY - rect.top) * (canvas.height / rect.height);
         });
 
-        // 셀 찾기
-        function findCellAt(x,y){
-            for(const c of placementArea.cells){
-                if(x >= c.x && x <= c.x + placementArea.cellW && y >= c.y && y <= c.y + placementArea.cellH) return c;
-            }
-            return null;
+        // --- Tower Actions ---
+        function startTowerMove(tower) {
+            cancelAllSelections();
+            selectedTowerForUpgrade = tower; // 메뉴 표시를 위해 유지
+            selectedTowerForMove = tower; // 이동 모드 활성화
+            displayMessage("타워를 이동할 빈 공간을 클릭하세요 (초록색 셀)");
         }
 
-        // 그리기 루프
-        function loop(ts){
-            if(!lastTime) lastTime = ts;
-            const dt = ts - lastTime;
-            update(dt);
-            draw();
-            lastTime = ts;
-            animId = requestAnimationFrame(loop);
+        function startFusion(tower) {
+            cancelAllSelections(); // 모든 선택 해제
+            isFusing = true; 
+            firstFusionTower = tower;
+            displayMessage("융합할 다른 2단계 타워를 선택하세요.");
         }
-
-        // 업데이트 (적 이동, 타워 발사 등) - 기존 로직 최대한 유지
-        function update(deltaTime){
-            // 웨이브 타이머
-            if(!roundInProgress) timeToNextWave -= deltaTime;
-            if(timeToNextWave <= 0 && !roundInProgress){
-                localGameState.round++;
-                spawnWave(localGameState.round);
-                roundInProgress = true;
-                updateUI();
+        
+        function handleFusionClick(clickX, clickY) {
+            const gridSize = playerLayout.gridSize;
+            const clickedTower = towers.find(t => Math.hypot(t.x - clickX, t.y - clickY) < gridSize / 2);
+            
+            if (!clickedTower || clickedTower.id === firstFusionTower.id) {
+                displayMessage("융합 실패. 자기 자신이나 빈 공간이 아닌, 다른 2단계 타워를 선택해야 합니다.");
+                cancelAllSelections();
+                return;
             }
-            // 적 처리
-            enemies.forEach((enemy,i)=>{
-                const path = defaultPath();
-                if(!path || path.length===0) return;
-                if(enemy.pathIndex >= path.length){ // 유출
-                    enemies.splice(i,1);
-                    localGameState.lives--;
-                    updateUI();
-                    if(localGameState.lives <= 0) endGame("기지 파괴");
-                    return;
+
+            const recipe = getFusionRecipe(firstFusionTower.type, clickedTower.type);
+            
+            if (recipe) {
+                if (firstFusionTower.tier !== 2 || clickedTower.tier !== 2) {
+                     displayMessage("융합 실패. 2단계 타워끼리만 융합할 수 있습니다.");
+                     cancelAllSelections();
+                     return;
                 }
-                const target = path[enemy.pathIndex];
-                const mv = enemy.speed * (deltaTime / 16.67);
-                const dist = Math.hypot(target.x - enemy.x, target.y - enemy.y);
-                if(dist < mv){ enemy.x = target.x; enemy.y = target.y; enemy.pathIndex++; }
-                else { enemy.x += (target.x-enemy.x)/dist*mv; enemy.y += (target.y-enemy.y)/dist*mv; }
+                
+                const totalSpent = firstFusionTower.totalSpent + clickedTower.totalSpent;
+                towers = towers.filter(t => t.id !== firstFusionTower.id && t.id !== clickedTower.id);
+                const newConfig = getTowerConfig(recipe.result);
+                
+                towers.push({ 
+                    ...newConfig, 
+                    id: 'T' + Date.now(), 
+                    x: clickedTower.x, 
+                    y: clickedTower.y, 
+                    type: recipe.result, 
+                    cooldown: 0, 
+                    damageLevel: 1, 
+                    rangeLevel: 1,
+                    totalSpent: totalSpent
+                });
+                displayMessage(`${newConfig.emoji} 융합 성공!`);
+            } else { 
+                displayMessage("융합 실패. 올바른 조합의 2단계 타워를 선택하세요."); 
+            }
+            cancelAllSelections();
+        }
+
+        function combineTowers(type, combineToType) {
+            const sameTowers = towers.filter(t => t.type === type);
+            const towersToCombine = sameTowers.slice(0, 3);
+            
+            if (towersToCombine.length < 3) {
+                 displayMessage("조합할 수 있는 타워가 부족합니다 (3개 필요).");
+                 return;
+            }
+
+            const totalSpent = towersToCombine.reduce((sum, t) => sum + t.totalSpent, 0);
+            towers = towers.filter(t => !towersToCombine.some(ttc => ttc.id === t.id));
+            
+            // 제거된 타워 중 첫 번째 위치를 새 타워의 위치로 사용 (그리드 중앙 좌표)
+            const newPos = { x: towersToCombine[0].x, y: towersToCombine[0].y }; 
+            const newConfig = getTowerConfig(combineToType);
+
+            towers.push({ 
+                ...newConfig, 
+                id: 'T' + Date.now(), 
+                x: newPos.x, 
+                y: newPos.y, 
+                type: combineToType, 
+                cooldown: 0, 
+                damageLevel: 1, 
+                rangeLevel: 1, 
+                totalSpent: totalSpent 
             });
-            // 타워 발사
-            towers.forEach(t=>{
-                t.cooldown -= deltaTime;
-                if(t.cooldown <= 0){
-                    const target = findTarget(t);
-                    if(target){
-                        projectiles.push({ x:t.x, y:t.y, target:target, damage:t.damage, splashRadius:t.splashRadius, slowEffect:t.slowEffect, color:t.color });
-                        t.cooldown = t.fireRate;
+            displayMessage(`${newConfig.emoji} 조합 성공! (Tier 1 -> Tier 2)`);
+            cancelAllSelections();
+        }
+
+        // --- Drawing and UI ---
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height); 
+            
+            // 1. 캔버스 배경 (빌드 영역)
+            ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--build-area');
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (!playerLayout.path) return;
+            
+            // 2. 타워 배치/이동 힌트 (가장 먼저 그려져야 함)
+            drawPlacementHints();
+
+
+            // 3. 경로 그리기
+            ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--path-color');
+            ctx.lineWidth = playerLayout.gridSize * 1.8; 
+            ctx.lineCap = 'round'; ctx.lineJoin = 'round'; 
+            ctx.beginPath(); 
+            ctx.moveTo(playerLayout.path[0].x, playerLayout.path[0].y); 
+            for(let i = 1; i < playerLayout.path.length; i++) ctx.lineTo(playerLayout.path[i].x, playerLayout.path[i].y); 
+            ctx.stroke();
+            
+            // 4. 타워 그리기 (이미지 또는 이모지)
+            const towerSize = playerLayout.gridSize * 1.6;
+            towers.forEach(t => { 
+                if (t.img) {
+                    // 이미지 렌더링
+                    ctx.drawImage(t.img, t.x - towerSize / 2, t.y - towerSize / 2, towerSize, towerSize);
+                } else {
+                    // 이모지 렌더링 (Tier 2/3)
+                    ctx.font = `${towerSize * 0.8}px sans-serif`; 
+                    ctx.textAlign = 'center'; 
+                    ctx.textBaseline = 'middle'; 
+                    ctx.fillText(t.emoji, t.x, t.y); 
+                }
+                // Tier 표시
+                ctx.fillStyle = '#fff';
+                ctx.font = `bold ${playerLayout.gridSize * 0.4}px sans-serif`;
+                ctx.fillText(`T${t.tier < 99 ? t.tier : 'L'}`, t.x, t.y + towerSize * 0.45);
+            });
+            
+            // 5. 몬스터 그리기 (겹침 방지를 위해 렌더링 순서와 크기 조정)
+            enemies.sort((a, b) => a.y - b.y).forEach(e => { // Y좌표 기준으로 정렬하여 겹침 시 자연스럽게 보이도록 처리
+                const config = getEnemyConfig(e.type);
+                const maxHealth = config.health + Math.pow(localGameState.round - 1, 2.1) * (e.type === 'mega_boss' ? 8 : (e.type === 'boss' ? 3 : 1.5));
+                const healthRatio = e.health / maxHealth;
+                const enemySize = playerLayout.gridSize * (config.emoji === '👑' ? 1.0 : 0.7); // 몬스터 크기 조정
+                
+                // 이모지 그리기
+                ctx.font = `${enemySize * 1.5}px sans-serif`; 
+                if(e.slowTimer > 0) ctx.filter = 'saturate(0.2) brightness(0.8)'; 
+                ctx.fillText(config.emoji, e.x, e.y); 
+                ctx.filter = 'none'; 
+                
+                // 체력바 그리기
+                const barWidth = playerLayout.gridSize * 0.8; 
+                const barY = e.y - enemySize * 1.2; 
+                ctx.fillStyle = 'rgba(255,0,0,0.7)'; 
+                ctx.fillRect(e.x - barWidth/2, barY, barWidth, 4); 
+                ctx.fillStyle = healthRatio > 0.5 ? 'rgba(0,255,0,0.7)' : 'rgba(255,255,0,0.7)'; 
+                ctx.fillRect(e.x - barWidth/2, barY, barWidth * healthRatio, 4);
+            });
+            
+            // 6. 발사체 및 스플래시 효과
+            projectiles.forEach(p => { ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, playerLayout.gridSize * 0.2, 0, Math.PI * 2); ctx.fill(); });
+            splashEffects.forEach(effect => { ctx.fillStyle = 'rgba(255, 165, 0, 0.4)'; ctx.beginPath(); ctx.arc(effect.x, effect.y, effect.radius, 0, Math.PI * 2); ctx.fill(); });
+            
+            // 7. 타워 선택 시 (사거리, 메뉴)
+            if (selectedTowerForUpgrade) {
+                // 사거리 표시 (하얀색으로)
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)'; 
+                ctx.lineWidth = 3; 
+                ctx.setLineDash([5, 5]);
+                ctx.beginPath(); 
+                ctx.arc(selectedTowerForUpgrade.x, selectedTowerForUpgrade.y, selectedTowerForUpgrade.range, 0, Math.PI * 2); 
+                ctx.stroke();
+                ctx.setLineDash([]);
+                
+                // 메뉴 표시
+                drawUpgradeMenu(selectedTowerForUpgrade);
+            }
+            
+            // 8. 융합 모드 표시
+             if (isFusing && firstFusionTower) {
+                ctx.strokeStyle = 'rgba(0, 255, 255, 0.9)'; ctx.lineWidth = 5;
+                ctx.beginPath(); ctx.arc(firstFusionTower.x, firstFusionTower.y, playerLayout.gridSize * 1.2, 0, Math.PI * 2); ctx.stroke();
+            }
+        }
+        
+        function drawPlacementHints() {
+            const gridSize = playerLayout.gridSize;
+            const gridX = Math.floor(mouseX / gridSize);
+            const gridY = Math.floor(mouseY / gridSize);
+            const centerX = (gridX + 0.5) * gridSize;
+            const centerY = (gridY + 0.5) * gridSize;
+            const cellX = gridX * gridSize;
+            const cellY = gridY * gridSize;
+
+            // 1. 타워 건설 모드 힌트
+            if (selectedTowerForPlacement) {
+                const isPath = isTooCloseToPath(centerX, centerY);
+                const isOccupiedCell = isOccupied(centerX, centerY);
+
+                if (isPath || isOccupiedCell) {
+                    ctx.fillStyle = 'rgba(255, 0, 0, 0.3)'; // 빨간색: 건설 불가
+                    ctx.strokeStyle = '#f00';
+                } else {
+                    ctx.fillStyle = 'rgba(0, 255, 0, 0.1)'; // 연두색: 건설 가능
+                    ctx.strokeStyle = '#0f0';
+                }
+                
+                ctx.lineWidth = 2;
+                ctx.fillRect(cellX, cellY, gridSize, gridSize);
+                ctx.strokeRect(cellX, cellY, gridSize, gridSize);
+            }
+            
+            // 2. 타워 이동 모드 힌트
+            if (selectedTowerForMove) {
+                ctx.lineWidth = 1;
+                for(let i = 0; i < playerLayout.cols; i++) {
+                    for(let j = 0; j < playerLayout.rows; j++) {
+                        const cellX = i * gridSize;
+                        const cellY = j * gridSize;
+                        const checkX = (i + 0.5) * gridSize;
+                        const checkY = (j + 0.5) * gridSize;
+                        
+                        if (!isTooCloseToPath(checkX, checkY)) {
+                            const isCurrentCell = checkX === selectedTowerForMove.x && checkY === selectedTowerForMove.y;
+                            const isTargetOccupied = isOccupied(checkX, checkY, selectedTowerForMove);
+                            
+                            if (isCurrentCell) {
+                                ctx.fillStyle = 'rgba(255, 255, 0, 0.3)'; // 현재 위치 (노란색)
+                                ctx.strokeStyle = '#ff0';
+                            } else if (!isTargetOccupied) {
+                                ctx.fillStyle = 'rgba(0, 255, 0, 0.2)'; // 이동 가능 (밝은 초록)
+                                ctx.strokeStyle = '#0f0';
+                            } else {
+                                ctx.fillStyle = 'rgba(255, 165, 0, 0.1)'; // 점유됨 (주황색)
+                                ctx.strokeStyle = '#ffa500';
+                            }
+
+                            ctx.fillRect(cellX, cellY, gridSize, gridSize);
+                            ctx.strokeRect(cellX, cellY, gridSize, gridSize);
+                        }
+                    }
+                }
+            }
+        }
+
+        function drawUpgradeMenu(tower) {
+            activeMenuButtons = [];
+            const baseConfig = getTowerConfig(tower.type);
+            const menuRadius = playerLayout.gridSize * 3.5;
+            const buttonRadius = playerLayout.gridSize * 1.2; 
+            
+            // 버튼 위치 (상단 정보창 포함)
+            const positions = [ 
+                { angle: -Math.PI / 2, id: 'damage' }, // 공격 UP
+                { angle: Math.PI / 4 * 3, id: 'range' }, // 사거리 UP
+                { angle: -Math.PI / 4 * 3, id: 'move' }, // 이동
+                { angle: Math.PI / 4, id: 'combine' }, // 조합/융합
+                { angle: Math.PI / 4 * 5, id: 'sell' }, // 판매
+            ];
+            
+            // --- 타워 정보 표시 ---
+            ctx.save();
+            ctx.textAlign = 'center'; 
+            ctx.fillStyle = 'var(--highlight-color)'; 
+            ctx.font = `bold ${playerLayout.gridSize * 0.6}px sans-serif`;
+            ctx.shadowColor = '#000'; ctx.shadowBlur = 5;
+
+            const currentDmg = tower.damage;
+            const currentRng = Math.round(tower.range / playerLayout.gridSize); // 그리드 크기로 나누어 표시
+            
+            ctx.fillText(`Lv.D: ${tower.damageLevel} | Lv.R: ${tower.rangeLevel}`, tower.x, tower.y - menuRadius - buttonRadius * 1.6);
+            ctx.fillText(`공격력: ${currentDmg} / 사거리: ${currentRng}칸`, tower.x, tower.y - menuRadius - buttonRadius * 0.8);
+            ctx.restore();
+            
+            positions.forEach(pos => {
+                const x = tower.x + menuRadius * Math.cos(pos.angle); 
+                const y = tower.y + menuRadius * Math.sin(pos.angle);
+                let text = '', action = () => {}, costText = '', disabled = false, color = '#0f0';
+                
+                switch (pos.id) {
+                    case 'damage':
+                        if (baseConfig.tier >= 3 || baseConfig.tier === 99) { disabled = true; text = '공격 UP'; costText = '최종'; }
+                        else { 
+                            const dmgCost = Math.floor(baseConfig.damageCost * Math.pow(1.5, tower.damageLevel - 1)); action = () => upgradeStat(tower, 'damage', dmgCost); text = '공격 UP'; costText = `${dmgCost}G`; if (localGameState.gold < dmgCost) disabled = true; 
+                        }
+                        break;
+                    case 'range':
+                        if (baseConfig.tier >= 3 || baseConfig.tier === 99) { disabled = true; text = '사거리 UP'; costText = '최종'; }
+                        else { 
+                            const rangeCost = Math.floor(baseConfig.rangeCost * Math.pow(1.6, tower.rangeLevel - 1)); action = () => upgradeStat(tower, 'range', rangeCost); text = '사거리 UP'; costText = `${rangeCost}G`; if (localGameState.gold < rangeCost) disabled = true; 
+                        }
+                        break;
+                    case 'sell':
+                        const sellValue = Math.floor(tower.totalSpent * 0.7); action = () => sellTower(tower, sellValue);
+                        text = '판매'; costText = `+${sellValue}G`; color = '#f00';
+                        break;
+                    case 'combine':
+                        if (baseConfig.tier === 1) { 
+                            const same = towers.filter(t => t.type === tower.type && t.tier === 1); 
+                            if (same.length < 3) disabled = true; 
+                            action = () => combineTowers(tower.type, baseConfig.combineTo); 
+                            text = '조합'; costText = `${same.length}/3`; color = '#ffc107'; 
+                        }
+                        else if (baseConfig.tier === 2) { 
+                            const fusionPossible = towers.some(t => t.tier === 2 && t.id !== tower.id && getFusionRecipe(t.type, tower.type));
+                            if (!fusionPossible) disabled = true; 
+                            action = () => startFusion(tower); 
+                            text = '융합'; costText = `대상선택`; color = '#00ffff'; 
+                        }
+                        else { disabled = true; text = '최종'; costText = '단계'; color = '#ccc';}
+                        break;
+                    case 'move':
+                        action = () => startTowerMove(tower);
+                        text = '이동'; costText = '선택'; color = '#007bff';
+                        break;
+                }
+                
+                ctx.save(); ctx.globalAlpha = disabled ? 0.4 : 1.0; 
+                ctx.beginPath(); ctx.arc(x, y, buttonRadius, 0, Math.PI * 2); ctx.fillStyle = '#2c2c2c'; ctx.fill();
+                ctx.lineWidth = 3; ctx.strokeStyle = disabled ? '#555' : color; ctx.stroke(); 
+                ctx.fillStyle = disabled ? '#888' : '#fff'; 
+                ctx.font = `bold ${buttonRadius * 0.4}px sans-serif`;
+                ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; 
+                ctx.fillText(text, x, y - buttonRadius * 0.2); 
+                ctx.font = `bold ${buttonRadius * 0.3}px sans-serif`;
+                ctx.fillStyle = disabled ? '#888' : color; 
+                ctx.fillText(costText, x, y + buttonRadius * 0.3); ctx.restore();
+                
+                if (!disabled) activeMenuButtons.push({ id: pos.id, x, y, radius: buttonRadius, action });
+            });
+        }
+
+        // --- Layout and Grid ---
+        function calculatePlayerLayouts() { 
+            const canvasWidth = canvas.width;
+            const canvasHeight = canvas.height;
+            const cols = 10;
+            const rows = 10;
+            // 화면 비율에 따라 그리드 크기 결정 (반응형)
+            const gridSize = Math.min(canvasWidth / cols, canvasHeight / rows);
+            const margin = gridSize * 2.5; 
+            
+            playerLayout = { 
+                gridSize, 
+                cols,
+                rows,
+                path: [ 
+                    {x: -gridSize, y: margin}, 
+                    {x: canvasWidth - margin, y: margin}, 
+                    {x: canvasWidth - margin, y: canvasHeight - margin}, 
+                    {x: margin, y: canvasHeight - margin}, 
+                    {x: margin, y: -gridSize}, 
+                ] 
+            }; 
+            
+            // 타워 좌표를 가장 가까운 그리드 중심으로 정렬 (반응형 대응)
+            towers.forEach(t => {
+                const gridX = Math.floor(t.x / gridSize);
+                const gridY = Math.floor(t.y / gridSize);
+                t.x = (gridX + 0.5) * gridSize;
+                t.y = (gridY + 0.5) * gridSize;
+                // 사거리도 다시 계산
+                const config = getTowerConfig(t.type);
+                t.range = config.range * Math.pow(1.2, t.rangeLevel - 1);
+            });
+        }
+        
+        function isOccupied(centerX, centerY, excludeTower = null) { 
+            if (!playerLayout.gridSize) return true; 
+            return towers.some(t => t !== excludeTower && t.x === centerX && t.y === centerY);
+        }
+
+        function resizeCanvas() { 
+            const uiPanel = document.getElementById('ui-panel'); 
+            const gameScreen = screens.game; 
+            const header = document.getElementById('game-header');
+
+            // 캔버스 크기를 사용 가능한 공간으로 설정
+            canvas.width = gameScreen.offsetWidth; 
+            canvas.height = gameScreen.offsetHeight - uiPanel.offsetHeight - header.offsetHeight; 
+            
+            calculatePlayerLayouts(); 
+            draw(); 
+        }
+
+        function updateGameUI(state) { 
+            document.getElementById('round-stat').textContent = `Round: ${state.round || 0}`; 
+            document.getElementById('lives-stat').textContent = `❤️ Lives: ${state.lives || 0}`; 
+            document.getElementById('gold-stat').textContent = `💰 Gold: ${state.gold || 0}`; 
+        }
+        
+        // --- Initialization ---
+        window.addEventListener('resize', resizeCanvas);
+        // 터치 이벤트 대응 (모바일)
+        canvas.addEventListener('touchmove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mouseX = (e.touches[0].clientX - rect.left) * (canvas.width / rect.width);
+            mouseY = (e.touches[0].clientY - rect.top) * (canvas.height / rect.height);
+        });
+        canvas.addEventListener('touchstart', (e) => {
+             // 터치 이동 시 이벤트 방지
+             if (selectedTowerForPlacement || selectedTowerForMove) {
+                e.preventDefault();
+             }
+        }, { passive: false });
+
+        loadImages(); // 이미지 로드 시작
+
+        // --- Minimal Required Original Functions ---
+        function gameLoop(currentTime) {
+            if (localGameState.gameState !== 'playing') { cancelAnimationFrame(animationFrameId); return; }
+            if (!lastTime) lastTime = currentTime;
+            const deltaTime = currentTime - lastTime;
+            
+            update(deltaTime);
+            draw();
+
+            lastTime = currentTime;
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+
+        function update(deltaTime) {
+            if (!roundInProgress) timeToNextWave -= deltaTime;
+            if (timeToNextWave <= 0 && !roundInProgress) {
+                if (localGameState.round >= 50) { showGameClear(); return; }
+                localGameState.round++; spawnWave(localGameState.round);
+                roundInProgress = true; updateGameUI(localGameState);
+            }
+            if (roundInProgress && enemies.length === 0) {
+                const clearedRound = localGameState.round; const bonusGold = 50 + clearedRound * 10;
+                localGameState.gold += bonusGold; roundInProgress = false; timeToNextWave = 5000;
+                displayMessage(`${clearedRound} 라운드 클리어! +${bonusGold}G`); updateGameUI(localGameState);
+            }
+            
+            enemies.forEach((enemy, i) => { 
+                if (enemy.slowTimer > 0) {
+                    enemy.slowTimer -= deltaTime;
+                    if (enemy.slowTimer <= 0) { enemy.speed = enemy.originalSpeed; enemy.originalSpeed = null; }
+                }
+                
+                const path = playerLayout.path; 
+                if (enemy.pathIndex >= path.length) { handleEnemyLeak(enemies.splice(i, 1)[0]); return; } 
+                
+                const targetNode = path[enemy.pathIndex]; 
+                // 프레임 보정된 이동 속도
+                const moveSpeed = enemy.speed * (deltaTime / 16.67); 
+                
+                const dist = Math.hypot(targetNode.x - enemy.x, targetNode.y - enemy.y); 
+                if (dist < moveSpeed) { 
+                    enemy.x = targetNode.x; enemy.y = targetNode.y; enemy.pathIndex++; 
+                } 
+                else { 
+                    enemy.x += (targetNode.x - enemy.x) / dist * moveSpeed; 
+                    enemy.y += (targetNode.y - enemy.y) / dist * moveSpeed; 
+                } 
+            });
+            
+            towers.forEach(tower => {
+                tower.cooldown -= deltaTime;
+                if (tower.cooldown <= 0) {
+                    const target = findTarget(tower);
+                    if (target) {
+                        projectiles.push({ x: tower.x, y: tower.y, target: target, damage: tower.damage, splashRadius: tower.splashRadius, color: tower.color, slowEffect: tower.slowEffect });
+                        tower.cooldown = tower.fireRate;
                     }
                 }
             });
-            // 발사체 이동/충돌
-            for(let i=projectiles.length-1;i>=0;i--){
+            
+            for (let i = projectiles.length - 1; i >= 0; i--) {
                 const p = projectiles[i];
-                if(!p.target || p.target.health <= 0){ projectiles.splice(i,1); continue; }
-                const sp = 12 * (deltaTime/16.67);
+                if (!p.target || p.target.health <= 0) { projectiles.splice(i, 1); continue; }
+                const projectileSpeed = 15 * (deltaTime / 16.67);
                 const dist = Math.hypot(p.target.x - p.x, p.target.y - p.y);
-                if(dist < sp){
-                    hitTarget(p.target, p.damage, p.splashRadius, p.target.x, p.target.y, p.slowEffect);
-                    projectiles.splice(i,1);
-                } else {
-                    p.x += (p.target.x - p.x)/dist*sp; p.y += (p.target.y - p.y)/dist*sp;
-                }
+                if (dist < projectileSpeed) {
+                    handleHit(p.target, p.damage, p.splashRadius, p.target.x, p.target.y, p.slowEffect);
+                    projectiles.splice(i, 1);
+                } else { p.x += (p.target.x - p.x) / dist * projectileSpeed; p.y += (p.target.y - p.y) / dist * projectileSpeed; }
             }
-            // splash life reduce
-            for(let i=splashEffects.length-1;i>=0;i--){
-                splashEffects[i].life -= deltaTime;
-                if(splashEffects[i].life <=0) splashEffects.splice(i,1);
-            }
-            // 라운드 클리어 체크
-            if(roundInProgress && enemies.length === 0){
-                roundInProgress = false;
-                timeToNextWave = 3000;
-                const bonus = 40 + localGameState.round * 6;
-                localGameState.gold += bonus;
-                flashMsg(`${localGameState.round} 라운드 클리어! +${bonus}G`);
-                updateUI();
-            }
+            for (let i = splashEffects.length - 1; i >= 0; i--) { if ((splashEffects[i].life -= deltaTime) <= 0) splashEffects.splice(i, 1); }
         }
 
-        function hitTarget(target, damage, splashRadius, x,y, slowEffect){
+        function handleHit(target, damage, splashRadius, hitX, hitY, slowEffect = null) {
             target.health -= damage;
-            if(slowEffect){
-                if(!target.originalSpeed) target.originalSpeed = target.speed;
-                target.speed = target.originalSpeed * (1 - slowEffect.power);
-                target.slowTimer = slowEffect.duration;
+            function applySlow(enemy) { 
+                if (slowEffect && (enemy.slowTimer <= 0 || slowEffect.power > (enemy.originalSpeed ? (1 - enemy.speed / enemy.originalSpeed) : 0))) { 
+                    if (!enemy.originalSpeed) enemy.originalSpeed = enemy.speed; 
+                    enemy.speed = enemy.originalSpeed * (1 - slowEffect.power); 
+                    enemy.slowTimer = slowEffect.duration; 
+                } 
             }
-            if(splashRadius > 0){
-                splashEffects.push({x,y,radius:splashRadius,life:250});
-                enemies.forEach(e=>{
-                    if(e !== target && Math.hypot(e.x - x, e.y - y) <= splashRadius) e.health -= damage;
-                });
+            applySlow(target);
+            if (splashRadius > 0) {
+                splashEffects.push({ x: hitX, y: hitY, radius: splashRadius, life: 200 });
+                enemies.forEach(e => { if (e !== target && Math.hypot(e.x - hitX, e.y - hitY) <= splashRadius) { e.health -= damage; applySlow(e); }});
             }
-            // 죽음 처리
-            for(let i=enemies.length-1;i>=0;i--){
-                if(enemies[i].health <= 0){
-                    localGameState.gold += (getEnemyConfig(enemies[i].type).gold || 5);
-                    enemies.splice(i,1);
-                    updateUI();
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                const enemy = enemies[i];
+                if (enemy.health <= 0) {
+                    if (enemy.type === 'mega_boss') {
+                        const bonusGold = (50 + localGameState.round * 10) * 2;
+                        localGameState.gold += bonusGold;
+                        displayMessage(`👑 보스 처치! +${bonusGold}G`);
+                    } else { localGameState.gold += getEnemyConfig(enemy.type).gold; }
+                    enemies.splice(i, 1);
+                    updateGameUI(localGameState);
                 }
             }
         }
 
-        // 기본 경로 (심플 사각 루프) — 플레이어가 바꿀 수 있도록 확장 가능
-        function defaultPath(){
-            // create a path around placementArea (outside)
-            const m = 20;
-            return [
-                {x: m, y: m},
-                {x: canvas.width - m, y: m},
-                {x: canvas.width - m, y: canvas.height - m},
-                {x: m, y: canvas.height - m},
-                {x: m, y: -50}
-            ];
+        function findTarget(tower) { 
+            let closestEnemy = null; 
+            let minDistance = tower.range; 
+            enemies.forEach(enemy => { 
+                const distance = Math.hypot(enemy.x - tower.x, enemy.y - tower.y); 
+                if (distance < minDistance) { 
+                    minDistance = distance; 
+                    closestEnemy = enemy; 
+                } 
+            }); 
+            return closestEnemy; 
         }
-
-        // 적 스폰
-        function spawnWave(round){
-            if(round % 10 === 0){
-                // 보스
-                enemies.push({...getEnemyConfig('mega_boss'), x: defaultPath()[0].x, y: defaultPath()[0].y, pathIndex:1});
-                flashMsg("🚨 보스 출현!");
-            } else if(round % 5 === 0){
-                const cnt = Math.min(12 + round, 30);
-                for(let i=0;i<cnt;i++){
-                    setTimeout(()=> spawnEnemy(round > 10 ? 'fast' : 'normal'), i*220);
-                }
-            } else {
-                const cnt = Math.min(6 + round*2, 40);
-                for(let i=0;i<cnt;i++){
-                    setTimeout(()=> spawnEnemy(round > 10 ? 'fast' : 'normal'), i*140);
-                }
+        
+        function handleMenuClick(mouseX, mouseY) {
+            for (const button of activeMenuButtons) { 
+                if (Math.hypot(mouseX - button.x, mouseY - button.y) < button.radius) { 
+                    button.action(); 
+                    return true; 
+                } 
             }
-        }
-        function spawnEnemy(type){
-            const p = defaultPath()[0];
-            enemies.push({...getEnemyConfig(type), x:p.x, y:p.y, pathIndex:1});
+            return false;
         }
 
-        // 타깃 찾기
-        function findTarget(tower){
-            let closest = null;
-            let minD = tower.range;
-            enemies.forEach(e=>{
-                const d = Math.hypot(e.x - tower.x, e.y - tower.y);
-                if(d < minD){ minD = d; closest = e; }
-            });
-            return closest;
+        function upgradeStat(tower, stat, cost) {
+            if (localGameState.gold < cost) {
+                displayMessage("골드가 부족합니다!");
+                return;
+            }
+            
+            const baseConfig = getTowerConfig(tower.type);
+
+            // Tier 99/Tier 3는 업그레이드 불가
+            if (baseConfig.tier >= 3) {
+                 displayMessage("최종 단계 타워는 업그레이드 할 수 없습니다.");
+                 return;
+            }
+
+            localGameState.gold -= cost; 
+            tower.totalSpent += cost;
+            
+            if (stat === 'damage') { 
+                tower.damageLevel++; 
+                tower.damage = Math.floor(baseConfig.damage * Math.pow(1.4, tower.damageLevel - 1)); 
+                displayMessage(`공격력 강화 완료! (Lv. ${tower.damageLevel})`);
+            } else { 
+                tower.rangeLevel++; 
+                tower.range = Math.floor(baseConfig.range * Math.pow(1.2, tower.rangeLevel - 1)); 
+                displayMessage(`사거리 강화 완료! (Lv. ${tower.rangeLevel})`);
+            }
+            updateGameUI(localGameState);
         }
 
-        // 타워/적 구성값
-        function getTowerConfig(type){
-            // range multiplier uses average cell size for scaling
-            const cellAvg = Math.max(placementArea.cellW, placementArea.cellH) || 40;
-            const configs = {
-                // Tier1 (기본)
-                basic: { name:'기본', img: towerImages.basic, damage: 35, range: cellAvg * 3.5, fireRate: 700, color:'#a0f', splashRadius:0, damageCost:30, rangeCost:40, tier:1, combineTo:'gatling' },
-                splash: { name:'광역', img: towerImages.splash, damage: 40, range: cellAvg * 3.2, fireRate: 1500, color:'#f90', splashRadius: cellAvg * 1.6, damageCost:80, rangeCost:100, tier:1, combineTo:'cluster' },
-                slow: { name:'슬로우', img: towerImages.slow, damage: 6, range: cellAvg * 3.4, fireRate: 1000, color:'#7fd', splashRadius: cellAvg * 1.2, slowEffect:{power:0.28,duration:2200}, damageCost:60, rangeCost:70, tier:1, combineTo:'blizzard' },
-                sniper: { name:'저격', img: towerImages.sniper, damage:150, range: cellAvg * 6.2, fireRate:1800, color:'#f0f', splashRadius:0, damageCost:120, rangeCost:150, tier:1, combineTo:'railgun' },
+        function sellTower(tower, sellValue) {
+            localGameState.gold += sellValue; 
+            towers = towers.filter(t => t.id !== tower.id);
+            updateGameUI(localGameState); 
+            cancelAllSelections();
+            displayMessage(`타워 판매 완료! +${sellValue}G`);
+        }
 
-                // Tier2 (조합 결과) — 전설보다 약하게 조정 (요청 반영)
-                gatling: { name:'개틀링', img: towerImages.gatling, damage: 40, range: cellAvg * 3.8, fireRate:450, color:'#9ff', splashRadius:0, damageCost:150, rangeCost:200, tier:2 },
-                cluster: { name:'클러스터', img: towerImages.cluster, damage: 60, range: cellAvg * 3.6, fireRate:1200, color:'#ffb042', splashRadius: cellAvg * 2.2, damageCost:300, rangeCost:350, tier:2 },
-                blizzard: { name:'블리자드', img: towerImages.blizzard, damage: 12, range: cellAvg * 3.9, fireRate:900, color:'#bfe', splashRadius: cellAvg * 1.8, slowEffect:{power:0.45,duration:2400}, damageCost:250, rangeCost:300, tier:2 },
-                railgun: { name:'레일건', img: towerImages.railgun, damage:220, range: cellAvg * 8.0, fireRate:1600, color:'#ffd1ff', splashRadius:0, damageCost:320, rangeCost:380, tier:2 },
+        function isTooCloseToPath(mouseX, mouseY) { 
+            if (!playerLayout.path) return true; 
+            const pathPadding = playerLayout.gridSize * 2.2; 
+            for(let i = 0; i < playerLayout.path.length - 1; i++){ 
+                const p1 = playerLayout.path[i], p2 = playerLayout.path[i+1]; 
+                const len = Math.hypot(p2.x - p1.x, p2.y - p1.y); 
+                if (len === 0) continue; 
+                // 점과 선분 사이의 가장 가까운 점 (Closest point on line segment)
+                const dot = ((mouseX - p1.x) * (p2.x - p1.x) + (mouseY - p1.y) * (p2.y - p1.y)) / (len * len); 
+                
+                let closestX, closestY;
 
-                // Legendary (랜덤 전설) — 강력하지만 희귀
-                legendary_basic: { name:'전설-기본', img: towerImages.legendary_basic, damage:50, range: cellAvg * 4.5, fireRate:300, color:'#ffff66', splashRadius:0, damageCost:400, rangeCost:500, tier:99 },
-                legendary_splash: { name:'전설-광역', img: towerImages.legendary_splash, damage:75, range: cellAvg * 4.2, fireRate:1400, color:'#ff7a3a', splashRadius: cellAvg * 2.8, damageCost:500, rangeCost:600, tier:99 },
-                legendary_slow: { name:'전설-슬로우', img: towerImages.legendary_slow, damage:20, range: cellAvg * 5.2, fireRate:1500, color:'#ccf', slowEffect:{power:0.6,duration:3000}, splashRadius:0, damageCost:500, rangeCost:500, tier:99 },
-                legendary_sniper: { name:'전설-저격', img: towerImages.legendary_sniper, damage:500, range: cellAvg * 9.5, fireRate:2500, color:'#88ff88', splashRadius:0, damageCost:600, rangeCost:700, tier:99 },
+                if (dot < 0) { // p1 밖
+                    closestX = p1.x; closestY = p1.y;
+                } else if (dot > 1) { // p2 밖
+                    closestX = p2.x; closestY = p2.y;
+                } else { // 선분 위
+                    closestX = p1.x + dot * (p2.x - p1.x); 
+                    closestY = p1.y + dot * (p2.y - p1.y); 
+                }
+
+                if(Math.hypot(mouseX-closestX, mouseY-closestY) < pathPadding){ 
+                    return true;
+                }
+            } 
+            return false; 
+        }
+
+        function displayMessage(msg) { 
+            messageOverlay.textContent = msg; 
+            messageOverlay.style.opacity = 1; 
+            messageOverlay.style.transform = 'translateX(-50%) scale(1)'; 
+            setTimeout(() => { 
+                messageOverlay.style.opacity = 0; 
+                messageOverlay.style.transform = 'translateX(-50%) scale(0.8)'; 
+            }, 2500); 
+        }
+
+        function handleEnemyLeak(leakedEnemy) { 
+            if (leakedEnemy.type === 'mega_boss') { showGameOver("보스가 기지를 파괴했습니다!"); return; } 
+            localGameState.lives--; updateGameUI(localGameState); 
+            if(localGameState.lives <= 0) { localGameState.lives = 0; showGameOver("모든 생명력을 잃었습니다!"); } 
+        }
+
+        function showGameOver(reason) { 
+            localGameState.gameState = 'gameOver'; 
+            if (animationFrameId) cancelAnimationFrame(animationFrameId); 
+            const gameOverScreen = screens.gameOver; 
+            gameOverScreen.innerHTML = `<h1>게임 오버</h1><p style="font-size: 1.5em; margin-bottom: 20px; color: ${getComputedStyle(document.documentElement).getPropertyValue('--danger-color')}">${reason}</p><button id="restart-btn" class="menu-btn">메인 메뉴로</button>`; 
+            showScreen('gameOver'); 
+            document.getElementById('restart-btn').addEventListener('click', () => window.location.reload()); 
+        }
+
+        function showGameClear() { 
+            localGameState.gameState = 'cleared'; 
+            if (animationFrameId) cancelAnimationFrame(animationFrameId); 
+            const gameOverScreen = screens.gameOver; 
+            gameOverScreen.innerHTML = `<h1>🎉 게임 승리! 🎉</h1><p style="font-size: 1.5em; margin-bottom: 20px; color: ${getComputedStyle(document.documentElement).getPropertyValue('--highlight-color')}">50 라운드를 모두 클리어했습니다!</p><button id="restart-btn" class="menu-btn">메인 메뉴로</button>`; 
+            showScreen('gameOver'); 
+            document.getElementById('restart-btn').addEventListener('click', () => window.location.reload()); 
+        }
+
+        function spawnWave(round) {
+            const createEnemy = (type) => {
+                const config = getEnemyConfig(type);
+                // 라운드에 따른 체력 스케일링
+                const health = config.health + Math.pow(round - 1, 2.1) * (type === 'mega_boss' ? 8 : (type === 'boss' ? 3 : 1.5));
+                enemies.push({ ...config, health: health, maxHealth: health, type: type, x: playerLayout.path[0].x, y: playerLayout.path[0].y, pathIndex: 1, originalSpeed: config.speed, slowTimer: 0 });
             };
-            return configs[type] || configs.basic;
+            if (round % 10 === 0) { displayMessage(`🚨 BOSS 출현! 🚨`); createEnemy('mega_boss'); }
+            else if (round % 5 === 0) { const count = 8 + round; for (let i = 0; i < count; i++) setTimeout(() => createEnemy('boss'), i * 300); }
+            else { const count = 6 + round * 2; const type = round > 10 ? 'fast' : 'normal'; for (let i = 0; i < count; i++) setTimeout(() => createEnemy(type), i * 500); }
         }
-
-        // 적 구성
-        function getEnemyConfig(type){
-            return {
-                normal: { type:'normal', emoji:'👽', health: 60, speed:1.2, gold:5 },
-                fast: { type:'fast', emoji:'👹', health: 90, speed:2.2, gold:8 },
-                boss: { type:'boss', emoji:'👿', health: 1500, speed:1.0, gold:50 },
-                mega_boss: { type:'mega_boss', emoji:'👑', health: 5000, speed:0.8, gold:300 }
-            }[type] || { type:'normal', emoji:'?', health:60, speed:1.2, gold:5 };
-        }
-
-        // 적 타깃 찾기 (위와 동일)
-        function getEnemyConfigForSpawn(t){ return getEnemyConfig(t); }
-
-        // 적 타겟 탐색에 필요한 유틸
-        function endGame(reason){ flashMsg("게임 종료: "+reason); cancelAnimationFrame(animId); animId = null; }
-
-        // draw
-        function draw(){
-            // 캔버스 클리어
-            ctx.clearRect(0,0,canvas.width,canvas.height);
-
-            // 경로 그리기 (밑층)
-            ctx.save();
-            const path = defaultPath();
-            ctx.strokeStyle = '#222';
-            ctx.lineWidth = 28;
-            ctx.lineCap = 'round';
-            ctx.beginPath();
-            ctx.moveTo(path[0].x, path[0].y);
-            for(let i=1;i<path.length;i++) ctx.lineTo(path[i].x, path[i].y);
-            ctx.stroke();
-            ctx.restore();
-
-            // 배치영역 그리기 (테두리)
-            ctx.save();
-            ctx.strokeStyle = 'rgba(255,255,255,0.04)';
-            ctx.lineWidth = 2;
-            ctx.fillStyle = 'rgba(255,255,255,0.02)';
-            ctx.fillRect(placementArea.x, placementArea.y, placementArea.w, placementArea.h);
-            ctx.strokeRect(placementArea.x+0.5, placementArea.y+0.5, placementArea.w-1, placementArea.h-1);
-            // 그리드 라인
-            ctx.globalAlpha = 0.06;
-            for(let r=1;r<placementArea.rows;r++){
-                const yy = placementArea.y + r*placementArea.cellH;
-                ctx.beginPath(); ctx.moveTo(placementArea.x, yy); ctx.lineTo(placementArea.x+placementArea.w, yy); ctx.stroke();
-            }
-            for(let c=1;c<placementArea.cols;c++){
-                const xx = placementArea.x + c*placementArea.cellW;
-                ctx.beginPath(); ctx.moveTo(xx, placementArea.y); ctx.lineTo(xx, placementArea.y+placementArea.h); ctx.stroke();
-            }
-            ctx.globalAlpha = 1;
-            ctx.restore();
-
-            // 타워들 그리기 (이미지 우선)
-            towers.forEach(t=>{
-                const size = Math.min(placementArea.cellW, placementArea.cellH) * 0.92; // 셀에 맞춘 크기
-                if(t.img && t.img.complete){
-                    ctx.drawImage(t.img, t.x - size/2, t.y - size/2, size, size);
-                } else {
-                    // fallback: 색 원
-                    ctx.save();
-                    ctx.fillStyle = t.color || '#fff';
-                    ctx.beginPath(); ctx.arc(t.x, t.y, size*0.42, 0, Math.PI*2); ctx.fill();
-                    ctx.restore();
-                }
-                // 사거리 원
-                ctx.save();
-                ctx.strokeStyle = 'rgba(255,255,255,0.06)';
-                ctx.lineWidth = 2;
-                ctx.beginPath(); ctx.arc(t.x, t.y, t.range, 0, Math.PI*2); ctx.stroke();
-                ctx.restore();
-            });
-
-            // 적 그리기 (이모지)
-            enemies.forEach(e=>{
-                ctx.save();
-                ctx.font = `${Math.max(12, Math.floor(placementArea.cellH * 0.9))}px sans-serif`;
-                ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-                ctx.fillText(getEnemyConfig(e.type).emoji || '👾', e.x, e.y);
-                // HP bar
-                const hpRatio = Math.max(0, e.health / (e.maxHealth || getEnemyConfig(e.type).health));
-                const barW = placementArea.cellW * 0.9;
-                ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(e.x - barW/2, e.y - placementArea.cellH*0.9, barW, 6);
-                ctx.fillStyle = hpRatio > 0.5 ? 'rgba(0,200,0,0.9)' : 'rgba(255,200,0,0.95)';
-                ctx.fillRect(e.x - barW/2, e.y - placementArea.cellH*0.9, barW*hpRatio, 6);
-                ctx.restore();
-            });
-
-            // 발사체
-            projectiles.forEach(p=>{
-                ctx.save();
-                ctx.fillStyle = p.color || '#fff';
-                ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, Math.PI*2); ctx.fill();
-                ctx.restore();
-            });
-
-            // splash effects
-            splashEffects.forEach(s=>{
-                ctx.save();
-                ctx.fillStyle = 'rgba(255,165,0,0.2)';
-                ctx.beginPath(); ctx.arc(s.x, s.y, s.radius, 0, Math.PI*2); ctx.fill();
-                ctx.restore();
-            });
-
-            // 선택된 타워(이동 대기) 표시
-            if(movingTower){
-                ctx.save();
-                ctx.strokeStyle = 'rgba(60,255,120,0.9)';
-                ctx.lineWidth = 3;
-                ctx.beginPath(); ctx.arc(movingTower.x, movingTower.y, Math.min(placementArea.cellW,placementArea.cellH)*0.55, 0, Math.PI*2); ctx.stroke();
-                ctx.restore();
-            }
-            // 선택된 설치 버튼에 대해 가능한 셀 강조는 hintLayer에서 처리
-        }
-
-        // 힌트 레이어 (DOM overlay) : 가볍게 셀 강조
-        function renderHintLayer(){
-            hintLayer.innerHTML = ''; // clear
-            const frag = document.createDocumentFragment();
-            // highlight available cells lightly
-            placementArea.cells.forEach(cell => {
-                const div = document.createElement('div');
-                div.style.position = 'absolute';
-                div.style.left = (canvas.getBoundingClientRect().left + cell.x) - canvas.getBoundingClientRect().left + 'px';
-                // above calculation simplifies because hintLayer sits over canvas with same size and coords; so we can use cell coords directly
-                div.style.left = `${cell.x}px`;
-                div.style.top = `${cell.y}px`;
-                div.style.width = `${placementArea.cellW}px`;
-                div.style.height = `${placementArea.cellH}px`;
-                div.style.borderRadius = '4px';
-                // when selected for placement or moving, show available cells (unoccupied)
-                if((selectedTowerForPlacement || movingTower) && !cell.occupied){
-                    div.style.background = 'rgba(50,220,120,0.08)';
-                    div.style.boxShadow = 'inset 0 0 18px rgba(50,220,120,0.04)';
-                } else {
-                    div.style.background = 'transparent';
-                }
-                // faint border for occupied cells
-                if(cell.occupied){
-                    div.style.border = '1px solid rgba(255,255,255,0.03)';
-                } else {
-                    div.style.border = '1px dashed rgba(255,255,255,0.02)';
-                }
-                frag.appendChild(div);
-            });
-
-            // also add a small legend near top-left of placementArea
-            const legend = document.createElement('div');
-            legend.style.position = 'absolute';
-            legend.style.left = `${placementArea.x + 8}px`;
-            legend.style.top = `${placementArea.y + 8}px`;
-            legend.style.padding = '6px 8px';
-            legend.style.borderRadius = '8px';
-            legend.style.background = 'rgba(0,0,0,0.45)';
-            legend.style.fontSize = '12px';
-            legend.style.color = '#cfe';
-            legend.textContent = (selectedTowerForPlacement ? '설치할 위치를 선택하세요' : (movingTower ? '이동할 위치를 선택하세요' : ''));
-            frag.appendChild(legend);
-
-            hintLayer.appendChild(frag);
-        }
-
-        // 유틸: UI 업데이트
-        function updateUI(){
-            roundStat.textContent = `Round: ${localGameState.round || 0}`;
-            livesStat.textContent = `❤️ Lives: ${localGameState.lives || 0}`;
-            goldStat.textContent = `💰 Gold: ${localGameState.gold || 0}`;
-        }
-
-        // 짧은 메시지 표시 (화면 중앙 위)
-        let msgTimer = null;
-        function flashMsg(m){
-            const el = document.getElementById('msg-overlay') || (()=>{
-                const d = document.createElement('div');
-                d.id = 'msg-overlay';
-                d.style.position = 'fixed';
-                d.style.top = '78px';
-                d.style.left = '50%';
-                d.style.transform = 'translateX(-50%)';
-                d.style.padding = '8px 14px';
-                d.style.borderRadius = '10px';
-                d.style.background = 'linear-gradient(90deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01))';
-                d.style.color = '#ffd';
-                d.style.zIndex = '200';
-                d.style.fontWeight = '700';
-                document.body.appendChild(d);
-                return d;
-            })();
-            el.textContent = m;
-            el.style.opacity = '1';
-            if(msgTimer) clearTimeout(msgTimer);
-            msgTimer = setTimeout(()=>{ el.style.opacity = '0'; }, 2000);
-        }
-
-        // 간단한 적 타겟/생성 관련 헬퍼들
-        function getEnemyConfig(type){ return getEnemyConfigLegacy(type); }
-        function getEnemyConfigLegacy(type){
-            return {
-                normal:{ type:'normal', emoji:'👽', health:60, speed:1.2, gold:5 },
-                fast:{ type:'fast', emoji:'👹', health:90, speed:2.0, gold:8 },
-                boss:{ type:'boss', emoji:'👿', health:1600, speed:1.0, gold:40 },
-                mega_boss:{ type:'mega_boss', emoji:'👑', health:6000, speed:0.8, gold:300 }
-            }[type] || { type:'normal', emoji:'?', health:60, speed:1.2, gold:5 };
-        }
-
-        // 적 타깃 찾기 이전 구현과 동일하도록 노출
-        function findTarget(tower){
-            return findTargetLegacy(tower);
-        }
-        function findTargetLegacy(tower){
-            let closest=null; let minD = tower.range;
-            enemies.forEach(e=>{
-                const d = Math.hypot(e.x - tower.x, e.y - tower.y);
-                if(d < minD){ minD = d; closest = e; }
-            });
-            return closest;
-        }
-
-        // 융합/조합 레시피
-        function getFusionRecipe(type1, type2){
+        
+        function getFusionRecipe(type1, type2) {
             const recipes = [
-                { pair:['gatling','cluster'], result:'flamethrower' }, // 예시, 없음 -> 일반 로직으로
-                { pair:['gatling','blizzard'], result:'cryo_gun' },
-                { pair:['gatling','railgun'], result:'laser_cannon' },
-                { pair:['cluster','blizzard'], result:'hailstorm' },
-                { pair:['cluster','railgun'], result:'missile_launcher' },
-                { pair:['blizzard','railgun'], result:'plasma_gun' }
+                { pair: ['gatling', 'cluster'], result: 'flamethrower' }, { pair: ['gatling', 'blizzard'], result: 'cryo_gun' },
+                { pair: ['gatling', 'railgun'], result: 'laser_cannon' }, { pair: ['cluster', 'blizzard'], result: 'hailstorm' },
+                { pair: ['cluster', 'railgun'], result: 'missile_launcher' }, { pair: ['blizzard', 'railgun'], result: 'plasma_gun' }
             ];
+            // 배열의 순서에 상관없이 찾도록 수정
             return recipes.find(r => r.pair.includes(type1) && r.pair.includes(type2));
         }
-
-        // 메시지, 리사이즈 초기화
-        updateUI();
-        resize();
-        renderHintLayer();
-
-        // 반응형 이벤트
-        window.addEventListener('resize', ()=>{
-            resize();
-            renderHintLayer();
-        });
-
-        // 자동 게임 시작
-        startGame();
-
-        // helper: legacy target find, used by tower fire
-        function findTargetLegacy(tower){
-            let closest = null;
-            let minDist = tower.range;
-            enemies.forEach(enemy=>{
-                const d = Math.hypot(enemy.x - tower.x, enemy.y - tower.y);
-                if(d < minDist){ minDist = d; closest = enemy; }
-            });
-            return closest;
+        
+        function getEnemyConfig(type) {
+            const configs = {
+                normal: { emoji: '👽', health: 60, speed: 1.2, gold: 5 }, fast: { emoji: '👹', health: 90, speed: 2.2, gold: 8 },
+                boss: { emoji: '👿', health: 1500, speed: 1.0, gold: 50 }, mega_boss: { emoji: '👑', health: 6000, speed: 0.8, gold: 500 }
+            };
+            return configs[type];
         }
 
     });
-
-// ===== 조합법 팝업 토글 =====
-const recipeBtn = document.getElementById('recipe-toggle');
-const recipeModal = document.getElementById('recipe-modal');
-
-recipeBtn.addEventListener('click', () => {
-    recipeModal.style.display = recipeModal.style.display === 'none' ? 'block' : 'none';
-});
-
-// ESC로 닫기
-window.addEventListener('keydown', e => {
-    if(e.key === 'Escape') recipeModal.style.display = 'none';
-});
-
     </script>
+
 </body>
 </html>
