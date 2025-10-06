@@ -156,7 +156,6 @@
         let currentRoomCode, roomRef;
         let playerPos = { x: 0, y: 0 }, goalPos = { x: 0, y: 0 }, cellSize = 0, mazeLayout = [], mazeRows, mazeCols;
         let isHost = false, gameElements = [];
-        let moveInterval = null, isCountingDown = false; // ✨ 이동 인터벌, 카운트다운 플래그 변수 추가
 
         function getPlayerId() {
             let playerId = sessionStorage.getItem('mazePlayerId');
@@ -237,9 +236,7 @@
         }
 
         function startCountdown(roomData) {
-            if (isCountingDown) return; // ✨ 중복 카운트다운 방지
-            isCountingDown = true;
-
+            roomRef.off();
             waitingRoomCodeEl.style.display = 'none';
             const isFinal = (roomData.scores[myPlayerId] === 1 && roomData.scores[opponentId] === 1);
             let count = 3;
@@ -255,7 +252,6 @@
                         gameWrapper.style.display = 'flex';
                         initializeGame(roomData);
                         listenToRoomChanges();
-                        isCountingDown = false;
                     }
                     count--;
                 }, 1000);
@@ -274,6 +270,8 @@
         }
 
         function showRoundResult(roomData) {
+            // ✨ 버그 수정: 리스너를 여기서 끄면 안됩니다.
+            // roomRef.off(); 
             const winnerId = roomData.roundWinner;
             if (!winnerId || !roomData.players[winnerId]) return;
             const winnerEmoji = roomData.players[winnerId].emoji;
@@ -282,7 +280,7 @@
             roundOverOverlay.style.display = 'flex';
 
             if(isHost) {
-                setTimeout(() => { // ✨ 대기시간 2초로 단축
+                setTimeout(() => {
                     const scores = roomData.scores;
                     scores[winnerId]++;
                     if (scores[winnerId] >= 2) {
@@ -292,7 +290,7 @@
                         placeStartAndGoal(newMaze);
                         roomRef.update({ mazeLayout: newMaze, scores: scores, gameState: 'ready', roundWinner: null });
                     }
-                }, 2000);
+                }, 3000);
             }
         }
         
@@ -309,8 +307,7 @@
 
             if(roomDataOrNull) {
                 mazeLayout = roomDataOrNull.mazeLayout; mazeRows = mazeLayout.length; mazeCols = mazeLayout[0].length;
-                scoreBoard.style.display = 'block';
-                opponent.style.display = 'flex';
+                scoreBoard.style.display = 'block'; opponent.style.display = 'flex';
             } else {
                 mazeRows = 19; mazeCols = 13; mazeLayout = generateMaze(mazeRows, mazeCols); placeStartAndGoal(mazeLayout);
                 scoreBoard.style.display = 'none'; opponent.style.display = 'none';
@@ -340,18 +337,19 @@
                     players[pid].x = playerPos.x; players[pid].y = playerPos.y;
                 }
                 if(isHost) {
+                    // ✨ 게임 시작 상태로 변경은 호스트만
                     roomRef.update({ players: players, gameState: 'playing' });
                 }
             } else {
-                 updatePlayerPosition();
+                updatePlayerPosition();
             }
         }
 
         function handleResize() {
             if (gameWrapper.style.display !== 'flex') return;
             cellSize = Math.min(mazeContainer.offsetWidth / mazeCols, mazeContainer.offsetHeight / mazeRows);
-            mazeContainer.style.gridTemplateColumns = `repeat(${cellSize}px)`;
-            mazeContainer.style.gridTemplateRows = `repeat(${cellSize}px)`;
+            mazeContainer.style.gridTemplateColumns = `repeat(${mazeCols}, ${cellSize}px)`;
+            mazeContainer.style.gridTemplateRows = `repeat(${mazeRows}, ${cellSize}px)`;
             mazeContainer.querySelectorAll('.wall').forEach(w => w.remove());
             for (let y = 0; y < mazeRows; y++) {
                 for (let x = 0; x < mazeCols; x++) {
@@ -372,9 +370,7 @@
                  el.style.fontSize = `${cellSize * 0.7}px`;
             });
             if (currentRoomCode && roomRef) {
-                roomRef.child('players').once('value', (s) => {
-                    if (s.exists()) updateAllPlayerPositions(s.val());
-                });
+                roomRef.child('players').once('value', (s) => updateAllPlayerPositions(s.val()));
             } else { updatePlayerPosition(); }
         }
         
@@ -404,53 +400,21 @@
             }
         }
         function updatePlayerPosition() { player.style.left = `${playerPos.x * cellSize + (cellSize * 0.05)}px`; player.style.top = `${playerPos.y * cellSize + (cellSize * 0.05)}px`; }
-        
-        // ✨ 연속 이동을 위한 함수들
-        function startMoving(dx, dy) {
-            stopMoving();
-            const moveFn = currentRoomCode ? movePlayer : soloMove;
-            moveFn(dx, dy); // 즉시 1회 이동
-            moveInterval = setInterval(() => moveFn(dx, dy), 150); // 150ms 마다 반복
-        }
-
-        function stopMoving() {
-            clearInterval(moveInterval);
-        }
-
-        // ✨ 조작 이벤트 리스너: 연속 이동 방식으로 변경
-        ['up', 'down', 'left', 'right'].forEach(dir => {
-            const btn = document.getElementById(dir);
-            let dx = 0, dy = 0;
-            if (dir === 'up') dy = -1;
-            if (dir === 'down') dy = 1;
-            if (dir === 'left') dx = -1;
-            if (dir === 'right') dx = 1;
-
-            btn.addEventListener('mousedown', () => startMoving(dx, dy));
-            btn.addEventListener('touchstart', (e) => { e.preventDefault(); startMoving(dx, dy); });
-        });
-        document.addEventListener('mouseup', stopMoving);
-        document.addEventListener('touchend', stopMoving);
-        
-        // ✨ 키보드 이벤트 리스너: 연속 이동 방식으로 변경
-        let keyHeld = {};
+        document.getElementById('up').addEventListener('click', (e) => { e.preventDefault(); currentRoomCode ? movePlayer(0, -1) : soloMove(0, -1); });
+        document.getElementById('down').addEventListener('click', (e) => { e.preventDefault(); currentRoomCode ? movePlayer(0, 1) : soloMove(0, 1); });
+        document.getElementById('left').addEventListener('click', (e) => { e.preventDefault(); currentRoomCode ? movePlayer(-1, 0) : soloMove(-1, 0); });
+        document.getElementById('right').addEventListener('click', (e) => { e.preventDefault(); currentRoomCode ? movePlayer(1, 0) : soloMove(1, 0); });
         window.addEventListener('keydown', (e) => {
-            if (keyHeld[e.key]) return;
-            keyHeld[e.key] = true;
+            const moveFn = currentRoomCode ? movePlayer : soloMove;
             switch (e.key) {
-                case 'ArrowUp': startMoving(0, -1); break;
-                case 'ArrowDown': startMoving(0, 1); break;
-                case 'ArrowLeft': startMoving(-1, 0); break;
-                case 'ArrowRight': startMoving(1, 0); break;
+                case 'ArrowUp': moveFn(0, -1); break;
+                case 'ArrowDown': moveFn(0, 1); break;
+                case 'ArrowLeft': moveFn(-1, 0); break;
+                case 'ArrowRight': moveFn(1, 0); break;
             }
         });
-        window.addEventListener('keyup', (e) => {
-            keyHeld[e.key] = false;
-            stopMoving();
-        });
-
         function placeStartAndGoal(layout) { const topRowPaths = []; for (let i = 0; i < layout[1].length; i++) { if (layout[1][i] === 0) topRowPaths.push(i); } const startX = topRowPaths[Math.floor(Math.random() * topRowPaths.length)]; layout[1][startX] = 'S'; const bottomRowPaths = []; const bottomRowIndex = layout.length - 2; for (let i = 0; i < layout[bottomRowIndex].length; i++) { if (layout[bottomRowIndex][i] === 0) bottomRowPaths.push(i); } const goalX = bottomRowPaths[Math.floor(Math.random() * bottomRowPaths.length)]; layout[bottomRowIndex][goalX] = 'G'; }
-        function generateMaze(rows, cols) { rows = rows % 2 === 0 ? rows + 1 : rows; cols = cols % 2 === 0 ? cols + 1 : cols; const maze = Array(rows).fill(null).map(() => Array(cols).fill(1)); const stack = []; const startX = 1, startY = 1; maze[startY][startX] = 0; stack.push([startX, startY]); while (stack.length > 0) { const [cx, cy] = stack[stack.length - 1]; const directions = []; if (cy - 2 >= 0 && maze[cy - 2][cx] === 1) directions.push('N'); if (cy + 2 < rows && maze[cy + 2][cx] === 1) directions.push('S'); if (cy - 2 >= 0 && maze[cy][cx - 2] === 1) directions.push('W'); if (cx + 2 < cols && maze[cy][cx + 2] === 1) directions.push('E'); if (directions.length > 0) { const dir = directions[Math.floor(Math.random() * directions.length)]; let nx = cx, ny = cy; switch (dir) { case 'N': ny -= 2; maze[cy - 1][cx] = 0; break; case 'S': ny += 2; maze[cy + 1][cx] = 0; break; case 'W': nx -= 2; maze[cy][cx - 1] = 0; break; case 'E': nx += 2; maze[cy][cx + 1] = 0; break; } maze[ny][nx] = 0; stack.push([nx, ny]); } else { stack.pop(); } } return maze; }
+        function generateMaze(rows, cols) { rows = rows % 2 === 0 ? rows + 1 : rows; cols = cols % 2 === 0 ? cols + 1 : cols; const maze = Array(rows).fill(null).map(() => Array(cols).fill(1)); const stack = []; const startX = 1, startY = 1; maze[startY][startX] = 0; stack.push([startX, startY]); while (stack.length > 0) { const [cx, cy] = stack[stack.length - 1]; const directions = []; if (cy - 2 >= 0 && maze[cy - 2][cx] === 1) directions.push('N'); if (cy + 2 < rows && maze[cy + 2][cx] === 1) directions.push('S'); if (cx - 2 >= 0 && maze[cy][cx - 2] === 1) directions.push('W'); if (cx + 2 < cols && maze[cy][cx + 2] === 1) directions.push('E'); if (directions.length > 0) { const dir = directions[Math.floor(Math.random() * directions.length)]; let nx = cx, ny = cy; switch (dir) { case 'N': ny -= 2; maze[cy - 1][cx] = 0; break; case 'S': ny += 2; maze[cy + 1][cx] = 0; break; case 'W': nx -= 2; maze[cy][cx - 1] = 0; break; case 'E': nx += 2; maze[cy][cx + 1] = 0; break; } maze[ny][nx] = 0; stack.push([nx, ny]); } else { stack.pop(); } } return maze; }
         window.addEventListener('resize', handleResize);
     });
     </script>
