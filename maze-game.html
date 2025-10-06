@@ -32,9 +32,10 @@
         #maze { position: relative; width: 100%; height: 100%; display: grid; }
         .wall { background-color: var(--wall-color); }
         #player, #opponent, #goal {
-            position: absolute; display: flex; justify-content: center; align-items: center;
-            transition: all 0.1s linear;
-        }
+    position: absolute; display: flex; justify-content: center; align-items: center;
+    transition: all 0.12s linear;
+}
+
         #player { z-index: 10; } #opponent { z-index: 9; }
         #player.me {
             animation: pulse-me 1.5s infinite;
@@ -130,7 +131,7 @@
 
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
-    
+
     <script>
     document.addEventListener('DOMContentLoaded', () => {
         const firebaseConfig = {
@@ -157,7 +158,7 @@
 
         const animalEmojis = ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵'];
         const colorThemes = [ { '--bg-color': '#f0f2f5', '--wall-color': '#34495e', '--path-color': '#ecf0f1', '--button-bg': '#2c3e50', }, { '--bg-color': '#e8f5e9', '--wall-color': '#2e7d32', '--path-color': '#c8e6c9', '--button-bg': '#1b5e20', }, { '--bg-color': '#e3f2fd', '--wall-color': '#0d47a1', '--path-color': '#bbdefb', '--button-bg': '#1565c0', }];
-        
+
         let myPlayerId = getPlayerId(), opponentId, currentRoomCode, roomRef, currentRoomData;
         let playerPos = { x: 0, y: 0 }, goalPos = { x: 0, y: 0 }, cellSize = 0, mazeLayout = [], mazeRows, mazeCols;
         let isHost = false, moveInterval = null, isCountingDown = false;
@@ -172,7 +173,7 @@
         createRoomBtn.addEventListener('click', () => {
             isHost = true; currentRoomCode = Math.floor(1000 + Math.random() * 9000).toString();
             roomRef = gameRoomsRef.child(currentRoomCode);
-            mazeRows = 19; mazeCols = 13;
+            mazeRows = 31; mazeCols = 21; // ◀◀ 세로, 가로 크기 확장
             const generatedMazeLayout = generateMaze(mazeRows, mazeCols);
             placeStartAndGoal(generatedMazeLayout);
             const myEmoji = animalEmojis[Math.floor(Math.random() * animalEmojis.length)];
@@ -255,20 +256,20 @@
             isCountingDown = true;
             gameOverOverlay.style.display = 'none';
             roundOverOverlay.style.display = 'none'; // ✨ 라운드 오버 창 숨기기 추가
-            
+
             waitingTitleEl.style.display = 'none';
             waitingSubtitleEl.style.display = 'none';
             waitingRoomCodeEl.style.display = 'none';
             document.querySelector('#waiting-overlay .spinner').style.display = 'none';
-            
+
             const isFinal = (roomData.scores[myPlayerId] === 1 && roomData.scores[opponentId] === 1);
             let count = 3;
             startCountdownEl.innerHTML = isFinal ? "🔥 마지막 라운드! 🔥" : `곧 시작합니다!`;
             waitingOverlay.style.display = 'flex';
-            
+
             setTimeout(() => {
                 const interval = setInterval(() => {
-                    if (count > 0) { startCountdownEl.textContent = count; } 
+                    if (count > 0) { startCountdownEl.textContent = count; }
                     else {
                         clearInterval(interval);
                         waitingOverlay.style.display = 'none'; gameWrapper.style.display = 'flex';
@@ -314,7 +315,7 @@
                 }, 1500);
             }
         }
-        
+
         function showGameOverScreen(didIWin) {
             roundOverOverlay.style.display = 'none'; // ✨ 라운드 오버 창 숨기기 추가
             gameOverMessageEl.textContent = didIWin ? "🎉 최종 승리! 🎉" : "😭 최종 패배! 😭";
@@ -330,24 +331,24 @@
                 const randomTheme = colorThemes[Math.floor(Math.random() * colorThemes.length)];
                 for (const colorVar in randomTheme) { document.documentElement.style.setProperty(colorVar, randomTheme[colorVar]); }
             }
-            
+
             if(roomDataOrNull) {
                 mazeLayout = roomDataOrNull.mazeLayout; mazeRows = mazeLayout.length; mazeCols = mazeLayout[0].length;
                 scoreBoard.style.display = 'block'; opponent.style.display = 'flex'; player.classList.add('me');
             } else {
-                mazeRows = 19; mazeCols = 13; mazeLayout = generateMaze(mazeRows, mazeCols); placeStartAndGoal(mazeLayout);
+                mazeRows = 31; mazeCols = 21; mazeLayout = generateMaze(mazeRows, mazeCols); placeStartAndGoal(mazeLayout); // ◀◀ 세로, 가로 크기 확장
                 scoreBoard.style.display = 'none'; opponent.style.display = 'none';
             }
 
             for (let y = 0; y < mazeRows; y++) {
                 for (let x = 0; x < mazeCols; x++) {
-                    if (mazeLayout[y][x] === 'S') { playerPos = { x, y }; } 
+                    if (mazeLayout[y][x] === 'S') { playerPos = { x, y }; }
                     else if (mazeLayout[y][x] === 'G') { goalPos = { x, y }; }
                 }
             }
-            
+
             drawMapAndPlayers();
-            
+
             if (roomDataOrNull) {
                 const players = roomDataOrNull.players;
                 // ✨ 캐릭터가 겹쳐보이는 버그 수정: 호스트만 시작 위치를 업데이트
@@ -366,7 +367,7 @@
                  updatePlayerPosition();
             }
         }
-        
+
         function drawMapAndPlayers() {
             mazeContainer.innerHTML = '';
             cellSize = Math.min(mazeContainer.offsetWidth / mazeCols, mazeContainer.offsetHeight / mazeRows);
@@ -386,16 +387,16 @@
             goalElement.id = 'goal'; goalElement.textContent = '🏠';
             goalElement.style.cssText = `width:${cellSize}px; height:${cellSize}px; font-size:${cellSize*0.8}px; left:${goalPos.x*cellSize}px; top:${goalPos.y*cellSize}px;`;
             mazeContainer.appendChild(goalElement);
-            
+
             [player, opponent].forEach(el => {
                 mazeContainer.appendChild(el);
                 el.style.width = `${cellSize * 0.9}px`; el.style.height = `${cellSize * 0.9}px`;
                 el.style.fontSize = `${cellSize * 0.7}px`;
             });
-            if (currentRoomData && currentRoomData.players) { updateAllPlayerPositions(currentRoomData.players); } 
+            if (currentRoomData && currentRoomData.players) { updateAllPlayerPositions(currentRoomData.players); }
             else { updatePlayerPosition(); }
         }
-        
+
         function movePlayer(dx, dy) {
             const newX = playerPos.x + dx; const newY = playerPos.y + dy;
             if (newY >= 0 && newY < mazeRows && newX >= 0 && newX < mazeCols && mazeLayout[newY][newX] !== 1) {
@@ -415,11 +416,12 @@
             }
         }
         function updatePlayerPosition() { player.style.left = `${playerPos.x * cellSize + (cellSize * 0.05)}px`; player.style.top = `${playerPos.y * cellSize + (cellSize * 0.05)}px`; }
-        
+
         function startMoving(dx, dy) {
-            stopMoving(); const moveFn = currentRoomCode ? movePlayer : soloMove;
-            moveFn(dx, dy); moveInterval = setInterval(() => moveFn(dx, dy), 150);
-        }
+    stopMoving(); const moveFn = currentRoomCode ? movePlayer : soloMove;
+    moveFn(dx, dy); moveInterval = setInterval(() => moveFn(dx, dy), 120);
+}
+
         function stopMoving() { clearInterval(moveInterval); }
 
         ['up', 'down', 'left', 'right'].forEach(dir => {
@@ -430,7 +432,7 @@
             btn.addEventListener('touchstart', (e) => { e.preventDefault(); startMoving(dx, dy); });
         });
         document.addEventListener('mouseup', stopMoving); document.addEventListener('touchend', stopMoving);
-        
+
         let keyHeld = {};
         window.addEventListener('keydown', (e) => {
             if (keyHeld[e.key] || !gameWrapper.style.display || gameWrapper.style.display === 'none') return;
@@ -443,8 +445,53 @@
         window.addEventListener('keyup', (e) => { keyHeld[e.key] = false; stopMoving(); });
 
         function placeStartAndGoal(layout) { const topRowPaths = []; for (let i = 0; i < layout[1].length; i++) { if (layout[1][i] === 0) topRowPaths.push(i); } const startX = topRowPaths[Math.floor(Math.random() * topRowPaths.length)]; layout[1][startX] = 'S'; const bottomRowPaths = []; const bottomRowIndex = layout.length - 2; for (let i = 0; i < layout[bottomRowIndex].length; i++) { if (layout[bottomRowIndex][i] === 0) bottomRowPaths.push(i); } const goalX = bottomRowPaths[Math.floor(Math.random() * bottomRowPaths.length)]; layout[bottomRowIndex][goalX] = 'G'; }
-        function generateMaze(rows, cols) { rows = rows % 2 === 0 ? rows + 1 : rows; cols = cols % 2 === 0 ? cols + 1 : cols; const maze = Array(rows).fill(null).map(() => Array(cols).fill(1)); const stack = []; const startX = 1, startY = 1; maze[startY][startX] = 0; stack.push([startX, startY]); while (stack.length > 0) { const [cx, cy] = stack[stack.length - 1]; const directions = []; if (cy - 2 >= 0 && maze[cy - 2][cx] === 1) directions.push('N'); if (cy + 2 < rows && maze[cy + 2][cx] === 1) directions.push('S'); if (cy - 2 >= 0 && maze[cy][cx - 2] === 1) directions.push('W'); if (cy + 2 < cols && maze[cy][cx + 2] === 1) directions.push('E'); if (directions.length > 0) { const dir = directions[Math.floor(Math.random() * directions.length)]; let nx = cx, ny = cy; switch (dir) { case 'N': ny -= 2; maze[cy - 1][cx] = 0; break; case 'S': ny += 2; maze[cy + 1][cx] = 0; break; case 'W': nx -= 2; maze[cy][cx - 1] = 0; break; case 'E': nx += 2; maze[cy][cx + 1] = 0; break; } maze[ny][nx] = 0; stack.push([nx, ny]); } else { stack.pop(); } } return maze; }
         
+        function generateMaze(rows, cols) {
+            rows = rows % 2 === 0 ? rows + 1 : rows;
+            cols = cols % 2 === 0 ? cols + 1 : cols;
+            const maze = Array(rows).fill(null).map(() => Array(cols).fill(1));
+            const stack = [];
+            const startX = 1, startY = 1;
+            maze[startY][startX] = 0;
+            stack.push([startX, startY]);
+
+            while (stack.length > 0) {
+                const [cx, cy] = stack[stack.length - 1];
+                const directions = [];
+                if (cy - 2 >= 1 && maze[cy - 2][cx] === 1) directions.push('N');
+                if (cy + 2 < rows - 1 && maze[cy + 2][cx] === 1) directions.push('S');
+                if (cx - 2 >= 1 && maze[cy][cx - 2] === 1) directions.push('W');
+                if (cx + 2 < cols - 1 && maze[cy][cx + 2] === 1) directions.push('E');
+
+                if (directions.length > 0) {
+                    const dir = directions[Math.floor(Math.random() * directions.length)];
+                    let nx = cx, ny = cy;
+                    switch (dir) {
+                        case 'N': ny -= 2; maze[cy - 1][cx] = 0; break;
+                        case 'S': ny += 2; maze[cy + 1][cx] = 0; break;
+                        case 'W': nx -= 2; maze[cy][cx - 1] = 0; break;
+                        case 'E': nx += 2; maze[cy][cx + 1] = 0; break;
+                    }
+                    maze[ny][nx] = 0;
+                    stack.push([nx, ny]);
+                } else {
+                    stack.pop();
+                }
+            }
+            
+            // --- ✨ 난이도 상승: 막다른 길 추가 로직 ---
+            const removalCount = Math.floor(rows * cols * 0.05); // 전체 셀의 5%만큼 벽을 추가로 제거
+            for (let i = 0; i < removalCount; i++) {
+                const rx = Math.floor(Math.random() * (cols - 2)) + 1;
+                const ry = Math.floor(Math.random() * (rows - 2)) + 1;
+                if (maze[ry][rx] === 1) { // 임의의 위치가 벽일 경우 길로 만듦
+                     maze[ry][rx] = 0;
+                }
+            }
+
+            return maze;
+        }
+
         window.addEventListener('resize', () => { if (gameWrapper.style.display === 'flex') { drawMapAndPlayers(); } });
     });
     </script>
