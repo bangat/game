@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>캐릭터 미로찾기 게임</title>
+    <title>미로찾기 게임</title>
     <style>
         :root {
             --bg-color: #f0f2f5; --wall-color: #34495e; --path-color: #ecf0f1;
@@ -29,24 +29,47 @@
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2); border-radius: 10px; overflow: hidden;
             background-color: var(--path-color); display: flex; position: relative;
         }
-        #maze { position: relative; width: 100%; height: 100%; display: grid; }
+        #maze {
+            position: relative;
+            width: 100%; height: 100%;
+            display: grid;
+        }
         .wall { background-color: var(--wall-color); }
+
         #player, #opponent, #goal {
-    position: absolute; display: flex; justify-content: center; align-items: center;
-    transition: all 0.12s linear;
-}
+            position: absolute;
+            top: 0; left: 0;
+            display: flex; justify-content: center; align-items: center;
+            font-size: clamp(12px, 3.5vmin, 30px);
+            transition: transform 0.1s linear;
+        }
 
         #player { z-index: 10; } #opponent { z-index: 9; }
+
         #player.me {
             animation: pulse-me 1.5s infinite;
         }
         @keyframes pulse-me {
-            0% { box-shadow: 0 0 12px 3px rgba(66, 133, 244, 0.9); }
-            50% { box-shadow: 0 0 18px 6px rgba(66, 133, 244, 0.5); }
-            100% { box-shadow: 0 0 12px 3px rgba(66, 133, 244, 0.9); }
+            0% { filter: drop-shadow(0 0 5px rgba(66, 133, 244, 0.9)); }
+            50% { filter: drop-shadow(0 0 10px rgba(66, 133, 244, 0.5)); }
+            100% { filter: drop-shadow(0 0 5px rgba(66, 133, 244, 0.9)); }
         }
-        #goal { animation: pulse 1.5s infinite; }
-        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.2); } 100% { transform: scale(1); } }
+
+        /* ✨ 변경된 부분: #goal 자체의 애니메이션은 제거 */
+        #goal {
+            transition: none;
+        }
+        /* ✨ 추가된 부분: #goal 안의 span에만 애니메이션 적용 */
+        #goal span {
+            display: inline-block;
+            animation: pulse-goal 1.5s infinite;
+        }
+        @keyframes pulse-goal {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+
         #controls { width: 100%; padding-block: 10px; padding-bottom: max(15px, env(safe-area-inset-bottom)); flex-shrink: 0; }
         #controls .button-row { display: flex; justify-content: center; align-items: center; margin-top: 5px; }
         #controls .button-row-bottom { gap: 15px; }
@@ -109,8 +132,8 @@
         <button id="play-solo-btn" class="menu-btn">혼자 하기</button>
         <button id="create-room-btn" class="menu-btn primary">친구와 같이하기 (방 만들기)</button>
         <div id="join-form">
-            <input type="number" id="room-code-input" placeholder="게임 코드 입력">
-            <button id="join-room-btn" class="menu-btn">코드로 참가하기</button>
+            <input type="number" id="room-code-input" placeholder="게임 숫자 입력">
+            <button id="join-room-btn" class="menu-btn">숫자로 참가하기</button>
         </div>
     </div>
 
@@ -118,7 +141,6 @@
         <div id="game-header"> <div id="score-board" style="display: none;"></div> </div>
         <div id="game-container">
             <div id="maze">
-                <div id="player"></div> <div id="opponent" style="display: none;"></div>
             </div>
         </div>
         <div id="controls">
@@ -147,7 +169,7 @@
         const startMenu = document.getElementById('start-menu'), playSoloBtn = document.getElementById('play-solo-btn'),
               createRoomBtn = document.getElementById('create-room-btn'), roomCodeInput = document.getElementById('room-code-input'),
               joinRoomBtn = document.getElementById('join-room-btn'), gameWrapper = document.getElementById('game-wrapper'),
-              mazeContainer = document.getElementById('maze'), player = document.getElementById('player'), opponent = document.getElementById('opponent'),
+              mazeContainer = document.getElementById('maze'),
               waitingOverlay = document.getElementById('waiting-overlay'), waitingRoomCodeEl = document.getElementById('waiting-room-code'),
               waitingTitleEl = document.getElementById('waiting-title'), waitingSubtitleEl = document.getElementById('waiting-subtitle'),
               startCountdownEl = document.getElementById('start-countdown'), gameOverOverlay = document.getElementById('game-over-overlay'),
@@ -156,11 +178,16 @@
               roundResultMessageEl = document.getElementById('round-result-message'), roundScoreInfoEl = document.getElementById('round-score-info'),
               scoreBoard = document.getElementById('score-board');
 
+        const player = document.createElement('div');
+        player.id = 'player';
+        const opponent = document.createElement('div');
+        opponent.id = 'opponent';
+
         const animalEmojis = ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵'];
         const colorThemes = [ { '--bg-color': '#f0f2f5', '--wall-color': '#34495e', '--path-color': '#ecf0f1', '--button-bg': '#2c3e50', }, { '--bg-color': '#e8f5e9', '--wall-color': '#2e7d32', '--path-color': '#c8e6c9', '--button-bg': '#1b5e20', }, { '--bg-color': '#e3f2fd', '--wall-color': '#0d47a1', '--path-color': '#bbdefb', '--button-bg': '#1565c0', }];
 
         let myPlayerId = getPlayerId(), opponentId, currentRoomCode, roomRef, currentRoomData;
-        let playerPos = { x: 0, y: 0 }, goalPos = { x: 0, y: 0 }, cellSize = 0, mazeLayout = [], mazeRows, mazeCols;
+        let playerPos = { x: 0, y: 0 }, goalPos = { x: 0, y: 0 }, mazeLayout = [], mazeRows, mazeCols;
         let isHost = false, moveInterval = null, isCountingDown = false;
 
         function getPlayerId() {
@@ -173,7 +200,7 @@
         createRoomBtn.addEventListener('click', () => {
             isHost = true; currentRoomCode = Math.floor(1000 + Math.random() * 9000).toString();
             roomRef = gameRoomsRef.child(currentRoomCode);
-            mazeRows = 31; mazeCols = 21; // ◀◀ 세로, 가로 크기 확장
+            mazeRows = 31; mazeCols = 21;
             const generatedMazeLayout = generateMaze(mazeRows, mazeCols);
             placeStartAndGoal(generatedMazeLayout);
             const myEmoji = animalEmojis[Math.floor(Math.random() * animalEmojis.length)];
@@ -255,7 +282,7 @@
             if (isCountingDown) return;
             isCountingDown = true;
             gameOverOverlay.style.display = 'none';
-            roundOverOverlay.style.display = 'none'; // ✨ 라운드 오버 창 숨기기 추가
+            roundOverOverlay.style.display = 'none';
 
             waitingTitleEl.style.display = 'none';
             waitingSubtitleEl.style.display = 'none';
@@ -280,7 +307,7 @@
                 }, 1000);
             }, 1000);
         }
-
+        
         function updateAllPlayerPositions(players) {
             if(!players) return;
             for (const pid in players) {
@@ -288,8 +315,10 @@
                 const element = (pid === myPlayerId) ? player : opponent;
                 if (!element || !pData) continue;
                 element.style.display = 'flex'; element.textContent = pData.emoji;
-                element.style.left = `${pData.x * cellSize + (cellSize * 0.05)}px`;
-                element.style.top = `${pData.y * cellSize + (cellSize * 0.05)}px`;
+
+                const xPercent = pData.x * 100;
+                const yPercent = pData.y * 100;
+                element.style.transform = `translate(${xPercent}%, ${yPercent}%)`;
             }
         }
 
@@ -317,7 +346,7 @@
         }
 
         function showGameOverScreen(didIWin) {
-            roundOverOverlay.style.display = 'none'; // ✨ 라운드 오버 창 숨기기 추가
+            roundOverOverlay.style.display = 'none';
             gameOverMessageEl.textContent = didIWin ? "🎉 최종 승리! 🎉" : "😭 최종 패배! 😭";
             rematchBtn.textContent = '다시 하기'; rematchBtn.disabled = false;
             gameOverOverlay.style.display = 'flex';
@@ -336,7 +365,7 @@
                 mazeLayout = roomDataOrNull.mazeLayout; mazeRows = mazeLayout.length; mazeCols = mazeLayout[0].length;
                 scoreBoard.style.display = 'block'; opponent.style.display = 'flex'; player.classList.add('me');
             } else {
-                mazeRows = 31; mazeCols = 21; mazeLayout = generateMaze(mazeRows, mazeCols); placeStartAndGoal(mazeLayout); // ◀◀ 세로, 가로 크기 확장
+                mazeRows = 31; mazeCols = 21; mazeLayout = generateMaze(mazeRows, mazeCols); placeStartAndGoal(mazeLayout);
                 scoreBoard.style.display = 'none'; opponent.style.display = 'none';
             }
 
@@ -346,12 +375,10 @@
                     else if (mazeLayout[y][x] === 'G') { goalPos = { x, y }; }
                 }
             }
-
             drawMapAndPlayers();
 
             if (roomDataOrNull) {
                 const players = roomDataOrNull.players;
-                // ✨ 캐릭터가 겹쳐보이는 버그 수정: 호스트만 시작 위치를 업데이트
                 if(isHost) {
                     for(const pid in players) {
                         if(players[pid]) {
@@ -367,34 +394,48 @@
                  updatePlayerPosition();
             }
         }
-
+        
         function drawMapAndPlayers() {
             mazeContainer.innerHTML = '';
-            cellSize = Math.min(mazeContainer.offsetWidth / mazeCols, mazeContainer.offsetHeight / mazeRows);
-            mazeContainer.style.gridTemplateColumns = `repeat(${mazeCols}, ${cellSize}px)`;
-            mazeContainer.style.gridTemplateRows = `repeat(${mazeRows}, ${cellSize}px)`;
-            mazeContainer.style.margin = 'auto';
+            mazeContainer.style.gridTemplateColumns = `repeat(${mazeCols}, 1fr)`;
+            mazeContainer.style.gridTemplateRows = `repeat(${mazeRows}, 1fr)`;
 
             for (let y = 0; y < mazeRows; y++) {
                 for (let x = 0; x < mazeCols; x++) {
-                    const cell = document.createElement('div');
-                    cell.style.cssText = `grid-column: ${x + 1}; grid-row: ${y + 1};`;
-                    if (mazeLayout[y][x] === 1) cell.className = 'wall';
-                    mazeContainer.appendChild(cell);
+                    if (mazeLayout[y][x] === 1) {
+                        const cell = document.createElement('div');
+                        cell.className = 'wall';
+                        cell.style.gridColumn = x + 1;
+                        cell.style.gridRow = y + 1;
+                        mazeContainer.appendChild(cell);
+                    }
                 }
             }
+            
             const goalElement = document.createElement('div');
-            goalElement.id = 'goal'; goalElement.textContent = '🏠';
-            goalElement.style.cssText = `width:${cellSize}px; height:${cellSize}px; font-size:${cellSize*0.8}px; left:${goalPos.x*cellSize}px; top:${goalPos.y*cellSize}px;`;
-            mazeContainer.appendChild(goalElement);
+            goalElement.id = 'goal';
+            const goalEmoji = document.createElement('span');
+            goalEmoji.textContent = '🏠';
+            goalElement.appendChild(goalEmoji);
+            
+            const cellWidthPercent = 100 / mazeCols;
+            const cellHeightPercent = 100 / mazeRows;
 
-            [player, opponent].forEach(el => {
+            [player, opponent, goalElement].forEach(el => {
+                el.style.width = `${cellWidthPercent}%`;
+                el.style.height = `${cellHeightPercent}%`;
                 mazeContainer.appendChild(el);
-                el.style.width = `${cellSize * 0.9}px`; el.style.height = `${cellSize * 0.9}px`;
-                el.style.fontSize = `${cellSize * 0.7}px`;
             });
-            if (currentRoomData && currentRoomData.players) { updateAllPlayerPositions(currentRoomData.players); }
-            else { updatePlayerPosition(); }
+            
+            const goalXPercent = goalPos.x * 100;
+            const goalYPercent = goalPos.y * 100;
+            goalElement.style.transform = `translate(${goalXPercent}%, ${goalYPercent}%)`;
+
+            if (currentRoomData && currentRoomData.players) {
+                updateAllPlayerPositions(currentRoomData.players);
+            } else {
+                updatePlayerPosition();
+            }
         }
 
         function movePlayer(dx, dy) {
@@ -415,24 +456,86 @@
                 if (newX === goalPos.x && newY === goalPos.y) { setTimeout(() => { alert('🎉 도착!'); initializeGame(); }, 100); }
             }
         }
-        function updatePlayerPosition() { player.style.left = `${playerPos.x * cellSize + (cellSize * 0.05)}px`; player.style.top = `${playerPos.y * cellSize + (cellSize * 0.05)}px`; }
+        
+        function updatePlayerPosition() {
+            const xPercent = playerPos.x * 100;
+            const yPercent = playerPos.y * 100;
+            player.style.transform = `translate(${xPercent}%, ${yPercent}%)`;
+        }
 
         function startMoving(dx, dy) {
-    stopMoving(); const moveFn = currentRoomCode ? movePlayer : soloMove;
-    moveFn(dx, dy); moveInterval = setInterval(() => moveFn(dx, dy), 120);
-}
+            stopMoving(); const moveFn = currentRoomCode ? movePlayer : soloMove;
+            moveFn(dx, dy); moveInterval = setInterval(() => moveFn(dx, dy), 120);
+        }
 
-        function stopMoving() { clearInterval(moveInterval); }
+        function stopMoving() {
+            clearInterval(moveInterval);
+        }
 
-        ['up', 'down', 'left', 'right'].forEach(dir => {
-            const btn = document.getElementById(dir); let dx = 0, dy = 0;
-            if (dir === 'up') dy = -1; if (dir === 'down') dy = 1;
-            if (dir === 'left') dx = -1; if (dir === 'right') dx = 1;
-            btn.addEventListener('mousedown', () => startMoving(dx, dy));
-            btn.addEventListener('touchstart', (e) => { e.preventDefault(); startMoving(dx, dy); });
+        // ✨ --- 조작 로직 전체 변경 --- ✨
+        let isPointerDown = false;
+        let currentDirection = null;
+        const controls = document.getElementById('controls');
+
+        function handlePointerMove(targetElement) {
+            if (!targetElement) return;
+
+            const buttonId = targetElement.id;
+            const validDirections = ['up', 'down', 'left', 'right'];
+
+            if (validDirections.includes(buttonId)) {
+                if (buttonId !== currentDirection) { // 새로운 방향일 때만 업데이트
+                    currentDirection = buttonId;
+                    let dx = 0, dy = 0;
+                    if (buttonId === 'up') dy = -1;
+                    if (buttonId === 'down') dy = 1;
+                    if (buttonId === 'left') dx = -1;
+                    if (buttonId === 'right') dx = 1;
+                    startMoving(dx, dy);
+                }
+            }
+        }
+
+        // 마우스 이벤트
+        controls.addEventListener('mousedown', (e) => {
+            isPointerDown = true;
+            handlePointerMove(e.target);
         });
-        document.addEventListener('mouseup', stopMoving); document.addEventListener('touchend', stopMoving);
+        controls.addEventListener('mouseover', (e) => {
+            if (isPointerDown) {
+                handlePointerMove(e.target);
+            }
+        });
+        window.addEventListener('mouseup', () => {
+            isPointerDown = false;
+            currentDirection = null;
+            stopMoving();
+        });
 
+        // 터치 이벤트
+        controls.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            isPointerDown = true;
+            handlePointerMove(e.target);
+        }, { passive: false });
+
+        controls.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (isPointerDown) {
+                const touch = e.touches[0];
+                const elementUnderFinger = document.elementFromPoint(touch.clientX, touch.clientY);
+                handlePointerMove(elementUnderFinger);
+            }
+        }, { passive: false });
+
+        window.addEventListener('touchend', () => {
+            isPointerDown = false;
+            currentDirection = null;
+            stopMoving();
+        });
+
+
+        // 키보드 이벤트 (기존 유지)
         let keyHeld = {};
         window.addEventListener('keydown', (e) => {
             if (keyHeld[e.key] || !gameWrapper.style.display || gameWrapper.style.display === 'none') return;
@@ -442,10 +545,13 @@
                 case 'ArrowLeft': startMoving(-1, 0); break; case 'ArrowRight': startMoving(1, 0); break;
             }
         });
-        window.addEventListener('keyup', (e) => { keyHeld[e.key] = false; stopMoving(); });
+        window.addEventListener('keyup', (e) => {
+            keyHeld[e.key] = false;
+            stopMoving();
+        });
 
         function placeStartAndGoal(layout) { const topRowPaths = []; for (let i = 0; i < layout[1].length; i++) { if (layout[1][i] === 0) topRowPaths.push(i); } const startX = topRowPaths[Math.floor(Math.random() * topRowPaths.length)]; layout[1][startX] = 'S'; const bottomRowPaths = []; const bottomRowIndex = layout.length - 2; for (let i = 0; i < layout[bottomRowIndex].length; i++) { if (layout[bottomRowIndex][i] === 0) bottomRowPaths.push(i); } const goalX = bottomRowPaths[Math.floor(Math.random() * bottomRowPaths.length)]; layout[bottomRowIndex][goalX] = 'G'; }
-        
+
         function generateMaze(rows, cols) {
             rows = rows % 2 === 0 ? rows + 1 : rows;
             cols = cols % 2 === 0 ? cols + 1 : cols;
@@ -478,21 +584,17 @@
                     stack.pop();
                 }
             }
-            
-            // --- ✨ 난이도 상승: 막다른 길 추가 로직 ---
-            const removalCount = Math.floor(rows * cols * 0.05); // 전체 셀의 5%만큼 벽을 추가로 제거
+
+            const removalCount = Math.floor(rows * cols * 0.05);
             for (let i = 0; i < removalCount; i++) {
                 const rx = Math.floor(Math.random() * (cols - 2)) + 1;
                 const ry = Math.floor(Math.random() * (rows - 2)) + 1;
-                if (maze[ry][rx] === 1) { // 임의의 위치가 벽일 경우 길로 만듦
+                if (maze[ry][rx] === 1) {
                      maze[ry][rx] = 0;
                 }
             }
-
             return maze;
         }
-
-        window.addEventListener('resize', () => { if (gameWrapper.style.display === 'flex') { drawMapAndPlayers(); } });
     });
     </script>
 </body>
