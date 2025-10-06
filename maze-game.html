@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+
+<html lang="ko">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+
+    <title>캐릭터 미로찾기 게임 (최종)</title>
+
+    <style>
+
+        /* 기본 스타일 */
+
+        :root {
+
+            --bg-color: #f0f2f5;
+
+            --wall-color: #34495e;
+
+            --path-color: #ecf0f1;
+
+            --button-bg: #2c3e50;
+
+            --button-text: #ffffff;
+
+            --button-hover: #3e5771;
+
+        }
+
+        * {
+
+            box-sizing: border-box;
+
+            margin: 0;
+
+            padding: 0;
+
+        }
+
+        html, body {
+
+            width: 100%;
+
+            height: 100%;
+
+            overflow: hidden; /* 스크롤 방지 */
+
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+            background-color: var(--bg-color);
+
+            display: flex;
+
+            flex-direction: column;
+
+            justify-content: space-between; /* 콘텐츠를 위아래로 분산 배치 */
+
+            align-items: center;
+
+            -webkit-user-select: none; /* 드래그 선택 방지 */
+
+            user-select: none;
+
+            touch-action: manipulation; /* 터치 지연 제거 */
+
+        }
+
+        /* 게임 컨테이너 */
+
+        #game-container {
+
+            width: 95%;
+
+            max-width: 500px; /* 데스크탑/태블릿 최대 너비 */
+
+            flex-grow: 1; /* 남은 세로 공간을 모두 차지하도록 설정 */
+
+            margin: 2vh auto; /* 상하 여백 및 가로 중앙 정렬 */
+
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+
+            border-radius: 10px;
+
+            overflow: hidden;
+
+            background-color: var(--path-color);
+
+            display: flex; /* 내부 미로 정렬을 위해 추가 */
+
+        }
+
+        
+
+        /* 미로 */
+
+        #maze {
+
+            position: relative;
+
+            width: 100%;
+
+            height: 100%;
+
+            display: grid;
+
+        }
+
+        
+
+        /* 미로 구성 요소 (벽) */
+
+        .wall {
+
+            background-color: var(--wall-color);
+
+        }
+
+        /* 플레이어 캐릭터 & 목표 지점 */
+
+        #player, #goal {
+
+            position: absolute;
+
+            display: flex;
+
+            justify-content: center;
+
+            align-items: center;
+
+            transition: all 0.1s linear;
+
+        }
+
+        #player {
+
+            z-index: 10;
+
+        }
+
+        #goal {
+
+            animation: pulse 1.5s infinite;
+
+        }
+
+        @keyframes pulse {
+
+            0% { transform: scale(1); }
+
+            50% { transform: scale(1.2); }
+
+            100% { transform: scale(1); }
+
+        }
+
+        /* 터치 조작 버튼 */
+
+        #controls {
+
+            width: 100%;
+
+            padding-block: 10px; /* 상하 패딩 */
+
+            padding-bottom: max(15px, env(safe-area-inset-bottom)); /* 아이폰 하단 노치 대응 */
+
+            flex-shrink: 0; /* 컨트롤러 크기가 줄어들지 않도록 */
+
+        }
+
+        #controls .button-row {
+
+            display: flex;
+
+            justify-content: center;
+
+            align-items: center;
+
+            margin-top: 5px; /* 버튼 행 간격 */
+
+        }
+
+        
+
+        #controls .button-row-bottom {
+
+            gap: 15px; /* 하단 버튼 3개 사이의 간격 */
+
+        }
+
+        #controls button {
+
+            width: 60px; /* 버튼 크기 약간 줄임 */
+
+            height: 60px;
+
+            border-radius: 50%;
+
+            border: none;
+
+            background-color: var(--button-bg);
+
+            color: var(--button-text);
+
+            font-size: 24px; /* 아이콘 크기 조정 */
+
+            font-weight: bold;
+
+            cursor: pointer;
+
+            box-shadow: 0 3px 8px rgba(0,0,0,0.3);
+
+        }
+
+        
+
+        #controls button:active {
+
+             transform: scale(0.95);
+
+             background-color: var(--button-hover);
+
+        }
+
+    </style>
+
+</head>
+
+<body>
+
+    <div id="game-container">
+
+        <div id="maze">
+
+            <div id="player">🚀</div>
+
+        </div>
+
+    </div>
+
+    <div id="controls">
+
+        <div class="button-row">
+
+            <button id="up">▲</button>
+
+        </div>
+
+        <div class="button-row button-row-bottom">
+
+            <button id="left">◀</button>
+
+            <button id="down">▼</button>
+
+            <button id="right">▶</button>
+
+        </div>
+
+    </div>
+
+    <script>
+
+        document.addEventListener('DOMContentLoaded', () => {
+
+            // 미로 구조 정의 (세로로 더 길게 수정)
+
+                        // 미로 구조 정의 (세로로 더 길게 수정)
+
+            // 1: 벽, 0: 길, 'S': 시작점, 'G': 도착점
+
+            const mazeLayout = [
+
+                [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+
+                [1, 0, 0, 0, 0, 0, 'S', 0, 0, 0, 0, 0, 1],
+
+                [1, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1],
+
+                [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1],
+
+// ... 이하 생략 ...
+                [1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1],
+
+                [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1],
+
+                [1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1],
+
+                [1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+
+                [1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1],
+
+                [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1],
+
+                [1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1],
+
+                [1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1],
+
+                [1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1],
+
+                [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1],
+
+                [1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1],
+
+                [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+
+                [1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1],
+
+                [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 'G', 1],
+
+                [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+
+            ];
+
+            const mazeContainer = document.getElementById('maze');
+
+            const player = document.getElementById('player');
+
+            let playerPos = { x: 0, y: 0 };
+
+            let goalPos = { x: 0, y: 0 };
+
+            let cellSize = 0;
+
+            const mazeRows = mazeLayout.length;
+
+            const mazeCols = mazeLayout[0].length;
+
+            
+
+            function initializeGame() {
+
+                mazeContainer.innerHTML = '';
+
+                
+
+                // 셀 크기는 가로/세로 중 더 작은 쪽에 맞춰 계산하여 비율 유지
+
+                cellSize = Math.min(mazeContainer.offsetWidth / mazeCols, mazeContainer.offsetHeight / mazeRows);
+
+                
+
+                mazeContainer.style.gridTemplateColumns = `repeat(${mazeCols}, ${cellSize}px)`;
+
+                mazeContainer.style.gridTemplateRows = `repeat(${mazeRows}, ${cellSize}px)`;
+
+                // 미로를 컨테이너 중앙에 배치
+
+                mazeContainer.style.margin = 'auto';
+
+                for (let y = 0; y < mazeRows; y++) {
+
+                    for (let x = 0; x < mazeCols; x++) {
+
+                        const cell = document.createElement('div');
+
+                        cell.style.width = `${cellSize}px`;
+
+                        cell.style.height = `${cellSize}px`;
+
+                        
+
+                        if (mazeLayout[y][x] === 1) {
+
+                            cell.className = 'wall';
+
+                        } else {
+
+                            if (mazeLayout[y][x] === 'S') {
+
+                                playerPos = { x, y };
+
+                            } else if (mazeLayout[y][x] === 'G') {
+
+                                goalPos = { x, y };
+
+                                const goalElement = document.createElement('div');
+
+                                goalElement.id = 'goal';
+
+                                goalElement.textContent = '🏠';
+
+                                goalElement.style.width = `${cellSize}px`;
+
+                                goalElement.style.height = `${cellSize}px`;
+
+                                goalElement.style.fontSize = `${cellSize * 0.8}px`;
+
+                                goalElement.style.left = `${x * cellSize}px`;
+
+                                goalElement.style.top = `${y * cellSize}px`;
+
+                                mazeContainer.appendChild(goalElement);
+
+                            }
+
+                        }
+
+                        mazeContainer.appendChild(cell);
+
+                    }
+
+                }
+
+                
+
+                mazeContainer.appendChild(player);
+
+                updatePlayerPosition();
+
+            }
+
+            function updatePlayerPosition() {
+
+                player.style.width = `${cellSize * 0.9}px`;
+
+                player.style.height = `${cellSize * 0.9}px`;
+
+                player.style.fontSize = `${cellSize * 0.7}px`;
+
+                player.style.left = `${playerPos.x * cellSize + (cellSize * 0.05)}px`;
+
+                player.style.top = `${playerPos.y * cellSize + (cellSize * 0.05)}px`;
+
+            }
+
+            function movePlayer(dx, dy) {
+
+                const newX = playerPos.x + dx;
+
+                const newY = playerPos.y + dy;
+
+                if (newY >= 0 && newY < mazeRows && newX >= 0 && newX < mazeCols && mazeLayout[newY][newX] !== 1) {
+
+                    playerPos.x = newX;
+
+                    playerPos.y = newY;
+
+                    updatePlayerPosition();
+
+                    if (playerPos.x === goalPos.x && playerPos.y === goalPos.y) {
+
+                        setTimeout(() => {
+
+                            alert('🎉 도착! 미션을 완료했습니다! 🎉');
+
+                            initializeGame();
+
+                        }, 100);
+
+                    }
+
+                }
+
+            }
+
+            // 이벤트 리스너 설정
+
+            document.getElementById('up').addEventListener('click', (e) => { e.preventDefault(); movePlayer(0, -1); });
+
+            document.getElementById('down').addEventListener('click', (e) => { e.preventDefault(); movePlayer(0, 1); });
+
+            document.getElementById('left').addEventListener('click', (e) => { e.preventDefault(); movePlayer(-1, 0); });
+
+            document.getElementById('right').addEventListener('click', (e) => { e.preventDefault(); movePlayer(1, 0); });
+
+            window.addEventListener('keydown', (e) => {
+
+                switch (e.key) {
+
+                    case 'ArrowUp': movePlayer(0, -1); break;
+
+                    case 'ArrowDown': movePlayer(0, 1); break;
+
+                    case 'ArrowLeft': movePlayer(-1, 0); break;
+
+                    case 'ArrowRight': movePlayer(1, 0); break;
+
+                }
+
+            });
+
+            // 화면 크기 변경 시 미로 다시 그리기
+
+            window.addEventListener('resize', initializeGame);
+
+            // 게임 시작
+
+            initializeGame();
+
+        });
+
+    </script>
+
+</body>
+
+</html>
