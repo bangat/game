@@ -1,893 +1,422 @@
 <!DOCTYPE html>
-
 <html lang="ko">
-
 <head>
-
-    <meta charset="UTF-8">
-
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-
-    <title>타워 디펜스</title>
-
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>타워 디펜스 (UI 수정 최종본)</title>
     <style>
-
-        :root {
-
-            --bg-color: #1a1a1a; --ui-bg: #2c2c2c; --border-color: #0f0;
-
-            --text-color: #fff; --highlight-color: #0f0; --danger-color: #f00;
-
-            --font-main: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-
+        :root{
+            --bg:#0e0e10;
+            --header-height: 60px;
+            --nav-height: 88px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
+            -webkit-tap-highlight-color: transparent;
         }
-
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-
-        html, body {
-
-            width: 100%; height: 100%; overflow: hidden; background-color: #111;
-
-            color: var(--text-color); font-family: var(--font-main);
-
-            -webkit-user-select: none; user-select: none; touch-action: manipulation;
-
-        }
-
-        .screen {
-
-            width: 100%; height: 100%; position: absolute; top: 0; left: 0;
-
-            display: flex; flex-direction: column; justify-content: center; align-items: center;
-
-            transition: opacity 0.3s ease; background-color: #111;
-
-        }
-
-        .hidden { opacity: 0; pointer-events: none; }
-
-        h1 { font-size: 3.5em; color: var(--highlight-color); text-shadow: 0 0 15px var(--highlight-color); margin-bottom: 40px; }
-
-        .menu-btn {
-
-            padding: 15px 30px; font-size: 1.2em; font-weight: bold; border-radius: 12px;
-
-            border: 2px solid var(--highlight-color); cursor: pointer; margin: 10px;
-
-            background-color: rgba(0, 0, 0, 0.5); color: var(--highlight-color);
-
-            transition: all 0.2s; text-shadow: 0 0 5px var(--highlight-color);
-
-            width: 80%; max-width: 300px;
-
-        }
-
+        *{box-sizing:border-box; margin:0; padding:0; user-select: none;}
+        html,body{height:100%; width:100%; background:var(--bg); color:#fff; overflow:hidden;}
         
-
-        #game-screen { flex-direction: column; justify-content: flex-start; align-items: stretch; background-color: #000; }
-
-        #game-canvas { flex-grow: 1; width: 100%; background-color: var(--bg-color); image-rendering: pixelated; cursor: pointer; }
-
+        header#topbar{
+            position:fixed; top:0; left:0; right:0; height:var(--header-height); display:flex; align-items:center;
+            gap:12px; padding:0 16px; z-index:120; backdrop-filter: blur(8px);
+            background: rgba(14, 14, 16, 0.7); border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+        #branding h1 { font-size:1.05rem; color:#33ff99; }
+        #stats { display:flex; gap:10px; margin-left:auto; align-items:center; font-weight:700; }
+        .stat { padding:6px 10px; background:rgba(255,255,255,0.05); border-radius:8px; font-size:0.95rem; color:#fff; }
+       
+        #game-wrap { position:absolute; inset:var(--header-height) 0 var(--nav-height) 0; }
+        canvas#game-canvas{ width:100%; height:100%; display:block; background:var(--bg); image-rendering: auto; cursor:crosshair; }
         
-
-        #ui-panel {
-
-            padding: 10px; width: 100%; background-color: var(--ui-bg);
-
-            display: flex; flex-direction: row; border-top: 3px solid var(--highlight-color);
-
-            flex-shrink: 0; align-items: center;
-
+        nav#bottom-shop {
+            position:fixed; bottom:0; left:0; right:0; height:var(--nav-height); display:flex; align-items:center; padding:10px 16px; z-index:130;
+            background: rgba(14, 14, 16, 0.7); border-top:1px solid rgba(255,255,255,0.06); backdrop-filter: blur(8px); justify-content: center;
         }
-
-        #stats-display {
-
-            width: 140px; padding-right: 15px; border-right: 1px solid #444;
-
-            display: flex; flex-direction: column; justify-content: center; gap: 8px;
-
-        }
-
-        #stats-display div { font-size: clamp(1rem, 4vw, 1.2rem); font-weight: bold; }
-
-        #controls-panel { flex-grow: 1; padding-left: 15px; display: flex; flex-direction: column; }
-
-        .panel-title { margin: 0 0 8px 0; padding-bottom: 5px; color: var(--highlight-color); font-weight: bold; font-size: clamp(0.9rem, 3vw, 1rem); }
-
-        .buttons-container { display: flex; gap: 8px; justify-content: space-around; flex-grow: 1; }
-
+        .shop-grid { display:flex; gap:12px; justify-content:center; align-items:center; width: 100%; }
         .control-button {
-
-            flex: 1; padding: 8px; background-color: #3e3e3e; border: 2px solid #555; color: #fff;
-
-            cursor: pointer; border-radius: 8px; text-align: center;
-
-            display: flex; flex-direction: column; justify-content: center; align-items: center; transition: all 0.2s;
-
+            background: rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.08); padding:8px 10px; border-radius:10px;
+            display:flex; flex:1; max-width: 150px; gap:10px; align-items:center; cursor:pointer; transition:all .12s; color:#fff;
         }
-
-        .control-button.selected { border-color: var(--highlight-color); background-color: #555; box-shadow: 0 0 10px var(--highlight-color); transform: scale(1.05); }
-
-        .control-button .emoji { font-size: clamp(1.8rem, 8vw, 2.5rem); }
-
-        .control-button strong { font-size: clamp(0.8rem, 3vw, 1rem); margin: 5px 0; }
-
-        .control-button small { display: block; color: #aaa; font-size: clamp(0.7rem, 2.5vw, 0.9rem); }
-
-        
-
-        #message-overlay {
-
-            position: fixed; top: 20px; left: 50%; transform: translateX(-50%); font-size: 2em;
-
-            font-weight: bold; color: #ff0; text-shadow: 0 0 10px #000, 0 0 20px #ffc107; pointer-events: none; z-index: 100;
-
-            opacity: 0; transition: opacity 0.5s, transform 0.5s;
-
+        .control-button:hover { background: rgba(255,255,255,0.05); }
+        .control-button.selected { border-color: #33ff99; transform:scale(1.02); background: rgba(51,255,153,0.05); }
+        .control-button img { width:38px; height:38px; object-fit:contain; }
+        .control-button .meta { text-align:left; }
+        .control-button strong { display:block; font-size:0.9rem; }
+        .control-button small { color:#9aa0a6; font-size:0.8rem; }
+       
+        @media (max-width:720px){
+            :root { --header-height: 56px; --nav-height: 80px; }
+            #branding h1 { display: none; }
+            #stats { gap: 8px; } .stat { font-size: 0.9rem; padding: 5px 8px; }
+            .shop-grid { gap: 8px; }
+            .control-button { flex-direction: column; min-width: 65px; gap: 2px; padding: 6px 4px; text-align:center;}
+            .control-button .meta { text-align: center; }
+            .control-button strong { font-size: 0.75rem; }
+            .control-button small { font-size: 0.7rem; }
+            .control-button img { width:30px; height:30px; }
         }
-
     </style>
-
 </head>
-
 <body>
-
-    <div id="start-menu" class="screen">
-
-        <h1>🚀 Emoji TD</h1>
-
-        <button id="play-solo-btn" class="menu-btn">혼자 하기</button>
-
-    </div>
-
-    <div id="game-screen" class="screen hidden">
-
-        <canvas id="game-canvas"></canvas>
-
-        <div id="ui-panel">
-
-            <div id="stats-display">
-
-                <div id="round-stat">Round: 0</div>
-
-                <div id="lives-stat">❤️ Lives: 20</div>
-
-                <div id="gold-stat">💰 Gold: 250</div>
-
-            </div>
-
-            <div id="controls-panel">
-
-                <div id="tower-shop">
-
-                    <h3 class="panel-title">타워 상점 (ESC로 건설/융합 취소)</h3>
-
-                    <div class="buttons-container">
-
-                        <button class="control-button" data-type="basic" data-cost="50"><span class="emoji">🔫</span><strong>기본 타워</strong><small>Cost: 50</small></button>
-
-                        <button class="control-button" data-type="splash" data-cost="120"><span class="emoji">💣</span><strong>광역 타워</strong><small>Cost: 120</small></button>
-
-                        <button class="control-button" data-type="slow" data-cost="80"><span class="emoji">❄️</span><strong>슬로우 타워</strong><small>Cost: 80</small></button>
-
-                        <button class="control-button" data-type="sniper" data-cost="150"><span class="emoji">🎯</span><strong>저격 타워</strong><small>Cost: 150</small></button>
-
-                    </div>
-
-                </div>
-
-            </div>
-
+    <header id="topbar">
+        <div id="branding" style="gap:12px;">
+            <button id="recipe-toggle" style="padding:6px 12px; border-radius:8px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:#fff; cursor:pointer;">조합법</button>
+            <h1>타워디펜스</h1>
         </div>
-
-        <div id="message-overlay"></div>
-
-    </div>
-
-    <div id="game-over-screen" class="screen hidden"></div>
-
+        <div id="stats" aria-live="polite">
+            <div id="round-stat" class="stat">R 0</div>
+            <div id="lives-stat" class="stat">❤️ 20</div>
+            <div id="gold-stat" class="stat">💰 250</div>
+        </div>
+        <div id="recipe-modal" style="position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); min-width:280px; background:rgba(25,25,28,0.8); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px 20px; backdrop-filter:blur(8px); color:#eee; font-size:0.9rem; display:none; z-index:999;">
+            <strong style="color:#33ff99; display:block; margin-bottom:8px;">조합법</strong>
+            <div>• 같은 1티어 타워 3개 → 2티어 타워<br>• 2티어 + 2티어 → 특수 타워 (준비중)<br>• 전설: 타워 건설 시 낮은 확률로 등장</div>
+        </div>
+    </header>
     
+    <div id="game-wrap"><canvas id="game-canvas"></canvas></div>
+
+    <nav id="bottom-shop">
+        <div class="shop-grid" id="shop-grid">
+            <button class="control-button" data-type="basic" data-cost="50"><img src="img/기본타워.png" alt="기본"><div class="meta"><strong>기본</strong><small>50 G</small></div></button>
+            <button class="control-button" data-type="splash" data-cost="120"><img src="img/광역타워.png" alt="광역"><div class="meta"><strong>광역</strong><small>120 G</small></div></button>
+            <button class="control-button" data-type="slow" data-cost="80"><img src="img/슬로우타워.png" alt="슬로우"><div class="meta"><strong>슬로우</strong><small>80 G</small></div></button>
+            <button class="control-button" data-type="sniper" data-cost="150"><img src="img/저격타워.png" alt="저격"><div class="meta"><strong>저격</strong><small>150 G</small></div></button>
+        </div>
+    </nav>
 
     <script>
-
-    document.addEventListener('DOMContentLoaded', () => {
-
-        const screens = { start: document.getElementById('start-menu'), game: document.getElementById('game-screen'), gameOver: document.getElementById('game-over-screen') };
-
+    document.addEventListener('DOMContentLoaded', ()=> {
         const canvas = document.getElementById('game-canvas');
-
-        const ctx = canvas.getContext('2d');
-
-        const messageOverlay = document.getElementById('message-overlay');
-
+        const ctx = canvas.getContext('2d', { alpha: true });
         
+        // ✨ 수정: JS에서 사용할 색상 값을 상수로 정의
+        const COLORS = {
+            grass: '#345234',
+            path: '#2a2a2a',
+            danger: '#e53935',
+            warning: '#ffb300',
+            info: '#039be5',
+            upgrade: '#43a047'
+        };
 
-        let localGameState = {};
-
-        let animationFrameId, lastTime = 0;
-
-        let enemies = [], projectiles = [], towers = [], splashEffects = [];
-
-        let roundInProgress = false, timeToNextWave = 0;
-
+        let localGameState = { round: 0, lives: 20, gold: 250 };
+        let towers = [], enemies = [], projectiles = [], splashEffects = [];
+        let lastTime = 0, animId = null, roundInProgress = false, timeToNextWave = 4000;
         let selectedTowerForPlacement = null, selectedTowerForUpgrade = null;
+        let placementArea = { x:0,y:0,w:0,h:0, cols:10, rows:8, cellW:0, cellH:0, cells:[] };
 
-        let playerLayout = {};
+        const towerImages = {
+            basic: loadImg('img/기본타워.png'), splash: loadImg('img/광역타워.png'),
+            slow: loadImg('img/슬로우타워.png'), sniper: loadImg('img/저격타워.png'),
+            legendary_basic: loadImg('img/기본전설타워.png'), legendary_splash: loadImg('img/전설광역타워.png'),
+            legendary_slow: loadImg('img/전설슬로우타워.png'), legendary_sniper: loadImg('img/전설저격타워.png'),
+            gatling: loadImg('img/기본타워.png'), cluster: loadImg('img/광역타워.png'),
+            blizzard: loadImg('img/슬로우타워.png'), railgun: loadImg('img/저격타워.png'),
+        };
+        function loadImg(src){ const i = new Image(); i.src = src; return i; }
 
-        let activeMenuButtons = [];
+        function resize() {
+            const wrap = document.getElementById('game-wrap');
+            const rect = wrap.getBoundingClientRect();
+            canvas.width = rect.width; canvas.height = rect.height;
 
-        let isCombining = false;
+            // ✨ 수정: 화면 폭에 따라 그리드 칸 수를 조절하여 타워 크기 확보
+            placementArea.cols = canvas.width < 600 ? 8 : 10;
+            const pathMargin = 30;
 
-        let firstCombineTower = null;
-
-        function showScreen(screenName) {
-
-            Object.values(screens).forEach(s => s.classList.add('hidden'));
-
-            screens[screenName].classList.remove('hidden');
-
-            if (screenName === 'game') setTimeout(resizeCanvas, 50);
-
+            placementArea.x = pathMargin; placementArea.y = pathMargin;
+            placementArea.w = canvas.width - pathMargin * 2;
+            placementArea.h = canvas.height - pathMargin * 2;
+            placementArea.rows = Math.round(placementArea.h / (placementArea.w / placementArea.cols));
+            placementArea.cellW = placementArea.w / placementArea.cols;
+            placementArea.cellH = placementArea.h / placementArea.rows;
+            placementArea.cells = [];
+            for(let r=0; r<placementArea.rows; r++){
+                for(let c=0; c<placementArea.cols; c++){
+                    placementArea.cells.push({
+                        r,c, x: placementArea.x + c*placementArea.cellW, y: placementArea.y + r*placementArea.cellH,
+                        cx: placementArea.x + c*placementArea.cellW + placementArea.cellW/2,
+                        cy: placementArea.y + r*placementArea.cellH + placementArea.cellH/2, occupied: false
+                    });
+                }
+            }
+            towers.forEach(t => { const cell = findCellAt(t.x, t.y); if(cell) cell.occupied = true; });
         }
 
-        
-
-        document.getElementById('play-solo-btn').addEventListener('click', () => {
-
-            localGameState = { gameState: 'playing', round: 0, lives: 20, gold: 250 };
-
+        function startGame(){
+            localGameState = { round: 0, lives: 20, gold: 250 };
             towers = []; enemies = []; projectiles = []; splashEffects = [];
-
-            startGame();
-
-        });
-
-        function startGame() {
-
-            showScreen('game');
-
-            roundInProgress = false; timeToNextWave = 5000; lastTime = 0;
-
-            if (animationFrameId) cancelAnimationFrame(animationFrameId);
-
-            animationFrameId = requestAnimationFrame(gameLoop);
-
+            roundInProgress = false; timeToNextWave = 3000; lastTime = 0;
+            cancelSelections(); updateUI(); resize();
+            if(animId) cancelAnimationFrame(animId);
+            animId = requestAnimationFrame(loop);
         }
 
-        function gameLoop(currentTime) {
-
-            if (localGameState.gameState !== 'playing') { cancelAnimationFrame(animationFrameId); return; }
-
-            if (!lastTime) lastTime = currentTime;
-
-            const deltaTime = currentTime - lastTime;
-
-            update(deltaTime);
-
-            draw();
-
-            lastTime = currentTime;
-
-            animationFrameId = requestAnimationFrame(gameLoop);
-
-        }
-
-        function cancelAllSelections() {
-
-            selectedTowerForUpgrade = null; activeMenuButtons = [];
-
-            isCombining = false; firstCombineTower = null;
-
-            if (selectedTowerForPlacement) {
-
-                document.querySelectorAll('.control-button.selected').forEach(b => b.classList.remove('selected'));
-
-                selectedTowerForPlacement = null;
-
-            }
-
-        }
-
-        document.querySelectorAll('.control-button').forEach(button => {
-
-            button.addEventListener('click', () => {
-
-                cancelAllSelections();
-
-                button.classList.add('selected');
-
-                selectedTowerForPlacement = { type: button.dataset.type, cost: parseInt(button.dataset.cost) };
-
+        document.querySelectorAll('.control-button').forEach(btn => {
+            btn.addEventListener('click', ()=>{
+                cancelSelections(); btn.classList.add('selected');
+                selectedTowerForPlacement = { type: btn.dataset.type, cost: Number(btn.dataset.cost) };
             });
-
         });
 
-        
+        window.addEventListener('keydown', e=>{ if(e.key === 'Escape'){ cancelSelections(); } });
+        function cancelSelections(){
+            selectedTowerForPlacement = null; selectedTowerForUpgrade = null;
+            document.querySelectorAll('.control-button').forEach(b=>b.classList.remove('selected'));
+        }
 
-        window.addEventListener('keydown', (e) => { if (e.key === 'Escape') cancelAllSelections(); });
-
-        canvas.addEventListener('click', (e) => {
-
+        canvas.addEventListener('click', (e)=>{
             const rect = canvas.getBoundingClientRect();
-
-            const mouseX = (e.clientX - rect.left) * (canvas.width / rect.width);
-
-            const mouseY = (e.clientY - rect.top) * (canvas.height / rect.height);
-
-            
-
-            if (isCombining) { handleFusionClick(mouseX, mouseY); return; }
-
-            if (handleMenuClick(mouseX, mouseY)) return;
-
-            const clickedTower = towers.find(t => Math.hypot(t.x - mouseX, t.y - mouseY) < playerLayout.gridSize);
-
-            if (clickedTower) {
-
-                cancelAllSelections(); selectedTowerForUpgrade = clickedTower;
-
-                return;
-
-            }
-
-            if (selectedTowerForPlacement) {
-
-                const cost = selectedTowerForPlacement.cost;
-
-                if (localGameState.gold < cost) { displayMessage("골드가 부족합니다!"); cancelAllSelections(); return; }
-
-                if (isTooCloseToPath(mouseX, mouseY) || isOccupied(mouseX, mouseY)) return;
-
-                
-
-                let finalTowerType = selectedTowerForPlacement.type;
-
-                const baseType = selectedTowerForPlacement.type;
-
-                if (Math.random() < 0.05) {
-
-                    if (baseType === 'basic') finalTowerType = 'lightning'; else if (baseType === 'splash') finalTowerType = 'volcano';
-
-                    else if (baseType === 'sniper') finalTowerType = 'ion_cannon'; else if (baseType === 'slow') finalTowerType = 'ice_shard';
-
-                    if (finalTowerType !== baseType) displayMessage("✨ 전설 타워 등장! ✨");
-
+            const mx = (e.clientX - rect.left), my = (e.clientY - rect.top);
+            if(selectedTowerForUpgrade?.ui?.buttons) {
+                for(const btn of selectedTowerForUpgrade.ui.buttons) {
+                    if(mx > btn.x && mx < btn.x + btn.w && my > btn.y && my < btn.y + btn.h) {
+                        handleUpgradeAction(selectedTowerForUpgrade, btn.action); return;
+                    }
                 }
-
-                towers.push({ ...getTowerConfig(finalTowerType), id: 'T' + Date.now(), x: mouseX, y: mouseY, type: finalTowerType, cooldown: 0, damageLevel: 1, rangeLevel: 1, totalSpent: cost });
-
-                localGameState.gold -= cost;
-
-                updateGameUI(localGameState);
-
-                return;
-
             }
-
-            cancelAllSelections();
-
+            const clickedTower = towers.find(t => Math.hypot(t.x - mx, t.y - my) < placementArea.cellW * 0.5);
+            if(clickedTower){ cancelSelections(); selectedTowerForUpgrade = clickedTower; return; }
+            const cell = findCellAt(mx,my);
+            if(cell && !cell.occupied && selectedTowerForPlacement){
+                if(localGameState.gold < selectedTowerForPlacement.cost){ flashMsg("골드가 부족합니다."); cancelSelections(); return; }
+                let finalType = selectedTowerForPlacement.type;
+                if(Math.random() < 0.05){
+                    const mapLegend = { basic: 'legendary_basic', splash: 'legendary_splash', slow: 'legendary_slow', sniper: 'legendary_sniper' };
+                    finalType = mapLegend[selectedTowerForPlacement.type] || finalType; flashMsg("✨ 전설 타워 등장! ✨");
+                }
+                const cfg = getTowerConfig(finalType);
+                towers.push({ ...cfg, id:'T'+Date.now(), x:cell.cx, y:cell.cy, type: finalType, cooldown:0, damageLevel:1, rangeLevel:1, totalSpent:selectedTowerForPlacement.cost, img: cfg.img });
+                cell.occupied = true; localGameState.gold -= selectedTowerForPlacement.cost; updateUI();
+            }
+            cancelSelections();
         });
 
-        function handleMenuClick(mouseX, mouseY) {
-
-            for (const button of activeMenuButtons) { if (Math.hypot(mouseX - button.x, mouseY - button.y) < button.radius) { button.action(); return true; } }
-
-            return false;
-
-        }
-
-        
-
-        function upgradeStat(tower, stat, cost) {
-
-            if (localGameState.gold < cost) return;
-
-            localGameState.gold -= cost; tower.totalSpent += cost;
-
-            const baseConfig = getTowerConfig(tower.type);
-
-            if (stat === 'damage') { tower.damageLevel++; tower.damage = Math.floor(baseConfig.damage * Math.pow(1.4, tower.damageLevel - 1)); }
-
-            else { tower.rangeLevel++; tower.range = Math.floor(baseConfig.range * Math.pow(1.2, tower.rangeLevel - 1)); }
-
-            updateGameUI(localGameState);
-
-        }
-
-        function combineTowers(type, combineToType) {
-
-            const towersToCombine = towers.filter(t => t.type === type).slice(0, 3);
-
-            const totalSpent = towersToCombine.reduce((sum, t) => sum + t.totalSpent, 0);
-
-            towers = towers.filter(t => !towersToCombine.some(ttc => ttc.id === t.id));
-
-            const newPos = { x: towersToCombine[0].x, y: towersToCombine[0].y };
-
-            const newConfig = getTowerConfig(combineToType);
-
-            towers.push({ ...newConfig, id: 'T' + Date.now(), x: newPos.x, y: newPos.y, type: combineToType, cooldown: 0, damageLevel: 1, rangeLevel: 1, totalSpent: totalSpent });
-
-            displayMessage(`${newConfig.emoji} 조합 성공!`);
-
-            cancelAllSelections();
-
-        }
-
-        function sellTower(tower, sellValue) {
-
-            localGameState.gold += sellValue; towers = towers.filter(t => t.id !== tower.id);
-
-            updateGameUI(localGameState); cancelAllSelections();
-
-        }
-
-        
-
-        function startFusion(tower) {
-
-            isCombining = true; firstCombineTower = tower;
-
-            displayMessage("융합할 다른 조합 타워를 선택하세요");
-
-            selectedTowerForUpgrade = null;
-
-        }
-
-        function handleFusionClick(mouseX, mouseY) {
-
-            const clickedTower = towers.find(t => Math.hypot(t.x - mouseX, t.y - mouseY) < playerLayout.gridSize);
-
-            const recipe = clickedTower ? getFusionRecipe(firstCombineTower.type, clickedTower.type) : null;
-
-            if (clickedTower && clickedTower.id !== firstCombineTower.id && recipe) {
-
-                const totalSpent = firstCombineTower.totalSpent + clickedTower.totalSpent;
-
-                towers = towers.filter(t => t.id !== firstCombineTower.id && t.id !== clickedTower.id);
-
-                const newConfig = getTowerConfig(recipe.result);
-
-                towers.push({ ...newConfig, id: 'T' + Date.now(), x: clickedTower.x, y: clickedTower.y, type: recipe.result, cooldown: 0, totalSpent: totalSpent });
-
-                displayMessage(`${newConfig.emoji} 융합 성공!`);
-
-            } else { displayMessage("융합 실패. 다른 종류의 조합 타워를 선택하세요."); }
-
-            cancelAllSelections();
-
-        }
-
-        
-
-        function update(deltaTime) {
-
-            if (!roundInProgress) timeToNextWave -= deltaTime;
-
-            if (timeToNextWave <= 0 && !roundInProgress) {
-
-                if (localGameState.round >= 50) { showGameClear(); return; }
-
-                localGameState.round++; spawnWave(localGameState.round);
-
-                roundInProgress = true; updateGameUI(localGameState);
-
+        function handleUpgradeAction(tower, action) {
+            if (action.disabled) return;
+            switch(action.type) {
+                case 'sell':
+                    localGameState.gold += action.value; towers = towers.filter(t => t.id !== tower.id);
+                    const cell = findCellAt(tower.x, tower.y); if (cell) cell.occupied = false;
+                    cancelSelections(); break;
+                case 'upgrade_damage': case 'upgrade_range':
+                    localGameState.gold -= action.cost; tower.totalSpent += action.cost;
+                    const stat = action.type.split('_')[1];
+                    if (stat === 'damage') { tower.damageLevel++; tower.damage = Math.floor(tower.baseDamage * Math.pow(1.4, tower.damageLevel - 1)); }
+                    else { tower.rangeLevel++; tower.range = Math.floor(tower.baseRange * Math.pow(1.2, tower.rangeLevel - 1)); }
+                    break;
+                case 'combine':
+                     const towersToCombine = towers.filter(t => t.type === tower.type).slice(0, 3);
+                     if (towersToCombine.length >= 3) {
+                        towers = towers.filter(t => !towersToCombine.some(ttc => ttc.id === t.id));
+                        towersToCombine.forEach(t => { const c = findCellAt(t.x, t.y); if(c) c.occupied = false; });
+                        const newPosCell = findCellAt(tower.x, tower.y);
+                        const newConfig = getTowerConfig(tower.combineTo);
+                        towers.push({ ...newConfig, id: 'T' + Date.now(), x: newPosCell.cx, y: newPosCell.cy, type: tower.combineTo, cooldown: 0, damageLevel: 1, rangeLevel: 1, totalSpent: tower.totalSpent * 3, img: newConfig.img });
+                        newPosCell.occupied = true; flashMsg(`${newConfig.name} 조합 성공!`); cancelSelections();
+                    } break;
+                case 'fuse': flashMsg("융합 기능은 준비 중입니다."); break;
             }
+            updateUI();
+        }
 
-            if (roundInProgress && enemies.length === 0) {
-
-                const clearedRound = localGameState.round; const bonusGold = 50 + clearedRound * 10;
-
-                localGameState.gold += bonusGold; roundInProgress = false; timeToNextWave = 5000;
-
-                displayMessage(`${clearedRound} 라운드 클리어! +${bonusGold}G`); updateGameUI(localGameState);
-
-            }
-
-            enemies.forEach((enemy, i) => { 
-
-                if (enemy.slowTimer > 0) {
-
-                    enemy.slowTimer -= deltaTime;
-
-                    if (enemy.slowTimer <= 0) { enemy.speed = enemy.originalSpeed; enemy.originalSpeed = null; }
-
+        function findCellAt(x,y){ return placementArea.cells.find(c => x >= c.x && x <= c.x + placementArea.cellW && y >= c.y && y <= c.y + placementArea.cellH); }
+        function loop(ts){ if(!lastTime) lastTime = ts; const dt = ts - lastTime; update(dt); draw(); lastTime = ts; animId = requestAnimationFrame(loop); }
+        
+        function update(deltaTime){
+            if(!roundInProgress) timeToNextWave -= deltaTime;
+            if(timeToNextWave <= 0 && !roundInProgress){ localGameState.round++; spawnWave(localGameState.round); roundInProgress = true; updateUI(); }
+            const path = defaultPath(); if(!path) return;
+            enemies.forEach((enemy,i)=>{
+                if (enemy.slowTimer > 0) { enemy.slowTimer -= deltaTime; if (enemy.slowTimer <= 0) { enemy.speed = enemy.originalSpeed; } }
+                if(enemy.pathIndex >= path.length){
+                    enemies.splice(i,1); localGameState.lives--;
+                    if(localGameState.lives <= 0) endGame("기지가 파괴되었습니다.");
+                    updateUI(); return;
                 }
-
-                const path = playerLayout.path; 
-
-                if (enemy.pathIndex >= path.length) { handleEnemyLeak(enemies.splice(i, 1)[0]); return; } 
-
-                const targetNode = path[enemy.pathIndex]; const moveSpeed = enemy.speed * (deltaTime / 16.67); 
-
-                const dist = Math.hypot(targetNode.x - enemy.x, targetNode.y - enemy.y); 
-
-                if (dist < moveSpeed) { enemy.x = targetNode.x; enemy.y = targetNode.y; enemy.pathIndex++; } 
-
-                else { enemy.x += (targetNode.x - enemy.x) / dist * moveSpeed; enemy.y += (targetNode.y - enemy.y) / dist * moveSpeed; } 
-
+                const target = path[enemy.pathIndex]; const mv = enemy.speed * (deltaTime / 16.67);
+                const dist = Math.hypot(target.x - enemy.x, target.y - enemy.y);
+                if(dist < mv){ enemy.x = target.x; enemy.y = target.y; enemy.pathIndex++; }
+                else { enemy.x += (target.x-enemy.x)/dist*mv; enemy.y += (target.y-enemy.y)/dist*mv; }
             });
-
-            towers.forEach(tower => {
-
-                tower.cooldown -= deltaTime;
-
-                if (tower.cooldown <= 0) {
-
-                    const target = findTarget(tower);
-
-                    if (target) {
-
-                        // ✨ 수정된 부분: 발사체 생성 시 필요한 속성만 명시적으로 전달
-
-                        projectiles.push({ x: tower.x, y: tower.y, target: target, damage: tower.damage, splashRadius: tower.splashRadius, color: tower.color, slowEffect: tower.slowEffect });
-
-                        tower.cooldown = tower.fireRate;
-
-                    }
-
-                }
-
+            towers.forEach(t=>{
+                t.cooldown -= deltaTime;
+                if(t.cooldown <= 0){ const target = findTarget(t); if(target){ projectiles.push({ x:t.x, y:t.y, target, damage:t.damage, splashRadius:t.splashRadius, slowEffect:t.slowEffect, color:t.color }); t.cooldown = t.fireRate; } }
             });
-
-            for (let i = projectiles.length - 1; i >= 0; i--) {
-
-                const p = projectiles[i];
-
-                if (!p.target || p.target.health <= 0) { projectiles.splice(i, 1); continue; }
-
-                const projectileSpeed = 15 * (deltaTime / 16.67);
-
-                const dist = Math.hypot(p.target.x - p.x, p.target.y - p.y);
-
-                if (dist < projectileSpeed) {
-
-                    handleHit(p.target, p.damage, p.splashRadius, p.target.x, p.target.y, p.slowEffect);
-
-                    projectiles.splice(i, 1);
-
-                } else { p.x += (p.target.x - p.x) / dist * projectileSpeed; p.y += (p.target.y - p.y) / dist * projectileSpeed; }
-
+            for(let i=projectiles.length-1;i>=0;i--){
+                const p = projectiles[i]; if(!p.target || p.target.health <= 0){ projectiles.splice(i,1); continue; }
+                const sp = 15 * (deltaTime/16.67); const dist = Math.hypot(p.target.x - p.x, p.target.y - p.y);
+                if(dist < sp){ hitTarget(p.target, p.damage, p.splashRadius, p.target.x, p.target.y, p.slowEffect); projectiles.splice(i,1); }
+                else { p.x += (p.target.x - p.x)/dist*sp; p.y += (p.target.y - p.y)/dist*sp; }
             }
-
-            for (let i = splashEffects.length - 1; i >= 0; i--) { if ((splashEffects[i].life -= deltaTime) <= 0) splashEffects.splice(i, 1); }
-
+            for(let i=splashEffects.length-1;i>=0;i--){ if((splashEffects[i].life -= deltaTime) <=0) splashEffects.splice(i,1); }
+            if(roundInProgress && enemies.length === 0){
+                roundInProgress = false; timeToNextWave = 3000; const bonus = 40 + localGameState.round * 6;
+                localGameState.gold += bonus; flashMsg(`${localGameState.round} 라운드 클리어! +${bonus}G`); updateUI();
+            }
         }
-
-        
-
-        function handleHit(target, damage, splashRadius, hitX, hitY, slowEffect = null) {
-
+        function hitTarget(target, damage, splashRadius, x, y, slowEffect){
             target.health -= damage;
-
-            function applySlow(enemy) { if (slowEffect) { if (!enemy.originalSpeed) enemy.originalSpeed = enemy.speed; enemy.speed = enemy.originalSpeed * (1 - slowEffect.power); enemy.slowTimer = slowEffect.duration; } }
-
-            applySlow(target);
-
-            if (splashRadius > 0) {
-
-                splashEffects.push({ x: hitX, y: hitY, radius: splashRadius, life: 200 });
-
-                enemies.forEach(e => { if (e !== target && Math.hypot(e.x - hitX, e.y - hitY) <= splashRadius) { e.health -= damage; applySlow(e); }});
-
+            if(slowEffect){ if(!target.originalSpeed) target.originalSpeed = target.speed; target.speed = target.originalSpeed * (1 - slowEffect.power); target.slowTimer = slowEffect.duration; }
+            if(splashRadius > 0){
+                splashEffects.push({x,y,radius:splashRadius,life:250});
+                enemies.forEach(e=>{ if(e !== target && Math.hypot(e.x - x, e.y - y) <= splashRadius) e.health -= damage; });
             }
-
-            for (let i = enemies.length - 1; i >= 0; i--) {
-
-                const enemy = enemies[i];
-
-                if (enemy.health <= 0) {
-
-                    if (enemy.type === 'mega_boss') {
-
-                        const bonusGold = (50 + localGameState.round * 10) * 2;
-
-                        localGameState.gold += bonusGold;
-
-                        displayMessage(`👑 보스 처치! +${bonusGold}G`);
-
-                    } else { localGameState.gold += getEnemyConfig(enemy.type).gold; }
-
-                    enemies.splice(i, 1);
-
-                    updateGameUI(localGameState);
-
-                }
-
-            }
-
+            let died = false;
+            for(let i=enemies.length-1;i>=0;i--){ if(enemies[i].health <= 0){ localGameState.gold += getEnemyConfig(enemies[i].type).gold; enemies.splice(i,1); died = true; } }
+            if(died) updateUI();
+        }
+        function defaultPath(){
+            const pa = placementArea; const m = pa.cellH/2;
+            return [ {x: -20, y: pa.y + m}, {x: pa.x + pa.w + m, y: pa.y + m}, {x: pa.x + pa.w + m, y: pa.y + pa.h - m}, {x: pa.x - m, y: pa.y + pa.h - m}, {x: pa.x - m, y: -20} ];
+        }
+        function spawnWave(round){
+            let eType = (round > 10) ? 'fast' : 'normal';
+            if(round > 0 && round % 10 === 0){ const c = getEnemyConfig('mega_boss'); enemies.push({...c, maxHealth: c.health, x: defaultPath()[0].x, y: defaultPath()[0].y, pathIndex:1}); flashMsg("🚨 보스 출현!"); }
+            else if(round > 0 && round % 5 === 0){ const cnt = Math.min(12 + round, 30); for(let i=0;i<cnt;i++) setTimeout(()=> spawnEnemy('fast'), i*220); }
+            else { const cnt = Math.min(6 + round*2, 40); for(let i=0;i<cnt;i++) setTimeout(()=> spawnEnemy(eType), i*140); }
+        }
+        function spawnEnemy(type){ const p = defaultPath()[0]; const c = getEnemyConfig(type); enemies.push({...c, maxHealth: c.health, x:p.x, y:p.y, pathIndex:1}); }
+        function findTarget(tower){
+            let closest = null, minD = tower.range;
+            enemies.forEach(e=>{ const d = Math.hypot(e.x - tower.x, e.y - tower.y); if(d < minD){ minD = d; closest = e; } });
+            return closest;
         }
 
-        
-
-        function draw() {
-
-            ctx.clearRect(0, 0, canvas.width, canvas.height); if (!playerLayout.path) return;
-
-            ctx.strokeStyle = '#333'; ctx.lineWidth = playerLayout.gridSize * 1.8; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.beginPath(); ctx.moveTo(playerLayout.path[0].x, playerLayout.path[0].y); for(let i = 1; i < playerLayout.path.length; i++) ctx.lineTo(playerLayout.path[i].x, playerLayout.path[i].y); ctx.stroke();
-
-            
-
-            towers.forEach(t => { ctx.font = `${playerLayout.gridSize * 1.8}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(t.emoji, t.x, t.y); });
-
-            enemies.forEach(e => {
-
-                // ✨ 수정된 부분: 체력바 계산 방식을 안정적으로 변경
-
-                const config = getEnemyConfig(e.type);
-
-                const maxHealth = config.health + Math.pow(localGameState.round - 1, 2.1) * (e.type === 'mega_boss' ? 8 : (e.type === 'boss' ? 3 : 1.5));
-
-                const healthRatio = e.health / maxHealth;
-
-                ctx.font = `${playerLayout.gridSize * (config.emoji === '👑' ? 2.5 : 1.5)}px sans-serif`; if(e.slowTimer > 0) ctx.filter = 'saturate(0.2) brightness(0.8)'; ctx.fillText(config.emoji, e.x, e.y); ctx.filter = 'none'; const barWidth = playerLayout.gridSize * 1.5; const barY = e.y - playerLayout.gridSize * 1.2; ctx.fillStyle = 'rgba(255,0,0,0.7)'; ctx.fillRect(e.x - barWidth/2, barY, barWidth, 6); ctx.fillStyle = healthRatio > 0.5 ? 'rgba(0,255,0,0.7)' : 'rgba(255,255,0,0.7)'; ctx.fillRect(e.x - barWidth/2, barY, barWidth * healthRatio, 6);
-
-            });
-
-            projectiles.forEach(p => { ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, 6, 0, Math.PI * 2); ctx.fill(); });
-
-            splashEffects.forEach(effect => { ctx.fillStyle = 'rgba(255, 165, 0, 0.4)'; ctx.beginPath(); ctx.arc(effect.x, effect.y, effect.radius, 0, Math.PI * 2); ctx.fill(); });
-
-            
-
-            if (selectedTowerForUpgrade) {
-
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)'; ctx.lineWidth = 3; ctx.setLineDash([10, 5]);
-
-                ctx.beginPath(); ctx.arc(selectedTowerForUpgrade.x, selectedTowerForUpgrade.y, selectedTowerForUpgrade.range, 0, Math.PI * 2); ctx.stroke();
-
-                ctx.setLineDash([]);
-
-                drawUpgradeMenu(selectedTowerForUpgrade);
-
-            }
-
-             if (isCombining) {
-
-                ctx.strokeStyle = 'rgba(0, 255, 255, 0.9)'; ctx.lineWidth = 5;
-
-                ctx.beginPath(); ctx.arc(firstCombineTower.x, firstCombineTower.y, playerLayout.gridSize, 0, Math.PI * 2); ctx.stroke();
-
-            }
-
-        }
-
-        
-
-        function drawUpgradeMenu(tower) {
-
-            activeMenuButtons = [];
-
-            const baseConfig = getTowerConfig(tower.type);
-
-            const menuRadius = playerLayout.gridSize * 3.5;
-
-            const buttonRadius = playerLayout.gridSize * 1.5;
-
-            const positions = [ { angle: -Math.PI / 2, id: 'damage' }, { angle: Math.PI, id: 'range' }, { angle: 0, id: 'combine' }, { angle: Math.PI / 2, id: 'sell' }, ];
-
-            
-
-            ctx.save();
-
-            ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.font = `bold ${playerLayout.gridSize * 0.8}px sans-serif`;
-
-            ctx.shadowColor = '#000'; ctx.shadowBlur = 5;
-
-            if (baseConfig.tier < 3) ctx.fillText(`Lvl ${tower.damageLevel}/${tower.rangeLevel}`, tower.x, tower.y - menuRadius - buttonRadius * 1.2);
-
-            ctx.fillText(`공격력: ${tower.damage}`, tower.x, tower.y - menuRadius - buttonRadius * 0.5);
-
-            ctx.restore();
-
-            positions.forEach(pos => {
-
-                const x = tower.x + menuRadius * Math.cos(pos.angle); const y = tower.y + menuRadius * Math.sin(pos.angle);
-
-                let text = '', action = () => {}, costText = '', disabled = false, color = '#0f0';
-
-                
-
-                switch (pos.id) {
-
-                    case 'damage':
-
-                        if (baseConfig.tier >= 3) { disabled = true; text = '강화불가'; }
-
-                        else { const dmgCost = Math.floor(baseConfig.damageCost * Math.pow(1.5, tower.damageLevel - 1)); action = () => upgradeStat(tower, 'damage', dmgCost); text = '공격 UP'; costText = `${dmgCost}G`; if (localGameState.gold < dmgCost) disabled = true; }
-
-                        break;
-
-                    case 'range':
-
-                        if (baseConfig.tier >= 3) { disabled = true; text = '강화불가'; }
-
-                        else { const rangeCost = Math.floor(baseConfig.rangeCost * Math.pow(1.6, tower.rangeLevel - 1)); action = () => upgradeStat(tower, 'range', rangeCost); text = '사거리 UP'; costText = `${rangeCost}G`; if (localGameState.gold < rangeCost) disabled = true; }
-
-                        break;
-
-                    case 'sell':
-
-                        const sellValue = Math.floor(tower.totalSpent * 0.7); action = () => sellTower(tower, sellValue);
-
-                        text = '판매'; costText = `+${sellValue}G`; color = '#f00';
-
-                        break;
-
-                    case 'combine':
-
-                        if (baseConfig.tier === 1) { const same = towers.filter(t => t.type === tower.type); if (same.length < 3) disabled = true; action = () => combineTowers(tower.type, baseConfig.combineTo); text = '조합'; costText = `${same.length}/3`; color = '#ffc107'; }
-
-                        else if (baseConfig.tier === 2) { const others = towers.filter(t => t.tier === 2 && t.id !== tower.id); if (others.length === 0) disabled = true; action = () => startFusion(tower); text = '융합'; costText = `대상선택`; color = '#00ffff'; }
-
-                        else { disabled = true; text = '최종단계'; }
-
-                        break;
-
-                }
-
-                if (baseConfig.tier > 1 && pos.id === 'combine' && baseConfig.tier < 3) { /* Tier 2 융합 버튼은 위 로직에서 처리 */ }
-
-                else if (baseConfig.tier >= 3 && pos.id === 'combine') { disabled = true; text = '최종단계'; }
-
-                ctx.save(); ctx.globalAlpha = disabled ? 0.4 : 1.0; ctx.beginPath(); ctx.arc(x, y, buttonRadius, 0, Math.PI * 2); ctx.fillStyle = '#2c2c2c'; ctx.fill();
-
-                ctx.lineWidth = 3; ctx.strokeStyle = disabled ? '#555' : color; ctx.stroke(); ctx.fillStyle = disabled ? '#888' : '#fff'; ctx.font = `bold ${buttonRadius * 0.5}px sans-serif`;
-
-                ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, x, y - buttonRadius * 0.3); ctx.font = `bold ${buttonRadius * 0.4}px sans-serif`;
-
-                ctx.fillStyle = disabled ? '#888' : color; ctx.fillText(costText, x, y + buttonRadius * 0.4); ctx.restore();
-
-                
-
-                if (!disabled) activeMenuButtons.push({ id: pos.id, x, y, radius: buttonRadius, action });
-
-            });
-
-        }
-
-        
-
-        function isTooCloseToPath(mouseX, mouseY) { if (!playerLayout.path) return true; const pathPadding = playerLayout.gridSize * 2; for(let i = 0; i < playerLayout.path.length - 1; i++){ const p1 = playerLayout.path[i], p2 = playerLayout.path[i+1]; const len = Math.hypot(p2.x - p1.x, p2.y - p1.y); if (len === 0) continue; const dot = ((mouseX - p1.x) * (p2.x - p1.x) + (mouseY - p1.y) * (p2.y - p1.y)) / (len * len); const closestX = p1.x + dot * (p2.x - p1.x), closestY = p1.y + dot * (p2.y - p1.y); if(dot >= 0 && dot <= 1 && Math.hypot(mouseX-closestX, mouseY-closestY) < pathPadding){ displayMessage("경로와 너무 가깝습니다!"); return true; }} return false; }
-
-        function isOccupied(mouseX, mouseY) { if (!playerLayout.gridSize) return true; if (towers.some(t => Math.hypot(t.x - mouseX, t.y - mouseY) < playerLayout.gridSize)) { displayMessage("다른 타워와 너무 가깝습니다!"); return true; } return false; }
-
-        function resizeCanvas() { const uiPanel = document.getElementById('ui-panel'); const gameScreen = screens.game; canvas.width = gameScreen.offsetWidth; canvas.height = gameScreen.offsetHeight - uiPanel.offsetHeight; calculatePlayerLayouts(); draw(); }
-
-        function calculatePlayerLayouts() { const gridSize = canvas.width / 25; const margin = gridSize * 2.5; playerLayout = { gridSize, path: [ {x: -gridSize, y: margin}, {x: canvas.width - margin, y: margin}, {x: canvas.width - margin, y: canvas.height - margin}, {x: margin, y: canvas.height - margin}, {x: margin, y: -gridSize}, ] }; }
-
-        function updateGameUI(state) { document.getElementById('round-stat').textContent = `Round: ${state.round || 0}`; document.getElementById('lives-stat').textContent = `❤️ Lives: ${state.lives || 0}`; document.getElementById('gold-stat').textContent = `💰 Gold: ${state.gold || 0}`; }
-
-        function displayMessage(msg) { messageOverlay.textContent = msg; messageOverlay.style.opacity = 1; messageOverlay.style.transform = 'translateX(-50%) scale(1)'; setTimeout(() => { messageOverlay.style.opacity = 0; messageOverlay.style.transform = 'translateX(-50%) scale(0.8)'; }, 2500); }
-
-        function handleEnemyLeak(leakedEnemy) { if (leakedEnemy.type === 'mega_boss') { showGameOver("보스가 기지를 파괴했습니다!"); return; } localGameState.lives--; updateGameUI(localGameState); if(localGameState.lives <= 0) { localGameState.lives = 0; showGameOver("모든 생명력을 잃었습니다!"); } }
-
-        function showGameOver(reason) { localGameState.gameState = 'gameOver'; if (animationFrameId) cancelAnimationFrame(animationFrameId); const gameOverScreen = screens.gameOver; gameOverScreen.innerHTML = `<h1>게임 오버</h1><p style="font-size: 1.5em; margin-bottom: 20px;">${reason}</p><button id="restart-btn" class="menu-btn">메인 메뉴로</button>`; showScreen('gameOver'); document.getElementById('restart-btn').addEventListener('click', () => window.location.reload()); }
-
-        function showGameClear() { localGameState.gameState = 'cleared'; if (animationFrameId) cancelAnimationFrame(animationFrameId); const gameOverScreen = screens.gameOver; gameOverScreen.innerHTML = `<h1>🎉 게임 승리! 🎉</h1><p style="font-size: 1.5em; margin-bottom: 20px;">50 라운드를 모두 클리어했습니다!</p><button id="restart-btn" class="menu-btn">메인 메뉴로</button>`; showScreen('gameOver'); document.getElementById('restart-btn').addEventListener('click', () => window.location.reload()); }
-
-        
-
-        function spawnWave(round) {
-
-            const createEnemy = (type) => {
-
-                const config = getEnemyConfig(type);
-
-                const health = config.health + Math.pow(round - 1, 2.1) * (type === 'mega_boss' ? 8 : (type === 'boss' ? 3 : 1.5));
-
-                enemies.push({ ...config, health: health, maxHealth: health, type: type, x: playerLayout.path[0].x, y: playerLayout.path[0].y, pathIndex: 1, originalSpeed: null, slowTimer: 0 });
-
+        function getTowerConfig(type){
+            const cellAvg = placementArea.cellW || 40;
+            const configs = {
+                basic: { name:'기본', img: towerImages.basic, damage: 35, range: cellAvg * 3.5, fireRate: 700, damageCost:30, rangeCost:40, tier:1, combineTo:'gatling' },
+                splash: { name:'광역', img: towerImages.splash, damage: 40, range: cellAvg * 3.2, fireRate: 1500, damageCost:80, rangeCost:100, tier:1, combineTo:'cluster' },
+                slow: { name:'슬로우', img: towerImages.slow, damage: 6, range: cellAvg * 3.4, fireRate: 1000, slowEffect:{power:0.28,duration:2200}, damageCost:60, rangeCost:70, tier:1, combineTo:'blizzard' },
+                sniper: { name:'저격', img: towerImages.sniper, damage:150, range: cellAvg * 6.2, fireRate:1800, damageCost:120, rangeCost:150, tier:1, combineTo:'railgun' },
+                gatling: { name:'개틀링', img: towerImages.gatling, damage: 40, range: cellAvg * 3.8, fireRate:450, damageCost:150, rangeCost:200, tier:2 },
+                cluster: { name:'클러스터', img: towerImages.cluster, damage: 60, range: cellAvg * 3.6, fireRate:1200, damageCost:300, rangeCost:350, tier:2 },
+                blizzard: { name:'블리자드', img: towerImages.blizzard, damage: 12, range: cellAvg * 3.9, fireRate:900, slowEffect:{power:0.45,duration:2400}, damageCost:250, rangeCost:300, tier:2 },
+                railgun: { name:'레일건', img: towerImages.railgun, damage:220, range: cellAvg * 8.0, fireRate:1600, damageCost:320, rangeCost:380, tier:2 },
+                legendary_basic: { name:'전설-기본', img: towerImages.legendary_basic, damage:50, range: cellAvg * 4.5, fireRate:300, damageCost:400, rangeCost:500, tier:99 },
+                legendary_splash: { name:'전설-광역', img: towerImages.legendary_splash, damage:75, range: cellAvg * 4.2, fireRate:1400, damageCost:500, rangeCost:600, tier:99 },
+                legendary_slow: { name:'전설-슬로우', img: towerImages.legendary_slow, damage:20, range: cellAvg * 5.2, fireRate:1500, slowEffect:{power:0.6,duration:3000}, damageCost:500, rangeCost:500, tier:99 },
+                legendary_sniper: { name:'전설-저격', img: towerImages.legendary_sniper, damage:500, range: cellAvg * 9.5, fireRate:2500, damageCost:600, rangeCost:700, tier:99 },
             };
-
-            if (round % 10 === 0) { displayMessage(`🚨 BOSS 출현! 🚨`); createEnemy('mega_boss'); }
-
-            else if (round % 5 === 0) { const count = 8 + round; for (let i = 0; i < count; i++) setTimeout(() => createEnemy('boss'), i * 300); }
-
-            else { const count = 6 + round * 2; const type = round > 10 ? 'fast' : 'normal'; for (let i = 0; i < count; i++) setTimeout(() => createEnemy(type), i * 500); }
-
+            const config = { ...configs[type] } || { ...configs.basic };
+            config.baseDamage = config.damage; config.baseRange = config.range;
+            return config;
         }
+        function getEnemyConfig(type){
+            return {
+                normal: { type:'normal', emoji:'👽', health: 60, speed:1.2, gold:5 },
+                fast: { type:'fast', emoji:'👹', health: 90, speed:2.2, gold:8 },
+                mega_boss: { type:'mega_boss', emoji:'👑', health: 5000, speed:0.8, gold:300 }
+            }[type] || { type:'normal', emoji:'?', health:60, speed:1.2, gold:5 };
+        }
+        function endGame(reason){ flashMsg("게임 종료: "+reason, 5000); if(animId) cancelAnimationFrame(animId); animId = null; }
 
-        function findTarget(tower) { let closestEnemy = null; let minDistance = tower.range; enemies.forEach(enemy => { const distance = Math.hypot(enemy.x - tower.x, enemy.y - tower.y); if (distance < minDistance) { minDistance = distance; closestEnemy = enemy; } }); return closestEnemy; }
+        function draw(){
+            ctx.clearRect(0,0,canvas.width,canvas.height);
+            ctx.fillStyle = COLORS.grass; // ✨ 수정
+            ctx.fillRect(placementArea.x, placementArea.y, placementArea.w, placementArea.h);
+            ctx.fillStyle = 'rgba(0,0,0,0.1)';
+            for(let i=0; i < (placementArea.w * placementArea.h / 50); i++){
+                ctx.fillRect(placementArea.x + Math.random() * placementArea.w, placementArea.y + Math.random() * placementArea.h, 2, 2);
+            }
+            const path = defaultPath();
+            ctx.strokeStyle = COLORS.path; // ✨ 수정
+            ctx.lineWidth = placementArea.cellH * 0.9; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+            ctx.beginPath(); ctx.moveTo(path[0].x, path[0].y); path.forEach(p=>ctx.lineTo(p.x, p.y)); ctx.stroke();
+            ctx.strokeStyle = 'rgba(0,0,0,0.2)'; ctx.lineWidth = 1;
+            ctx.strokeRect(placementArea.x, placementArea.y, placementArea.w, placementArea.h);
 
+            towers.forEach(t=>{ const size = placementArea.cellW * 0.9; if(t.img?.complete) ctx.drawImage(t.img, t.x - size/2, t.y - size/2, size, size); });
+            enemies.forEach(e=>{
+                ctx.font = `${placementArea.cellH * 0.9}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(e.emoji || '👾', e.x, e.y);
+                const hpRatio = Math.max(0, e.health / e.maxHealth), barW = placementArea.cellW * 0.9, barY = e.y - placementArea.cellH*0.8;
+                ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(e.x - barW/2, barY, barW, 6);
+                ctx.fillStyle = hpRatio > 0.5 ? '#4caf50' : '#ffc107'; ctx.fillRect(e.x - barW/2, barY, barW*hpRatio, 6);
+            });
+            projectiles.forEach(p=>{ ctx.fillStyle = p.color || '#fff'; ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, Math.PI*2); ctx.fill(); });
+            splashEffects.forEach(s=>{ ctx.fillStyle = 'rgba(255,165,0,0.2)'; ctx.beginPath(); ctx.arc(s.x, s.y, s.radius, 0, Math.PI*2); ctx.fill(); });
+            
+            if(selectedTowerForUpgrade) {
+                const t = selectedTowerForUpgrade;
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)'; ctx.lineWidth = 2; ctx.setLineDash([8, 4]);
+                ctx.beginPath(); ctx.arc(t.x, t.y, t.range, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+                drawUpgradeUI(t);
+            }
+        }
         
+        function drawUpgradeUI(tower) {
+            const btns = getUpgradeButtons(tower);
+            const btnW = placementArea.cellW * 0.9, btnH = placementArea.cellH * 0.5, gap = 5;
+            const barW = (btnW + gap) * btns.length - gap, barH = btnH + placementArea.cellH * 0.4;
+            let barX = tower.x - barW / 2, barY = tower.y - placementArea.cellH / 2 - barH;
+            if (barY < 0) barY = tower.y + placementArea.cellH / 2;
+            if (barX < 0) barX = 5; if (barX + barW > canvas.width) barX = canvas.width - barW - 5;
 
-        function getFusionRecipe(type1, type2) {
+            ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.beginPath(); ctx.roundRect(barX, barY, barW, barH, 8); ctx.fill();
 
-            const recipes = [
+            tower.ui = { buttons: [] };
+            btns.forEach((btn, i) => {
+                const btnX = barX + (btnW + gap) * i; const btnY = barY + barH - btnH - 5;
+                tower.ui.buttons.push({ ...btn, x: btnX, y: btnY, w: btnW, h: btnH });
+                ctx.fillStyle = btn.action.disabled ? '#555' : btn.color; // ✨ 수정
+                ctx.beginPath(); ctx.roundRect(btnX, btnY, btnW, btnH, 5); ctx.fill();
+                ctx.fillStyle = '#fff'; ctx.font = `bold ${btnH*0.4}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillText(btn.text, btnX + btnW/2, btnY + btnH/2 - btnH*0.1);
+                ctx.font = `${btnH*0.3}px sans-serif`; ctx.fillText(btn.subtext, btnX + btnW/2, btnY + btnH/2 + btnH*0.25);
+            });
 
-                { pair: ['gatling', 'cluster'], result: 'flamethrower' }, { pair: ['gatling', 'blizzard'], result: 'cryo_gun' },
-
-                { pair: ['gatling', 'railgun'], result: 'laser_cannon' }, { pair: ['cluster', 'blizzard'], result: 'hailstorm' },
-
-                { pair: ['cluster', 'railgun'], result: 'missile_launcher' }, { pair: ['blizzard', 'railgun'], result: 'plasma_gun' }
-
+            ctx.fillStyle = '#fff'; ctx.font = `bold ${barH*0.2}px sans-serif`; ctx.textAlign = 'left';
+            ctx.fillText(`${tower.name} | 💥${tower.damage} | Lv.${tower.damageLevel}/${tower.rangeLevel}`, barX + 8, barY + barH*0.2);
+        }
+        
+        function getUpgradeButtons(tower) {
+            const sellValue = Math.floor(tower.totalSpent * 0.7);
+            const dmgCost = Math.floor(tower.damageCost * Math.pow(1.5, tower.damageLevel - 1));
+            const rangeCost = Math.floor(tower.rangeCost * Math.pow(1.6, tower.rangeLevel - 1));
+            const canUpgradeDmg = localGameState.gold >= dmgCost, canUpgradeRange = localGameState.gold >= rangeCost;
+            const btns = [
+                { text: '공격', subtext: `${dmgCost}G`, color: COLORS.upgrade, action: { type: 'upgrade_damage', cost: dmgCost, disabled: !canUpgradeDmg } }, // ✨ 수정
+                { text: '사거리', subtext: `${rangeCost}G`, color: COLORS.info, action: { type: 'upgrade_range', cost: rangeCost, disabled: !canUpgradeRange } }, // ✨ 수정
             ];
-
-            return recipes.find(r => r.pair.includes(type1) && r.pair.includes(type2));
-
+            if (tower.tier === 1) {
+                const sameTypeCount = towers.filter(t => t.type === tower.type).length;
+                const canCombine = sameTypeCount >= 3;
+                btns.push({ text: '조합', subtext: `${sameTypeCount}/3`, color: COLORS.warning, action: { type: 'combine', disabled: !canCombine } }); // ✨ 수정
+            }
+            btns.push({ text: '판매', subtext: `${sellValue}G`, color: COLORS.danger, action: { type: 'sell', value: sellValue } }); // ✨ 수정
+            return btns;
         }
 
-        function getTowerConfig(type) {
-
-            const rangeMultiplier = playerLayout.gridSize || 20;
-
-            const configs = {
-
-                // Tier 1
-
-                basic: { emoji: '🔫', damage: 35, range: rangeMultiplier * 8, fireRate: 700, color: '#00ffff', splashRadius: 0, damageCost: 30, rangeCost: 40, tier: 1, combineTo: 'gatling' },
-
-                splash: { emoji: '💣', damage: 40, range: rangeMultiplier * 7, fireRate: 1500, color: '#ffa500', splashRadius: rangeMultiplier * 4, damageCost: 80, rangeCost: 100, tier: 1, combineTo: 'cluster' },
-
-                slow: { emoji: '❄️', damage: 5, range: rangeMultiplier * 7.5, fireRate: 1000, color: '#87CEEB', splashRadius: rangeMultiplier * 3, slowEffect: { power: 0.3, duration: 2000 }, damageCost: 60, rangeCost: 70, tier: 1, combineTo: 'blizzard' },
-
-                sniper: { emoji: '🎯', damage: 150, range: rangeMultiplier * 15, fireRate: 1800, color: '#ff00ff', splashRadius: 0, damageCost: 120, rangeCost: 150, tier: 1, combineTo: 'railgun' },
-
-                // Tier 2
-
-                gatling: { emoji: '🤖', damage: 80, range: rangeMultiplier * 9, fireRate: 400, color: '#00ffff', splashRadius: 0, damageCost: 150, rangeCost: 200, tier: 2 },
-
-                cluster: { emoji: '💥', damage: 100, range: rangeMultiplier * 8, fireRate: 1300, color: '#ffa500', splashRadius: rangeMultiplier * 6, damageCost: 300, rangeCost: 350, tier: 2 },
-
-                blizzard: { emoji: '🥶', damage: 15, range: rangeMultiplier * 8.5, fireRate: 800, color: '#87CEEB', splashRadius: rangeMultiplier * 4.5, slowEffect: { power: 0.5, duration: 2500 }, damageCost: 250, rangeCost: 300, tier: 2 },
-
-                railgun: { emoji: '🛰️', damage: 400, range: rangeMultiplier * 20, fireRate: 1600, color: '#ff00ff', splashRadius: 0, damageCost: 500, rangeCost: 600, tier: 2 },
-
-                // Tier 3
-
-                flamethrower: { emoji: '🔥', damage: 150, range: rangeMultiplier * 8, fireRate: 200, color: '#FF4500', splashRadius: rangeMultiplier * 2, tier: 3 },
-
-                cryo_gun: { emoji: '🧊', damage: 100, range: rangeMultiplier * 9, fireRate: 500, color: '#ADD8E6', splashRadius: 0, slowEffect: { power: 0.4, duration: 1000 }, tier: 3 },
-
-                laser_cannon: { emoji: '☄️', damage: 600, range: rangeMultiplier * 22, fireRate: 1000, color: '#FF0000', splashRadius: 0, tier: 3 },
-
-                hailstorm: { emoji: '🌨️', damage: 120, range: rangeMultiplier * 10, fireRate: 1500, color: '#FFFFFF', splashRadius: rangeMultiplier * 7, slowEffect: { power: 0.6, duration: 3000 }, tier: 3 },
-
-                missile_launcher: { emoji: '🚀', damage: 800, range: rangeMultiplier * 18, fireRate: 2500, color: '#FFA500', splashRadius: rangeMultiplier * 8, tier: 3 },
-
-                plasma_gun: { emoji: '🔮', damage: 500, range: rangeMultiplier * 15, fireRate: 1200, color: '#DA70D6', splashRadius: rangeMultiplier * 3, slowEffect: { power: 0.2, duration: 1000 }, tier: 3 },
-
-                // Legendary
-
-                lightning: { emoji: '⚡️', damage: 50, range: rangeMultiplier * 10, fireRate: 300, color: '#FFFF00', splashRadius: 0, damageCost: 400, rangeCost: 500, tier: 99 },
-
-                volcano: { emoji: '🌋', damage: 75, range: rangeMultiplier * 9, fireRate: 1400, color: '#FF4500', splashRadius: rangeMultiplier * 5, damageCost: 500, rangeCost: 600, tier: 99 },
-
-                ice_shard: { emoji: '💎', damage: 20, range: rangeMultiplier * 12, fireRate: 1500, color: '#FFFFFF', splashRadius: 0, slowEffect: { power: 0.6, duration: 3000 }, damageCost: 500, rangeCost: 500, tier: 99 },
-
-                ion_cannon: { emoji: '☢️', damage: 500, range: rangeMultiplier * 25, fireRate: 2500, color: '#00FF00', splashRadius: 0, damageCost: 600, rangeCost: 700, tier: 99 },
-
-            };
-
-            return configs[type];
-
+        function updateUI(){
+            document.getElementById('round-stat').textContent = `R ${localGameState.round||0}`;
+            document.getElementById('lives-stat').textContent = `❤️ ${localGameState.lives||0}`;
+            document.getElementById('gold-stat').textContent = `💰 ${localGameState.gold||0}`;
+        }
+        let msgTimer = null;
+        function flashMsg(m, duration = 2000){
+            let el = document.getElementById('msg-overlay');
+            if (!el) {
+                el = document.createElement('div'); el.id = 'msg-overlay';
+                Object.assign(el.style, {
+                    position: 'fixed', top: '78px', left: '50%', padding: '8px 14px', borderRadius: '10px',
+                    background: 'rgba(20,20,20,0.8)', backdropFilter: 'blur(4px)', color: '#ffd', zIndex: '200', fontWeight: '700', 
+                    transition: 'opacity 0.5s, transform 0.5s', opacity: '0', transform: 'translateX(-50%) translateY(-20px)'
+                });
+                document.body.appendChild(el);
+            }
+            el.textContent = m; el.style.opacity = '1'; el.style.transform = 'translateX(-50%) translateY(0)';
+            if(msgTimer) clearTimeout(msgTimer);
+            msgTimer = setTimeout(()=>{ el.style.opacity = '0'; el.style.transform = 'translateX(-50%) translateY(-20px)'; }, duration);
         }
 
-        function getEnemyConfig(type) {
+        const recipeBtn = document.getElementById('recipe-toggle'), recipeModal = document.getElementById('recipe-modal');
+        recipeBtn.addEventListener('click', () => { recipeModal.style.display = recipeModal.style.display === 'none' ? 'block' : 'none'; });
+        window.addEventListener('keydown', e => { if(e.key === 'Escape') recipeModal.style.display = 'none'; });
 
-            const configs = {
-
-                normal: { emoji: '👽', health: 60, speed: 1.2, gold: 5 }, fast: { emoji: '👹', health: 90, speed: 2.2, gold: 8 },
-
-                boss: { emoji: '👿', health: 1500, speed: 1.0, gold: 50 }, mega_boss: { emoji: '👑', health: 6000, speed: 0.8, gold: 500 }
-
-            };
-
-            return configs[type];
-
-        }
-
-        
-
-        showScreen('start');
-
-        window.addEventListener('resize', resizeCanvas);
-
+        startGame();
+        window.addEventListener('resize', resize);
     });
-
     </script>
-
 </body>
-
 </html>
