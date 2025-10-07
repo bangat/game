@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <title>타워 디펜스 (UI 수정 최종본)</title>
+    <title>타워 디펜스 (V4: 밸런스 및 그래픽 개선)</title>
     <style>
         :root{
             --bg:#0e0e10;
@@ -89,14 +89,9 @@
         const canvas = document.getElementById('game-canvas');
         const ctx = canvas.getContext('2d', { alpha: true });
         
-        // ✨ 수정: JS에서 사용할 색상 값을 상수로 정의
         const COLORS = {
-            grass: '#345234',
-            path: '#2a2a2a',
-            danger: '#e53935',
-            warning: '#ffb300',
-            info: '#039be5',
-            upgrade: '#43a047'
+            grass: '#345234', path: '#2a2a2a', danger: '#e53935',
+            warning: '#ffb300', info: '#039be5', upgrade: '#43a047'
         };
 
         let localGameState = { round: 0, lives: 20, gold: 250 };
@@ -119,11 +114,8 @@
             const wrap = document.getElementById('game-wrap');
             const rect = wrap.getBoundingClientRect();
             canvas.width = rect.width; canvas.height = rect.height;
-
-            // ✨ 수정: 화면 폭에 따라 그리드 칸 수를 조절하여 타워 크기 확보
             placementArea.cols = canvas.width < 600 ? 8 : 10;
             const pathMargin = 30;
-
             placementArea.x = pathMargin; placementArea.y = pathMargin;
             placementArea.w = canvas.width - pathMargin * 2;
             placementArea.h = canvas.height - pathMargin * 2;
@@ -241,12 +233,18 @@
             });
             towers.forEach(t=>{
                 t.cooldown -= deltaTime;
-                if(t.cooldown <= 0){ const target = findTarget(t); if(target){ projectiles.push({ x:t.x, y:t.y, target, damage:t.damage, splashRadius:t.splashRadius, slowEffect:t.slowEffect, color:t.color }); t.cooldown = t.fireRate; } }
+                if(t.cooldown <= 0){ const target = findTarget(t); if(target){ 
+                    projectiles.push({ 
+                        x:t.x, y:t.y, target, damage:t.damage, splashRadius:t.splashRadius, 
+                        slowEffect:t.slowEffect, projectileType: t.projectileType, angle: Math.atan2(target.y - t.y, target.x - t.x) 
+                    }); 
+                    t.cooldown = t.fireRate; 
+                } }
             });
             for(let i=projectiles.length-1;i>=0;i--){
                 const p = projectiles[i]; if(!p.target || p.target.health <= 0){ projectiles.splice(i,1); continue; }
-                const sp = 15 * (deltaTime/16.67); const dist = Math.hypot(p.target.x - p.x, p.target.y - p.y);
-                if(dist < sp){ hitTarget(p.target, p.damage, p.splashRadius, p.target.x, p.target.y, p.slowEffect); projectiles.splice(i,1); }
+                const sp = 20 * (deltaTime/16.67); const dist = Math.hypot(p.target.x - p.x, p.target.y - p.y);
+                if(dist < sp){ hitTarget(p, p.target); projectiles.splice(i,1); }
                 else { p.x += (p.target.x - p.x)/dist*sp; p.y += (p.target.y - p.y)/dist*sp; }
             }
             for(let i=splashEffects.length-1;i>=0;i--){ if((splashEffects[i].life -= deltaTime) <=0) splashEffects.splice(i,1); }
@@ -255,17 +253,36 @@
                 localGameState.gold += bonus; flashMsg(`${localGameState.round} 라운드 클리어! +${bonus}G`); updateUI();
             }
         }
-        function hitTarget(target, damage, splashRadius, x, y, slowEffect){
-            target.health -= damage;
-            if(slowEffect){ if(!target.originalSpeed) target.originalSpeed = target.speed; target.speed = target.originalSpeed * (1 - slowEffect.power); target.slowTimer = slowEffect.duration; }
+        
+        // ✨ 수정: 광역 피해 로직 변경
+        function hitTarget(projectile, target){
+            const { damage, splashRadius, slowEffect } = projectile;
+            const x = target.x, y = target.y;
+
             if(splashRadius > 0){
-                splashEffects.push({x,y,radius:splashRadius,life:250});
-                enemies.forEach(e=>{ if(e !== target && Math.hypot(e.x - x, e.y - y) <= splashRadius) e.health -= damage; });
+                splashEffects.push({x, y, radius:splashRadius, life:300});
+                enemies.forEach(e => {
+                    if (Math.hypot(e.x - x, e.y - y) <= splashRadius) {
+                        e.health -= damage;
+                        if(slowEffect) applySlow(e, slowEffect);
+                    }
+                });
+            } else {
+                target.health -= damage;
+                if(slowEffect) applySlow(target, slowEffect);
             }
+
             let died = false;
             for(let i=enemies.length-1;i>=0;i--){ if(enemies[i].health <= 0){ localGameState.gold += getEnemyConfig(enemies[i].type).gold; enemies.splice(i,1); died = true; } }
             if(died) updateUI();
         }
+
+        function applySlow(enemy, slowEffect) {
+            if(!enemy.originalSpeed) enemy.originalSpeed = enemy.speed;
+            enemy.speed = enemy.originalSpeed * (1 - slowEffect.power);
+            enemy.slowTimer = slowEffect.duration;
+        }
+
         function defaultPath(){
             const pa = placementArea; const m = pa.cellH/2;
             return [ {x: -20, y: pa.y + m}, {x: pa.x + pa.w + m, y: pa.y + m}, {x: pa.x + pa.w + m, y: pa.y + pa.h - m}, {x: pa.x - m, y: pa.y + pa.h - m}, {x: pa.x - m, y: -20} ];
@@ -283,24 +300,28 @@
             return closest;
         }
 
+        // ✨ 수정: 타워 밸런스 대폭 상향 및 발사체 타입 추가
         function getTowerConfig(type){
             const cellAvg = placementArea.cellW || 40;
             const configs = {
-                basic: { name:'기본', img: towerImages.basic, damage: 35, range: cellAvg * 3.5, fireRate: 700, damageCost:30, rangeCost:40, tier:1, combineTo:'gatling' },
-                splash: { name:'광역', img: towerImages.splash, damage: 40, range: cellAvg * 3.2, fireRate: 1500, damageCost:80, rangeCost:100, tier:1, combineTo:'cluster' },
-                slow: { name:'슬로우', img: towerImages.slow, damage: 6, range: cellAvg * 3.4, fireRate: 1000, slowEffect:{power:0.28,duration:2200}, damageCost:60, rangeCost:70, tier:1, combineTo:'blizzard' },
-                sniper: { name:'저격', img: towerImages.sniper, damage:150, range: cellAvg * 6.2, fireRate:1800, damageCost:120, rangeCost:150, tier:1, combineTo:'railgun' },
-                gatling: { name:'개틀링', img: towerImages.gatling, damage: 40, range: cellAvg * 3.8, fireRate:450, damageCost:150, rangeCost:200, tier:2 },
-                cluster: { name:'클러스터', img: towerImages.cluster, damage: 60, range: cellAvg * 3.6, fireRate:1200, damageCost:300, rangeCost:350, tier:2 },
-                blizzard: { name:'블리자드', img: towerImages.blizzard, damage: 12, range: cellAvg * 3.9, fireRate:900, slowEffect:{power:0.45,duration:2400}, damageCost:250, rangeCost:300, tier:2 },
-                railgun: { name:'레일건', img: towerImages.railgun, damage:220, range: cellAvg * 8.0, fireRate:1600, damageCost:320, rangeCost:380, tier:2 },
-                legendary_basic: { name:'전설-기본', img: towerImages.legendary_basic, damage:50, range: cellAvg * 4.5, fireRate:300, damageCost:400, rangeCost:500, tier:99 },
-                legendary_splash: { name:'전설-광역', img: towerImages.legendary_splash, damage:75, range: cellAvg * 4.2, fireRate:1400, damageCost:500, rangeCost:600, tier:99 },
-                legendary_slow: { name:'전설-슬로우', img: towerImages.legendary_slow, damage:20, range: cellAvg * 5.2, fireRate:1500, slowEffect:{power:0.6,duration:3000}, damageCost:500, rangeCost:500, tier:99 },
-                legendary_sniper: { name:'전설-저격', img: towerImages.legendary_sniper, damage:500, range: cellAvg * 9.5, fireRate:2500, damageCost:600, rangeCost:700, tier:99 },
+                basic: { name:'기본', projectileType:'bullet', damage: 35, range: cellAvg * 3.5, fireRate: 700, damageCost:30, rangeCost:40, tier:1, combineTo:'gatling' },
+                splash: { name:'광역', projectileType:'rocket', damage: 40, splashRadius: cellAvg * 1.5, range: cellAvg * 3.2, fireRate: 1500, damageCost:80, rangeCost:100, tier:1, combineTo:'cluster' },
+                slow: { name:'슬로우', projectileType:'bullet', damage: 10, range: cellAvg * 3.4, fireRate: 1000, slowEffect:{power:0.3,duration:2200}, damageCost:60, rangeCost:70, tier:1, combineTo:'blizzard' },
+                sniper: { name:'저격', projectileType:'railgun', damage:150, range: cellAvg * 6.2, fireRate:1800, damageCost:120, rangeCost:150, tier:1, combineTo:'railgun' },
+                
+                gatling: { name:'개틀링', projectileType:'laser', damage: 50, range: cellAvg * 4.0, fireRate: 150, damageCost:150, rangeCost:200, tier:2 },
+                cluster: { name:'클러스터', projectileType:'rocket', damage: 120, splashRadius: cellAvg * 2.5, range: cellAvg * 3.8, fireRate:1400, damageCost:300, rangeCost:350, tier:2 },
+                blizzard: { name:'블리자드', projectileType:'bullet', damage: 30, range: cellAvg * 4.2, fireRate:900, splashRadius: cellAvg * 1.8, slowEffect:{power:0.5,duration:2500}, damageCost:250, rangeCost:300, tier:2 },
+                railgun: { name:'레일건', projectileType:'railgun', damage: 800, range: cellAvg * 8.5, fireRate:1600, damageCost:320, rangeCost:380, tier:2 },
+
+                legendary_basic: { name:'전설-기본', projectileType:'laser', damage:100, range: cellAvg * 4.5, fireRate:100, damageCost:400, rangeCost:500, tier:99 },
+                legendary_splash: { name:'전설-광역', projectileType:'rocket', damage:150, range: cellAvg * 4.2, fireRate:1400, splashRadius: cellAvg * 3.0, damageCost:500, rangeCost:600, tier:99 },
+                legendary_slow: { name:'전설-슬로우', projectileType:'bullet', damage:50, range: cellAvg * 5.2, fireRate:800, splashRadius: cellAvg * 2.0, slowEffect:{power:0.6,duration:3000}, damageCost:500, rangeCost:500, tier:99 },
+                legendary_sniper: { name:'전설-저격', projectileType:'railgun', damage:1200, range: cellAvg * 10.0, fireRate:2000, damageCost:600, rangeCost:700, tier:99 },
             };
             const config = { ...configs[type] } || { ...configs.basic };
             config.baseDamage = config.damage; config.baseRange = config.range;
+            config.img = towerImages[type] || towerImages.basic;
             return config;
         }
         function getEnemyConfig(type){
@@ -314,14 +335,12 @@
 
         function draw(){
             ctx.clearRect(0,0,canvas.width,canvas.height);
-            ctx.fillStyle = COLORS.grass; // ✨ 수정
+            ctx.fillStyle = COLORS.grass;
             ctx.fillRect(placementArea.x, placementArea.y, placementArea.w, placementArea.h);
             ctx.fillStyle = 'rgba(0,0,0,0.1)';
-            for(let i=0; i < (placementArea.w * placementArea.h / 50); i++){
-                ctx.fillRect(placementArea.x + Math.random() * placementArea.w, placementArea.y + Math.random() * placementArea.h, 2, 2);
-            }
+            for(let i=0; i < (placementArea.w * placementArea.h / 50); i++){ ctx.fillRect(placementArea.x + Math.random() * placementArea.w, placementArea.y + Math.random() * placementArea.h, 2, 2); }
             const path = defaultPath();
-            ctx.strokeStyle = COLORS.path; // ✨ 수정
+            ctx.strokeStyle = COLORS.path;
             ctx.lineWidth = placementArea.cellH * 0.9; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
             ctx.beginPath(); ctx.moveTo(path[0].x, path[0].y); path.forEach(p=>ctx.lineTo(p.x, p.y)); ctx.stroke();
             ctx.strokeStyle = 'rgba(0,0,0,0.2)'; ctx.lineWidth = 1;
@@ -334,8 +353,36 @@
                 ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(e.x - barW/2, barY, barW, 6);
                 ctx.fillStyle = hpRatio > 0.5 ? '#4caf50' : '#ffc107'; ctx.fillRect(e.x - barW/2, barY, barW*hpRatio, 6);
             });
-            projectiles.forEach(p=>{ ctx.fillStyle = p.color || '#fff'; ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, Math.PI*2); ctx.fill(); });
-            splashEffects.forEach(s=>{ ctx.fillStyle = 'rgba(255,165,0,0.2)'; ctx.beginPath(); ctx.arc(s.x, s.y, s.radius, 0, Math.PI*2); ctx.fill(); });
+            
+            // ✨ 수정: 발사체 타입에 따라 다르게 그리기
+            projectiles.forEach(p => {
+                ctx.save();
+                ctx.translate(p.x, p.y);
+                ctx.rotate(p.angle);
+                switch(p.projectileType) {
+                    case 'laser':
+                        ctx.fillStyle = '#ff3399';
+                        ctx.shadowColor = '#ff3399'; ctx.shadowBlur = 10;
+                        ctx.fillRect(0, -2, 25, 4);
+                        break;
+                    case 'rocket':
+                        ctx.fillStyle = '#cccccc'; ctx.fillRect(0, -4, 18, 8);
+                        ctx.fillStyle = '#ff6600'; ctx.beginPath(); ctx.moveTo(-2, 0); ctx.lineTo(-10, -5); ctx.lineTo(-10, 5); ctx.closePath(); ctx.fill();
+                        break;
+                    case 'railgun':
+                        ctx.fillStyle = '#33ccff';
+                        ctx.shadowColor = '#33ccff'; ctx.shadowBlur = 15;
+                        ctx.fillRect(0, -3, 35, 6);
+                        break;
+                    default: // bullet
+                        ctx.fillStyle = '#ffffff';
+                        ctx.beginPath(); ctx.arc(0, 0, 5, 0, Math.PI * 2); ctx.fill();
+                }
+                ctx.restore();
+            });
+
+            // ✨ 수정: 광역 효과 시각 강화
+            splashEffects.forEach(s=>{ ctx.fillStyle = `rgba(255, 180, 50, ${s.life/300 * 0.7})`; ctx.beginPath(); ctx.arc(s.x, s.y, s.radius, 0, Math.PI*2); ctx.fill(); });
             
             if(selectedTowerForUpgrade) {
                 const t = selectedTowerForUpgrade;
@@ -352,20 +399,17 @@
             let barX = tower.x - barW / 2, barY = tower.y - placementArea.cellH / 2 - barH;
             if (barY < 0) barY = tower.y + placementArea.cellH / 2;
             if (barX < 0) barX = 5; if (barX + barW > canvas.width) barX = canvas.width - barW - 5;
-
             ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.beginPath(); ctx.roundRect(barX, barY, barW, barH, 8); ctx.fill();
-
             tower.ui = { buttons: [] };
             btns.forEach((btn, i) => {
                 const btnX = barX + (btnW + gap) * i; const btnY = barY + barH - btnH - 5;
                 tower.ui.buttons.push({ ...btn, x: btnX, y: btnY, w: btnW, h: btnH });
-                ctx.fillStyle = btn.action.disabled ? '#555' : btn.color; // ✨ 수정
+                ctx.fillStyle = btn.action.disabled ? '#555' : btn.color;
                 ctx.beginPath(); ctx.roundRect(btnX, btnY, btnW, btnH, 5); ctx.fill();
                 ctx.fillStyle = '#fff'; ctx.font = `bold ${btnH*0.4}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
                 ctx.fillText(btn.text, btnX + btnW/2, btnY + btnH/2 - btnH*0.1);
                 ctx.font = `${btnH*0.3}px sans-serif`; ctx.fillText(btn.subtext, btnX + btnW/2, btnY + btnH/2 + btnH*0.25);
             });
-
             ctx.fillStyle = '#fff'; ctx.font = `bold ${barH*0.2}px sans-serif`; ctx.textAlign = 'left';
             ctx.fillText(`${tower.name} | 💥${tower.damage} | Lv.${tower.damageLevel}/${tower.rangeLevel}`, barX + 8, barY + barH*0.2);
         }
@@ -376,15 +420,15 @@
             const rangeCost = Math.floor(tower.rangeCost * Math.pow(1.6, tower.rangeLevel - 1));
             const canUpgradeDmg = localGameState.gold >= dmgCost, canUpgradeRange = localGameState.gold >= rangeCost;
             const btns = [
-                { text: '공격', subtext: `${dmgCost}G`, color: COLORS.upgrade, action: { type: 'upgrade_damage', cost: dmgCost, disabled: !canUpgradeDmg } }, // ✨ 수정
-                { text: '사거리', subtext: `${rangeCost}G`, color: COLORS.info, action: { type: 'upgrade_range', cost: rangeCost, disabled: !canUpgradeRange } }, // ✨ 수정
+                { text: '공격', subtext: `${dmgCost}G`, color: COLORS.upgrade, action: { type: 'upgrade_damage', cost: dmgCost, disabled: !canUpgradeDmg } },
+                { text: '사거리', subtext: `${rangeCost}G`, color: COLORS.info, action: { type: 'upgrade_range', cost: rangeCost, disabled: !canUpgradeRange } },
             ];
             if (tower.tier === 1) {
                 const sameTypeCount = towers.filter(t => t.type === tower.type).length;
                 const canCombine = sameTypeCount >= 3;
-                btns.push({ text: '조합', subtext: `${sameTypeCount}/3`, color: COLORS.warning, action: { type: 'combine', disabled: !canCombine } }); // ✨ 수정
+                btns.push({ text: '조합', subtext: `${sameTypeCount}/3`, color: COLORS.warning, action: { type: 'combine', disabled: !canCombine } });
             }
-            btns.push({ text: '판매', subtext: `${sellValue}G`, color: COLORS.danger, action: { type: 'sell', value: sellValue } }); // ✨ 수정
+            btns.push({ text: '판매', subtext: `${sellValue}G`, color: COLORS.danger, action: { type: 'sell', value: sellValue } });
             return btns;
         }
 
