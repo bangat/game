@@ -4,515 +4,530 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>메모리게임</title>
+    <link href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff" as="font" type="font/woff" crossorigin>
     <style>
+        @font-face {
+            font-family: 'GmarketSans';
+            src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff') format('woff');
+            font-weight: 500;
+            font-style: normal;
+        }
+        @font-face {
+            font-family: 'GmarketSans';
+            src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansBold.woff') format('woff');
+            font-weight: 700;
+            font-style: normal;
+        }
+
         :root {
-            --bg-color: #e3f2fd; --primary-color: #1e88e5; --accent-color: #ffc107;
-            --card-back-color: #42a5f5; --card-front-color: #ffffff;
-            --text-color: #212121; --light-text-color: #ffffff;
+            --bg-color: #F3F7FD; --primary-color: #4A8DFF; --accent-color: #FFC84A;
+            --card-back-color: #6DA4FF; --card-front-color: #ffffff;
+            --text-color-dark: #333D4B; --text-color-light: #ffffff;
+            --danger-color: #F76363; --success-color: #30D394;
+            --panel-bg: #ffffff; --panel-border: #E5E8EB;
+            --btn-secondary-bg: #F0F3F4; --btn-secondary-text: #566573;
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         html, body {
-            width: 100%; height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            width: 100%; height: 100%; overflow: hidden; font-family: 'GmarketSans', sans-serif;
             background-color: var(--bg-color); display: flex; flex-direction: column;
             justify-content: center; align-items: center; -webkit-user-select: none; user-select: none; touch-action: manipulation;
         }
-        #game-wrapper { width: 100%; height: 100%; display: flex; flex-direction: column; }
-        #game-header {
-            flex-shrink: 0; padding: 10px; display: flex;
-            justify-content: space-around; align-items: center; width: 100%;
-            flex-wrap: wrap; gap: 10px;
-        }
-        .status-box {
-            background-color: rgba(255, 255, 255, 0.7); color: var(--text-color); padding: 8px 15px;
-            border-radius: 20px; font-size: 1.1em; font-weight: bold;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            transition: transform 0.3s, background-color 0.3s, box-shadow 0.3s, border 0.3s;
-            border: 3px solid transparent;
-        }
-        .status-box.my-turn {
-            background-color: var(--accent-color);
-            color: var(--text-color);
-            transform: scale(1.15);
-            box-shadow: 0 4px 15px rgba(255, 193, 7, 0.8);
-            border: 3px solid #fff;
-        }
-        #game-container {
-            width: 100%; flex-grow: 1; display: flex;
-            justify-content: center; align-items: center; padding: 10px;
-            min-height: 0;
-        }
-        #card-grid {
-            display: grid;
-            gap: 5px;
-            width: 100%;
-            height: 100%;
-            max-width: 450px;
-        }
-        #card-grid.p2 { grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(5, 1fr); }
-        #card-grid.p3 { grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(6, 1fr); }
-        #card-grid.p4 { grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(8, 1fr); }
-        #card-grid.single { grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(5, 1fr); }
+        .view { width: 100%; height: 100%; display: flex; flex-direction: column; }
+        .hidden { display: none !important; }
 
+        /* --- 게임 UI 스타일 --- */
+        #game-wrapper { align-items: center; }
+        #game-header { flex-shrink: 0; padding: 10px; display: flex; justify-content: center; align-items: center; width: 100%; flex-wrap: wrap; gap: 5px 10px; }
+        .status-box { background-color: rgba(255,255,255,0.9); color: var(--text-color-dark); padding: 8px 15px; border-radius: 20px; font-size: 1em; font-weight: 500; box-shadow: 0 2px 4px rgba(0,0,0,0.05); transition: all 0.3s ease; border: 2px solid transparent; }
+        /* [수정] '내 차례' 표시 강화 */
+        .status-box.my-turn {
+            background-color: var(--accent-color); color: var(--text-color-dark);
+            transform: scale(1.05); border-color: #fff; font-weight: 700;
+            animation: pulse-turn 1.5s infinite;
+        }
+        @keyframes pulse-turn {
+            0% { box-shadow: 0 4px 12px rgba(255, 200, 74, 0.7); }
+            50% { box-shadow: 0 4px 20px rgba(255, 200, 74, 1); }
+            100% { box-shadow: 0 4px 12px rgba(255, 200, 74, 0.7); }
+        }
+        #game-container { width: 100%; flex-grow: 1; display: flex; justify-content: center; align-items: center; padding: 10px; min-height: 0; }
+        /* [수정] 카드 배열 유연성 확보 */
+        #card-grid { display: grid; gap: 6px; width: 100%; height: 100%; max-width: 450px; max-height: 700px; }
+        #card-grid.p2, #card-grid.single { grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(5, 1fr); }
+        #card-grid.p3 { grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(6, 1fr); }
+        /* [수정] 4인 플레이 시 모바일 배열 최적화 */
+        #card-grid.p4 { grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(10, 1fr); }
         .card { perspective: 1000px; cursor: pointer; }
-        .card-inner {
-            position: relative; width: 100%; height: 100%;
-            transition: transform 0.6s; transform-style: preserve-3d; border-radius: 8px;
-        }
+        .card-inner { position: relative; width: 100%; height: 100%; transition: transform 0.6s; transform-style: preserve-3d; border-radius: 10px; }
         .card.flipped .card-inner { transform: rotateY(180deg); }
-        .card.matched .card-inner { transform: scale(0.9); opacity: 0.5; }
-        .card-face {
-            position: absolute; width: 100%; height: 100%;
-            -webkit-backface-visibility: hidden; backface-visibility: hidden;
-            display: flex; justify-content: center; align-items: center;
-            border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-            font-size: clamp(1.2em, 5vw, 2.2em);
+        .card.matched { cursor: default; }
+        .card.matched .card-inner {
+            transform: scale(0.9);
+            opacity: 0.4;
+            transition: all 0.5s ease;
         }
-        .card-back { background-color: var(--card-back-color); color: var(--light-text-color); }
+        .card.matched .card-front {
+             box-shadow: 0 0 0 4px var(--success-color) inset;
+        }
+        .card.matched .card-front::after {
+            content: '✓';
+            position: absolute;
+            font-size: 1.2em;
+            font-weight: 700;
+            color: var(--success-color);
+            background-color: rgba(255, 255, 255, 0.85);
+            border-radius: 50%;
+            padding: 2px 5px;
+            line-height: 1;
+            bottom: 5px;
+            right: 5px;
+        }
+        .card-face { position: absolute; width: 100%; height: 100%; -webkit-backface-visibility: hidden; backface-visibility: hidden; display: flex; justify-content: center; align-items: center; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); font-size: clamp(1.5em, 5vw, 2.5em); }
+        .card-back { background: var(--card-back-color); }
         .card-front { background-color: var(--card-front-color); transform: rotateY(180deg); }
-        #start-menu, .overlay {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            display: flex; flex-direction: column; justify-content: center; align-items: center;
-            padding: 20px; z-index: 100; text-align: center;
-        }
-        #start-menu { background-color: var(--bg-color); }
-        .overlay { color: white; background-color: rgba(0,0,0,0.8); }
-        .overlay > div { padding: 20px; }
-        #start-menu h1 { font-size: 3em; color: var(--primary-color); margin-bottom: 40px; }
-        .menu-btn {
-            width: 100%; max-width: 300px; padding: 15px; font-size: 1.2em; font-weight: bold;
-            border-radius: 12px; border: none; cursor: pointer; margin-bottom: 15px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.1s;
-        }
-        .menu-btn:active { transform: scale(0.98); }
-        .menu-btn.primary { background-color: var(--primary-color); color: var(--light-text-color); }
-        .menu-btn.secondary { background-color: #f0f0f0; color: #333; }
-        .menu-btn:disabled { background-color: #ccc; cursor: not-allowed; }
-        #multiplayer-forms { width: 100%; max-width: 300px; margin-top: 20px; border-top: 2px solid #ddd; padding-top: 30px; }
-        #room-code-input { width: 100%; padding: 15px; font-size: 1.2em; text-align: center; border: 2px solid #ccc; border-radius: 12px; margin-bottom: 15px; }
-        #waiting-room-code { font-size: 2.5em; font-weight: bold; background-color: #fff; color: var(--text-color); padding: 10px 30px; border-radius: 10px; margin: 15px 0; display: inline-block; }
-        #player-list { margin: 20px 0; font-size: 1.2em; width: 100%; max-width: 300px; }
-        .player-item { background-color: rgba(255,255,255,0.8); color: var(--text-color); padding: 10px; border-radius: 8px; margin-bottom: 8px; font-weight: bold; }
-        .player-item.is-host::after { content: ' (방장)'; color: var(--primary-color); }
-        #start-game-btn { margin-top: 20px; }
-        .spinner { margin: 20px auto; border: 4px solid rgba(255, 255, 255, 0.3); border-radius: 50%; border-top: 4px solid #fff; width: 40px; height: 40px; animation: spin 1s linear infinite; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        .result-message, #start-countdown { font-size: 2.5em; font-weight: bold; margin-bottom: 15px; }
-        .score-info { font-size: 1.5em; }
-        #game-over-message { font-size: 4em; }
-        #game-over-buttons { display: flex; flex-direction: column; align-items: center; gap: 15px; margin-top: 30px; width: 100%; max-width: 300px; }
         
-        /* [추가] '내 차례!' 메시지 스타일 */
-        #turn-indicator {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background-color: rgba(0, 0, 0, 0.6);
-            color: white;
-            padding: 20px 40px;
-            border-radius: 15px;
-            font-size: 3em;
-            font-weight: bold;
-            z-index: 50;
-            pointer-events: none; /* 클릭 방해하지 않도록 설정 */
-            opacity: 0;
-            transition: opacity 0.5s ease;
+        /* --- 공통 UI 스타일 --- */
+        .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px; z-index: 200; text-align: center; background-color: rgba(0,0,0,0.6); }
+        .modal-content { background: var(--panel-bg); border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); width: 90%; max-width: 400px; overflow: hidden; }
+        .modal-header { background-color: var(--primary-color); padding: 15px; }
+        .modal-header h2 { color: var(--text-color-light); font-size: 1.8em; font-weight: 700; letter-spacing: 4px; }
+        .modal-body { padding: 25px; }
+        .modal-body p { font-size: 1.1em; margin-bottom: 20px; color: #555; font-weight: 500; line-height: 1.5; }
+
+        .menu-btn {
+            width: 100%; max-width: 320px; padding: 15px; font-size: 1.2em; font-weight: 700; letter-spacing: 1px;
+            font-family: 'GmarketSans', sans-serif; border-radius: 12px; border: none; cursor: pointer;
+            margin-bottom: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: all 0.15s ease-out;
         }
+        .menu-btn:active { transform: scale(0.97); box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .menu-btn.primary { background-color: var(--primary-color); color: var(--text-color-light); }
+        .menu-btn.secondary { background-color: #E9EEF2; color: var(--text-color-dark); }
+        .menu-btn:disabled { background-color: #ccc !important; color: #888 !important; cursor: not-allowed; box-shadow: none; transform: none; }
+        
+        .spinner { margin: 20px auto; border: 4px solid rgba(0, 0, 0, 0.1); border-radius: 50%; border-top: 4px solid var(--primary-color); width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        /* --- 시작 메뉴 --- */
+        #start-menu { justify-content: center; align-items: center; }
+        #start-menu-buttons { width: 100%; max-width: 320px; }
+        .main-title { font-size: 2.8em; font-weight: 700; color: var(--text-color-dark); margin-bottom: 30px; text-align: center; }
+
+        /* --- 공개 방 목록 (로비) --- */
+        #lobby-view { padding: 15px; align-items: center; }
+        .lobby-panel { display: flex; flex-direction: column; width: 100%; max-width: 500px; height: calc(100% - 80px); background: var(--panel-bg); border-radius: 16px; padding: 20px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); border: 1px solid var(--panel-border); }
+        .lobby-header { width: 100%; display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-shrink: 0; }
+        .lobby-header h1 { font-size: 1.8em; font-weight: 700; color: var(--text-color-dark); }
+        .lobby-actions button { padding: 10px 15px; font-size: 1em; margin: 0; width: auto; font-weight: 700; }
+        #room-list-container { width: 100%; flex-grow: 1; overflow-y: auto; }
+        .room-item { display: flex; justify-content: space-between; align-items: center; padding: 15px; border: 1px solid var(--panel-border); border-radius: 12px; margin-bottom: 10px; }
+        .room-info { text-align: left; }
+        .room-name { font-weight: 700; font-size: 1.1em; color: var(--text-color-dark); }
+        .room-details { font-size: 0.9em; color: #777; font-weight: 500; }
+        .room-status.waiting { color: var(--success-color); font-weight: 700; }
+        .room-status.playing { color: var(--danger-color); font-weight: 700; }
+        .join-btn { padding: 10px 20px; font-size: 1em; font-weight: 700; border-radius: 8px; margin: 0; }
+        #lobby-bottom-actions { width: 100%; max-width: 500px; margin-top: 15px; display: flex; gap: 10px; }
+        #lobby-bottom-actions .menu-btn { margin-bottom: 0; }
+
+        /* --- 인게임 대기실, 게임오버 --- */
+        #player-list { margin-top: 20px; font-size: 1.1em; width: 100%; max-width: 320px; }
+        .player-item { background-color: #F3F7FD; color: var(--text-color-dark); padding: 12px; border-radius: 8px; margin-bottom: 8px; font-weight: 700; }
+        .player-item.is-host::after { content: ' (방장)'; color: var(--primary-color); font-weight: 700; }
+        #game-over-message { font-size: 2em; font-weight: 700; }
+        #score-board { margin-top: 20px; width: 100%; }
+        .score-row { padding: 10px; border-radius: 8px; font-size: 1.2em; font-weight: 700; margin: 5px auto; max-width: 280px; }
+        .score-row.winner { background-color: var(--accent-color); color: var(--text-color-dark); transform: scale(1.05); }
+        .score-row.loser { background-color: #F3F7FD; color: var(--text-color-dark); }
+        
+        #countdown-container { color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); text-align: center; }
+        #countdown-container h2 { font-size: 1.8em; font-weight: 700; }
+        #countdown-number { font-size: 6em; font-weight: 700; margin-top: 10px; animation: countdown-pop 1s infinite; }
+        @keyframes countdown-pop {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+        }
+
+        .modal-buttons { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 25px; width: 100%; max-width: 300px; }
     </style>
 </head>
 <body>
-    <div id="turn-indicator" style="display: none;">당신 차례입니다.</div>
+    <div id="start-menu" class="view">
+        <div>
+            <h1 class="main-title">미니게임 천국</h1>
+            <div id="start-menu-buttons">
+                <button id="single-player-btn" class="menu-btn secondary">혼자 하기</button>
+                <button id="multiplayer-btn" class="menu-btn primary">같이 하기</button>
+            </div>
+        </div>
+    </div>
 
-    <div id="game-over-overlay" class="overlay" style="display: none;">
-        <div> 
-            <h2 id="game-over-message"></h2> 
-            <p class="score-info" id="final-scores"></p>
-            <div id="game-over-buttons">
-                <button id="rematch-btn" class="menu-btn">다시 하기</button> 
-                <button id="lobby-btn" class="menu-btn primary">나가기</button> 
-            </div> 
+    <div id="lobby-view" class="view hidden">
+        <div class="lobby-panel">
+            <div class="lobby-header">
+                <h1>게임 대기실</h1>
+                <div class="lobby-actions">
+                    <button id="refresh-rooms-btn" class="menu-btn secondary">새로고침</button>
+                </div>
+            </div>
+            <div id="room-list-container"></div>
         </div>
-    </div>
-    <div id="round-over-overlay" class="overlay" style="display: none;">
-        <div> <h2 class="result-message" id="round-result-message"></h2> <p class="score-info" id="round-score-info"></p> </div>
-    </div>
-    <div id="waiting-overlay" class="overlay" style="display: none;">
-        <div> 
-            <h2 id="waiting-title">친구를 기다리는 중...</h2> 
-            <p>친구에게 아래 코드를 알려주세요!</p> 
-            <div id="waiting-room-code"></div> 
-            <div id="player-list"></div>
-            <button id="start-game-btn" class="menu-btn primary" style="display: none;">게임 시작</button>
-            <p id="start-countdown"></p> 
-        </div>
-    </div>
-    <div id="start-menu">
-        <h1>🧠 메모리게임</h1>
-        <button id="single-player-btn" class="menu-btn secondary">혼자 하기</button>
-        <div id="multiplayer-forms">
+        <div id="lobby-bottom-actions">
+            <button id="back-to-main-btn" class="menu-btn secondary">뒤로</button>
             <button id="create-room-btn" class="menu-btn primary">방 만들기</button>
-            <input type="number" id="room-code-input" placeholder="게임 코드 입력"> 
-            <button id="join-room-btn" class="menu-btn">코드로 참가하기</button> 
         </div>
     </div>
-    <div id="game-wrapper" style="display: none;">
-        <div id="game-header"></div>
-        <div id="game-container"> <div id="card-grid"></div> </div>
-    </div>
 
+    <div id="game-wrapper" class="view hidden">
+        <div id="game-header"></div>
+        <div id="game-container"><div id="card-grid"></div></div>
+    </div>
+    
+    <div id="game-over-overlay" class="overlay" style="display: none;"></div>
+    <div id="waiting-overlay" class="overlay" style="display: none;"></div>
+    
+    <audio id="flip-sound" src="https://blog.kakaocdn.net/dna/pcEQl/dJMb9LDWoy9/AAAAAAAAAAAAAAAAAAAAAPVGU4wkmgnOb3PqlOYeqvyLhYszCxnHFVpLXXwERBCq/cardsound32562-37691.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=RqFQGsIaZLVnhgC7ca5CNdmTQXc%3D&attach=1&knm=tfile.mp3" preload="auto"></audio>
+    
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
-    
     <script>
     document.addEventListener('DOMContentLoaded', () => {
         const firebaseConfig = {
             apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw", authDomain: "goodluck-7c14b.firebaseapp.com",
             databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com", projectId: "goodluck-7c14b",
             storageBucket: "goodluck-7c14b.firebasestorage.app", messagingSenderId: "858281658455",
-            appId: "1:858281658455:web:9131280a459be983933b12", measurementId: "G-9K2BE1X5D6"
+            appId: "1:858281658455:web:9131280a459be983933b12"
         };
         firebase.initializeApp(firebaseConfig);
         const database = firebase.database();
         const gameRoomsRef = database.ref('memoryGameRooms');
+        const urlParams = new URLSearchParams(window.location.search);
+        const nickname = urlParams.get('nickname') || '게스트';
         const startMenu = document.getElementById('start-menu'), singlePlayerBtn = document.getElementById('single-player-btn'),
-              createRoomBtn = document.getElementById('create-room-btn'), roomCodeInput = document.getElementById('room-code-input'),
-              joinRoomBtn = document.getElementById('join-room-btn'), gameWrapper = document.getElementById('game-wrapper'),
-              cardGrid = document.getElementById('card-grid'), gameHeader = document.getElementById('game-header'),
-              waitingOverlay = document.getElementById('waiting-overlay'), waitingRoomCodeEl = document.getElementById('waiting-room-code'),
-              playerListEl = document.getElementById('player-list'), startGameBtn = document.getElementById('start-game-btn'),
-              startCountdownEl = document.getElementById('start-countdown'), gameOverOverlay = document.getElementById('game-over-overlay'),
-              gameOverMessageEl = document.getElementById('game-over-message'), finalScoresEl = document.getElementById('final-scores'),
-              lobbyBtn = document.getElementById('lobby-btn'), rematchBtn = document.getElementById('rematch-btn'),
-              turnIndicator = document.getElementById('turn-indicator'); // [추가] 턴 표시기 요소 가져오기
-        
-        const cardEmojis = ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🐔', '🐧', '🐦', '🐤', '🦆'];
-        let myPlayerId, currentRoomCode, roomRef, currentRoomData, isHost = false, isMyTurn = false, isGameInProgress = false,
-            lastKnownTurnId = null; // [추가] 이전 턴을 기억하기 위한 변수
+              multiplayerBtn = document.getElementById('multiplayer-btn'), lobbyView = document.getElementById('lobby-view'),
+              backToMainBtn = document.getElementById('back-to-main-btn'), createRoomBtn = document.getElementById('create-room-btn'),
+              refreshRoomsBtn = document.getElementById('refresh-rooms-btn'), roomListContainer = document.getElementById('room-list-container'),
+              gameWrapper = document.getElementById('game-wrapper'), cardGrid = document.getElementById('card-grid'),
+              gameHeader = document.getElementById('game-header'), waitingOverlay = document.getElementById('waiting-overlay'),
+              gameOverOverlay = document.getElementById('game-over-overlay'),
+              flipSound = document.getElementById('flip-sound');
+        const cardEmojis = ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🐔','🐧','🐦','🐤','🦆'];
+        let myPlayerId, roomRef, currentRoomData, isHost = false, isGameInProgress = false;
 
         function getPlayerId() {
-            let playerId = sessionStorage.getItem('memoryPlayerId');
-            if (!playerId) { playerId = `p_${Math.random().toString(36).substr(2, 9)}`; sessionStorage.setItem('memoryPlayerId', playerId); }
-            return playerId;
+            let id = sessionStorage.getItem('memoryPlayerId');
+            if (!id) { id = `p_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`; sessionStorage.setItem('memoryPlayerId', id); }
+            return id;
         }
         myPlayerId = getPlayerId();
-
-        function generateCards(pairCount) {
-            const cardPairs = cardEmojis.slice(0, pairCount);
-            const fullDeck = [...cardPairs, ...cardPairs];
-            fullDeck.sort(() => Math.random() - 0.5);
-            return fullDeck.map(emoji => ({ emoji: emoji, matched: false }));
+        
+        function cleanupOldRoomState() {
+            if (roomRef) {
+                roomRef.off();
+                roomRef.onDisconnect().cancel();
+            }
+            roomRef = null;
+            currentRoomData = null;
+            isGameInProgress = false;
+            isHost = false;
         }
 
-        // --- 혼자하기 모드 ---
-        let singlePlayerState = {};
-        singlePlayerBtn.addEventListener('click', () => {
-            startMenu.style.display = 'none'; gameWrapper.style.display = 'flex';
-            isGameInProgress = false; startSinglePlayerGame();
-        });
+        function playFlipSound() { flipSound.currentTime = 0; flipSound.play().catch(e => {}); }
+        function generateCards(pairCount) { const d=[...cardEmojis.slice(0,pairCount),...cardEmojis.slice(0,pairCount)]; d.sort(()=>Math.random()-0.5); return d.map(e=>({emoji:e,matched:false}));}
 
-        function startSinglePlayerGame() {
-            singlePlayerState = { cards: generateCards(10), flippedCardsIndexes: [], matchedPairs: 0, moves: 0, totalPairs: 10 };
-            gameHeader.innerHTML = `<div class="status-box">맞춘 개수: 0 / 10</div>`;
-            cardGrid.className = 'single';
-            drawSinglePlayerCards();
+        function showView(viewToShow) {
+            document.querySelectorAll('.view').forEach(view => view.classList.add('hidden'));
+            viewToShow.classList.remove('hidden');
         }
 
-        function drawSinglePlayerCards() {
-            cardGrid.innerHTML = '';
-            singlePlayerState.cards.forEach((card, index) => {
-                const cardEl = document.createElement('div');
-                cardEl.classList.add('card');
-                if (card.matched) cardEl.classList.add('matched', 'flipped');
-                cardEl.innerHTML = `<div class="card-inner"><div class="card-face card-back">?</div><div class="card-face card-front">${card.emoji}</div></div>`;
-                cardEl.addEventListener('click', () => handleSinglePlayerCardClick(index, cardEl));
-                cardGrid.appendChild(cardEl);
+        singlePlayerBtn.addEventListener('click', startSinglePlayerGame);
+        multiplayerBtn.addEventListener('click', () => { showView(lobbyView); loadRoomList(); });
+        backToMainBtn.addEventListener('click', () => showView(startMenu));
+        createRoomBtn.addEventListener('click', createNewPublicRoom);
+        refreshRoomsBtn.addEventListener('click', loadRoomList);
+        
+        function loadRoomList() {
+            roomListContainer.innerHTML = `<div class="spinner"></div>`;
+            gameRoomsRef.orderByChild('createdAt').limitToLast(20).once('value', snapshot => {
+                roomListContainer.innerHTML = '';
+                if (!snapshot.exists()) {
+                    roomListContainer.innerHTML = `<p style="color: #999; padding: 20px 0; text-align: center; font-weight: 500;">활성화된 방이 없어요.<br>새로운 방을 만들어보세요!</p>`;
+                    return;
+                }
+                let roomCount = 0;
+                snapshot.forEach(childSnapshot => {
+                    const room = childSnapshot.val();
+                    if(!room || !room.players || !room.roomName || Object.keys(room.players).length === 0) return;
+                    roomCount++;
+                    const playerCount = Object.keys(room.players).length;
+                    const isPlaying = room.gameState === 'playing';
+                    const isFull = playerCount >= 4;
+                    const roomItem = document.createElement('div');
+                    roomItem.className = 'room-item';
+                    roomItem.innerHTML = `<div class="room-info"><div class="room-name">${room.roomName}</div><div class="room-details"><span class="room-players">${playerCount} / 4</span> | <span class="room-status ${isPlaying ? 'playing' : 'waiting'}">${isPlaying ? '게임중' : '대기중'}</span></div></div><button class="menu-btn join-btn primary" data-room-id="${childSnapshot.key}" ${isFull || isPlaying ? 'disabled' : ''}>참가</button>`;
+                    roomListContainer.prepend(roomItem);
+                });
+                if (roomCount === 0) { roomListContainer.innerHTML = `<p style="color: #999; padding: 20px 0; text-align: center; font-weight: 500;">활성화된 방이 없어요.<br>새로운 방을 만들어보세요!</p>`; }
+                document.querySelectorAll('.join-btn').forEach(btn => btn.addEventListener('click', e => joinRoom(e.target.dataset.roomId)));
             });
         }
 
-        function handleSinglePlayerCardClick(index, cardEl) {
-            const { flippedCardsIndexes } = singlePlayerState;
-            if (cardEl.classList.contains('flipped') || flippedCardsIndexes.length >= 2) return;
-            cardEl.classList.add('flipped');
-            flippedCardsIndexes.push({ index, el: cardEl });
-            if (flippedCardsIndexes.length === 2) {
-                singlePlayerState.moves++;
-                const [card1, card2] = flippedCardsIndexes;
-                if (singlePlayerState.cards[card1.index].emoji === singlePlayerState.cards[card2.index].emoji) {
-                    setTimeout(() => {
-                        card1.el.classList.add('matched'); card2.el.classList.add('matched');
-                        singlePlayerState.cards[card1.index].matched = true; singlePlayerState.cards[card2.index].matched = true;
-                        singlePlayerState.matchedPairs++; singlePlayerState.flippedCardsIndexes = [];
-                        updateSinglePlayerStatus(); checkSinglePlayerWin();
-                    }, 500);
-                } else {
-                    setTimeout(() => {
-                        card1.el.classList.remove('flipped'); card2.el.classList.remove('flipped');
-                        singlePlayerState.flippedCardsIndexes = []; updateSinglePlayerStatus();
-                    }, 1000);
-                }
-            }
-        }
-        
-        function updateSinglePlayerStatus() {
-            gameHeader.innerHTML = `<div class="status-box">맞춘 개수: ${singlePlayerState.matchedPairs} / ${singlePlayerState.totalPairs}</div>`;
-        }
-
-        function checkSinglePlayerWin() {
-            if (singlePlayerState.matchedPairs === singlePlayerState.totalPairs) {
-                gameOverMessageEl.textContent = "🎉 성공! 🎉";
-                finalScoresEl.textContent = "모든 카드를 맞췄습니다!";
-                rematchBtn.style.display = 'none';
-                lobbyBtn.textContent = '메인으로'; gameOverOverlay.style.display = 'flex';
-            }
-        }
-
-        // --- 같이하기 모드 ---
-        createRoomBtn.addEventListener('click', () => {
-            isHost = true; currentRoomCode = Math.floor(1000 + Math.random() * 9000).toString();
-            roomRef = gameRoomsRef.child(currentRoomCode);
+        function createNewPublicRoom() {
+            cleanupOldRoomState();
+            isHost = true;
             const myEmoji = cardEmojis[Math.floor(Math.random() * cardEmojis.length)];
-            const newRoomData = {
-                players: { [myPlayerId]: { emoji: myEmoji, score: 0, isHost: true } },
-                gameState: 'waiting', createdAt: firebase.database.ServerValue.TIMESTAMP
-            };
-            roomRef.set(newRoomData).then(() => { showLobbyScreen(); listenToRoomChanges(); });
-        });
+            const newRoomData = { roomName: `${nickname}님의 방`, hostId: myPlayerId, players: { [myPlayerId]: { nickname, emoji: myEmoji, score: 0, isHost: true }}, gameState: 'waiting', createdAt: firebase.database.ServerValue.TIMESTAMP };
+            roomRef = gameRoomsRef.push();
+            roomRef.onDisconnect().remove();
+            roomRef.set(newRoomData).then(listenToRoomChanges);
+        }
 
-        joinRoomBtn.addEventListener('click', () => {
-            const enteredCode = roomCodeInput.value;
-            if (!enteredCode || enteredCode.length !== 4) { alert('4자리 게임 코드를 정확히 입력하세요.'); return; }
-            const potentialRoomRef = gameRoomsRef.child(enteredCode);
-            potentialRoomRef.once('value', (snapshot) => {
-                const roomData = snapshot.val();
-                if (snapshot.exists() && roomData.gameState === 'waiting' && Object.keys(roomData.players).length < 4) {
-                    currentRoomCode = enteredCode; roomRef = potentialRoomRef;
-                    const usedEmojis = Object.values(roomData.players).map(p => p.emoji);
+        function joinRoom(roomId) {
+            cleanupOldRoomState();
+            isHost = false;
+            roomRef = gameRoomsRef.child(roomId);
+            roomRef.transaction(currentData => {
+                if (currentData === null) {
+                    return null;
+                }
+                if (currentData.gameState === 'waiting' && currentData.players && Object.keys(currentData.players).length < 4) {
+                    const usedEmojis = Object.values(currentData.players).map(p => p.emoji);
                     let myEmoji;
                     do { myEmoji = cardEmojis[Math.floor(Math.random() * cardEmojis.length)]; } while (usedEmojis.includes(myEmoji));
-                    roomRef.child('players/' + myPlayerId).set({ emoji: myEmoji, score: 0, isHost: false });
-                    listenToRoomChanges(); showLobbyScreen();
-                } else { alert('존재하지 않거나, 꽉 찼거나, 이미 시작된 방입니다.'); }
-            });
-        });
-
-        startGameBtn.addEventListener('click', () => {
-            if (!isHost || !currentRoomData) return;
-            const playerCount = Object.keys(currentRoomData.players).length;
-            if (playerCount < 2) { alert('최소 2명 이상이어야 시작할 수 있습니다.'); return; }
-            let pairCount;
-            if (playerCount === 2) pairCount = 10;
-            else if (playerCount === 3) pairCount = 15;
-            else pairCount = 20;
-            const newCards = generateCards(pairCount);
-            const playerOrder = Object.keys(currentRoomData.players);
-            const players = currentRoomData.players;
-            Object.keys(players).forEach(pid => { players[pid].score = 0; });
-            roomRef.update({
-                gameState: 'ready', cards: newCards, turn: playerOrder[0],
-                playerOrder: playerOrder, players: players, flippedCards: []
-            });
-        });
-
-        lobbyBtn.addEventListener('click', () => {
-             if (roomRef) { 
-                roomRef.child('players/' + myPlayerId).remove();
-                if (isHost) {
-                   roomRef.once('value', snapshot => {
-                       const room = snapshot.val();
-                       if(!room || !room.players || Object.keys(room.players).length <= 1) roomRef.remove();
-                   });
+                    currentData.players[myPlayerId] = { nickname, emoji: myEmoji, score: 0, isHost: false };
+                    return currentData;
                 }
-             } 
-             window.location.reload(); 
-        });
-        
-        rematchBtn.addEventListener('click', () => {
-            rematchBtn.textContent = '상대방 기다리는 중...';
-            rematchBtn.disabled = true;
-            roomRef.child('players/' + myPlayerId + '/wantsRematch').set(true);
-        });
-
-        function showLobbyScreen() {
-            startMenu.style.display = 'none';
-            waitingRoomCodeEl.textContent = currentRoomCode;
-            waitingOverlay.style.display = 'flex';
+                return;
+            }, (error, committed) => {
+                 if (!committed) { alert("방이 꽉 찼거나 이미 시작되어 참여할 수 없습니다."); loadRoomList(); }
+                 else { roomRef.child('players/' + myPlayerId).onDisconnect().remove(); listenToRoomChanges(); }
+            });
         }
-
+        
         function listenToRoomChanges() {
             isGameInProgress = true;
-            roomRef.on('value', (snapshot) => {
-                if(!isGameInProgress) return;
+            showView(gameWrapper);
+            roomRef.on('value', snapshot => {
+                if (!isGameInProgress) return;
                 currentRoomData = snapshot.val();
                 if (!currentRoomData || !currentRoomData.players || !currentRoomData.players[myPlayerId]) {
-                    alert("방과의 연결이 끊겼습니다. 메인 화면으로 돌아갑니다.");
-                    window.location.reload(); return;
+                    alert("방과의 연결이 끊겼거나 방장이 나갔습니다.");
+                    cleanupOldRoomState();
+                    gameOverOverlay.style.display = 'none'; waitingOverlay.style.display = 'none';
+                    showView(lobbyView); loadRoomList();
+                    return;
                 }
-
-                // [추가] 턴 변경 감지 및 "내 차례!" 메시지 표시 로직
-                const newTurnId = currentRoomData.turn;
-                if (currentRoomData.gameState === 'playing' && newTurnId === myPlayerId && lastKnownTurnId !== myPlayerId) {
-                    turnIndicator.style.display = 'block';
-                    setTimeout(() => { turnIndicator.style.opacity = 1; }, 10); // fade-in을 위해 약간의 딜레이
-                    
-                    setTimeout(() => {
-                        turnIndicator.style.opacity = 0;
-                        setTimeout(() => { turnIndicator.style.display = 'none'; }, 500); // transition 시간과 동일하게
-                    }, 1000); // 1초간 표시
-                }
-                lastKnownTurnId = newTurnId; // 현재 턴을 기록
-
-                updateLobbyUI(); updateStatusUI();
-
+                if(currentRoomData.gameState === 'waiting') { gameWrapper.classList.add('hidden'); updateInGameLobbyUI(); }
+                else { waitingOverlay.style.display = 'none'; gameWrapper.classList.remove('hidden'); }
+                updateStatusUI();
                 switch(currentRoomData.gameState) {
                     case 'ready': startCountdown(); break;
-                    case 'playing':
-                        gameWrapper.style.display = 'flex'; waitingOverlay.style.display = 'none';
-                        gameOverOverlay.style.display = 'none'; drawMultiplayerCards();
-                        break;
-                    case 'gameOver':
-                        showGameOverScreen();
-                        const players = Object.values(currentRoomData.players);
-                        if (isHost && players.length > 1 && players.every(p => p.wantsRematch)) {
-                           roomRef.child('gameState').set('rematch');
-                        }
-                        break;
-                    case 'rematch':
-                        if (isHost) {
-                            const playerCount = Object.keys(currentRoomData.players).length;
-                            let pairCount;
-                            if (playerCount === 2) pairCount = 10;
-                            else if (playerCount === 3) pairCount = 15;
-                            else pairCount = 20;
-                            const newCards = generateCards(pairCount);
-                            const resetPlayers = currentRoomData.players;
-                            for(const pid in resetPlayers) {
-                                if(resetPlayers[pid]) {
-                                    resetPlayers[pid].wantsRematch = null;
-                                    resetPlayers[pid].score = 0;
-                                }
-                            }
-                            roomRef.update({
-                                cards: newCards, players: resetPlayers, gameState: 'ready',
-                                turn: currentRoomData.playerOrder[0]
-                            });
-                        }
-                        break;
+                    case 'playing': drawMultiplayerCards(); break;
+                    case 'gameOver': showGameOverScreen(); break;
                 }
             });
         }
         
-        function updateLobbyUI() {
-            if (currentRoomData.gameState !== 'waiting') return;
+        function updateInGameLobbyUI() {
+            if (currentRoomData.gameState !== 'waiting') { waitingOverlay.style.display = 'none'; return; }
             const players = currentRoomData.players;
             const playerCount = Object.keys(players).length;
-            playerListEl.innerHTML = '';
-            for(const pid in players) {
-                const player = players[pid];
-                const playerEl = document.createElement('div');
-                playerEl.classList.add('player-item');
-                playerEl.textContent = `${player.emoji} 플레이어`;
-                if (player.isHost) playerEl.classList.add('is-host');
-                if (pid === myPlayerId) playerEl.textContent += ' (나)';
-                playerListEl.appendChild(playerEl);
-            }
-            if (isHost) {
-                startGameBtn.style.display = 'block';
-                startGameBtn.disabled = playerCount < 2;
-            }
+            let playerListHTML = '';
+            Object.keys(players).sort().forEach(pid => {
+                const p = players[pid];
+                playerListHTML += `<div class="player-item ${p.isHost ? 'is-host' : ''}">${p.nickname} ${p.emoji} ${pid === myPlayerId ? ' (나)' : ''}</div>`;
+            });
+            const startGameBtnHTML = isHost ? `<button id="start-game-btn" class="menu-btn primary" ${playerCount < 2 ? 'disabled' : ''}>게임 시작</button>` : '';
+            waitingOverlay.innerHTML = `<div class="modal-content"><div class="modal-header"><h2>${currentRoomData.roomName}</h2></div><div class="modal-body"><p>${isHost ? '모두 준비되면 게임을 시작해주세요!' : '방장이 시작하기를 기다리는 중...'}</p><div id="player-list">${playerListHTML}</div><div class="modal-buttons">${startGameBtnHTML}<button id="leave-room-btn" class="menu-btn secondary">나가기</button></div></div></div>`;
+            waitingOverlay.style.display = 'flex';
+            if(isHost) { document.getElementById('start-game-btn').addEventListener('click', startGame); }
+            document.getElementById('leave-room-btn').addEventListener('click', () => {
+                waitingOverlay.style.display = 'none';
+                roomRef.child('players/' + myPlayerId).remove();
+                cleanupOldRoomState(); showView(lobbyView); loadRoomList();
+            });
+        }
+
+        function startGame() {
+            if (!isHost || !currentRoomData) return;
+            const playerCount = Object.keys(currentRoomData.players).length;
+            if (playerCount < 2) return;
+            let pairCount;
+            if (playerCount === 2) pairCount = 10; else if (playerCount === 3) pairCount = 15; else pairCount = 20;
+            const newCards = generateCards(pairCount);
+            const playerOrder = Object.keys(currentRoomData.players).sort();
+            const players = currentRoomData.players;
+            Object.keys(players).forEach(pid => { players[pid].score = 0; });
+            roomRef.update({ gameState: 'ready', cards: newCards, turn: playerOrder[0], playerOrder, players, flippedCards: [] });
         }
         
         function startCountdown() {
-            waitingOverlay.style.display = 'flex'; gameOverOverlay.style.display = 'none';
-            playerListEl.style.display = 'none'; startGameBtn.style.display = 'none';
+            waitingOverlay.innerHTML = `<div id="countdown-container"><h2>게임 시작!</h2><p id="countdown-number"></p></div>`;
+            waitingOverlay.style.display = 'flex';
             let count = 3;
-            startCountdownEl.textContent = '게임 시작!';
-            setTimeout(() => {
-                const interval = setInterval(() => {
-                    if (count > 0) { startCountdownEl.textContent = count; } 
-                    else { clearInterval(interval); if (isHost) roomRef.child('gameState').set('playing'); }
-                    count--;
-                }, 1000);
+            const countdownEl = document.getElementById('countdown-number');
+            const updateCount = () => { countdownEl.textContent = count; };
+            updateCount();
+            const interval = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    updateCount();
+                } else {
+                    clearInterval(interval);
+                    if (isHost) roomRef.child('gameState').set('playing');
+                }
             }, 1000);
         }
-
+        
+        // [수정] 내 프로필 항상 먼저 표시 및 '내 차례' 텍스트 추가
         function updateStatusUI() {
-            if (!currentRoomData || !currentRoomData.players || currentRoomData.gameState === 'waiting') return;
-            isMyTurn = currentRoomData.turn === myPlayerId;
+            if (!currentRoomData || !currentRoomData.players || currentRoomData.gameState === 'waiting') { gameHeader.innerHTML = ''; return; }
             gameHeader.innerHTML = '';
-            const originalPlayerIds = currentRoomData.playerOrder || Object.keys(currentRoomData.players);
-            const displayPlayerIds = [myPlayerId, ...originalPlayerIds.filter(pid => pid !== myPlayerId)];
-            displayPlayerIds.forEach(pid => {
+            
+            let playerIds = [...(currentRoomData.playerOrder || Object.keys(currentRoomData.players).sort())];
+            const myIndex = playerIds.indexOf(myPlayerId);
+            if (myIndex > -1) {
+                const me = playerIds.splice(myIndex, 1)[0];
+                playerIds.unshift(me);
+            }
+
+            playerIds.forEach(pid => {
                 const player = currentRoomData.players[pid];
                 if (!player) return;
                 const statusBox = document.createElement('div');
+                const isMyTurn = currentRoomData.turn === pid;
                 statusBox.classList.add('status-box');
-                statusBox.textContent = `${player.emoji} ${player.score}`;
+                if (isMyTurn) statusBox.classList.add('my-turn');
+
+                let statusText = `${player.nickname} ${player.emoji} ${player.score}`;
                 if (isMyTurn && pid === myPlayerId) {
-                    statusBox.classList.add('my-turn');
+                    statusText += ' (내 차례)';
                 }
+                statusBox.textContent = statusText;
                 gameHeader.appendChild(statusBox);
             });
         }
 
         function drawMultiplayerCards() {
-            cardGrid.innerHTML = '';
-            if (!currentRoomData.cards) return;
-            const playerCount = Object.keys(currentRoomData.players).length;
-            cardGrid.className = `p${playerCount}`;
-            currentRoomData.cards.forEach((card, index) => {
-                const cardEl = document.createElement('div');
-                cardEl.classList.add('card'); cardEl.dataset.index = index;
-                let cardState = 'unflipped';
-                if (currentRoomData.flippedCards && currentRoomData.flippedCards.includes(index)) cardState = 'flipped';
-                if (card.matched) cardState = 'matched';
-                cardEl.innerHTML = `<div class="card-inner"><div class="card-face card-back">?</div><div class="card-face card-front">${card.emoji}</div></div>`;
-                if(cardState === 'flipped') cardEl.classList.add('flipped');
-                if(cardState === 'matched') cardEl.classList.add('matched', 'flipped');
-                cardEl.addEventListener('click', () => handleMultiplayerCardClick(index));
-                cardGrid.appendChild(cardEl);
-            });
+            if(!currentRoomData.cards) return;
+            cardGrid.innerHTML = currentRoomData.cards.map((card, index) => {
+                let cardStateClass = '';
+                if(card.matched) cardStateClass = 'matched';
+                if(currentRoomData.flippedCards?.includes(index)) cardStateClass += ' flipped';
+                return `<div class="card ${cardStateClass}" data-index="${index}"><div class="card-inner"><div class="card-face card-back"></div><div class="card-face card-front">${card.emoji}</div></div></div>`;
+            }).join('');
+            cardGrid.className = `p${Object.keys(currentRoomData.players).length}`;
+            document.querySelectorAll('.card:not(.matched)').forEach(c => c.addEventListener('click', () => handleMultiplayerCardClick(parseInt(c.dataset.index))));
         }
 
         function handleMultiplayerCardClick(index) {
-            if (!isMyTurn || currentRoomData.cards[index].matched || (currentRoomData.flippedCards && currentRoomData.flippedCards.length >= 2)) return;
-            let flippedCards = currentRoomData.flippedCards ? [...currentRoomData.flippedCards] : [];
-            if(flippedCards.includes(index)) return;
-            flippedCards.push(index);
-            roomRef.child('flippedCards').set(flippedCards);
-            if (flippedCards.length === 2) {
-                const card1 = currentRoomData.cards[flippedCards[0]];
-                const card2 = currentRoomData.cards[flippedCards[1]];
-                if (card1.emoji === card2.emoji) {
-                    const newCards = [...currentRoomData.cards];
-                    newCards[flippedCards[0]].matched = true; newCards[flippedCards[1]].matched = true;
-                    const newMyScore = currentRoomData.players[myPlayerId].score + 1;
-                    const allMatched = newCards.every(c => c.matched);
-                    const updates = { 'cards': newCards, ['players/' + myPlayerId + '/score']: newMyScore, 'flippedCards': [] };
-                    if (allMatched) updates['gameState'] = 'gameOver';
-                    roomRef.update(updates);
-                } else {
-                    const playerOrder = currentRoomData.playerOrder;
-                    const currentTurnIndex = playerOrder.indexOf(myPlayerId);
-                    const nextTurnIndex = (currentTurnIndex + 1) % playerOrder.length;
-                    const nextPlayerId = playerOrder[nextTurnIndex];
-                    setTimeout(() => { roomRef.update({ 'flippedCards': [], 'turn': nextPlayerId }); }, 1000);
+            if (currentRoomData.turn !== myPlayerId || currentRoomData.cards[index].matched || currentRoomData.flippedCards?.length >= 2 || currentRoomData.flippedCards?.includes(index)) return;
+            playFlipSound();
+            const flippedCards = [...(currentRoomData.flippedCards || []), index];
+            const updates = { flippedCards };
+            if (flippedCards.length < 2) { roomRef.update(updates); return; }
+            
+            const [card1, card2] = [currentRoomData.cards[flippedCards[0]], currentRoomData.cards[flippedCards[1]]];
+            if (card1.emoji === card2.emoji) {
+                updates.flippedCards = [];
+                updates[`cards/${flippedCards[0]}/matched`] = true;
+                updates[`cards/${flippedCards[1]}/matched`] = true;
+                updates[`players/${myPlayerId}/score`] = currentRoomData.players[myPlayerId].score + 1;
+                const allMatched = currentRoomData.cards.every((c, i) => c.matched || flippedCards.includes(i));
+                if (allMatched) {
+                    updates.gameState = 'gameOver';
                 }
+            } else {
+                const pOrder = currentRoomData.playerOrder;
+                updates.turn = pOrder[(pOrder.indexOf(myPlayerId) + 1) % pOrder.length];
+                setTimeout(() => roomRef.child('flippedCards').set([]), 1000);
             }
+            roomRef.update(updates);
         }
         
         function showGameOverScreen() {
-            const players = Object.values(currentRoomData.players);
-            const maxScore = Math.max(...players.map(p => p.score));
-            const winners = players.filter(p => p.score === maxScore);
-            if (winners.length > 1) { gameOverMessageEl.textContent = "😲 무승부! 😲"; } 
-            else {
-                const winnerIsMe = winners[0].emoji === currentRoomData.players[myPlayerId].emoji;
-                gameOverMessageEl.textContent = winnerIsMe ? "🎉 최종 승리! 🎉" : "😭 최종 패배! 😭";
+            const playersArray = Object.entries(currentRoomData.players).map(([id, data]) => ({ id, ...data }));
+            const maxScore = Math.max(...playersArray.map(p => p.score));
+            const winners = playersArray.filter(p => p.score === maxScore);
+
+            const amIWinner = winners.some(w => w.id === myPlayerId);
+            let message = "";
+            if (winners.length > 1 && amIWinner) message = "무승부!";
+            else if (amIWinner) message = "승 리 !";
+            else message = "패 배 !";
+            
+            playersArray.sort((a, b) => b.score - a.score);
+            const finalScoresHTML = playersArray.map(p => {
+                const isWinner = winners.some(w => w.id === p.id);
+                return `<div class="score-row ${isWinner ? 'winner' : 'loser'}">${p.nickname} ${p.emoji} : ${p.score}점</div>`;
+            }).join('');
+
+            const rematchListenerRef = roomRef.child('players');
+            function cleanupAndLeave() {
+                rematchListenerRef.off();
+                roomRef.child('players/' + myPlayerId).remove();
+                cleanupOldRoomState();
+                gameOverOverlay.style.display = 'none';
+                showView(lobbyView); loadRoomList();
             }
-            finalScoresEl.textContent = players.map(p => `${p.emoji} ${p.score}점`).join(' | ');
-            rematchBtn.textContent = '다시 하기'; rematchBtn.disabled = false;
-            rematchBtn.style.display = 'block'; lobbyBtn.textContent = '나가기';
+            gameOverOverlay.innerHTML = `<div class="modal-content"><div class="modal-header"><h2 id="game-over-message">${message}</h2></div><div class="modal-body"><div id="score-board">${finalScoresHTML}</div><div class="modal-buttons"><button id="rematch-btn" class="menu-btn primary">다시 하기</button><button id="lobby-btn" class="menu-btn secondary">나가기</button></div></div></div>`;
             gameOverOverlay.style.display = 'flex';
+
+            document.getElementById('rematch-btn').addEventListener('click', () => {
+                const btn = document.getElementById('rematch-btn');
+                btn.textContent = '대기중...'; btn.disabled = true;
+                roomRef.child(`players/${myPlayerId}/wantsRematch`).set(true);
+            });
+            document.getElementById('lobby-btn').addEventListener('click', cleanupAndLeave);
+            
+            rematchListenerRef.on('value', snapshot => {
+                if (!isGameInProgress || !snapshot.exists() || currentRoomData?.gameState !== 'gameOver') { rematchListenerRef.off(); return; }
+                const currentPlayers = snapshot.val();
+                if (Object.values(currentPlayers).every(p => p.wantsRematch)) {
+                    rematchListenerRef.off(); gameOverOverlay.style.display = 'none';
+                    if (isHost) {
+                        const updates = {};
+                        Object.keys(currentPlayers).forEach(pid => { updates[`/players/${pid}/wantsRematch`] = null; });
+                        roomRef.update(updates).then(startGame);
+                    }
+                }
+            });
+        }
+        
+        // --- 혼자하기 모드 ---
+        let singlePlayerFlipped = [], singlePlayerMatched = 0;
+        function startSinglePlayerGame() {
+            cleanupOldRoomState();
+            showView(gameWrapper);
+            gameWrapper.classList.remove('hidden');
+            singlePlayerFlipped = []; singlePlayerMatched = 0;
+            const cards = generateCards(10);
+            cardGrid.className = 'single';
+            gameHeader.innerHTML = `<div class="status-box">정답: <span id="matched-counter">0</span> / 10</div>`;
+            cardGrid.innerHTML = cards.map((card, index) => `<div class="card" data-index="${index}"><div class="card-inner"><div class="card-face card-back"></div><div class="card-face card-front">${card.emoji}</div></div></div>`).join('');
+            document.querySelectorAll('#card-grid .card').forEach(cardEl => cardEl.addEventListener('click', () => handleSinglePlayerCardClick(cardEl, cards)));
+        }
+
+        function handleSinglePlayerCardClick(cardEl, cards) {
+            if (cardEl.classList.contains('flipped') || singlePlayerFlipped.length >= 2) return;
+            playFlipSound();
+            cardEl.classList.add('flipped');
+            singlePlayerFlipped.push(cardEl);
+            if (singlePlayerFlipped.length === 2) {
+                const [el1, el2] = singlePlayerFlipped;
+                const [idx1, idx2] = [parseInt(el1.dataset.index), parseInt(el2.dataset.index)];
+                if (cards[idx1].emoji === cards[idx2].emoji) {
+                    singlePlayerMatched++;
+                    document.getElementById('matched-counter').textContent = singlePlayerMatched;
+                    el1.classList.add('matched'); el2.classList.add('matched');
+                    singlePlayerFlipped = [];
+                    if (singlePlayerMatched === 10) {
+                        gameOverOverlay.innerHTML = `<div class="modal-content"><div class="modal-header"><h2>🎉 성공! 🎉</h2></div><div class="modal-body"><p>모든 카드를 맞췄습니다!</p><div class="modal-buttons"><button id="single-main-menu-btn" class="menu-btn primary">메인으로</button></div></div></div>`;
+                        gameOverOverlay.style.display = 'flex';
+                        document.getElementById('single-main-menu-btn').addEventListener('click', () => { gameOverOverlay.style.display = 'none'; showView(startMenu); });
+                    }
+                } else { setTimeout(() => { el1.classList.remove('flipped'); el2.classList.remove('flipped'); singlePlayerFlipped = []; }, 1000); }
+            }
         }
     });
     </script>
