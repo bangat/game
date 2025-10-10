@@ -36,7 +36,6 @@
         .view { width: 100%; height: 100%; display: flex; flex-direction: column; }
         .hidden { display: none !important; }
 
-        /* [수정] 모바일 UI 고정 및 레이아웃 개선 */
         #game-wrapper {
             display: flex;
             flex-direction: column;
@@ -46,7 +45,7 @@
         #game-header {
             flex-shrink: 0;
             padding: 10px;
-            padding-top: 15px; /* 모바일 상단 바 고려 */
+            padding-top: 15px;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -75,14 +74,14 @@
             align-items: center;
             padding: 10px;
             min-height: 0;
-            overflow-y: auto; /* 카드판이 클 경우 여기만 스크롤됨 */
+            overflow-y: auto;
         }
         #card-grid {
             display: grid;
             gap: 8px;
             width: 100%;
             max-width: 450px;
-            aspect-ratio: 4 / 5.5; /* 세로로 조금 더 긴 안정적인 비율 */
+            aspect-ratio: 4 / 5.5;
         }
         #card-grid.p2, #card-grid.single { grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(5, 1fr); }
         #card-grid.p3 { grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(6, 1fr); }
@@ -98,7 +97,6 @@
         .card-back { background: var(--card-back-color); }
         .card-front { background-color: var(--card-front-color); transform: rotateY(180deg); }
         
-        /* --- 공통 UI 스타일 --- */
         .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px; z-index: 200; text-align: center; background-color: rgba(0,0,0,0.6); }
         .modal-content { background: var(--panel-bg); border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); width: 90%; max-width: 400px; overflow: hidden; }
         .modal-header { background-color: var(--primary-color); padding: 15px; }
@@ -119,12 +117,10 @@
         .spinner { margin: 20px auto; border: 4px solid rgba(0, 0, 0, 0.1); border-radius: 50%; border-top: 4px solid var(--primary-color); width: 40px; height: 40px; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         
-        /* --- 시작 메뉴 --- */
         #start-menu { justify-content: center; align-items: center; }
         #start-menu-buttons { width: 100%; max-width: 320px; }
         .main-title { font-size: 2.8em; font-weight: 700; color: var(--text-color-dark); margin-bottom: 30px; text-align: center; }
 
-        /* --- 공개 방 목록 (로비) --- */
         #lobby-view { padding: 15px; align-items: center; }
         .lobby-panel { display: flex; flex-direction: column; width: 100%; max-width: 500px; height: calc(100% - 80px); background: var(--panel-bg); border-radius: 16px; padding: 20px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); border: 1px solid var(--panel-border); }
         .lobby-header { width: 100%; display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-shrink: 0; }
@@ -141,7 +137,6 @@
         #lobby-bottom-actions { width: 100%; max-width: 500px; margin-top: 15px; display: flex; gap: 10px; }
         #lobby-bottom-actions .menu-btn { margin-bottom: 0; }
 
-        /* --- 인게임 대기실, 게임오버 --- */
         #player-list { margin-top: 20px; font-size: 1.1em; width: 100%; max-width: 320px; }
         .player-item { background-color: #F3F7FD; color: var(--text-color-dark); padding: 12px; border-radius: 8px; margin-bottom: 8px; font-weight: 700; cursor: pointer; transition: background-color 0.2s; }
         .player-item:hover { background-color: #e9eff8; }
@@ -162,7 +157,6 @@
 
         .modal-buttons { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 25px; width: 100%; max-width: 300px; }
         
-        /* [추가] 프로필 모달 스타일 */
         #profile-modal .modal-content { max-width: 340px; }
         #profile-header { display: flex; flex-direction: column; align-items: center; margin-bottom: 20px; }
         #profile-avatar { font-size: 4em; }
@@ -184,6 +178,7 @@
             <div id="start-menu-buttons">
                 <button id="single-player-btn" class="menu-btn secondary">혼자 하기</button>
                 <button id="multiplayer-btn" class="menu-btn primary">같이 하기</button>
+                <button id="back-to-index-btn" class="menu-btn secondary">메인으로</button> 
             </div>
         </div>
     </div>
@@ -229,7 +224,19 @@
                     <div class="stat-item"><h4>승률</h4><p id="profile-winrate"></p></div>
                     <div class="stat-item"><h4>-</h4><p>-</p></div>
                 </div>
-                <button id="profile-close-btn" class="menu-btn secondary">닫기</button>
+        <button id="profile-close-btn" class="menu-btn secondary">닫기</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="info-overlay" class="overlay" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="info-title">알림</h2>
+            </div>
+            <div class="modal-body">
+                <p id="info-message" style="margin-bottom: 25px;"></p>
+                <button id="info-confirm-btn" class="menu-btn primary" style="margin: 0; max-width: 200px;">확인</button>
             </div>
         </div>
     </div>
@@ -251,16 +258,27 @@
         const gameRoomsRef = database.ref('memoryGameRooms');
         const playersRef = database.ref('memoryGamePlayers');
         
-        const startMenu = document.getElementById('start-menu'), singlePlayerBtn = document.getElementById('single-player-btn'),
-              multiplayerBtn = document.getElementById('multiplayer-btn'), lobbyView = document.getElementById('lobby-view'),
-              backToMainBtn = document.getElementById('back-to-main-btn'), createRoomBtn = document.getElementById('create-room-btn'),
-              refreshRoomsBtn = document.getElementById('refresh-rooms-btn'), roomListContainer = document.getElementById('room-list-container'),
-              gameWrapper = document.getElementById('game-wrapper'), cardGrid = document.getElementById('card-grid'),
-              gameHeader = document.getElementById('game-header'), waitingOverlay = document.getElementById('waiting-overlay'),
+        const startMenu = document.getElementById('start-menu'),
+              singlePlayerBtn = document.getElementById('single-player-btn'),
+              multiplayerBtn = document.getElementById('multiplayer-btn'),
+              lobbyView = document.getElementById('lobby-view'),
+              backToIndexBtn = document.getElementById('back-to-index-btn'),
+              backToMainBtn = document.getElementById('back-to-main-btn'),
+              createRoomBtn = document.getElementById('create-room-btn'),
+              refreshRoomsBtn = document.getElementById('refresh-rooms-btn'),
+              roomListContainer = document.getElementById('room-list-container'),
+              gameWrapper = document.getElementById('game-wrapper'),
+              cardGrid = document.getElementById('card-grid'),
+              gameHeader = document.getElementById('game-header'),
+              waitingOverlay = document.getElementById('waiting-overlay'),
               gameOverOverlay = document.getElementById('game-over-overlay'),
               flipSound = document.getElementById('flip-sound'),
               profileModal = document.getElementById('profile-modal'),
-              profileCloseBtn = document.getElementById('profile-close-btn');
+              profileCloseBtn = document.getElementById('profile-close-btn'),
+              infoOverlay = document.getElementById('info-overlay'),
+              infoTitle = document.getElementById('info-title'),
+              infoMessage = document.getElementById('info-message'),
+              infoConfirmBtn = document.getElementById('info-confirm-btn');
 
         const cardEmojis = ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🐔','🐧','🐦','🐤','🦆'];
         let myPlayerId, myNickname, myAvatar, roomRef, currentRoomData, isHost = false, isGameInProgress = false;
@@ -287,6 +305,16 @@
         
         profileCloseBtn.addEventListener('click', () => profileModal.style.display = 'none');
 
+        function showInfoModal(title, message, onConfirm) {
+            infoTitle.textContent = title;
+            infoMessage.textContent = message;
+            infoConfirmBtn.onclick = () => {
+                infoOverlay.style.display = 'none';
+                if (onConfirm) onConfirm();
+            };
+            infoOverlay.style.display = 'flex';
+        }
+
         function cleanupOldRoomState() {
             if (roomRef) {
                 roomRef.off();
@@ -305,10 +333,11 @@
             document.querySelectorAll('.view').forEach(view => view.classList.add('hidden'));
             viewToShow.classList.remove('hidden');
         }
-
+   
         singlePlayerBtn.addEventListener('click', startSinglePlayerGame);
         multiplayerBtn.addEventListener('click', () => { showView(lobbyView); loadRoomList(); });
         backToMainBtn.addEventListener('click', () => { cleanupOldRoomState(); showView(startMenu); });
+        backToIndexBtn.addEventListener('click', () => { window.location.href = 'index.html'; });
         createRoomBtn.addEventListener('click', createNewPublicRoom);
         refreshRoomsBtn.addEventListener('click', loadRoomList);
         
@@ -375,10 +404,13 @@
                 if (!isGameInProgress) return;
                 currentRoomData = snapshot.val();
                 if (!currentRoomData || !currentRoomData.players || !currentRoomData.players[myPlayerId]) {
-                    alert("방과의 연결이 끊겼거나 방장이 나갔습니다.");
-                    cleanupOldRoomState();
-                    gameOverOverlay.style.display = 'none'; waitingOverlay.style.display = 'none';
-                    showView(lobbyView); loadRoomList();
+                    showInfoModal("방이 해체되었습니다", "방장이 게임을 떠나 대기실로 이동합니다.", () => {
+                        cleanupOldRoomState();
+                        gameOverOverlay.style.display = 'none'; 
+                        waitingOverlay.style.display = 'none';
+                        showView(lobbyView); 
+                        loadRoomList();
+                    });
                     return;
                 }
                 if(currentRoomData.gameState === 'waiting') { gameWrapper.classList.add('hidden'); updateInGameLobbyUI(); }
