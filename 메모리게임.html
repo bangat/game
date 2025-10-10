@@ -188,7 +188,7 @@
             <div class="lobby-header">
                 <h1>게임 대기실</h1>
                 <div class="lobby-actions">
-                    <button id="refresh-rooms-btn" class="menu-btn secondary">새로고침</button>
+              
                 </div>
             </div>
             <div id="room-list-container"></div>
@@ -282,6 +282,7 @@
 
         const cardEmojis = ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🐔','🐧','🐦','🐤','🦆'];
         let myPlayerId, myNickname, myAvatar, roomRef, currentRoomData, isHost = false, isGameInProgress = false;
+        let lobbyListener = null; 
 
         function getPlayerId() {
             let id = localStorage.getItem('myPlayerId');
@@ -333,41 +334,90 @@
             document.querySelectorAll('.view').forEach(view => view.classList.add('hidden'));
             viewToShow.classList.remove('hidden');
         }
-   
-        singlePlayerBtn.addEventListener('click', startSinglePlayerGame);
-        multiplayerBtn.addEventListener('click', () => { showView(lobbyView); loadRoomList(); });
-        backToMainBtn.addEventListener('click', () => { cleanupOldRoomState(); showView(startMenu); });
-        backToIndexBtn.addEventListener('click', () => { window.location.href = 'index.html'; });
-        createRoomBtn.addEventListener('click', createNewPublicRoom);
-        refreshRoomsBtn.addEventListener('click', loadRoomList);
-        
-        function loadRoomList() {
+
+function startLobbyListener() {
+            stopLobbyListener(); // 만약 기존 리스너가 있다면 중복 방지를 위해 제거
+            
             roomListContainer.innerHTML = `<div class="spinner"></div>`;
-            gameRoomsRef.orderByChild('createdAt').limitToLast(20).once('value', snapshot => {
+            const query = gameRoomsRef.orderByChild('createdAt').limitToLast(20);
+
+            lobbyListener = query.on('value', snapshot => {
                 roomListContainer.innerHTML = '';
                 if (!snapshot.exists()) {
                     roomListContainer.innerHTML = `<p style="color: #999; padding: 20px 0; text-align: center; font-weight: 500;">활성화된 방이 없어요.<br>새로운 방을 만들어보세요!</p>`;
                     return;
                 }
+                
                 let roomCount = 0;
                 snapshot.forEach(childSnapshot => {
                     const room = childSnapshot.val();
                     if(!room || !room.players || !room.roomName || Object.keys(room.players).length === 0) return;
+                    
                     roomCount++;
                     const playerCount = Object.keys(room.players).length;
                     const isPlaying = room.gameState === 'playing';
                     const isFull = playerCount >= 4;
+                    
                     const roomItem = document.createElement('div');
                     roomItem.className = 'room-item';
                     roomItem.innerHTML = `<div class="room-info"><div class="room-name">${room.roomName}</div><div class="room-details"><span class="room-players">${playerCount} / 4</span> | <span class="room-status ${isPlaying ? 'playing' : 'waiting'}">${isPlaying ? '게임중' : '대기중'}</span></div></div><button class="menu-btn join-btn primary" data-room-id="${childSnapshot.key}" ${isFull || isPlaying ? 'disabled' : ''}>참가</button>`;
                     roomListContainer.prepend(roomItem);
                 });
-                if (roomCount === 0) { roomListContainer.innerHTML = `<p style="color: #999; padding: 20px 0; text-align: center; font-weight: 500;">활성화된 방이 없어요.<br>새로운 방을 만들어보세요!</p>`; }
+                
+                if (roomCount === 0) {
+                    roomListContainer.innerHTML = `<p style="color: #999; padding: 20px 0; text-align: center; font-weight: 500;">활성화된 방이 없어요.<br>새로운 방을 만들어보세요!</p>`;
+                }
+                
                 document.querySelectorAll('.join-btn').forEach(btn => btn.addEventListener('click', e => joinRoom(e.target.dataset.roomId)));
             });
         }
 
+        function stopLobbyListener() {
+            if (lobbyListener) {
+                gameRoomsRef.off('value', lobbyListener);
+                lobbyListener = null;
+            }
+        }
+   
+        singlePlayerBtn.addEventListener('click', startSinglePlayerGame);
+        multiplayerBtn.addEventListener('click', () => {
+            showView(lobbyView);
+            roomListContainer.innerHTML = `<div class="spinner"></div>`; // 로딩 표시
+
+            // 먼저 .once()로 활성화된 방이 있는지 '한 번만' 확인합니다.
+            gameRoomsRef.once('value', snapshot => {
+                let activeRoomsExist = false;
+                if (snapshot.exists()) {
+                    snapshot.forEach(childSnapshot => {
+                        const room = childSnapshot.val();
+                        // 플레이어가 있는 방만 활성화된 방으로 간주
+                        if (room && room.players && Object.keys(room.players).length > 0) {
+                            activeRoomsExist = true;
+                        }
+                    });
+                }
+
+                if (activeRoomsExist) {
+                    // 방이 있으면, 실시간 리스너를 시작해서 방 목록을 보여줍니다.
+                    startLobbyListener();
+                } else {
+                    // 방이 없으면, 자동으로 새 방을 생성합니다.
+                    createNewPublicRoom();
+                }
+            });
+        });
+
+        backToMainBtn.addEventListener('click', () => { 
+            stopLobbyListener(); // 리스너 중지
+            cleanupOldRoomState(); 
+            showView(startMenu); 
+        });
+        backToIndexBtn.addEventListener('click', () => { window.location.href = 'index.html'; });
+        createRoomBtn.addEventListener('click', createNewPublicRoom);
+        
+    
         function createNewPublicRoom() {
+            stopLobbyListener(); // 리스너 중지
             cleanupOldRoomState();
             isHost = true;
             const newRoomData = { 
@@ -381,6 +431,7 @@
         }
 
         function joinRoom(roomId) {
+            stopLobbyListener(); // 리스너 중지
             cleanupOldRoomState();
             isHost = false;
             roomRef = gameRoomsRef.child(roomId);
@@ -437,10 +488,16 @@
             waitingOverlay.style.display = 'flex';
             if(isHost) { document.getElementById('start-game-btn').addEventListener('click', startGame); }
             document.getElementById('leave-room-btn').addEventListener('click', () => {
-                waitingOverlay.style.display = 'none';
-                roomRef.child('players/' + myPlayerId).remove();
-                cleanupOldRoomState(); showView(lobbyView); loadRoomList();
+                const playerRef = roomRef.child('players/' + myPlayerId);
+                
+                cleanupOldRoomState(); 
+                playerRef.remove(); 
+
+                showView(lobbyView); 
+                startLobbyListener(); 
             });
+
+
             document.querySelectorAll('.player-item').forEach(item => {
                 item.addEventListener('click', (e) => {
                     const pid = e.currentTarget.dataset.playerId;
@@ -572,10 +629,14 @@
             const rematchListenerRef = roomRef.child('players');
             function cleanupAndLeave() {
                 rematchListenerRef.off();
-                if (roomRef) roomRef.child('players/' + myPlayerId).remove();
+                const playerRef = roomRef ? roomRef.child('players/' + myPlayerId) : null;
+
                 cleanupOldRoomState();
+                if (playerRef) playerRef.remove();
+                
                 gameOverOverlay.style.display = 'none';
-                showView(lobbyView); loadRoomList();
+                showView(lobbyView); 
+                startLobbyListener(); // 로비 리스너 다시 시작
             }
             gameOverOverlay.innerHTML = `<div class="modal-content"><div class="modal-header"><h2 id="game-over-message">${message}</h2></div><div class="modal-body"><div id="score-board">${finalScoresHTML}</div><div class="modal-buttons"><button id="rematch-btn" class="menu-btn primary">다시 하기</button><button id="lobby-btn" class="menu-btn secondary">나가기</button></div></div></div>`;
             gameOverOverlay.style.display = 'flex';
