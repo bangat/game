@@ -51,6 +51,11 @@
             align-items: center;
             justify-content: center;
         }
+        
+        #nickname-display .avatar {
+            font-size: 1.5em;
+            margin-right: 10px;
+        }
 
         #edit-nickname-btn {
             cursor: pointer;
@@ -100,7 +105,7 @@
             text-align: center;
             box-shadow: 0 5px 20px rgba(0,0,0,0.3);
             width: 90%;
-            max-width: 320px;
+            max-width: 350px;
         }
 
         .modal-content h2 {
@@ -108,14 +113,13 @@
             margin-bottom: 25px;
             color: #333;
         }
-
-        /* [핵심 수정] 텍스트 정렬 문제를 확실히 해결하기 위한 최종 스타일 */
+        
         .modal-content input {
             width: 100%;
-            padding: 12px 15px; /* 좌우 패딩을 동일하게 지정 */
-            box-sizing: border-box; /* 패딩과 테두리를 너비에 포함시켜 계산 */
+            padding: 12px 15px;
+            box-sizing: border-box;
             font-size: 1.2em;
-            text-align: center; /* 텍스트 중앙 정렬 명시 */
+            text-align: center;
             border: 2px solid #ccc;
             border-radius: 10px;
             margin-bottom: 25px;
@@ -124,6 +128,35 @@
         .modal-content input:focus {
             border-color: var(--primary-color);
             outline: none;
+        }
+        
+        #avatar-picker {
+            margin-bottom: 25px;
+        }
+        #avatar-picker h3 {
+            font-size: 1em;
+            color: #555;
+            margin-bottom: 15px;
+        }
+        #avatar-options {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+        }
+        .avatar-option {
+            font-size: 2em;
+            cursor: pointer;
+            padding: 5px;
+            border-radius: 50%;
+            transition: background-color 0.2s, transform 0.2s;
+        }
+        .avatar-option:hover {
+            background-color: #f0f0f0;
+        }
+        .avatar-option.selected {
+            background-color: var(--primary-color);
+            transform: scale(1.2);
         }
 
         .modal-buttons {
@@ -142,40 +175,23 @@
             transition: background-color 0.2s;
         }
 
-        #cancel-nickname-btn {
-            background-color: #e9ecef;
-            color: #555;
-        }
-        #cancel-nickname-btn:hover {
-            background-color: #dee2e6;
-        }
-
-        #save-nickname-btn {
-            background-color: var(--primary-color);
-            color: #fff;
-        }
-        #save-nickname-btn:hover {
-            background-color: #1573c2;
-        }
+        #cancel-nickname-btn { background-color: #e9ecef; color: #555; }
+        #cancel-nickname-btn:hover { background-color: #dee2e6; }
+        #save-nickname-btn { background-color: var(--primary-color); color: #fff; }
+        #save-nickname-btn:hover { background-color: #1573c2; }
 
         .close-btn {
-            position: absolute;
-            top: 10px;
-            right: 15px;
-            font-size: 2em;
-            color: #aaa;
-            cursor: pointer;
-            line-height: 1;
+            position: absolute; top: 10px; right: 15px;
+            font-size: 2em; color: #aaa; cursor: pointer; line-height: 1;
         }
-        .close-btn:hover {
-            color: #333;
-        }
+        .close-btn:hover { color: #333; }
     </style>
 </head>
 <body>
     <div id="menu-container">
         <h1>미니 보드게임</h1>
         <div id="nickname-display">
+            <span class="avatar"></span>
             <span id="nickname-text"></span>
             <span id="edit-nickname-btn">✏️</span>
         </div>
@@ -188,8 +204,12 @@
     <div id="nickname-modal" class="modal-overlay">
         <div class="modal-content">
             <span class="close-btn">&times;</span>
-            <h2 id="modal-title">닉네임을 설정해주세요</h2>
-            <input type="text" id="nickname-input" maxlength="6" placeholder="최대 6글자">
+            <h2 id="modal-title">프로필을 설정해주세요</h2>
+            <input type="text" id="nickname-input" maxlength="6" placeholder="닉네임 (최대 6글자)">
+            <div id="avatar-picker">
+                <h3>프로필 선택</h3>
+                <div id="avatar-options"></div>
+            </div>
             <div class="modal-buttons">
                 <button id="cancel-nickname-btn">취소</button>
                 <button id="save-nickname-btn">저장</button>
@@ -197,9 +217,21 @@
         </div>
     </div>
 
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <script>
     document.addEventListener('DOMContentLoaded', () => {
+        const firebaseConfig = {
+            apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw", authDomain: "goodluck-7c14b.firebaseapp.com",
+            databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com", projectId: "goodluck-7c14b",
+            storageBucket: "goodluck-7c14b.firebasestorage.app", messagingSenderId: "858281658455",
+            appId: "1:858281658455:web:9131280a459be983933b12"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+        
         const nicknameDisplay = document.getElementById('nickname-display');
+        const nicknameAvatar = nicknameDisplay.querySelector('.avatar');
         const nicknameText = document.getElementById('nickname-text');
         const editNicknameBtn = document.getElementById('edit-nickname-btn');
         const nicknameModal = document.getElementById('nickname-modal');
@@ -209,29 +241,63 @@
         const cancelNicknameBtn = document.getElementById('cancel-nickname-btn');
         const closeBtn = document.querySelector('.close-btn');
         const gameButtons = document.querySelectorAll('.game-button');
+        const avatarOptionsContainer = document.getElementById('avatar-options');
+        const avatars = ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵'];
+        let selectedAvatar = avatars[0];
+
+        function getPlayerId() {
+            let id = localStorage.getItem('myPlayerId');
+            if (!id) {
+                id = `p_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+                localStorage.setItem('myPlayerId', id);
+            }
+            return id;
+        }
+        const myPlayerId = getPlayerId();
+
+        function renderAvatarOptions() {
+            avatarOptionsContainer.innerHTML = '';
+            avatars.forEach(avatar => {
+                const span = document.createElement('span');
+                span.className = 'avatar-option';
+                span.textContent = avatar;
+                if (avatar === selectedAvatar) {
+                    span.classList.add('selected');
+                }
+                span.addEventListener('click', () => {
+                    selectedAvatar = avatar;
+                    document.querySelectorAll('.avatar-option').forEach(opt => opt.classList.remove('selected'));
+                    span.classList.add('selected');
+                });
+                avatarOptionsContainer.appendChild(span);
+            });
+        }
 
         function showModal(isEditing) {
             if (isEditing) {
-                modalTitle.textContent = '닉네임 수정';
+                modalTitle.textContent = '프로필 수정';
                 saveNicknameBtn.textContent = '수정하기';
                 nicknameInput.value = localStorage.getItem('userNickname') || '';
+                selectedAvatar = localStorage.getItem('userAvatar') || avatars[0];
             } else {
-                modalTitle.textContent = '닉네임을 설정해주세요';
-                saveNicknameBtn.textContent = '저장';
+                modalTitle.textContent = '프로필을 설정해주세요';
+                saveNicknameBtn.textContent = '저장하고 시작하기';
                 nicknameInput.value = '';
+                selectedAvatar = avatars[0];
             }
+            renderAvatarOptions();
             nicknameModal.style.display = 'flex';
             nicknameInput.focus();
         }
 
-        function hideModal() {
-            nicknameModal.style.display = 'none';
-        }
+        function hideModal() { nicknameModal.style.display = 'none'; }
 
         function checkNickname() {
             const savedNickname = localStorage.getItem('userNickname');
-            if (savedNickname) {
-                nicknameText.textContent = `환영합니다, ${savedNickname}님!`;
+            const savedAvatar = localStorage.getItem('userAvatar');
+            if (savedNickname && savedAvatar) {
+                nicknameAvatar.textContent = savedAvatar;
+                nicknameText.textContent = `${savedNickname}님!`;
                 nicknameDisplay.style.display = 'flex';
                 hideModal();
             } else {
@@ -239,14 +305,25 @@
             }
         }
 
-        editNicknameBtn.addEventListener('click', () => {
-            showModal(true);
-        });
-
+        editNicknameBtn.addEventListener('click', () => showModal(true));
+        
         saveNicknameBtn.addEventListener('click', () => {
             const newNickname = nicknameInput.value.trim();
             if (newNickname && newNickname.length > 0 && newNickname.length <= 6) {
                 localStorage.setItem('userNickname', newNickname);
+                localStorage.setItem('userAvatar', selectedAvatar);
+                
+                const playerRef = database.ref(`memoryGamePlayers/${myPlayerId}`);
+                playerRef.once('value').then(snapshot => {
+                    if (snapshot.exists()) {
+                        playerRef.update({ nickname: newNickname, avatar: selectedAvatar });
+                    } else {
+                        playerRef.set({
+                            playerId: myPlayerId, nickname: newNickname, avatar: selectedAvatar,
+                            level: 1, exp: 0, wins: 0, losses: 0
+                        });
+                    }
+                });
                 checkNickname();
             } else {
                 alert('닉네임은 1~6글자로 입력해주세요.');
@@ -256,11 +333,7 @@
         cancelNicknameBtn.addEventListener('click', hideModal);
         closeBtn.addEventListener('click', hideModal);
         
-        nicknameInput.addEventListener('keyup', function(event) {
-            if (event.key === 'Enter') {
-                saveNicknameBtn.click();
-            }
-        });
+        nicknameInput.addEventListener('keyup', e => { if (e.key === 'Enter') saveNicknameBtn.click(); });
 
         gameButtons.forEach(button => {
             button.addEventListener('click', function(e) {
@@ -270,7 +343,7 @@
                     const targetUrl = this.href;
                     window.location.href = `${targetUrl}?nickname=${encodeURIComponent(nickname)}`;
                 } else {
-                    alert('먼저 닉네임을 설정해주세요!');
+                    alert('먼저 프로필을 설정해주세요!');
                     showModal(false);
                 }
             });
@@ -281,4 +354,3 @@
     </script>
 </body>
 </html>
-
