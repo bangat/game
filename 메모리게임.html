@@ -416,11 +416,11 @@ const emojiThemes = {
         };
         
         const gameSelectModal = document.getElementById('game-select-modal');
-        const availableGames = [
-            { id: 'memory', name: '메모리게임', icon: '🧠', color: '#4CAF50' },
-            { id: 'maze', name: '미로찾기', icon: '🚀', color: '#34495e' },
-            { id: 'word', name: '낱말게임', icon: '🎨', color: '#ff6b6b' },
-            { id: 'tower', name: '타워디펜스', icon: '🏰', color: '#f39c12' }
+const availableGames = [
+            { id: 'memory', name: '메모리게임', icon: '🧠', color: '#4CAF50', file: '메모리게임.html' },
+            { id: 'maze', name: '미로찾기', icon: '🚀', color: '#34495e', file: '미로찾기.html' },
+            { id: 'word', name: '낱말게임', icon: '🎨', color: '#ff6b6b', file: '낱말게임.html' },
+            { id: 'tower', name: '타워디펜스', icon: '🏰', color: '#f39c12', file: '타워디펜스.html' }
         ];
 
         function showGameSelectModal() {
@@ -678,7 +678,12 @@ const emojiThemes = {
                 if(currentRoomData.gameState === 'waiting') { gameWrapper.classList.add('hidden'); updateInGameLobbyUI(); }
                 else { waitingOverlay.style.display = 'none'; gameWrapper.classList.remove('hidden'); }
                 updateStatusUI();
-                switch(currentRoomData.gameState) {
+             switch(currentRoomData.gameState) {
+                    case 'launching':
+                        if (currentRoomData.launchUrl) {
+                            window.location.href = currentRoomData.launchUrl;
+                        }
+                        break;
                     case 'ready': startCountdown(); break;
                     case 'playing': drawMultiplayerCards(); break;
                     case 'gameOver': showGameOverScreen(); break;
@@ -739,17 +744,30 @@ const emojiThemes = {
             });
         }
 
-        function startGame() {
+function startGame() {
             if (!isHost || !currentRoomData) return;
-            const playerCount = Object.keys(currentRoomData.players).length;
-            if (playerCount < 2) return;
-            let pairCount;
-            if (playerCount === 2) pairCount = 10; else if (playerCount === 3) pairCount = 15; else pairCount = 20;
-            const newCards = generateCards(pairCount);
-            const playerOrder = Object.keys(currentRoomData.players).sort();
-            const players = currentRoomData.players;
-            Object.keys(players).forEach(pid => { players[pid].score = 0; });
-            roomRef.update({ gameState: 'ready', cards: newCards, turn: playerOrder[0], playerOrder, players, flippedCards: [] });
+
+            const selectedGameId = currentRoomData.selectedGame;
+            const game = availableGames.find(g => g.id === selectedGameId);
+
+            if (selectedGameId === 'memory') {
+                // 기존 메모리게임 시작 로직
+                const playerCount = Object.keys(currentRoomData.players).length;
+                if (playerCount < 2) return;
+                let pairCount;
+                if (playerCount === 2) pairCount = 10; else if (playerCount === 3) pairCount = 15; else pairCount = 20;
+                const newCards = generateCards(pairCount);
+                const playerOrder = Object.keys(currentRoomData.players).sort();
+                const players = currentRoomData.players;
+                Object.keys(players).forEach(pid => { players[pid].score = 0; });
+                roomRef.update({ gameState: 'ready', cards: newCards, turn: playerOrder[0], playerOrder, players, flippedCards: [] });
+            } else if (game) {
+                // 다른 게임 시작 로직 (페이지 이동)
+                const roomId = roomRef.key;
+                const launchUrl = `${game.file}?roomId=${roomId}`;
+                // 모든 클라이언트가 이동하도록 Firebase 상태 변경
+                roomRef.update({ gameState: 'launching', launchUrl: launchUrl });
+            }
         }
         
         function startCountdown() {
