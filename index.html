@@ -133,7 +133,17 @@
         #profile-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; text-align: center; }
         .stat-item h4 { color: #888; font-size: 1em; margin-bottom: 5px; }
         .stat-item p { font-size: 1.4em; font-weight: 700; color: #333; margin: 0; }
-        .profile-modal-footer { padding: 20px; }
+.profile-modal-footer { padding: 20px; }
+        
+        .modal-spinner-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(255, 255, 255, 0.8); /* 반투명 흰색 배경 */
+            display: none; /* 평소에는 숨김 */
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+        }
     </style>
 </head>
 <body>
@@ -169,15 +179,18 @@
         </div>
     </main>
 
-    <div id="auth-modal" class="modal-overlay">
+<div id="auth-modal" class="modal-overlay">
         <div class="modal-content">
+            <div class="modal-spinner-overlay">
+                <div class="spinner" style="width: 40px; height: 40px;"></div>
+            </div>
             <div class="modal-header">
                 <h2 id="modal-title"></h2>
                  <span class="close-btn">&times;</span>
             </div>
             <div class="modal-body">
-                <input type="text" id="nickname-input" maxlength="8" placeholder="닉네임 (최대 8글자)">
-                <input type="password" id="password-input" placeholder="비밀번호 (6자리 이상)">
+<input type="text" id="nickname-input" maxlength="8" placeholder="닉네임 (최대 8글자)" autocomplete="username">
+<input type="password" id="password-input" placeholder="비밀번호 (6자리 이상)" autocomplete="current-password">
                 <div id="signup-fields" style="display: none;">
                     <div id="avatar-picker">
                         <h3>프로필 선택</h3>
@@ -332,21 +345,29 @@
             authModal.style.display = 'flex';
         }
 
-        async function handleSignUp() {
+      async function handleSignUp() {
             const nickname = nicknameInput.value.trim();
             const password = passwordInput.value;
             const email = nickname + DUMMY_DOMAIN;
+            
+            // [추가] 스피너 및 버튼 비활성화 로직
+            const spinnerOverlay = authModal.querySelector('.modal-spinner-overlay');
+            const modalButtons = authModal.querySelectorAll('button');
 
             if (nickname.length === 0 || nickname.length > 8) { alert('닉네임은 1~8글자로 입력해주세요.'); return; }
             if (password.length < 6) { alert('비밀번호는 6자리 이상이어야 합니다.'); return; }
 
-            const snapshot = await playersRef.orderByChild('nickname').equalTo(nickname).once('value');
-            if (snapshot.exists()) {
-                alert('이미 사용 중인 닉네임입니다. 다른 닉네임을 사용해주세요.');
-                return;
-            }
-
             try {
+                // [추가] 스피너 활성화
+                spinnerOverlay.style.display = 'flex';
+                modalButtons.forEach(btn => btn.disabled = true);
+
+                const snapshot = await playersRef.orderByChild('nickname').equalTo(nickname).once('value');
+                if (snapshot.exists()) {
+                    alert('이미 사용 중인 닉네임입니다. 다른 닉네임을 사용해주세요.');
+                    return; // finally 블록 실행을 위해 return
+                }
+
                 const userCredential = await auth.createUserWithEmailAndPassword(email, password);
                 const user = userCredential.user;
                 const initialProfile = { nickname, avatar: selectedAvatar, level: 1, exp: 0, wins: 0, losses: 0 };
@@ -354,16 +375,37 @@
                 authModal.style.display = 'none';
             } catch (error) {
                 alert(`회원가입 실패: ${error.message}`);
+            } finally {
+                spinnerOverlay.style.display = 'none';
+                modalButtons.forEach(btn => btn.disabled = false);
             }
         }
 
-        function handleLogin() {
+       function handleLogin() {
             const nickname = nicknameInput.value.trim();
             const password = passwordInput.value;
             const email = nickname + DUMMY_DOMAIN;
+
+            // [추가] 스피너 및 버튼 비활성화 로직
+            const spinnerOverlay = authModal.querySelector('.modal-spinner-overlay');
+            const modalButtons = authModal.querySelectorAll('button');
+
+            // [추가] 스피너 활성화
+            spinnerOverlay.style.display = 'flex';
+            modalButtons.forEach(btn => btn.disabled = true);
+
             auth.signInWithEmailAndPassword(email, password)
-                .then(() => { authModal.style.display = 'none'; })
-                .catch(error => alert(`로그인 실패: 닉네임 또는 비밀번호를 확인해주세요.`));
+                .then(() => { 
+                    authModal.style.display = 'none'; 
+                })
+                .catch(error => {
+                    alert(`로그인 실패: 닉네임 또는 비밀번호를 확인해주세요.`);
+                })
+                .finally(() => {
+                    // [추가] 스피너 비활성화 (성공/실패 여부와 관계없이 항상 실행)
+                    spinnerOverlay.style.display = 'none';
+                    modalButtons.forEach(btn => btn.disabled = false);
+                });
         }
 
         function handleGuestStart() {
