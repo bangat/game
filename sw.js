@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nanmal-game-v1';
+const CACHE_NAME = 'nanmal-game-v2';
 const URLS_TO_CACHE = [
   '/',
   '/index.html',
@@ -54,4 +54,5 @@ self.addEventListener('activate', (event) => {
       );
     })
   );
+
 });
