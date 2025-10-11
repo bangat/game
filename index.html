@@ -106,9 +106,37 @@
         .modal-confirm-btn { background-color: var(--primary-color); color: #fff; }
         .modal-cancel-btn { background-color: #e9ecef; color: #555; }
         .close-btn { position: absolute; top: 10px; right: 15px; font-size: 2em; color: #aaa; cursor: pointer; line-height: 1; }
-        .spinner { margin: 40px auto; border: 5px solid #f3f3f3; border-top: 5px solid var(--primary-color); border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; } @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
+        .spinner { margin: 40px auto; border: 5px solid #f3f3f3; border-top: 5px solid var(--primary-color); border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; } @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+#loading-view {
+            width: 100%; height: 100%; display: flex;
+            justify-content: center; align-items: center;
+            flex-direction: column;
+            transition: opacity 0.5s ease-out; /* 사라질 때 부드럽게 */
+        }
+        .loading-content {
+            width: 90%; max-width: 400px; text-align: center;
+        }
+        .loading-text {
+            color: #333; font-size: 1.2em; font-weight: 700;
+            margin: 0; text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+        }
+        .progress-bar-container {
+            width: 100%; background-color: #d0e1f3; border-radius: 20px;
+            height: 20px; margin: 15px 0; overflow: hidden;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1) inset;
+        }
+        #progress-bar {
+            width: 0%; height: 100%;
+            background: linear-gradient(90deg, var(--accent-color), var(--success-color));
+            border-radius: 20px;
+            transition: width 0.1s linear; /* 부드럽게 채워지는 효과 */
+        }
+        #progress-text {
+            font-size: 1em; color: #555;
+        }
         #profile-modal .modal-body { padding: 20px; }
+
         #profile-header { display: flex; flex-direction: column; align-items: center; }
         #profile-avatar { font-size: 4em; }
         #profile-nickname { font-size: 1.5em; font-weight: 700; margin-top: 10px; }
@@ -205,6 +233,19 @@
         .game-select-btn .icon {
             font-size: 2em;
         }
+        
+        #single-game-select-modal {
+            background-color: rgba(0,0,0,0.8);
+        }
+        #single-game-select-modal .modal-header {
+            background-color: var(--primary-color);
+            padding: 15px;
+        }
+        #single-game-select-modal .modal-header h2 {
+            color: var(--text-color-light);
+            font-size: 1.8em;
+            letter-spacing: 2px;
+        }
 
     </style>
 </head>
@@ -221,10 +262,19 @@
     </header>
 
     <main>
-        <div id="menu-container">
-            <div id="loading-view"><div class="spinner"></div></div>
+<div id="menu-container">
+            <div id="loading-view">
+                <div class="loading-content">
+                    <p class="loading-text">게임을 불러오는 중입니다</p>
+                    <div class="progress-bar-container">
+                        <div id="progress-bar"></div>
+                    </div>
+                    <p id="progress-text" class="loading-text">0%</p>
+                </div>
+            </div>
 
             <div id="auth-view" class="view-container">
+
                 <h1 class="main-title">미니 보드게임</h1>
                 <button id="guest-btn" class="auth-btn">👤게스트로 시작</button>
                 <button id="login-btn" class="auth-btn">🔑로그인</button>
@@ -323,8 +373,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2>어떤 게임을 할까요?</h2>
-                <span class="close-btn">&times;</span>
-            </div>
+                </div>
             <div class="modal-body">
                 <div id="game-select-options"></div>
             </div>
@@ -334,8 +383,17 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
-    <script>
+
+       <script>
     document.addEventListener('DOMContentLoaded', () => {
+        // ▼ 'returnFromGame' 기록이 있는지 먼저 확인합니다.
+        if (sessionStorage.getItem('returnFromGame') === 'true') {
+            sessionStorage.removeItem('returnFromGame'); // 확인 후 바로 삭제
+            document.getElementById('loading-view').style.display = 'none'; // 로딩 화면 즉시 숨김
+        } else {
+            startLoadingAnimation();
+        }
+
         const firebaseConfig = {
             apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw", authDomain: "goodluck-7c14b.firebaseapp.com",
             databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com", projectId: "goodluck-7c14b",
@@ -347,7 +405,11 @@
         const database = firebase.database();
         const playersRef = database.ref('users');
 
+        // ▼ 로딩 화면 관련 요소를 변수로 지정합니다.
         const loadingView = document.getElementById('loading-view');
+        const progressBar = document.getElementById('progress-bar');
+        const progressText = document.getElementById('progress-text');
+        
         const authView = document.getElementById('auth-view');
         const mainMenuView = document.getElementById('main-menu-view');
 
@@ -370,16 +432,65 @@
         const avatars = ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵'];
         let selectedAvatar = avatars[0];
 
-        function showView(view) {
-            loadingView.style.display = 'none';
-            authView.style.display = 'none';
-            mainMenuView.style.display = 'none';
-            view.style.display = 'block';
+        // ▼ 로딩 상태를 관리할 변수를 추가합니다.
+        let isAuthReady = false;
+        let viewToShowAfterLoad = null;
+
+        // ▼ 로딩 애니메이션을 시작하는 함수 (새로 추가)
+                function startLoadingAnimation() {
+            let progress = 0;
+            const interval = setInterval(() => {
+                // ▼ 데이터 로딩 완료 여부에 따라 속도를 조절합니다.
+                if (isAuthReady) {
+                    progress += 5; // 로딩 완료 시 빠르게 증가
+                } else {
+                    progress += 1; // 로딩 중에는 느리게 증가
+                }
+                
+                if (progress > 100) progress = 100;
+
+                progressBar.style.width = progress + '%';
+                progressText.textContent = progress + '%';
+
+                if (progress === 100) {
+                    clearInterval(interval);
+                    const checkAuth = setInterval(() => {
+                        if (isAuthReady) {
+                            clearInterval(checkAuth);
+                            setTimeout(() => {
+                                loadingView.style.opacity = '0';
+loadingView.addEventListener('transitionend', () => {
+                                    loadingView.style.display = 'none';
+                                    showView(viewToShowAfterLoad);
+                                }, { once: true });
+                            }, 200);
+                        }
+                    }, 50);
+                }
+            }, 40);
         }
 
+        // ▼ 페이지가 열리면 바로 애니메이션을 시작합니다.
+        startLoadingAnimation();
+
+        // ▼ showView 함수를 수정하여 로딩 화면을 건드리지 않도록 합니다.
+        function showView(view) {
+            authView.style.display = 'none';
+            mainMenuView.style.display = 'none';
+            
+            if(view) {
+                if (view.id === 'main-menu-view') {
+                    view.style.display = 'flex';
+                } else {
+                    view.style.display = 'block';
+                }
+            }
+        }
+
+        // ▼ auth.onAuthStateChanged 함수를 수정하여 로딩 시스템과 연동합니다.
         auth.onAuthStateChanged(user => {
-            if (user) {
-                playersRef.child(user.uid).on('value', snapshot => {
+if (user) {
+                playersRef.child(user.uid).once('value', snapshot => {
                     if (snapshot.exists()) {
                         const profile = snapshot.val();
                         localStorage.setItem('myPlayerId', user.uid);
@@ -392,15 +503,24 @@
 
                         displayProfileData(mainMenuView, profile);
 
-                        if(mainMenuView.style.display !== 'block') showView(mainMenuView);
+                        // 직접 showView를 호출하는 대신, 로딩 후 보여줄 화면을 지정하고 완료 신호를 보냅니다.
+                        viewToShowAfterLoad = mainMenuView;
+                        isAuthReady = true;
+
                     } else { 
                         userProfileContainer.style.display = 'none';
-                        showView(authView); 
+                        viewToShowAfterLoad = authView;
+                        isAuthReady = true;
                     }
+                }, error => {
+                    console.error("Firebase 데이터 읽기 오류:", error);
+                    viewToShowAfterLoad = authView;
+                    isAuthReady = true;
                 });
             } else {
                 userProfileContainer.style.display = 'none';
-                showView(authView);
+                viewToShowAfterLoad = authView;
+                isAuthReady = true;
             }
         });
 
@@ -530,22 +650,17 @@
             const stats = data.stats || {};
             const totalWins = Object.values(stats).reduce((sum, game) => sum + (game.wins || 0), 0);
             const totalLosses = Object.values(stats).reduce((sum, game) => sum + (game.losses || 0), 0);
-
             const totalGames = totalWins + totalLosses;
             const winRate = totalGames > 0 ? ((totalWins / totalGames) * 100).toFixed(1) + '%' : '-';
-
             const expForNextLevel = data.level * 100;
             const expPercent = expForNextLevel > 0 ? (data.exp / expForNextLevel) * 100 : 0;
 
             container.querySelector('#profile-avatar').textContent = data.avatar;
             container.querySelector('#profile-nickname').textContent = data.nickname;
             container.querySelector('#profile-level').textContent = `Lv. ${data.level}`;
-
             container.querySelector('#profile-wins').textContent = `${totalWins} 승`;
             container.querySelector('#profile-losses').textContent = `${totalLosses} 패`;
-
             container.querySelector('#profile-winrate').textContent = winRate;
-
             const expBar = container.querySelector('#exp-bar');
             const expText = container.querySelector('#exp-text');
             expBar.style.width = `${expPercent}%`;
@@ -599,29 +714,25 @@
             availableGames.forEach(game => {
                 const btn = document.createElement('button');
                 btn.className = 'game-select-btn';
-                btn.style.backgroundColor = game.color + '20'; // 20은 투명도
+                btn.style.backgroundColor = game.color + '20';
                 btn.style.color = game.color;
                 btn.innerHTML = `<span class="icon">${game.icon}</span><span>${game.name}</span>`;
                 btn.onclick = () => {
-                    window.location.href = game.file; // roomId 없이 이동 -> 솔로 플레이
+                    localStorage.setItem('startMode', 'single');
+                    window.location.href = game.file;
                 };
                 optionsContainer.appendChild(btn);
             });
             singleGameSelectModal.style.display = 'flex';
         }
 
-        singleGameSelectModal.querySelector('.close-btn').addEventListener('click', () => {
-            singleGameSelectModal.style.display = 'none';
-        });
-
         document.getElementById('main-single-player-btn').addEventListener('click', showSingleGameSelectModal);
 
         document.getElementById('main-multiplayer-btn').addEventListener('click', () => {
-            // 멀티플레이는 통합 로비(메모리게임.html)로 이동
             localStorage.setItem('startMode', 'multiplayer');
             window.location.href = '메모리게임.html';
         });
     });
-    </script>
+</script>
 </body>
 </html>
