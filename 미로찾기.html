@@ -119,11 +119,18 @@
     .menu-btn.secondary { background-color: #f0f3f4; color: #333; }
     .menu-btn:active { transform: scale(0.98); }
     #game-over-message { font-size: 2.5em; font-weight: bold; margin-bottom: 20px; text-shadow: 2px 2px 4px #000; }
+#countdown-container { color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); text-align: center; }
+    #countdown-container h2 { font-size: 1.8em; font-weight: 700; }
+    #countdown-number { font-size: 6em; font-weight: 700; margin-top: 10px; animation: countdown-pop 1s infinite; }
+    @keyframes countdown-pop {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.2); }
+    }
 </style>
 </head>
 <body>
-    <div id="game-over-overlay" class="overlay" style="display: none;"></div>
-    <div id="darkness-overlay" class="overlay"></div>
+<div id="game-over-overlay" class="overlay" style="display: none;"></div>
+    <div id="waiting-overlay" class="overlay" style="display: none;"></div> <div id="darkness-overlay" class="overlay"></div>
    
     <div id="game-wrapper">
         <div id="game-header"></div>
@@ -153,9 +160,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const database = firebase.database();
     const gameRoomsRef = database.ref('memoryGameRooms')
 
-    const gameWrapper = document.getElementById('game-wrapper'),
+const gameWrapper = document.getElementById('game-wrapper'),
           mazeContainer = document.getElementById('maze'),
           gameOverOverlay = document.getElementById('game-over-overlay'),
+          waitingOverlay = document.getElementById('waiting-overlay'), // 이 줄을 추가해주세요
           darknessOverlay = document.getElementById('darkness-overlay'),
           inventoryContainer = document.getElementById('inventory-container'),
           gameHeader = document.getElementById('game-header');
@@ -189,16 +197,44 @@ document.addEventListener('DOMContentLoaded', () => {
         return true;
     }
 
-    if (getPlayerInfo()) {
+   if (getPlayerInfo()) {
         const urlParams = new URLSearchParams(window.location.search);
         const roomId = urlParams.get('roomId');
         if (roomId) joinMultiplayerGame(roomId);
-        else startSinglePlayerGame();
+        else startSinglePlayerCountdown(); // 여기를 수정해주세요
     }
     
     window.addEventListener('beforeunload', () => {
         if (roomRef && myPlayerId) roomRef.child('players').child(myPlayerId).remove();
     });
+
+function startSinglePlayerCountdown() {
+        gameWrapper.style.display = 'flex';
+        // 게임 시작 전에 이전 맵과 UI를 초기화합니다.
+        mazeContainer.innerHTML = '';
+        inventoryContainer.innerHTML = '';
+        gameHeader.innerHTML = '';
+        
+        waitingOverlay.innerHTML = `<div id="countdown-container"><h2>게임 시작!</h2><p id="countdown-number"></p></div>`;
+        waitingOverlay.style.display = 'flex';
+        
+        let count = 3;
+        const countdownEl = document.getElementById('countdown-number');
+        const updateCount = () => { countdownEl.textContent = count; };
+        
+        updateCount();
+        const interval = setInterval(() => {
+            count--;
+            if (count > 0) {
+                updateCount();
+            } else {
+                clearInterval(interval);
+                waitingOverlay.style.display = 'none';
+                startSinglePlayerGame(); // 카운트다운이 끝나면 실제 게임 시작 함수를 호출합니다.
+            }
+        }, 1000);
+    }
+
 
     function startSinglePlayerGame() {
         gameWrapper.style.display = 'flex';
