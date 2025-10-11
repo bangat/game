@@ -160,6 +160,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const database = firebase.database();
     const gameRoomsRef = database.ref('memoryGameRooms')
 
+
+
 const gameWrapper = document.getElementById('game-wrapper'),
           mazeContainer = document.getElementById('maze'),
           gameOverOverlay = document.getElementById('game-over-overlay'),
@@ -248,6 +250,30 @@ function startSinglePlayerCountdown() {
         roomRef.child('players').child(myPlayerId).onDisconnect().remove();
         listenToRoomChanges();
     }
+
+/* ○○○○○○○○방 데이터 실시간 감시 시작○○○○○○○○ */
+function listenToRoomChanges() {
+    roomRef.on('value', (snapshot) => {
+        const data = snapshot.val();
+        if (!data) return;
+        currentRoomData = data;
+
+        // 플레이어 목록 업데이트
+        if (data.players) {
+            allPlayers = data.players;
+            updateHeaderUI(allPlayers);
+        }
+
+        // 게임 상태 변화 감시
+        if (data.gameState === 'playing' && !isGameInitialized) {
+            setupGameFromData(data);
+            initializeGhosts(data.ghosts || []);
+        }
+    });
+}
+/* ○○○○○○○○방 데이터 실시간 감시 종료○○○○○○○○ */
+
+
 
     function initializeGame(roomData = null) {
         mazeContainer.innerHTML = '';
@@ -742,6 +768,7 @@ allPlayers = players || {};
                             // isDead 상태를 포함한 모든 정보를 전달합니다.
                             updatePlayerPosition(pid, p.x, p.y, p.avatar, { ...p.effects, isDead: p.isDead });
                         }
+                        // myPlayerId에 대한 로직은 그대로 유지
                         if (pid === myPlayerId) {
                          playerPos = { x: p.x, y: p.y };
                          isDead = !!p.isDead;
