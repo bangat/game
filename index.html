@@ -490,7 +490,10 @@
 
         // ▼ auth.onAuthStateChanged 함수를 수정하여 로딩 시스템과 연동합니다.
         auth.onAuthStateChanged(user => {
-if (user) {
+            // ▼ 로딩 화면이 보이는지 여부를 확인하는 변수 추가
+            const isLoadingScreenVisible = loadingView.style.display !== 'none';
+
+            if (user) {
                 playersRef.child(user.uid).once('value', snapshot => {
                     if (snapshot.exists()) {
                         const profile = snapshot.val();
@@ -504,24 +507,40 @@ if (user) {
 
                         displayProfileData(mainMenuView, profile);
 
-                        // 직접 showView를 호출하는 대신, 로딩 후 보여줄 화면을 지정하고 완료 신호를 보냅니다.
-                        viewToShowAfterLoad = mainMenuView;
-                        isAuthReady = true;
+                        // ▼ 로딩 화면이 보일 때와 아닐 때를 구분하여 처리
+                        if (isLoadingScreenVisible) {
+                            viewToShowAfterLoad = mainMenuView;
+                            isAuthReady = true;
+                        } else {
+                            showView(mainMenuView); // 로딩 화면이 없으면 즉시 메인 메뉴 표시
+                        }
 
                     } else { 
                         userProfileContainer.style.display = 'none';
-                        viewToShowAfterLoad = authView;
-                        isAuthReady = true;
+                        if (isLoadingScreenVisible) {
+                            viewToShowAfterLoad = authView;
+                            isAuthReady = true;
+                        } else {
+                            showView(authView);
+                        }
                     }
                 }, error => {
                     console.error("Firebase 데이터 읽기 오류:", error);
-                    viewToShowAfterLoad = authView;
-                    isAuthReady = true;
+                    if (isLoadingScreenVisible) {
+                        viewToShowAfterLoad = authView;
+                        isAuthReady = true;
+                    } else {
+                        showView(authView);
+                    }
                 });
             } else {
                 userProfileContainer.style.display = 'none';
-                viewToShowAfterLoad = authView;
-                isAuthReady = true;
+                if (isLoadingScreenVisible) {
+                    viewToShowAfterLoad = authView;
+                    isAuthReady = true;
+                } else {
+                    showView(authView);
+                }
             }
         });
 
