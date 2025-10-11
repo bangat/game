@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>게임 대기실</title>
+    <link href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff" as="font" type="font/woff" crossorigin>
+    <style>
+        @font-face {
+            font-family: 'GmarketSans';
+            src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff') format('woff');
+            font-weight: 500;
+            font-style: normal;
+        }
+        @font-face {
+            font-family: 'GmarketSans';
+            src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansBold.woff') format('woff');
+            font-weight: 700;
+            font-style: normal;
+        }
+
+        :root {
+            --bg-color: #F3F7FD; --primary-color: #4A8DFF; --accent-color: #FFC84A;
+            --text-color-dark: #333D4B; --text-color-light: #ffffff;
+            --danger-color: #F76363; --success-color: #30D394;
+            --panel-bg: #ffffff; --panel-border: #E5E8EB;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%; height: 100%; overflow: hidden; font-family: 'GmarketSans', sans-serif;
+            background-color: var(--bg-color); display: flex; flex-direction: column;
+            justify-content: center; align-items: center; -webkit-user-select: none; user-select: none; touch-action: manipulation;
+        }
+        .view { width: 100%; height: 100%; display: flex; flex-direction: column; }
+        .hidden { display: none !important; }
+
+        .menu-btn {
+            width: 100%; max-width: 320px; padding: 15px; font-size: 1.2em; font-weight: 700; letter-spacing: 1px;
+            font-family: 'GmarketSans', sans-serif; border-radius: 12px; border: none; cursor: pointer;
+            margin-bottom: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: all 0.15s ease-out;
+        }
+        .menu-btn:active { transform: scale(0.97); box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .menu-btn.primary { background-color: var(--primary-color); color: var(--text-color-light); }
+        .menu-btn.secondary { background-color: #E9EEF2; color: var(--text-color-dark); }
+        .menu-btn:disabled { background-color: #ccc !important; color: #888 !important; cursor: not-allowed; box-shadow: none; transform: none; }
+        
+        .spinner { margin: 20px auto; border: 4px solid rgba(0, 0, 0, 0.1); border-radius: 50%; border-top: 4px solid var(--primary-color); width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        #lobby-view { padding: 15px; align-items: center; }
+        .lobby-panel { display: flex; flex-direction: column; width: 100%; max-width: 500px; height: calc(100% - 80px); background: var(--panel-bg); border-radius: 16px; padding: 20px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); border: 1px solid var(--panel-border); }
+        .lobby-header { width: 100%; display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-shrink: 0; }
+        .lobby-header h1 { font-size: 1.8em; font-weight: 700; color: var(--text-color-dark); }
+        #room-list-container { width: 100%; flex-grow: 1; overflow-y: auto; }
+        
+        .room-item {
+            display: flex; flex-direction: column; background-color: #fff; border: 1px solid var(--panel-border);
+            border-radius: 12px; margin-bottom: 15px; overflow: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+        .room-main-info { padding: 15px; }
+        .room-item .room-name { font-size: 1.3em; font-weight: 700; margin-bottom: 15px; }
+        .room-detail-line { display: flex; align-items: center; font-size: 0.95em; margin-top: 8px; padding: 5px 0; }
+        .room-detail-line .detail-label { color: #888; font-weight: 500; width: 50px; }
+        .room-detail-line .detail-value { font-weight: 700; color: var(--text-color-dark); }
+        .status-players { justify-content: space-between; }
+        .status-wrapper, .players-wrapper { display: flex; align-items: center; }
+        .room-status.waiting { color: var(--success-color); }
+        .room-status.playing { color: var(--danger-color); }
+        .room-item .join-btn.primary { width: 100%; border-radius: 0; margin: 0; padding: 15px; font-size: 1.1em; border-top: none; }
+        .room-item .join-btn:disabled { background-color: #f0f0f0 !important; color: #aaa !important; border-top: 1px solid #e0e0e0; }
+        
+        #lobby-bottom-actions { width: 100%; max-width: 500px; margin-top: 15px; display: flex; gap: 10px; }
+        #lobby-bottom-actions .menu-btn { width: 50%; margin-bottom: 0; }
+
+        .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px; z-index: 200; text-align: center; background-color: rgba(0,0,0,0.6); }
+        .modal-content { background: var(--panel-bg); border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); width: 90%; max-width: 400px; overflow: hidden; }
+        .modal-header { background-color: var(--primary-color); padding: 15px; }
+        .modal-header h2 { color: var(--text-color-light); font-size: 1.8em; font-weight: 700; letter-spacing: 2px; }
+        .modal-body { padding: 25px; }
+        
+        #player-list { margin-top: 20px; font-size: 1.1em; width: 100%; max-width: 320px; }
+        .player-item { background-color: #F3F7FD; color: var(--text-color-dark); padding: 12px; border-radius: 8px; margin-bottom: 8px; font-weight: 700; cursor: pointer; transition: background-color 0.2s; }
+        .player-item:hover { background-color: #e9eff8; }
+        .player-item.is-host::after { content: ' (방장)'; color: var(--primary-color); font-weight: 700; }
+        
+        .lobby-modal-footer { display: flex; gap: 10px; padding: 20px; border-top: 1px solid var(--panel-border); }
+        .lobby-modal-footer .menu-btn { margin-bottom: 0; width: 100%; }
+        #waiting-overlay .modal-body { display: flex; flex-direction: column; }
+        #waiting-overlay #player-list { flex-grow: 1; overflow-y: auto; margin-top: 20px; }
+        
+        #game-select-options { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; padding: 25px; }
+        .game-select-btn { aspect-ratio: 1 / 1; font-size: 1.2em; font-weight: 700; border-radius: 12px; border: 3px solid transparent; cursor: pointer; transition: all 0.2s ease; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 5px; }
+        .game-select-btn:hover { transform: translateY(-5px); border-color: var(--accent-color); }
+        .game-select-btn .icon { font-size: 2em; }
+
+        #selected-game-display { background-color: #e9eff8; padding: 12px; border-radius: 8px; margin-bottom: 15px; font-weight: 700; text-align: center; color: var(--text-color-dark); width: 100%; max-width: 320px; margin-left: auto; margin-right: auto; }
+        #selected-game-display .placeholder { color: #777; }
+    </style>
+</head>
+<body>
+    <div id="lobby-view" class="view">
+        <div class="lobby-panel">
+            <div class="lobby-header">
+                <h1>게임 대기실</h1>
+            </div>
+            <div id="room-list-container"></div>
+        </div>
+        <div id="lobby-bottom-actions">
+            <button id="back-to-index-btn" class="menu-btn secondary">메인으로</button>
+            <button id="create-room-btn" class="menu-btn primary">방 만들기</button>
+        </div>
+    </div>
+
+    <div id="waiting-overlay" class="overlay" style="display: none;"></div>
+    <div id="info-overlay" class="overlay" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header"><h2 id="info-title">알림</h2></div>
+            <div class="modal-body">
+                <p id="info-message" style="margin-bottom: 25px;"></p>
+                <button id="info-confirm-btn" class="menu-btn primary" style="margin: 0; max-width: 200px;">확인</button>
+            </div>
+        </div>
+    </div>
+    <div id="game-select-modal" class="overlay" style="display: none; background-color: rgba(0,0,0,0.8);">
+        <div class="modal-content">
+            <div class="modal-header"><h2>어떤 게임을 할까요?</h2></div>
+            <div class="modal-body" id="game-select-options"></div>
+        </div>
+    </div>
+    
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const firebaseConfig = {
+            apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw", authDomain: "goodluck-7c14b.firebaseapp.com",
+            databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com", projectId: "goodluck-7c14b",
+            storageBucket: "goodluck-7c14b.firebasestorage.app", messagingSenderId: "858281658455",
+            appId: "1:858281658455:web:9131280a459be983933b12"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+        const gameRoomsRef = database.ref('memoryGameRooms');
+        
+        const lobbyView = document.getElementById('lobby-view'),
+              backToIndexBtn = document.getElementById('back-to-index-btn'),
+              createRoomBtn = document.getElementById('create-room-btn'),
+              roomListContainer = document.getElementById('room-list-container'),
+              waitingOverlay = document.getElementById('waiting-overlay'),
+              infoOverlay = document.getElementById('info-overlay'),
+              infoTitle = document.getElementById('info-title'),
+              infoMessage = document.getElementById('info-message'),
+              infoConfirmBtn = document.getElementById('info-confirm-btn'),
+              gameSelectModal = document.getElementById('game-select-modal');
+        
+        const availableGames = [
+            { id: 'memory', name: '메모리게임', icon: '🧠', color: '#4CAF50', file: '메모리게임.html' },
+            { id: 'maze', name: '미로찾기', icon: '🚀', color: '#34495e', file: '미로찾기.html' }
+        ];
+
+        let myPlayerId, myNickname, myAvatar, roomRef, currentRoomData, isHost = false;
+        let lobbyListener = null; 
+
+        function getPlayerId() {
+            let id = localStorage.getItem('myPlayerId');
+            if (!id || sessionStorage.getItem('isGuest') === 'true') { // 게스트는 로비 이용 불가
+                alert("로그인 후 이용해주세요.");
+                window.location.href = 'index.html';
+                return null;
+            }
+            myNickname = localStorage.getItem('userNickname');
+            myAvatar = localStorage.getItem('userAvatar');
+            return id;
+        }
+
+        function showInfoModal(title, message, onConfirm) {
+            infoTitle.textContent = title;
+            infoMessage.textContent = message;
+            infoConfirmBtn.onclick = () => {
+                infoOverlay.style.display = 'none';
+                if (onConfirm) onConfirm();
+            };
+            infoOverlay.style.display = 'flex';
+        }
+
+        function cleanupOldRoomState() {
+            if (roomRef) { roomRef.off(); roomRef.onDisconnect().cancel(); }
+            roomRef = null; currentRoomData = null; isHost = false;
+        }
+
+        function startLobbyListener() {
+            stopLobbyListener();
+            roomListContainer.innerHTML = `<div class="spinner"></div>`;
+            const query = gameRoomsRef.orderByChild('createdAt').limitToLast(20);
+            lobbyListener = query.on('value', snapshot => {
+                roomListContainer.innerHTML = '';
+                if (!snapshot.exists()) {
+                    roomListContainer.innerHTML = `<p style="color: #999; padding: 20px 0; text-align: center; font-weight: 500;">활성화된 방이 없어요.<br>새로운 방을 만들어보세요!</p>`;
+                    return;
+                }
+                let roomCount = 0;
+                snapshot.forEach(childSnapshot => {
+                    const room = childSnapshot.val();
+                    if(!room || !room.players || !room.roomName || Object.keys(room.players).length === 0) return;
+                    roomCount++;
+                    const playerCount = Object.keys(room.players).length;
+                    const isPlaying = room.gameState === 'playing' || room.gameState === 'launching';
+                    const isFull = playerCount >= 4;
+                    const game = room.selectedGame ? availableGames.find(g => g.id === room.selectedGame) : null;
+                    const gameInfo = game ? `${game.icon} ${game.name}` : `<span style="color:#999">선택중...</span>`;
+                    const statusText = isPlaying ? '게임중' : '대기중';
+                    const statusClass = isPlaying ? 'playing' : 'waiting';
+
+                    const roomItem = document.createElement('div');
+                    roomItem.className = 'room-item';
+                    roomItem.innerHTML = `
+                        <div class="room-main-info">
+                            <div class="room-name">${room.roomName}</div>
+                            <div class="room-detail-line game"><span class="detail-label">게임</span><span class="detail-value">${gameInfo}</span></div>
+                            <div class="room-detail-line status-players">
+                                <div class="status-wrapper"><span class="detail-label">상태</span><span class="detail-value room-status ${statusClass}">[ ${statusText} ]</span></div>
+                                <div class="players-wrapper"><span class="detail-label">인원</span><span class="detail-value">${playerCount} / 4</span></div>
+                            </div>
+                        </div>
+                        <button class="menu-btn join-btn primary" data-room-id="${childSnapshot.key}" ${isFull || isPlaying ? 'disabled' : ''}>참가하기</button>
+                    `;
+                    roomListContainer.prepend(roomItem);
+                });
+                if (roomCount === 0) {
+                    roomListContainer.innerHTML = `<p style="color: #999; padding: 20px 0; text-align: center; font-weight: 500;">활성화된 방이 없어요.<br>새로운 방을 만들어보세요!</p>`;
+                }
+                document.querySelectorAll('.join-btn').forEach(btn => btn.addEventListener('click', e => joinRoom(e.target.dataset.roomId)));
+            });
+        }
+
+        function stopLobbyListener() {
+            if (lobbyListener) { gameRoomsRef.off('value', lobbyListener); lobbyListener = null; }
+        }
+
+        function createNewPublicRoom() {
+            stopLobbyListener();
+            cleanupOldRoomState();
+            isHost = true;
+            const newRoomData = { 
+                roomName: `${myNickname}님의 방`, hostId: myPlayerId, 
+                players: { [myPlayerId]: { nickname: myNickname, avatar: myAvatar, score: 0, isHost: true }}, 
+                gameState: 'waiting', createdAt: firebase.database.ServerValue.TIMESTAMP, selectedGame: null
+            };
+            roomRef = gameRoomsRef.push();
+            roomRef.onDisconnect().remove();
+            roomRef.set(newRoomData).then(() => { listenToRoomChanges(); showGameSelectModal(); });
+        }
+
+        function joinRoom(roomId) {
+            stopLobbyListener();
+            cleanupOldRoomState();
+            isHost = false;
+            roomRef = gameRoomsRef.child(roomId);
+            roomRef.transaction(currentData => {
+                if (currentData === null) return null;
+                if (currentData.gameState === 'waiting' && currentData.players && Object.keys(currentData.players).length < 4) {
+                    currentData.players[myPlayerId] = { nickname: myNickname, avatar: myAvatar, score: 0, isHost: false };
+                    return currentData;
+                } return;
+            }, (error, committed) => {
+                 if (!committed) { 
+                     showInfoModal("입장 실패", "방이 꽉 찼거나 이미 시작되어 참여할 수 없습니다."); 
+                     startLobbyListener();
+                 } else { roomRef.child('players/' + myPlayerId).onDisconnect().remove(); listenToRoomChanges(); }
+            });
+        }
+
+        function listenToRoomChanges() {
+            lobbyView.classList.add('hidden');
+            roomRef.on('value', snapshot => {
+                currentRoomData = snapshot.val();
+                if (!currentRoomData || !currentRoomData.players || !currentRoomData.players[myPlayerId]) {
+                    showInfoModal("방이 해체되었습니다", "방장이 게임을 떠나 대기실로 이동합니다.", () => {
+                        cleanupOldRoomState();
+                        waitingOverlay.style.display = 'none';
+                        lobbyView.classList.remove('hidden');
+                        startLobbyListener();
+                    });
+                    return;
+                }
+                if (currentRoomData.gameState === 'waiting') { updateInGameLobbyUI(); }
+                if (currentRoomData.gameState === 'launching' && currentRoomData.launchUrl) {
+                    roomRef.off();
+                    window.location.href = currentRoomData.launchUrl;
+                }
+            });
+        }
+
+        function updateInGameLobbyUI() {
+            const { players, selectedGame, roomName } = currentRoomData;
+            const playerCount = Object.keys(players).length;
+            
+            let selectedGameHTML = '';
+            if (selectedGame) {
+                const game = availableGames.find(g => g.id === selectedGame);
+                selectedGameHTML = `<div id="selected-game-display" style="cursor: ${isHost ? 'pointer' : 'default'};">게임: ${game.icon} ${game.name}</div>`;
+            } else {
+                selectedGameHTML = `<div id="selected-game-display" style="cursor: ${isHost ? 'pointer' : 'default'};"><span class="placeholder">${isHost ? '플레이할 게임을 선택해주세요!' : '방장이 게임을 선택 중입니다...'}</span></div>`;
+            }
+            let playerListHTML = '';
+            Object.entries(players).sort().forEach(([pid, p]) => {
+                playerListHTML += `<div class="player-item ${p.isHost ? 'is-host' : ''}">${p.avatar} ${p.nickname} ${pid === myPlayerId ? ' (나)' : ''}</div>`;
+            });
+            const canStart = playerCount >= 2 && selectedGame;
+            const startGameBtnHTML = isHost ? `<button id="start-game-btn" class="menu-btn primary" ${!canStart ? 'disabled' : ''}>게임 시작</button>` : '';
+            
+            waitingOverlay.innerHTML = `
+                <div class="modal-content">
+                    <div class="modal-header"><h2>${roomName}</h2></div>
+                    <div class="modal-body">${selectedGameHTML}<div id="player-list">${playerListHTML}</div></div>
+                    <div class="lobby-modal-footer">
+                        <button id="leave-room-btn" class="menu-btn secondary">나가기</button>${startGameBtnHTML}
+                    </div>
+                </div>`;
+            waitingOverlay.style.display = 'flex';
+            if(isHost) {
+                document.getElementById('start-game-btn').addEventListener('click', startGame);
+                document.getElementById('selected-game-display').addEventListener('click', showGameSelectModal);
+            }
+            document.getElementById('leave-room-btn').addEventListener('click', () => {
+                waitingOverlay.style.display = 'none';
+                const playerRef = roomRef.child('players/' + myPlayerId);
+                cleanupOldRoomState(); 
+                playerRef.remove(); 
+                lobbyView.classList.remove('hidden');
+                startLobbyListener(); 
+            });
+        }
+        
+        function startGame() {
+            if (!isHost || !currentRoomData) return;
+            const game = availableGames.find(g => g.id === currentRoomData.selectedGame);
+            if (game) {
+                const launchUrl = `${game.file}?roomId=${roomRef.key}`;
+                roomRef.update({ gameState: 'launching', launchUrl });
+            }
+        }
+
+        function showGameSelectModal() {
+            const optionsContainer = document.getElementById('game-select-options');
+            optionsContainer.innerHTML = '';
+            availableGames.forEach(game => {
+                const btn = document.createElement('button');
+                btn.className = 'game-select-btn';
+                btn.style.backgroundColor = game.color + '20';
+                btn.style.color = game.color;
+                btn.innerHTML = `<span class="icon">${game.icon}</span><span>${game.name}</span>`;
+                btn.onclick = () => selectGame(game.id);
+                optionsContainer.appendChild(btn);
+            });
+            gameSelectModal.style.display = 'flex';
+        }
+
+        function selectGame(gameId) {
+            if (isHost && roomRef) { roomRef.update({ selectedGame: gameId }); }
+            gameSelectModal.style.display = 'none';
+        }
+
+        myPlayerId = getPlayerId();
+        if (myPlayerId) {
+            startLobbyListener();
+            backToIndexBtn.addEventListener('click', () => { window.location.href = 'index.html'; });
+            createRoomBtn.addEventListener('click', createNewPublicRoom);
+        }
+    });
+    </script>
+</body>
+</html>
