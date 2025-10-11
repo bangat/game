@@ -53,6 +53,7 @@
 
     .wall { background-color: var(--wall-color); position: absolute; }
     .player-avatar, .opponent-player { position: absolute; display: flex; justify-content: center; align-items: center; transition: all 0.12s linear; border-radius: 50%; z-index: 10; }
+    .player-avatar.slowed { transition: all 0.3s linear !important; } /* 슬로우 효과 */
     .player-avatar { animation: pulse-me 1.5s infinite; }
     .dead { opacity: 0.4; filter: grayscale(100%); z-index: 5; animation: none !important; box-shadow: none !important; }
     @keyframes pulse-me { 0% { box-shadow: 0 0 12px 3px rgba(66, 133, 244, 0.9); } 50% { box-shadow: 0 0 18px 6px rgba(66, 133, 244, 0.5); } 100% { box-shadow: 0 0 12px 3px rgba(66, 133, 244, 0.9); } }
@@ -103,6 +104,14 @@
     @keyframes use-item-anim { 0% { transform: scale(1.2); opacity: 1; } 100% { transform: scale(0.5); opacity: 0; } }
     
     .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 200; text-align: center; background-color: rgba(0,0,0,0.7); }
+    #darkness-overlay {
+        background: radial-gradient(circle at 50% 50%, transparent 100px, black 150px);
+        pointer-events: none;
+        z-index: 150;
+        display: none;
+        transition: opacity 0.3s;
+    }
+
     .modal-content { background: rgba(44, 62, 80, 0.85); padding: 30px; border-radius: 20px; backdrop-filter: blur(5px); }
     .modal-buttons { display: flex; flex-direction: column; gap: 10px; align-items: center; margin-top: 20px;}
     .menu-btn { width: 100%; max-width: 250px; padding: 15px; font-size: 1.2em; font-weight: bold; border-radius: 12px; border: none; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.1s; }
@@ -114,6 +123,7 @@
 </head>
 <body>
     <div id="game-over-overlay" class="overlay" style="display: none;"></div>
+    <div id="darkness-overlay" class="overlay"></div>
    
     <div id="game-wrapper">
         <div id="game-header"></div>
@@ -146,6 +156,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const gameWrapper = document.getElementById('game-wrapper'),
           mazeContainer = document.getElementById('maze'),
           gameOverOverlay = document.getElementById('game-over-overlay'),
+          darknessOverlay = document.getElementById('darkness-overlay'),
           inventoryContainer = document.getElementById('inventory-container'),
           gameHeader = document.getElementById('game-header');
     
@@ -155,13 +166,15 @@ document.addEventListener('DOMContentLoaded', () => {
     let isDead = false, moveInterval = null, keyMoving = null;
     let ghosts = [], ghostMoveInterval = null;
     let itemsOnMap = {};
-    let localPlayerEffects = { hasGhostPass: false };
+    let localPlayerEffects = { hasGhostPass: false, isSlowed: false };
     let isGameRunning = false, isGameInitialized = false;
     let allPlayers = {};
     
     const ITEM_TYPES = {
-        'ghost-pass': { emoji: '🛡️' },
-        'freeze': { emoji: '❄️', duration: 5000 }
+        'ghost-pass': { emoji: '🛡️', probability: 30 },
+        'slow':       { emoji: '🐌', probability: 25, duration: 3000 },
+        'darkness':   { emoji: '🔦', probability: 25, duration: 3000 },
+        'teleport':   { emoji: '🌀', probability: 5 }
     };
 
     function getPlayerInfo() {
@@ -189,7 +202,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function startSinglePlayerGame() {
         gameWrapper.style.display = 'flex';
-        allPlayers[myPlayerId] = { avatar: myAvatar, nickname: myNickname, isDead: false };
+        allPlayers = { [myPlayerId]: { avatar: myAvatar, nickname: myNickname, isDead: false, x: startPos.x, y: startPos.y }};
         updateHeaderUI(allPlayers);
         initializeGame();
     }
@@ -205,7 +218,7 @@ document.addEventListener('DOMContentLoaded', () => {
         gameOverOverlay.style.display = 'none';
         if (ghostMoveInterval) clearInterval(ghostMoveInterval);
         ghosts = [];
-        localPlayerEffects.hasGhostPass = false;
+        localPlayerEffects = { hasGhostPass: false, isSlowed: false };
         isDead = false;
         isGameRunning = true;
         isGameInitialized = false;
@@ -243,6 +256,8 @@ document.addEventListener('DOMContentLoaded', () => {
         drawMapAndEntities();
         
         if (!roomRef) {
+            allPlayers[myPlayerId].x = playerPos.x;
+            allPlayers[myPlayerId].y = playerPos.y;
             updatePlayerPosition(myPlayerId, playerPos.x, playerPos.y, myAvatar);
             updateInventoryUI([]);
         }
@@ -263,28 +278,60 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
         carve(1, 1);
+        
+        // 추가 경로 생성을 위해 벽 일부 제거
+        const wallsToRemove = Math.floor((rows * cols) * 0.08); // 약 8%의 벽을 추가로 제거
+        let removedCount = 0;
+        while (removedCount < wallsToRemove) {
+            const x = Math.floor(Math.random() * (cols - 2)) + 1;
+            const y = Math.floor(Math.random() * (rows - 2)) + 1;
+            if (maze[y][x] === 1) {
+                maze[y][x] = 0;
+                removedCount++;
+            }
+        }
         return maze;
     }
     
     function placeStartAndGoal(layout) {
-        layout[1][1] = 'S';
-        layout[1][2] = 0;
-        layout[2][1] = 0;
-        layout[mazeRows - 2][mazeCols - 2] = 'G';
-        layout[mazeRows - 2][mazeCols - 3] = 0;
-        layout[mazeRows - 3][mazeCols - 2] = 0;
+        const startX = Math.floor(mazeCols / 2);
+        const startY = 1;
+        layout[startY][startX] = 'S';
+        // 시작 지점 주변 5x5 공간 강제 확보
+        for (let y = startY - 2; y <= startY + 2; y++) {
+            for (let x = startX - 2; x <= startX + 2; x++) {
+                if(layout[y]?.[x] !== undefined) layout[y][x] = 0;
+            }
+        }
+        layout[startY][startX] = 'S';
+
+        const goalX = Math.floor(mazeCols / 2);
+        const goalY = mazeRows - 2;
+        layout[goalY][goalX] = 'G';
+        // 도착 지점 주변 5x5 공간 강제 확보
+         for (let y = goalY - 2; y <= goalY + 2; y++) {
+            for (let x = goalX - 2; x <= goalX + 2; x++) {
+                 if(layout[y]?.[x] !== undefined) layout[y][x] = 0;
+            }
+        }
+        layout[goalY][goalX] = 'G';
     }
 
     function createItems() {
         const items = {};
-        const itemCount = 5;
+        const weightedList = [];
+        for (const type in ITEM_TYPES) {
+            for(let i=0; i<ITEM_TYPES[type].probability; i++) weightedList.push(type);
+        }
+
+        const itemCount = 7;
         for (let i = 0; i < itemCount; i++) {
             let x, y;
             do {
                 x = Math.floor(Math.random() * (mazeCols - 2)) + 1;
                 y = Math.floor(Math.random() * (mazeRows - 2)) + 1;
-            } while (mazeLayout[y][x] !== 0);
-            const type = Object.keys(ITEM_TYPES)[Math.floor(Math.random() * Object.keys(ITEM_TYPES).length)];
+            } while (mazeLayout[y]?.[x] !== 0 || items[`${x}-${y}`]);
+            const type = weightedList[Math.floor(Math.random() * weightedList.length)];
             items[`${x}-${y}`] = { x, y, type };
         }
         return items;
@@ -297,8 +344,8 @@ document.addEventListener('DOMContentLoaded', () => {
             let gx, gy;
             do {
                 gx = Math.floor(Math.random() * (mazeCols - 2)) + 1;
-                gy = Math.floor(Math.random() * (mazeRows - 4)) + 3;
-            } while (mazeLayout[gy][gx] !== 0 || (Math.abs(gx - startPos.x) < 8 && Math.abs(gy - startPos.y) < 8));
+                gy = Math.floor(Math.random() * (mazeRows - 10)) + 8;
+            } while (mazeLayout[gy][gx] !== 0 || (Math.abs(gx - startPos.x) < 12 && Math.abs(gy - startPos.y) < 12));
             initialGhosts['g' + i] = { x: gx, y: gy };
         }
         return initialGhosts;
@@ -396,6 +443,7 @@ document.addEventListener('DOMContentLoaded', () => {
         playerElement.style.cssText = `width: ${cellSize * 0.9}px; height: ${cellSize * 0.9}px; font-size: ${cellSize * 0.7}px; left: ${x * cellSize + (cellSize * 0.05)}px; top: ${y * cellSize + (cellSize * 0.05)}px;`;
         playerElement.classList.toggle('dead', !!effects.isDead);
         playerElement.classList.toggle('ghost-pass', !!effects.hasGhostPass);
+        playerElement.classList.toggle('slowed', !!effects.isSlowed);
     }
     
     function updateGhostPosition(ghost) {
@@ -405,34 +453,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function handleItemUse(event) {
         const itemType = event.currentTarget.dataset.itemType;
-        if (!itemType || isDead || itemType === 'ghost-pass') return;
-        if (itemType === 'freeze') {
-            if (roomRef) roomRef.child('events').push({ type: 'freeze', from: myPlayerId });
-            else {
-                ghosts.forEach(g => g.isFrozen = true);
-                setTimeout(() => ghosts.forEach(g => g.isFrozen = false), ITEM_TYPES.freeze.duration);
+        if (!itemType || isDead) return;
+        
+        if (roomRef) {
+            if (itemType !== 'ghost-pass' && itemType !== 'teleport') {
+                roomRef.child('events').push({ type: itemType, from: myPlayerId });
             }
         }
-        if(roomRef) {
-            roomRef.child(`players/${myPlayerId}/inventory`).transaction(inv => {
-                if (!inv) return [];
-                const index = inv.indexOf(itemType);
-                if (index > -1) inv.splice(index, 1);
-                return inv;
-            });
-        } else {
-             const currentInv = [];
-             inventoryContainer.querySelectorAll('.inventory-slot').forEach(slot => {
-                if(slot.dataset.itemType) currentInv.push(slot.dataset.itemType);
-             });
-             const index = currentInv.indexOf(itemType);
-             if(index > -1) currentInv.splice(index, 1);
-             updateInventoryUI(currentInv);
+        
+        if (itemType !== 'ghost-pass' && itemType !== 'teleport') {
+            if(roomRef) {
+                roomRef.child(`players/${myPlayerId}/inventory`).transaction(inv => {
+                    if (!inv) return [];
+                    const index = inv.indexOf(itemType);
+                    if (index > -1) inv.splice(index, 1);
+                    return inv;
+                });
+            } else {
+                const currentInv = Array.from(inventoryContainer.querySelectorAll('.inventory-slot'))
+                                        .map(slot => slot.dataset.itemType).filter(Boolean);
+                const index = currentInv.indexOf(itemType);
+                if(index > -1) currentInv.splice(index, 1);
+                updateInventoryUI(currentInv);
+            }
+            event.currentTarget.classList.add('used');
         }
-        event.currentTarget.classList.add('used');
     }
     
-    // ▼ BFS 기반 유령 AI
     function bfs(start, end) {
         const queue = [[start]];
         const visited = new Set([`${start.x},${start.y}`]);
@@ -440,12 +487,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const path = queue.shift();
             const pos = path[path.length - 1];
             if(pos.x === end.x && pos.y === end.y) return path;
-            
-            const dirs = [[0,1], [0,-1], [1,0], [-1,0]];
+            const dirs = [[0,1], [0,-1], [1,0], [-1,0]].sort(() => Math.random() - 0.5);
             for(const [dx, dy] of dirs) {
                 const nextX = pos.x + dx;
                 const nextY = pos.y + dy;
-                if(mazeLayout[nextY] && mazeLayout[nextY][nextX] !== 1 && !visited.has(`${nextX},${nextY}`)) {
+                if(mazeLayout[nextY]?.[nextX] !== 1 && !visited.has(`${nextX},${nextY}`)) {
                     visited.add(`${nextX},${nextY}`);
                     const newPath = [...path, {x: nextX, y: nextY}];
                     queue.push(newPath);
@@ -462,30 +508,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
         ghosts.forEach(ghost => {
             if (ghost.isFrozen) return;
-
-            if (ghost.path.length === 0) {
+            if (ghost.path.length === 0 || Math.random() < 0.1) {
                 let target = null;
                 if(livingPlayers.length > 0) {
-                    let minDistance = Infinity;
-                    livingPlayers.forEach(p => {
-                        const distance = Math.abs(p.x - ghost.x) + Math.abs(p.y - ghost.y);
-                        if(distance < minDistance) {
-                            minDistance = distance;
-                            target = p;
-                        }
-                    });
+                    target = livingPlayers[Math.floor(Math.random() * livingPlayers.length)];
                 }
                 if(target) {
                     const newPath = bfs({x: ghost.x, y: ghost.y}, {x: target.x, y: target.y});
                     if(newPath) ghost.path = newPath.slice(1);
                 }
             }
-
             if(ghost.path.length > 0) {
                 const nextMove = ghost.path.shift();
-                ghost.x = nextMove.x;
-                ghost.y = nextMove.y;
-            } else { // 경로 없으면 랜덤 이동
+                ghost.x = nextMove.x; ghost.y = nextMove.y;
+            } else {
                 const { x, y } = ghost;
                 const possibleMoves = [];
                 if (mazeLayout[y-1]?.[x] !== 1) possibleMoves.push({x, y: y-1});
@@ -500,7 +536,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if(roomRef) updates[ghost.id] = { x: ghost.x, y: ghost.y };
             else updateGhostPosition(ghost);
         });
-
         if(roomRef && Object.keys(updates).length > 0) roomRef.child('ghosts').update(updates);
         if(!roomRef) checkInteractions();
     }
@@ -521,15 +556,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         }
-        
         const itemKey = `${playerPos.x}-${playerPos.y}`;
         if (itemsOnMap[itemKey]) {
             const item = itemsOnMap[itemKey];
-            if (item.type === 'ghost-pass') {
+            
+            if (item.type === 'teleport') {
+                playerPos = { ...startPos };
+                if (roomRef) roomRef.child(`players/${myPlayerId}`).update({ x: startPos.x, y: startPos.y });
+                else { allPlayers[myPlayerId].x = startPos.x; allPlayers[myPlayerId].y = startPos.y; }
+            }
+            else if (item.type === 'ghost-pass') {
                 localPlayerEffects.hasGhostPass = true;
                 if(roomRef) roomRef.child(`players/${myPlayerId}/effects/hasGhostPass`).set(true);
                 else updatePlayerPosition(myPlayerId, playerPos.x, playerPos.y, myAvatar, { ...localPlayerEffects, isDead });
-            } else {
+            } 
+            else {
                 if(roomRef) {
                     roomRef.child(`players/${myPlayerId}/inventory`).transaction(inv => {
                         if (!inv) inv = [];
@@ -537,10 +578,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         return inv;
                     });
                 } else {
-                     const currentInv = [];
-                     inventoryContainer.querySelectorAll('.inventory-slot').forEach(slot => {
-                        if(slot.dataset.itemType) currentInv.push(slot.dataset.itemType);
-                     });
+                     const currentInv = Array.from(inventoryContainer.querySelectorAll('.inventory-slot'))
+                                            .map(slot => slot.dataset.itemType).filter(Boolean);
                      if(currentInv.length < 4) {
                          currentInv.push(item.type);
                          updateInventoryUI(currentInv);
@@ -588,8 +627,9 @@ document.addEventListener('DOMContentLoaded', () => {
     
     function startMoving(dx, dy) {
         if (isDead || moveInterval || !isGameRunning) return;
+        const moveSpeed = localPlayerEffects.isSlowed ? 300 : 150;
         move(dx, dy);
-        moveInterval = setInterval(() => move(dx, dy), 150);
+        moveInterval = setInterval(() => move(dx, dy), moveSpeed);
     }
 
     function stopMoving() {
@@ -650,12 +690,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 for (const pid in players) {
                     const p = players[pid];
                     if (p.x !== undefined) {
-                        updatePlayerPosition(pid, p.x, p.y, p.avatar, { isDead: p.isDead, hasGhostPass: p.effects?.hasGhostPass });
+                        updatePlayerPosition(pid, p.x, p.y, p.avatar, { ...p.effects, isDead: p.isDead });
                     }
                     if (pid === myPlayerId) {
                          playerPos = { x: p.x, y: p.y };
                          isDead = !!p.isDead;
-                         localPlayerEffects.hasGhostPass = !!(p.effects && p.effects.hasGhostPass);
+                         localPlayerEffects = p.effects || {};
                          if(isDead) stopMoving();
                          updateInventoryUI(p.inventory);
                          if(isGameInitialized) checkInteractions();
@@ -677,16 +717,33 @@ document.addEventListener('DOMContentLoaded', () => {
                 drawItems();
             }
         });
+
         const eventsRef = roomRef.child('events');
         eventsRef.on('child_added', snapshot => {
             const event = snapshot.val();
-            if (event.type === 'freeze') {
-                ghosts.forEach(g => g.isFrozen = true);
-                setTimeout(() => ghosts.forEach(g => g.isFrozen = false), ITEM_TYPES.freeze.duration);
+            const { type, from } = event;
+
+            if (myPlayerId !== from) {
+                if (type === 'slow') {
+                    localPlayerEffects.isSlowed = true;
+                    setTimeout(() => localPlayerEffects.isSlowed = false, ITEM_TYPES.slow.duration);
+                } else if (type === 'darkness') {
+                    darknessOverlay.style.display = 'block';
+                    setTimeout(() => darknessOverlay.style.display = 'none', ITEM_TYPES.darkness.duration);
+                }
             }
             snapshot.ref.remove();
         });
     }
+
+    document.addEventListener('mousemove', e => {
+        darknessOverlay.style.background = `radial-gradient(circle at ${e.clientX}px ${e.clientY}px, transparent 100px, black 150px)`;
+    });
+    document.addEventListener('touchmove', e => {
+        if(e.touches.length === 0) return;
+        const touch = e.touches[0];
+        darknessOverlay.style.background = `radial-gradient(circle at ${touch.clientX}px ${touch.clientY}px, transparent 100px, black 150px)`;
+    });
 
     function showGameOverScreen(didIWin) {
         isGameRunning = false;
@@ -713,7 +770,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="modal-buttons">${buttonsHTML}</div>
             </div>`;
         gameOverOverlay.style.display = 'flex';
-
         if (!roomRef) {
             document.getElementById('restart-btn').addEventListener('click', () => {
                 gameOverOverlay.style.display = 'none';
