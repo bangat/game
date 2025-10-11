@@ -481,19 +481,18 @@ const availableGames = [
             });
         }
         
-        myPlayerId = getPlayerId();
+myPlayerId = getPlayerId();
         if (myPlayerId) {
             const startMode = localStorage.getItem('startMode');
             localStorage.removeItem('startMode'); 
             if (startMode === 'single') {
-                startSinglePlayerGame();
+                startSinglePlayerCountdown(); 
             } else if (startMode === 'multiplayer') {
                 enterMultiplayerLobby();
             } else {
-                showView(startMenu);
+                window.location.href = 'index.html';
             }
         }
-
         window.addEventListener('beforeunload', (event) => {
             if (isGameInProgress) {
                 event.preventDefault(); event.returnValue = '';
@@ -609,14 +608,13 @@ const availableGames = [
             }
         }
    
-        singlePlayerBtn.addEventListener('click', startSinglePlayerGame);
-        multiplayerBtn.addEventListener('click', enterMultiplayerLobby);
 
-        backToMainBtn.addEventListener('click', () => { 
+backToMainBtn.addEventListener('click', () => { 
             stopLobbyListener();
             cleanupOldRoomState(); 
-            showView(startMenu); 
+            window.location.href = 'index.html';
         });
+
         backToIndexBtn.addEventListener('click', () => { window.location.href = 'index.html'; });
         createRoomBtn.addEventListener('click', createNewPublicRoom);
         
@@ -768,6 +766,27 @@ function startGame() {
                 // 모든 클라이언트가 이동하도록 Firebase 상태 변경
                 roomRef.update({ gameState: 'launching', launchUrl: launchUrl });
             }
+        }
+
+        function startSinglePlayerCountdown() {
+            showView(gameWrapper);
+            gameWrapper.classList.add('hidden');
+            waitingOverlay.innerHTML = `<div id="countdown-container"><h2>게임 시작!</h2><p id="countdown-number"></p></div>`;
+            waitingOverlay.style.display = 'flex';
+            let count = 3;
+            const countdownEl = document.getElementById('countdown-number');
+            const updateCount = () => { countdownEl.textContent = count; };
+            updateCount();
+            const interval = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    updateCount();
+                } else {
+                    clearInterval(interval);
+                    waitingOverlay.style.display = 'none';
+                    startSinglePlayerGame();
+                }
+            }, 1000);
         }
         
         function startCountdown() {
@@ -1001,8 +1020,12 @@ document.getElementById('profile-wins').textContent = `${totalWins} 승`;
                     if (singlePlayerMatched === 10) {
                         gameOverOverlay.innerHTML = `<div class="modal-content"><div class="modal-header"><h2>🎉 성공! 🎉</h2></div><div class="modal-body"><p>모든 카드를 맞췄습니다!</p><div class="modal-buttons"><button id="single-main-menu-btn" class="menu-btn primary">메인으로</button></div></div></div>`;
                         gameOverOverlay.style.display = 'flex';
-                        document.getElementById('single-main-menu-btn').addEventListener('click', () => { gameOverOverlay.style.display = 'none'; showView(startMenu); });
+document.getElementById('single-main-menu-btn').addEventListener('click', () => { 
+    sessionStorage.setItem('returnFromGame', 'true');
+    window.location.href = 'index.html'; 
+});
                     }
+
                 } else { setTimeout(() => { el1.classList.remove('flipped'); el2.classList.remove('flipped'); singlePlayerFlipped = []; }, 1000); }
             }
         }
