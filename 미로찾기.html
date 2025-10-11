@@ -429,7 +429,7 @@ const initialGhosts = createInitialGhosts(playerCount);
             ghosts.push(ghost);
             updateGhostPosition(ghost);
         }
-        if (!roomRef || isHost) ghostMoveInterval = setInterval(moveGhosts, 500);
+        if (roomRef && isHost) ghostMoveInterval = setInterval(moveGhosts, 500);
     }
 
     function drawMapAndEntities() {
@@ -514,17 +514,13 @@ const initialGhosts = createInitialGhosts(playerCount);
         ghost.element.style.cssText = `width:${cellSize}px; height:${cellSize}px; font-size:${cellSize*0.8}px; left:${ghost.x*cellSize}px; top:${ghost.y*cellSize}px;`;
     }
 
+    // 변경 코드
     function handleItemUse(event) {
         const itemType = event.currentTarget.dataset.itemType;
         if (!itemType || isDead) return;
         
-        if (roomRef) {
-            if (itemType !== 'ghost-pass' && itemType !== 'teleport') {
-                roomRef.child('events').push({ type: itemType, from: myPlayerId });
-            }
-        }
-        
-        if (itemType !== 'ghost-pass' && itemType !== 'teleport') {
+        // 아이템을 인벤토리에서 제거하고 Firebase 업데이트
+        const removeAndUpdateInventory = () => {
             if(roomRef) {
                 roomRef.child(`players/${myPlayerId}/inventory`).transaction(inv => {
                     if (!inv) return [];
@@ -540,6 +536,23 @@ const initialGhosts = createInitialGhosts(playerCount);
                 updateInventoryUI(currentInv);
             }
             event.currentTarget.classList.add('used');
+        };
+
+        if (itemType === 'ghost-pass') {
+            localPlayerEffects.hasGhostPass = true;
+            if (roomRef) roomRef.child(`players/${myPlayerId}/effects/hasGhostPass`).set(true);
+            removeAndUpdateInventory();
+        } else if (itemType === 'teleport') {
+            playerPos = { ...startPos };
+            if (roomRef) roomRef.child(`players/${myPlayerId}`).update({ x: startPos.x, y: startPos.y });
+            else { allPlayers[myPlayerId].x = startPos.x; allPlayers[myPlayerId].y = startPos.y; }
+            removeAndUpdateInventory();
+        } else {
+            // slow, darkness 같은 즉시 발동 아이템
+            if (roomRef) {
+                roomRef.child('events').push({ type: itemType, from: myPlayerId });
+            }
+            removeAndUpdateInventory();
         }
     }
     
@@ -619,6 +632,7 @@ const initialGhosts = createInitialGhosts(playerCount);
                 }
             }
         }
+        // 변경 코드
         const itemKey = `${playerPos.x}-${playerPos.y}`;
         if (itemsOnMap[itemKey]) {
             const item = itemsOnMap[itemKey];
@@ -649,9 +663,11 @@ const initialGhosts = createInitialGhosts(playerCount);
                      } else return;
                 }
             }
+            // ▼ 아이템 획득 후 Firebase에서 아이템을 제거하는 로직을 통합
             if(roomRef) roomRef.child('items').child(itemKey).remove();
             else { delete itemsOnMap[itemKey]; drawItems(); }
         }
+// ... (생략)
         if (playerPos.x === goalPos.x && playerPos.y === goalPos.y) handleWin();
     }
     
@@ -738,19 +754,19 @@ allPlayers = players || {};
             isHost = currentRoomData.hostId === myPlayerId; 
             gameWrapper.style.display = 'flex';
             
-            // ▼▼▼▼▼ 기존 코드를 아래 내용으로 교체 ▼▼▼▼▼
             if (!isGameInitialized) { // 게임이 아직 초기화되지 않았을 때만 실행
-                if (currentRoomData.maze) {
-                    // 1. 미로 데이터가 이미 있으면: 모든 플레이어는 미로를 그린다.
+                if (isHost && !currentRoomData.maze) {
+                    // 1. 미로 데이터가 없고 내가 방장이면: 게임(미로, 아이템 등)을 생성한다.
+                    initializeGame(currentRoomData);
+                    isGameInitialized = true; // 방장이 생성했으므로 초기화 완료
+                } else if (currentRoomData.maze) {
+                    // 2. 미로 데이터가 이미 있으면: 모든 플레이어는 미로를 그린다.
                     setupGameFromData(currentRoomData);
                     if(ghostData) initializeGhosts(ghostData);
-                } else if (isHost) {
-                    // 2. 미로 데이터가 없고 내가 방장이면: 게임(미로, 아이템 등)을 생성한다.
-                    initializeGame(currentRoomData);
+                    isGameInitialized = true; // 미로를 받았으므로 초기화 완료
                 }
                 // 3. 미로 데이터가 없고 내가 방장이 아니면: 방장이 만들 때까지 기다린다.
             }
-            // ▲▲▲▲▲ 여기까지 교체 ▲▲▲▲▲
 
             if (winner) {
                 showGameOverScreen(winner === myPlayerId);
