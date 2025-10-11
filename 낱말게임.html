@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>낱말 만들기</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&display=swap');
+        :root { --bg-color: #eef7ff; --primary-color: #ff6b6b; --correct-color: #51cf66; --font-color: #343a40; --card-bg-color: #ffffff; --border-radius: 15px; --shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        body { font-family: 'Noto Sans KR', sans-serif; background-color: var(--bg-color); color: var(--font-color); display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 10px; box-sizing: border-box; -webkit-user-select: none; user-select: none; }
+        #game-container { width: 100%; max-width: 500px; padding: 20px; text-align: center; display: none; } /* 로드 시 숨김 처리 */
+        #problem-area { margin-bottom: 20px; }
+        .problem-image { font-size: 5em; margin-bottom: 10px; }
+        .problem-word { font-size: 2.5em; font-weight: 700; letter-spacing: 5px; color: var(--primary-color); }
+        #status-bar { display: flex; justify-content: space-around; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; font-size: 1.1em; font-weight: bold; }
+        .status-box { background-color: rgba(255, 255, 255, 0.7); padding: 10px 15px; border-radius: 20px; flex-grow: 1; }
+        #answer-area { display: flex; justify-content: center; align-items: center; gap: 10px; background-color: var(--card-bg-color); border-radius: var(--border-radius); padding: 20px; margin-bottom: 30px; min-height: 80px; box-shadow: var(--shadow); transition: transform 0.2s ease; }
+        #answer-area.shake { animation: shake 0.5s; }
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 10%, 30%, 50%, 70%, 90% { transform: translateX(-10px); } 20%, 40%, 60%, 80% { transform: translateX(10px); } }
+        .answer-block { font-size: 3em; font-weight: 700; min-width: 60px; height: 80px; display: flex; justify-content: center; align-items: center; color: var(--font-color); }
+        .answer-block.placeholder { color: #ced4da; }
+        #jamo-area { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+        .jamo-button { width: 60px; height: 60px; font-size: 2em; font-weight: 700; border: none; border-radius: var(--border-radius); box-shadow: 0 3px 5px rgba(0,0,0,0.1); cursor: pointer; transition: transform 0.1s, background-color 0.2s; }
+        .jamo-button:active { transform: scale(0.95); }
+        .jamo-button.consonant { background-color: #a5d8ff; color: #1c7ed6; }
+        .jamo-button.vowel { background-color: #ffc0c0; color: #c92a2a; }
+        #feedback-area { margin-top: 20px; min-height: 80px; }
+        .feedback-message { font-size: 1.8em; font-weight: 700; }
+        .feedback-correct { color: var(--correct-color); }
+        .feedback-incorrect { color: #e03131; }
+        .next-word-btn { margin-top: 10px; padding: 15px 40px; font-size: 1.2em; font-weight: bold; color: white; background-color: var(--correct-color); border: none; border-radius: 30px; cursor: pointer; animation: fadeIn 0.5s; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        /* ▼ 오버레이 CSS 추가 ▼ */
+        #game-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0,0,0,0.7);
+            color: white;
+            display: flex; justify-content: center; align-items: center;
+            text-align: center;
+            z-index: 1000;
+        }
+        .overlay-content {
+            padding: 20px;
+        }
+        .countdown-text {
+            font-size: 8em;
+            font-weight: 700;
+            animation: countdown-pop 1s infinite;
+        }
+        @keyframes countdown-pop {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+        .game-over-title { font-size: 2.5em; font-weight: 700; margin-bottom: 15px; }
+        .final-score { font-size: 1.5em; margin-bottom: 30px; }
+    </style>
+</head>
+<body>
+    <div id="game-overlay" style="display: none;">
+        <div class="overlay-content"></div>
+    </div>
+
+    <div id="game-container">
+        <div id="status-bar">
+            <div class="status-box">레벨: <span id="level">1</span></div>
+            <div class="status-box">진행: <span id="progress">1 / 15</span></div>
+            <div class="status-box">점수: <span id="score">0</span></div>
+        </div>
+        <div id="problem-area">
+            <div class="problem-image"></div>
+            <div class="problem-word"></div>
+        </div>
+        <div id="answer-area"></div>
+        <div id="jamo-area"></div>
+        <div id="feedback-area"></div>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const gameLevels = [ { distractorCount: 0, words: [ { word: '사자', image: '🦁' }, { word: '나무', image: '🌳' }, { word: '호수', image: '🏞️' }, { word: '바다', image: '🌊' }, { word: '구름', image: '☁️' }, { word: '우유', image: '🥛' }, { word: '치즈', image: '🧀' }, { word: '비누', image: '🧼' }, { word: '수박', image: '🍉' }, { word: '가지', image: '🍆' }, { word: '피자', image: '🍕' }, { word: '기차', image: '🚂' }, { word: '모자', image: '👒' }, { word: '고기', image: '🍖' }, { word: '의자', image: '🪑' } ] }, { distractorCount: 1, words: [ { word: '바나나', image: '🍌' }, { word: '기린', image: '🦒' }, { word: '라디오', image: '📻' }, { word: '토마토', image: '🍅' }, { word: '오징어', image: '🦑' }, { word: '자동차', image: '🚗' }, { word: '비행기', image: '✈️' }, { word: '도토리', image: '🐿️' }, { word: '소방차', image: '🚒' }, { word: '자전거', image: '🚲' }, { word: '다람쥐', image: '🐿️' }, { word: '원숭이', image: '🐒' }, { word: '호랑이', image: '🐯' }, { word: '강아지', image: '🐶' }, { word: '고양이', image: '🐱' } ] }, { distractorCount: 2, words: [ { word: '코끼리', image: '🐘' }, { word: '선생님', image: '👩‍🏫' }, { word: '우체국', image: '🏤' }, { word: '잠수함', image: '🚤' }, { word: '무지개', image: '🌈' }, { word: '소화기', image: '🧯' }, { word: '사마귀', image: '🦗' }, { word: '바닷가', image: '🏖️' }, { word: '쓰레기', image: '🗑️' }, { word: '가오리', image: '🐠' }, { word: '텔레비전', image: '📺' }, { word: '아이스크림', image: '🍦' }, { word: '헬리콥터', image: '🚁' }, { word: '장수풍뎅이', image: '🪲' }, { word: '코스모스', image: '🌸' }, { word: '크리스마스', image: '🎄' }, { word: '스케이트', image: '⛸️' }, { word: '피아노', image: '🎹' }, { word: '도서관', image: '📚' }, { word: '운동화', image: '👟' } ] } ];
+        
+        let score = 0;
+        let mistakesOnCurrentWord = 0;
+        let currentLevelIndex = 0;
+        let currentWordInLevelIndex = 0;
+        let currentLevelShuffledWords = [];
+        let correctJamoSequence = [];
+        let userJamoSequence = [];
+
+        const gameContainer = document.getElementById('game-container');
+        const gameOverlay = document.getElementById('game-overlay');
+        const levelEl = document.getElementById('level');
+        const progressEl = document.getElementById('progress');
+        const scoreEl = document.getElementById('score');
+        const problemImageEl = document.querySelector('.problem-image');
+        const problemWordEl = document.querySelector('.problem-word');
+        const answerAreaEl = document.getElementById('answer-area');
+        const jamoAreaEl = document.getElementById('jamo-area');
+        const feedbackAreaEl = document.getElementById('feedback-area');
+        
+        const buttonClickSound = new Audio("https://blog.kakaocdn.net/dna/bwYLog/dJMb9aXTgeJ/AAAAAAAAAAAAAAAAAAAAADmduRzhpb3MzOEfQjYt4_cZMEVg0HqosiW-zgFGI0Ft/%EB%B2%84%ED%8A%BC%ED%81%B4%EB%A6%AD.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=PKXDBJk2sXcIkzBsT9JgdSVUy1s%3D&attach=1&knm=tfile.mp3");
+        const correctAnswerSound = new Audio("https://blog.kakaocdn.net/dna/MEv0X/dJMb9L4Selx/AAAAAAAAAAAAAAAAAAAAAKXPuVkeMAzxy7Bh1SCt30bi2C_1bwZptqCrwQ0ljMyS/%EC%A0%9C%EC%B6%9C%ED%95%98%EA%B8%B0.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=U3hZIYtsNEU6wzSI1Q3gqrObT0I%3D&attach=1&knm=tfile.mp3");
+        const levelClearSound = new Audio("https://blog.kakaocdn.net/dna/cMSNlR/btsMH8b7Su1/AAAAAAAAAAAAAAAAAAAAAC8os52vlTACB5W3Qr_fc5cHmhbz75gnZsY2Kn0G-Ecj/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%A7%80%ED%81%B4%EB%A6%AC%EC%96%B42.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=b7w6EDLvA0MB%2FM02OdE8uI05tQA%3D&attach=1&knm=tfile.mp3");
+        const wrongSound = new Audio("data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4LjQ1LjEwMAAAAAAAAAAAAAAA//tAwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB5pu999f7//+8+GNt8f7//6/zd9/j/f//1/yic+n+/+8/y5c+n9//8v8+XPr/f//n/y5c+v9//9f8uXPp/f//z/y5c+v9//9f8uXPp/f//n/y5c+v9//9f8uXPp/f//z/y5c+v9//9f8uXPp/f//n/y5c+v9//9f8uXPp/f//z/y5c+v9//9f8uXPp/f//n/y5c+v9//9f8uXPp/f//z/y5c+v9//9f8uXPp/f//n/y5c+v9//9f8uXPp/f//z/y5c+v9//9f8uXPp/f//n/y5c+v9//9f8uXPp/f//z/y5c+v9//9f8uXPp/f//n/y5c+v9//9f8uXPp/f//z/y5c+v9//9f8uXPp/f//n/y5c+v9//9f8uXPp/f//z/y5c+v9//9f8uXPp/f//n/y5c+v9//9f8uXPp/f//z/y5c+v9//9f8uXPp/f//n/y5c+v9//9f8uXPp/f//z/y5c+v9//9f8uXPp/f//n/y5c+v9//9f8uXPp/f//z/y5c+v9//9f8uXPp/f//n/y5c+v9//9f8uXPp/f//z/y5c+v9//9f8uXPp/f//n/y5c+v9//9f8uXPp/f//z/y5c+v9//9f8uXPp/f//n/y5c+v9//9f8uXPp/f//z/y5c+v9//9f8uXPp/f//n/y5c+v9//9f8uXPp/f//z/y5c+v9//9f8uXPp/f//n/y5c+v9//9f8uXPp/f//z/y5c+v9//9f8uXPp/f//n/y5c+v9//9f8uXPp/f//z/y5c+v9//9f8uXPp/f//n/y5c+v9//9f8uXPp/f//z/y5c+v9//9f8uXPp/f//n/y5c+v9//9f8uXPp/f//z/y5c+v9//9f8uXPp/f//n/y5c+v9//9f8uXPp/f//z/y5c+v9//9f8uXPp/f//n/y5c+v9//9f8uXPp/f//z/y5c+v9//9f8uXPp/f//n/y5c+v9//9f8uXPp/f//z/y5c+v9//9f8uXPp/f//n/y5c+v9//9f8uXPp/f//z/y5c+v9//9f8uXPp/f//n/y5c+v9//9f8uXPp/f//z/y5c+v9//9f8uXPp/f//n/y5c+v9//9f8uXPp/f//z/y5c+v9//9f8uXPp/f//n/y5c+v9//9f8uXPp/f//z/y5c+v9//9f8uXPp/f//n/y5c+v9//9f8uXPp/f//z/y5c+v9//9f8uXPp/f//n/y5c+v9//9f8uXPp/f//z/y5c+v9//9f8uXPp/f//n/y5c+v9//9f8uXPp/f//z/y5c+v9//9f8uXPp/f//n/y5c+v9//9f8uXPp/f//z/y5c+v9//9f8uXPp/f//n/y5c+v9//9f8uXPp/f//z/y5c+v9//9f8uXPp/f//n/y-");
+
+        const CHO = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+        const JUNG = ['ㅏ','ㅐ','ㅑ','ㅒ','ㅓ','ㅔ','ㅕ','ㅖ','ㅗ','ㅘ','ㅙ','ㅚ','ㅛ','ㅜ','ㅝ','ㅞ','ㅟ','ㅠ','ㅡ','ㅢ','ㅣ'];
+        const JONG = ['','ㄱ','ㄲ','ㄳ','ㄴ','ㄵ','ㄶ','ㄷ','ㄹ','ㄺ','ㄻ','ㄼ','ㄽ','ㄾ','ㄿ','ㅀ','ㅁ','ㅂ','ㅄ','ㅅ','ㅆ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+        const HANGUL_START_CODE = 44032;
+
+        function combine(jamoArr) { const syllables = []; let i = 0; while (i < jamoArr.length) { const cho = jamoArr[i]; if (!CHO.includes(cho)) { i++; continue; } let jung = null, jong = null; if (i + 1 < jamoArr.length && JUNG.includes(jamoArr[i+1])) { jung = jamoArr[i+1]; if (i + 2 < jamoArr.length && JONG.includes(jamoArr[i+2])) { if (i + 3 < jamoArr.length && JUNG.includes(jamoArr[i+3])) { jong = null; i += 2; } else { jong = jamoArr[i+2]; i += 3; } } else { i += 2; } } else { i++; } syllables.push({ cho, jung, jong }); } let result = ''; let remainingJamo = []; for (const s of syllables) { if (s.jung) { const choIndex = CHO.indexOf(s.cho); const jungIndex = JUNG.indexOf(s.jung); const jongIndex = JONG.indexOf(s.jong || ''); result += String.fromCharCode(HANGUL_START_CODE + choIndex * 588 + jungIndex * 28 + jongIndex); } else { remainingJamo.push(s.cho); } } return [result, remainingJamo]; }
+        function shuffleArray(array) { for (let i = array.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [array[i], array[j]] = [array[j], array[i]]; } }
+        function decompose(word) { let r = []; for (let c of word) { const C = c.charCodeAt(0) - HANGUL_START_CODE; if (C < 0) continue; const jI = C % 28; const juI = ((C - jI) / 28) % 21; const cI = Math.floor(C / 588); r.push(CHO[cI], JUNG[juI]); if (jI > 0) r.push(JONG[jI]); } return r; }
+        
+        // --- ▼ 신규 함수 및 로직 수정 ▼ ---
+
+        function startSinglePlayerCountdown() {
+            const overlayContent = gameOverlay.querySelector('.overlay-content');
+            let count = 3;
+            overlayContent.innerHTML = `<div class="countdown-text">${count}</div>`;
+            gameOverlay.style.display = 'flex';
+
+            const interval = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    overlayContent.innerHTML = `<div class="countdown-text">${count}</div>`;
+                } else {
+                    clearInterval(interval);
+                    gameOverlay.style.display = 'none';
+                    gameContainer.style.display = 'block';
+                    startLevel(0);
+                }
+            }, 1000);
+        }
+
+        function showGameOverScreen() {
+            const overlayContent = gameOverlay.querySelector('.overlay-content');
+            overlayContent.innerHTML = `
+                <div class="game-over-title">🎉 모든 레벨 클리어! 🎉</div>
+                <div class="final-score">최종 점수: ${score}점</div>
+                <button id="back-to-index-btn" class="next-word-btn">메인으로</button>
+            `;
+            gameOverlay.style.display = 'flex';
+
+            document.getElementById('back-to-index-btn').onclick = () => {
+                sessionStorage.setItem('returnFromGame', 'true');
+                window.location.href = 'index.html';
+            };
+        }
+
+        function startLevel(levelIndex) { currentLevelIndex = levelIndex; currentWordInLevelIndex = 0; const currentLevelData = gameLevels[currentLevelIndex]; currentLevelShuffledWords = [...currentLevelData.words]; shuffleArray(currentLevelShuffledWords); loadWord(); }
+        function loadWord() {
+            mistakesOnCurrentWord = 0;
+            userJamoSequence = [];
+            const currentLevelData = gameLevels[currentLevelIndex];
+            const problem = currentLevelShuffledWords[currentWordInLevelIndex];
+            correctJamoSequence = decompose(problem.word);
+            updateStatusDisplay();
+            problemImageEl.textContent = problem.image;
+            problemWordEl.textContent = problem.word;
+            feedbackAreaEl.innerHTML = '';
+            answerAreaEl.innerHTML = '';
+            for (let i = 0; i < problem.word.length; i++) { answerAreaEl.innerHTML += `<div class="answer-block placeholder">_</div>`; }
+            let jamoButtons = [...correctJamoSequence];
+            if (currentLevelData.distractorCount > 0) {
+                const allJamo = [...CHO, ...JUNG];
+                const correctJamoSet = new Set(correctJamoSequence);
+                const distractorPool = allJamo.filter(jamo => !correctJamoSet.has(jamo));
+                for(let i = 0; i < currentLevelData.distractorCount; i++) { const randomIndex = Math.floor(Math.random() * distractorPool.length); jamoButtons.push(distractorPool.splice(randomIndex, 1)[0]); }
+            }
+            jamoButtons.sort(() => Math.random() - 0.5);
+            jamoAreaEl.innerHTML = '';
+            jamoButtons.forEach(jamo => {
+                const button = document.createElement('button');
+                button.className = 'jamo-button';
+                button.classList.add(JUNG.includes(jamo) ? 'vowel' : 'consonant');
+                button.textContent = jamo;
+                button.onclick = () => handleJamoTap(jamo);
+                jamoAreaEl.appendChild(button);
+            });
+        }
+        function handleJamoTap(jamo) {
+            buttonClickSound.currentTime = 0;
+            buttonClickSound.play();
+            userJamoSequence.push(jamo);
+            const currentIndex = userJamoSequence.length - 1;
+            if (userJamoSequence[currentIndex] !== correctJamoSequence[currentIndex]) {
+                wrongSound.currentTime = 0; wrongSound.play();
+                if (navigator.vibrate) navigator.vibrate(200);
+                mistakesOnCurrentWord++;
+                if (mistakesOnCurrentWord >= 2) {
+                    jamoAreaEl.innerHTML = '';
+                    feedbackAreaEl.innerHTML = `<div class="feedback-message feedback-incorrect">아쉬워요! 다음 문제!</div>`;
+                    setTimeout(advanceToNextWord, 1500);
+                } else {
+                    answerAreaEl.classList.add('shake');
+                    setTimeout(() => {
+                        answerAreaEl.classList.remove('shake');
+                        userJamoSequence = [];
+                        updateAnswerDisplay();
+                    }, 500);
+                }
+                return;
+            }
+            updateAnswerDisplay();
+            if (userJamoSequence.length === correctJamoSequence.length) {
+                score += 10;
+                updateStatusDisplay();
+                correctAnswerSound.currentTime = 0;
+                correctAnswerSound.play();
+                jamoAreaEl.innerHTML = '';
+                feedbackAreaEl.innerHTML = `<div class="feedback-message feedback-correct">참 잘했어요!</div>`;
+                setTimeout(advanceToNextWord, 1500);
+            }
+        }
+        function advanceToNextWord() {
+            if (currentWordInLevelIndex + 1 >= currentLevelShuffledWords.length) {
+                levelClearSound.play();
+                let nextLevelIndex = currentLevelIndex + 1;
+                if (nextLevelIndex >= gameLevels.length) {
+                    showGameOverScreen(); // 모든 레벨 클리어
+                    return;
+                }
+                startLevel(nextLevelIndex);
+            } else {
+                currentWordInLevelIndex++;
+                loadWord();
+            }
+        }
+        function updateStatusDisplay() {
+            const currentLevelData = gameLevels[currentLevelIndex];
+            levelEl.textContent = currentLevelIndex + 1;
+            progressEl.textContent = `${currentWordInLevelIndex + 1} / ${currentLevelData.words.length}`;
+            scoreEl.textContent = score;
+        }
+        function updateAnswerDisplay() { const problemWord = currentLevelShuffledWords[currentWordInLevelIndex].word; const [combinedWord, remainingJamo] = combine(userJamoSequence); const remainingText = remainingJamo.join(''); const placeholderCount = problemWord.length - combinedWord.length - (remainingJamo.length > 0 ? 1 : 0); answerAreaEl.innerHTML = ''; for (let char of combinedWord) { answerAreaEl.innerHTML += `<div class="answer-block">${char}</div>`; } if (remainingText) { answerAreaEl.innerHTML += `<div class="answer-block">${remainingText}</div>`; } for (let i = 0; i < placeholderCount; i++) { answerAreaEl.innerHTML += `<div class="answer-block placeholder">_</div>`; } }
+        
+        // --- ▼ 스크립트 시작 지점 ▼ ---
+        const startMode = localStorage.getItem('startMode');
+        localStorage.removeItem('startMode'); // 확인 후 즉시 제거
+
+        if (startMode === 'single') {
+            startSinglePlayerCountdown();
+        } else {
+            // 혼자하기 모드가 아니면 메인으로 보냄
+            window.location.href = 'index.html';
+        }
+    });
+    </script>
+</body>
+</html>
