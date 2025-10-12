@@ -125,347 +125,400 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <script>
-    document.addEventListener('DOMContentLoaded', () => {
-        const firebaseConfig = {
-            apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw", authDomain: "goodluck-7c14b.firebaseapp.com",
-            databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com", projectId: "goodluck-7c14b",
-            storageBucket: "goodluck-7c14b.firebasestorage.app", messagingSenderId: "858281658455",
-            appId: "1:858281658455:web:9131280a459be983933b12"
+document.addEventListener('DOMContentLoaded', () => {
+    const firebaseConfig = {
+        apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw", authDomain: "goodluck-7c14b.firebaseapp.com",
+        databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com", projectId: "goodluck-7c14b",
+        storageBucket: "goodluck-7c14b.firebasestorage.app", messagingSenderId: "858281658455",
+        appId: "1:858281658455:web:9131280a459be983933b12"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
+    const gameRoomsRef = database.ref('memoryGameRooms');
+    const playersRef = database.ref('users');
+    
+    const startMenu = document.getElementById('start-menu'),
+          singlePlayerBtn = document.getElementById('single-player-btn'),
+          multiplayerBtn = document.getElementById('multiplayer-btn'),
+          backToIndexBtn = document.getElementById('back-to-index-btn'),
+          gameWrapper = document.getElementById('game-wrapper'),
+          cardGrid = document.getElementById('card-grid'),
+          gameHeader = document.getElementById('game-header'),
+          waitingOverlay = document.getElementById('waiting-overlay'),
+          gameOverOverlay = document.getElementById('game-over-overlay'),
+          flipSound = document.getElementById('flip-sound'),
+          infoOverlay = document.getElementById('info-overlay'),
+          infoTitle = document.getElementById('info-title'),
+          infoMessage = document.getElementById('info-message'),
+          infoConfirmBtn = document.getElementById('info-confirm-btn');
+
+    const emojiThemes = {
+        animals: ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🐔','🐧','🐦','🐤','🦆'],
+        monsters: ['💀','👻','👽','👾','🤖','🎃','👹','👺','👿','🧛','🧟','🧞','🤡','☠️','🧠','🦇','🕷️','🦉','🐺','☄️'],
+        foods: ['🍔','🍕','🍟','🌭','🍿','🥨','🥯','🥞','🧇','🧀','🍗','🍖','🥩','🥓','🥐','🍞','🥖','🍩','🍪','🥤']
+    };
+    
+    let myPlayerId, myNickname, myAvatar, roomRef, currentRoomData, isHost = false, isGameInProgress = false;
+
+function getPlayerId() {
+        const id = localStorage.getItem('myPlayerId'); // myPlayerId만 확인하도록 단순화
+        if (!id) {
+            alert("플레이어 정보가 없습니다. 메인 메뉴로 돌아갑니다.");
+            window.location.href = 'index.html';
+            return null;
+        }
+        myNickname = localStorage.getItem('userNickname');
+        myAvatar = localStorage.getItem('userAvatar');
+        return id;
+    }
+
+    function showView(viewToShow) {
+        document.querySelectorAll('.view').forEach(view => view.classList.add('hidden'));
+        viewToShow.classList.remove('hidden');
+    }
+
+    function showInfoModal(title, message, onConfirm) {
+        infoTitle.textContent = title;
+        infoMessage.textContent = message;
+        infoConfirmBtn.onclick = () => {
+            infoOverlay.style.display = 'none';
+            if (onConfirm) onConfirm();
         };
-        firebase.initializeApp(firebaseConfig);
-        const database = firebase.database();
-        const gameRoomsRef = database.ref('memoryGameRooms');
-        const playersRef = database.ref('users');
-        
-        const startMenu = document.getElementById('start-menu'),
-              singlePlayerBtn = document.getElementById('single-player-btn'),
-              multiplayerBtn = document.getElementById('multiplayer-btn'),
-              backToIndexBtn = document.getElementById('back-to-index-btn'),
-              gameWrapper = document.getElementById('game-wrapper'),
-              cardGrid = document.getElementById('card-grid'),
-              gameHeader = document.getElementById('game-header'),
-              waitingOverlay = document.getElementById('waiting-overlay'),
-              gameOverOverlay = document.getElementById('game-over-overlay'),
-              flipSound = document.getElementById('flip-sound'),
-              infoOverlay = document.getElementById('info-overlay'),
-              infoTitle = document.getElementById('info-title'),
-              infoMessage = document.getElementById('info-message'),
-              infoConfirmBtn = document.getElementById('info-confirm-btn');
+        infoOverlay.style.display = 'flex';
+    }
 
-        const emojiThemes = {
-            animals: ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🐔','🐧','🐦','🐤','🦆'],
-            monsters: ['💀','👻','👽','👾','🤖','🎃','👹','👺','👿','🧛','🧟','🧞','🤡','☠️','🧠','🦇','🕷️','🦉','🐺','☄️'],
-            foods: ['🍔','🍕','🍟','🌭','🍿','🥨','🥯','🥞','🧇','🧀','🍗','🍖','🥩','🥓','🥐','🍞','🥖','🍩','🍪','🥤']
-        };
-        
-        let myPlayerId, myNickname, myAvatar, roomRef, currentRoomData, isHost = false, isGameInProgress = false;
+    function cleanupOldRoomState() {
+        if (roomRef) { roomRef.off(); roomRef.onDisconnect().cancel(); }
+        roomRef = null; currentRoomData = null; isGameInProgress = false; isHost = false;
+    }
 
-        function getPlayerId() {
-            let id = localStorage.getItem('myPlayerId');
-            if (!id) {
-                alert("플레이어 정보가 없습니다. 메인 메뉴로 돌아갑니다.");
-                window.location.href = 'index.html';
-                return null;
-            }
-            myNickname = localStorage.getItem('userNickname');
-            myAvatar = localStorage.getItem('userAvatar');
-            return id;
-        }
+    function playFlipSound() { flipSound.currentTime = 0; flipSound.play().catch(e => {}); }
+    
+    function generateCards(pairCount) {
+        const themeNames = Object.keys(emojiThemes);
+        const randomThemeName = themeNames[Math.floor(Math.random() * themeNames.length)];
+        const selectedEmojis = [...emojiThemes[randomThemeName]];
+        selectedEmojis.sort(() => Math.random() - 0.5);
+        const d=[...selectedEmojis.slice(0,pairCount),...selectedEmojis.slice(0,pairCount)];
+        d.sort(()=>Math.random()-0.5); 
+        return d.map(e=>({emoji:e,matched:false}));
+    }
+    
+    function initializeFirstGame() {
+        if (!isHost || !currentRoomData) return;
+        const playerCount = Object.keys(currentRoomData.players).length;
+        let pairCount;
+        if (playerCount <= 2) pairCount = 10;
+        else if (playerCount === 3) pairCount = 15;
+        else pairCount = 20;
+        const newCards = generateCards(pairCount);
+        const playerOrder = Object.keys(currentRoomData.players).sort(() => Math.random() - 0.5);
+        const players = currentRoomData.players;
+        Object.keys(players).forEach(pid => { players[pid].score = 0; players[pid].wantsRematch = null; });
 
-        function showView(viewToShow) {
-            document.querySelectorAll('.view').forEach(view => view.classList.add('hidden'));
-            viewToShow.classList.remove('hidden');
-        }
+        roomRef.update({
+            gameState: 'ready',
+            cards: newCards,
+            turn: playerOrder[0],
+            playerOrder: playerOrder,
+            players: players,
+            flippedCards: []
+        });
+    }
 
-        function showInfoModal(title, message, onConfirm) {
-            infoTitle.textContent = title;
-            infoMessage.textContent = message;
-            infoConfirmBtn.onclick = () => {
-                infoOverlay.style.display = 'none';
-                if (onConfirm) onConfirm();
-            };
-            infoOverlay.style.display = 'flex';
-        }
+    function joinMultiplayerGame(roomId) {
+        cleanupOldRoomState();
+        roomRef = gameRoomsRef.child(roomId);
+        listenToRoomChanges();
+    }
 
-        function cleanupOldRoomState() {
-            if (roomRef) { roomRef.off(); roomRef.onDisconnect().cancel(); }
-            roomRef = null; currentRoomData = null; isGameInProgress = false; isHost = false;
-        }
-
-        function playFlipSound() { flipSound.currentTime = 0; flipSound.play().catch(e => {}); }
-        
-        function generateCards(pairCount) {
-            const themeNames = Object.keys(emojiThemes);
-            const randomThemeName = themeNames[Math.floor(Math.random() * themeNames.length)];
-            const selectedEmojis = [...emojiThemes[randomThemeName]];
-            selectedEmojis.sort(() => Math.random() - 0.5);
-            const d=[...selectedEmojis.slice(0,pairCount),...selectedEmojis.slice(0,pairCount)];
-            d.sort(()=>Math.random()-0.5); 
-            return d.map(e=>({emoji:e,matched:false}));
-        }
-
-        function joinMultiplayerGame(roomId) {
-            cleanupOldRoomState();
-            roomRef = gameRoomsRef.child(roomId);
-            listenToRoomChanges();
-        }
-
-        function listenToRoomChanges() {
-            isGameInProgress = true;
-            showView(gameWrapper);
-            roomRef.on('value', snapshot => {
-                if (!isGameInProgress) return;
-                currentRoomData = snapshot.val();
-                if (!currentRoomData || !currentRoomData.players || !currentRoomData.players[myPlayerId]) {
-                    showInfoModal("방이 해체되었습니다", "방장이 게임을 떠나 대기실로 이동합니다.", () => {
-                        cleanupOldRoomState();
-                        window.location.href = '대기실.html';
-                    });
-                    return;
-                }
-                isHost = currentRoomData.hostId === myPlayerId;
-                updateStatusUI();
-                switch(currentRoomData.gameState) {
-                    case 'ready': startCountdown(); break;
-                    case 'playing': drawMultiplayerCards(); break;
-                    case 'gameOver': showGameOverScreen(); break;
-                }
-            });
-        }
-        
-        function startCountdown() {
-            waitingOverlay.innerHTML = `<div id="countdown-container"><h2>게임 시작!</h2><p id="countdown-number"></p></div>`;
-            waitingOverlay.style.display = 'flex';
-            let count = 3;
-            const countdownEl = document.getElementById('countdown-number');
-            const updateCount = () => { countdownEl.textContent = count; };
-            updateCount();
-            const interval = setInterval(() => {
-                count--;
-                if (count > 0) updateCount();
-                else {
-                    clearInterval(interval);
-                    waitingOverlay.style.display = 'none';
-                    if (isHost) roomRef.child('gameState').set('playing');
-                }
-            }, 1000);
-        }
-        
-        function updateStatusUI() {
-            if (!currentRoomData || !currentRoomData.players) { gameHeader.innerHTML = ''; return; }
-            gameHeader.innerHTML = '';
-            let playerIds = [...(currentRoomData.playerOrder || Object.keys(currentRoomData.players).sort())];
-            const myIndex = playerIds.indexOf(myPlayerId);
-            if (myIndex > -1) {
-                const me = playerIds.splice(myIndex, 1)[0];
-                playerIds.unshift(me);
-            }
-            playerIds.forEach(pid => {
-                const player = currentRoomData.players[pid];
-                if (!player) return;
-                const statusBox = document.createElement('div');
-                const isMyTurn = currentRoomData.turn === pid;
-                statusBox.classList.add('status-box');
-                if (isMyTurn) statusBox.classList.add('my-turn');
-                const avatarHTML = player.avatar.startsWith('http') ? `<img src="${player.avatar}" class="status-avatar-img">` : `<span class="status-avatar-emoji">${player.avatar}</span>`;
-                let statusText = `${avatarHTML} <span class="nickname">${player.nickname}</span> ${player.score}`;
-                if (isMyTurn && pid === myPlayerId) statusText += ' (내 차례)';
-                statusBox.innerHTML = statusText;
-                gameHeader.appendChild(statusBox);
-            });
-        }
-
-        function drawMultiplayerCards() {
-            if(!currentRoomData.cards) return;
-            cardGrid.innerHTML = currentRoomData.cards.map((card, index) => {
-                let cardStateClass = '';
-                if(card.matched) cardStateClass = 'matched';
-                if(currentRoomData.flippedCards?.includes(index)) cardStateClass += ' flipped';
-                return `<div class="card ${cardStateClass}" data-index="${index}"><div class="card-inner"><div class="card-face card-back"></div><div class="card-face card-front">${card.emoji}</div></div></div>`;
-            }).join('');
-            cardGrid.className = `p${Object.keys(currentRoomData.players).length}`;
-            document.querySelectorAll('.card:not(.matched)').forEach(c => c.addEventListener('click', () => handleMultiplayerCardClick(parseInt(c.dataset.index))));
-        }
-
-        function handleMultiplayerCardClick(index) {
-            if (currentRoomData.turn !== myPlayerId || currentRoomData.cards[index].matched || currentRoomData.flippedCards?.length >= 2 || currentRoomData.flippedCards?.includes(index)) return;
-            playFlipSound();
-            const flippedCards = [...(currentRoomData.flippedCards || []), index];
-            const updates = { flippedCards };
-            if (flippedCards.length < 2) { roomRef.update(updates); return; }
-            
-            const [card1, card2] = [currentRoomData.cards[flippedCards[0]], currentRoomData.cards[flippedCards[1]]];
-            if (card1.emoji === card2.emoji) {
-                updates.flippedCards = [];
-                updates[`cards/${flippedCards[0]}/matched`] = true;
-                updates[`cards/${flippedCards[1]}/matched`] = true;
-                updates[`players/${myPlayerId}/score`] = currentRoomData.players[myPlayerId].score + 1;
-                const allMatched = currentRoomData.cards.every((c, i) => c.matched || flippedCards.includes(i));
-                if (allMatched) {
-                    updates.gameState = 'gameOver';
-                }
-            } else {
-                const pOrder = currentRoomData.playerOrder;
-                updates.turn = pOrder[(pOrder.indexOf(myPlayerId) + 1) % pOrder.length];
-                setTimeout(() => roomRef.child('flippedCards').set([]), 1000);
-            }
-            roomRef.update(updates);
-        }
-        
-        async function showGameOverScreen() {
-            const playersArray = Object.entries(currentRoomData.players).map(([id, data]) => ({ id, ...data }));
-            const maxScore = Math.max(...playersArray.map(p => p.score));
-            const winners = playersArray.filter(p => p.score === maxScore && p.score > 0);
-            
-            if (isHost) {
-                const updates = {};
-                // 게임 종료 시 모든 플레이어의 전적/경험치 업데이트
-                for(const p of playersArray){
-                    const isWinner = winners.some(w => w.id === p.id) && winners.length === 1;
-                    updates[p.id] = { isWinner };
-                }
-                 // 비동기 처리를 위해 Promise.all 사용
-                await Promise.all(Object.entries(updates).map(([pid, res]) => updatePlayerStats(pid, res.isWinner)));
-            }
-
-            const amIWinner = winners.some(w => w.id === myPlayerId);
-            let message = amIWinner && winners.length === 1 ? "승 리 !" : (winners.length > 1 ? "무승부!" : "패 배 !");
-            
-            playersArray.sort((a, b) => b.score - a.score);
-            const finalScoresHTML = playersArray.map(p => `<div class="score-row ${winners.some(w=>w.id===p.id) && winners.length === 1 ? 'winner' : 'loser'}">${p.avatar} ${p.nickname} : ${p.score}점</div>`).join('');
-
-            gameOverOverlay.innerHTML = `<div class="modal-content"><div class="modal-header"><h2 id="game-over-message">${message}</h2></div><div class="modal-body"><div id="score-board">${finalScoresHTML}</div><div class="modal-buttons"><button id="rematch-btn" class="menu-btn primary">다시 하기</button><button id="lobby-btn" class="menu-btn secondary">나가기</button></div></div></div>`;
-            gameOverOverlay.style.display = 'flex';
-            
-            document.getElementById('rematch-btn').addEventListener('click', () => {
-                const btn = document.getElementById('rematch-btn');
-                btn.textContent = '대기중...'; btn.disabled = true;
-                roomRef.child(`players/${myPlayerId}/wantsRematch`).set(true);
-            });
-            document.getElementById('lobby-btn').addEventListener('click', () => { window.location.href = '대기실.html'; });
-            
-            const rematchListenerRef = roomRef.child('players');
-            rematchListenerRef.on('value', snapshot => {
-                if (!isGameInProgress || !snapshot.exists() || currentRoomData?.gameState !== 'gameOver') { rematchListenerRef.off(); return; }
-                const currentPlayers = snapshot.val();
-                if (Object.values(currentPlayers).every(p => p.wantsRematch)) {
-                    rematchListenerRef.off(); gameOverOverlay.style.display = 'none';
-                    if (isHost) startRematch();
-                }
-            });
-        }
-        
-        function startRematch() {
-            if (!isHost || !currentRoomData) return;
-            const playerCount = Object.keys(currentRoomData.players).length;
-            let pairCount;
-            if (playerCount === 2) pairCount = 10; else if (playerCount === 3) pairCount = 15; else pairCount = 20;
-            const newCards = generateCards(pairCount);
-            const playerOrder = Object.keys(currentRoomData.players).sort();
-            const players = currentRoomData.players;
-            Object.keys(players).forEach(pid => { players[pid].score = 0; players[pid].wantsRematch = null; });
-            roomRef.update({ gameState: 'ready', cards: newCards, turn: playerOrder[0], playerOrder, players, flippedCards: [] });
-        }
-
-        async function updatePlayerStats(playerId, isWinner) {
-            const playerStatRef = playersRef.child(playerId);
-            try {
-                await playerStatRef.transaction(currentData => {
-                    if (currentData) {
-                        if (!currentData.stats) currentData.stats = {};
-                        if (!currentData.stats.memoryGame) currentData.stats.memoryGame = { wins: 0, losses: 0 };
-                        if (isWinner) {
-                            currentData.stats.memoryGame.wins++;
-                            currentData.exp = (currentData.exp || 0) + 50;
-                        } else {
-                            currentData.stats.memoryGame.losses++;
-                            currentData.exp = (currentData.exp || 0) + 10;
-                        }
-                        let expForNextLevel = (currentData.level || 1) * 100;
-                        while (currentData.exp >= expForNextLevel) {
-                            currentData.level++;
-                            currentData.exp -= expForNextLevel;
-                            expForNextLevel = currentData.level * 100;
-                        }
-                    } return currentData;
+    function listenToRoomChanges() {
+        isGameInProgress = true;
+        showView(gameWrapper);
+        roomRef.on('value', snapshot => {
+            if (!isGameInProgress) return;
+            currentRoomData = snapshot.val();
+            if (!currentRoomData || !currentRoomData.players || !currentRoomData.players[myPlayerId]) {
+                showInfoModal("방이 해체되었습니다", "방장이 게임을 떠나 대기실로 이동합니다.", () => {
+                    cleanupOldRoomState();
+                    window.location.href = '대기실.html';
                 });
-            } catch (error) { console.error("전적 업데이트 실패:", error); }
+                return;
+            }
+            
+            isHost = currentRoomData.hostId === myPlayerId;
+            
+            if (isHost && currentRoomData.gameState === 'launching') {
+                initializeFirstGame();
+                return;
+            }
+            
+            updateStatusUI();
+            
+         switch(currentRoomData.gameState) {
+                case 'ready':
+                    // ▼▼▼▼▼ [수정] 카드 데이터가 있는지 확인하는 로직 추가 ▼▼▼▼▼
+                    // 호스트가 생성한 카드 정보가 DB로부터 확실히 수신되었을 때만 카운트다운을 시작합니다.
+                    if (currentRoomData.cards && currentRoomData.cards.length > 0) {
+                        startCountdown();
+                    }
+                    // ▲▲▲▲▲ [수정] 코드 추가 종료 ▲▲▲▲▲
+                    break;
+                case 'playing':
+                    drawMultiplayerCards();
+                    break;
+                case 'gameOver':
+                    showGameOverScreen();
+                    break;
+            }
+        });
+    }
+    
+    function startCountdown() {
+        waitingOverlay.innerHTML = `<div id="countdown-container"><h2>게임 시작!</h2><p id="countdown-number"></p></div>`;
+        waitingOverlay.style.display = 'flex';
+        let count = 3;
+        const countdownEl = document.getElementById('countdown-number');
+        const updateCount = () => { countdownEl.textContent = count; };
+        updateCount();
+        const interval = setInterval(() => {
+            count--;
+            if (count > 0) updateCount();
+            else {
+                clearInterval(interval);
+                waitingOverlay.style.display = 'none';
+                if (isHost) roomRef.child('gameState').set('playing');
+            }
+        }, 1000);
+    }
+    
+    function updateStatusUI() {
+        if (!currentRoomData || !currentRoomData.players) { gameHeader.innerHTML = ''; return; }
+        gameHeader.innerHTML = '';
+        let playerIds = [...(currentRoomData.playerOrder || Object.keys(currentRoomData.players).sort())];
+        const myIndex = playerIds.indexOf(myPlayerId);
+        if (myIndex > -1) {
+            const me = playerIds.splice(myIndex, 1)[0];
+            playerIds.unshift(me);
         }
-        
-        // --- 싱글 플레이어 로직 ---
-        let singlePlayerFlipped = [], singlePlayerMatched = 0;
-        
-        function startSinglePlayerCountdown() {
-            showView(gameWrapper);
-            gameWrapper.classList.add('hidden');
-            waitingOverlay.innerHTML = `<div id="countdown-container"><h2>게임 시작!</h2><p id="countdown-number"></p></div>`;
-            waitingOverlay.style.display = 'flex';
-            let count = 3;
-            const countdownEl = document.getElementById('countdown-number');
-            const updateCount = () => { countdownEl.textContent = count; };
-            updateCount();
-            const interval = setInterval(() => {
-                count--;
-                if (count > 0) updateCount();
-                else {
-                    clearInterval(interval);
-                    waitingOverlay.style.display = 'none';
-                    startSinglePlayerGame();
-                }
+        playerIds.forEach(pid => {
+            const player = currentRoomData.players[pid];
+            if (!player) return;
+            const statusBox = document.createElement('div');
+            const isMyTurn = currentRoomData.turn === pid;
+            statusBox.classList.add('status-box');
+            if (isMyTurn) statusBox.classList.add('my-turn');
+            const avatarHTML = player.avatar.startsWith('http') ? `<img src="${player.avatar}" class="status-avatar-img">` : `<span class="status-avatar-emoji">${player.avatar}</span>`;
+            let statusText = `${avatarHTML} <span class="nickname">${player.nickname}</span> ${player.score}`;
+            if (isMyTurn && pid === myPlayerId) statusText += ' (내 차례)';
+            statusBox.innerHTML = statusText;
+            gameHeader.appendChild(statusBox);
+        });
+    }
+
+    function drawMultiplayerCards() {
+        if(!currentRoomData.cards) return;
+        cardGrid.innerHTML = currentRoomData.cards.map((card, index) => {
+            let cardStateClass = '';
+            if(card.matched) cardStateClass = 'matched';
+            if(currentRoomData.flippedCards?.includes(index)) cardStateClass += ' flipped';
+            return `<div class="card ${cardStateClass}" data-index="${index}"><div class="card-inner"><div class="card-face card-back"></div><div class="card-face card-front">${card.emoji}</div></div></div>`;
+        }).join('');
+        cardGrid.className = `p${Object.keys(currentRoomData.players).length}`;
+        document.querySelectorAll('.card:not(.matched)').forEach(c => c.addEventListener('click', () => handleMultiplayerCardClick(parseInt(c.dataset.index))));
+    }
+
+    function handleMultiplayerCardClick(index) {
+        if (currentRoomData.turn !== myPlayerId || currentRoomData.cards[index].matched || currentRoomData.flippedCards?.length >= 2 || currentRoomData.flippedCards?.includes(index)) return;
+        playFlipSound();
+        const flippedCards = [...(currentRoomData.flippedCards || []), index];
+        const updates = { flippedCards };
+
+        if (flippedCards.length < 2) {
+            roomRef.update(updates);
+            return;
+        }
+
+        const [card1, card2] = [currentRoomData.cards[flippedCards[0]], currentRoomData.cards[flippedCards[1]]];
+        if (card1.emoji === card2.emoji) {
+            updates.flippedCards = [];
+            updates[`cards/${flippedCards[0]}/matched`] = true;
+            updates[`cards/${flippedCards[1]}/matched`] = true;
+            updates[`players/${myPlayerId}/score`] = currentRoomData.players[myPlayerId].score + 1;
+            const allMatched = currentRoomData.cards.every((c, i) => c.matched || flippedCards.includes(i));
+            if (allMatched) {
+                updates.gameState = 'gameOver';
+            }
+            roomRef.update(updates); // 매치 성공 시 즉시 업데이트
+        } else {
+            // 매치 실패 시: 1초 지연 후 턴 넘기기와 카드 뒤집기를 함께 처리
+            roomRef.update(updates); // 우선 두 번째 카드가 뒤집힌 것을 보여주기 위해 업데이트
+            setTimeout(() => {
+                const pOrder = currentRoomData.playerOrder;
+                const nextTurn = pOrder[(pOrder.indexOf(myPlayerId) + 1) % pOrder.length];
+                roomRef.update({
+                    flippedCards: [], // 카드 다시 뒤집기
+                    turn: nextTurn     // 턴 넘기기
+                });
             }, 1000);
         }
-
-        function startSinglePlayerGame() {
-            cleanupOldRoomState();
-            showView(gameWrapper);
-            gameWrapper.classList.remove('hidden');
-            singlePlayerFlipped = []; singlePlayerMatched = 0;
-            const cards = generateCards(10);
-            cardGrid.className = 'single';
-            gameHeader.innerHTML = `<div class="status-box">정답: <span id="matched-counter">0</span> / 10</div>`;
-            cardGrid.innerHTML = cards.map((card, index) => `<div class="card" data-index="${index}"><div class="card-inner"><div class="card-face card-back"></div><div class="card-face card-front">${card.emoji}</div></div></div>`).join('');
-            document.querySelectorAll('#card-grid .card').forEach(cardEl => cardEl.addEventListener('click', () => handleSinglePlayerCardClick(cardEl, cards)));
+    }
+    
+    async function showGameOverScreen() {
+        isGameInProgress = false; // 게임 종료 플래그
+        const playersArray = Object.entries(currentRoomData.players).map(([id, data]) => ({ id, ...data }));
+        const maxScore = Math.max(...playersArray.map(p => p.score));
+        const winners = playersArray.filter(p => p.score === maxScore && p.score > 0);
+        
+        if (isHost) {
+            const updates = {};
+            for(const p of playersArray){
+                const isWinner = winners.some(w => w.id === p.id) && winners.length === 1;
+                updates[p.id] = { isWinner };
+            }
+            await Promise.all(Object.entries(updates).map(([pid, res]) => updatePlayerStats(pid, res.isWinner)));
         }
 
-        function handleSinglePlayerCardClick(cardEl, cards) {
-            if (cardEl.classList.contains('flipped') || singlePlayerFlipped.length >= 2) return;
-            playFlipSound();
-            cardEl.classList.add('flipped');
-            singlePlayerFlipped.push(cardEl);
-            if (singlePlayerFlipped.length === 2) {
-                const [el1, el2] = singlePlayerFlipped;
-                const [idx1, idx2] = [parseInt(el1.dataset.index), parseInt(el2.dataset.index)];
-                if (cards[idx1].emoji === cards[idx2].emoji) {
-                    singlePlayerMatched++;
-                    document.getElementById('matched-counter').textContent = singlePlayerMatched;
-                    el1.classList.add('matched'); el2.classList.add('matched');
-                    singlePlayerFlipped = [];
-                    if (singlePlayerMatched === 10) {
-                        gameOverOverlay.innerHTML = `<div class="modal-content"><div class="modal-header"><h2>🎉 성공! 🎉</h2></div><div class="modal-body"><p>모든 카드를 맞췄습니다!</p><div class="modal-buttons"><button id="single-retry-btn" class="menu-btn primary">다시 하기</button><button id="single-main-menu-btn" class="menu-btn secondary">메인으로</button></div></div></div>`;
-                        gameOverOverlay.style.display = 'flex';
-                        document.getElementById('single-retry-btn').addEventListener('click', () => { gameOverOverlay.style.display = 'none'; startSinglePlayerGame(); });
-                        document.getElementById('single-main-menu-btn').addEventListener('click', () => { sessionStorage.setItem('returnFromGame', 'true'); window.location.href = 'index.html'; });
+        const amIWinner = winners.some(w => w.id === myPlayerId);
+        let message = amIWinner && winners.length === 1 ? "승 리 !" : (winners.length > 1 ? "무승부!" : "패 배 !");
+        
+        playersArray.sort((a, b) => b.score - a.score);
+        const finalScoresHTML = playersArray.map(p => `<div class="score-row ${winners.some(w=>w.id===p.id) && winners.length === 1 ? 'winner' : 'loser'}">${p.avatar} ${p.nickname} : ${p.score}점</div>`).join('');
+
+        gameOverOverlay.innerHTML = `<div class="modal-content"><div class="modal-header"><h2 id="game-over-message">${message}</h2></div><div class="modal-body"><div id="score-board">${finalScoresHTML}</div><div class="modal-buttons"><button id="rematch-btn" class="menu-btn primary">다시 하기</button><button id="lobby-btn" class="menu-btn secondary">나가기</button></div></div></div>`;
+        gameOverOverlay.style.display = 'flex';
+        
+        document.getElementById('rematch-btn').addEventListener('click', () => {
+            const btn = document.getElementById('rematch-btn');
+            btn.textContent = '대기중...'; btn.disabled = true;
+            roomRef.child(`players/${myPlayerId}/wantsRematch`).set(true);
+        });
+        document.getElementById('lobby-btn').addEventListener('click', () => { window.location.href = '대기실.html'; });
+        
+        const rematchListenerRef = roomRef.child('players');
+        rematchListenerRef.on('value', snapshot => {
+            if (!snapshot.exists() || currentRoomData?.gameState !== 'gameOver') { rematchListenerRef.off(); return; }
+            const currentPlayers = snapshot.val();
+            if (Object.values(currentPlayers).every(p => p.wantsRematch)) {
+                rematchListenerRef.off(); gameOverOverlay.style.display = 'none';
+                if (isHost) startRematch();
+            }
+        });
+    }
+    
+    function startRematch() {
+        if (!isHost || !currentRoomData) return;
+        isGameInProgress = true; // 게임 재시작 플래그
+        const playerCount = Object.keys(currentRoomData.players).length;
+        let pairCount;
+        if (playerCount <= 2) pairCount = 10; else if (playerCount === 3) pairCount = 15; else pairCount = 20;
+        const newCards = generateCards(pairCount);
+        const playerOrder = Object.keys(currentRoomData.players).sort(() => Math.random() - 0.5);
+        const players = currentRoomData.players;
+        Object.keys(players).forEach(pid => { players[pid].score = 0; players[pid].wantsRematch = null; });
+        roomRef.update({ gameState: 'ready', cards: newCards, turn: playerOrder[0], playerOrder, players, flippedCards: [] });
+    }
+
+    async function updatePlayerStats(playerId, isWinner) {
+        if (playerId.startsWith('guest_')) return; // 게스트는 전적 업데이트 안함
+        const playerStatRef = playersRef.child(playerId);
+        try {
+            await playerStatRef.transaction(currentData => {
+                if (currentData) {
+                    if (!currentData.stats) currentData.stats = {};
+                    if (!currentData.stats.memoryGame) currentData.stats.memoryGame = { wins: 0, losses: 0 };
+                    if (isWinner) {
+                        currentData.stats.memoryGame.wins = (currentData.stats.memoryGame.wins || 0) + 1;
+                        currentData.exp = (currentData.exp || 0) + 50;
+                    } else {
+                        currentData.stats.memoryGame.losses = (currentData.stats.memoryGame.losses || 0) + 1;
+                        currentData.exp = (currentData.exp || 0) + 10;
                     }
-                } else { setTimeout(() => { el1.classList.remove('flipped'); el2.classList.remove('flipped'); singlePlayerFlipped = []; }, 1000); }
+                    let level = currentData.level || 1;
+                    let expForNextLevel = level * 100;
+                    while (currentData.exp >= expForNextLevel) {
+                        level++;
+                        currentData.exp -= expForNextLevel;
+                        expForNextLevel = level * 100;
+                    }
+                    currentData.level = level;
+                } return currentData;
+            });
+        } catch (error) { console.error("전적 업데이트 실패:", error); }
+    }
+    
+    let singlePlayerFlipped = [], singlePlayerMatched = 0;
+    
+    function startSinglePlayerCountdown() {
+        showView(gameWrapper);
+        gameWrapper.classList.add('hidden');
+        waitingOverlay.innerHTML = `<div id="countdown-container"><h2>게임 시작!</h2><p id="countdown-number"></p></div>`;
+        waitingOverlay.style.display = 'flex';
+        let count = 3;
+        const countdownEl = document.getElementById('countdown-number');
+        const updateCount = () => { countdownEl.textContent = count; };
+        updateCount();
+        const interval = setInterval(() => {
+            count--;
+            if (count > 0) updateCount();
+            else {
+                clearInterval(interval);
+                waitingOverlay.style.display = 'none';
+                startSinglePlayerGame();
             }
-        }
+        }, 1000);
+    }
 
-        // --- 초기 실행 로직 ---
-        myPlayerId = getPlayerId();
-        if (myPlayerId) {
-            const urlParams = new URLSearchParams(window.location.search);
-            const roomId = urlParams.get('roomId');
+    function startSinglePlayerGame() {
+        cleanupOldRoomState();
+        showView(gameWrapper);
+        gameWrapper.classList.remove('hidden');
+        singlePlayerFlipped = []; singlePlayerMatched = 0;
+        const cards = generateCards(10);
+        cardGrid.className = 'single';
+        gameHeader.innerHTML = `<div class="status-box">정답: <span id="matched-counter">0</span> / 10</div>`;
+        cardGrid.innerHTML = cards.map((card, index) => `<div class="card" data-index="${index}"><div class="card-inner"><div class="card-face card-back"></div><div class="card-face card-front">${card.emoji}</div></div></div>`).join('');
+        document.querySelectorAll('#card-grid .card').forEach(cardEl => cardEl.addEventListener('click', () => handleSinglePlayerCardClick(cardEl, cards)));
+    }
 
-            if (roomId) {
-                joinMultiplayerGame(roomId);
-            } else {
-                showView(startMenu);
-                singlePlayerBtn.addEventListener('click', startSinglePlayerCountdown);
-                multiplayerBtn.addEventListener('click', () => { window.location.href = '대기실.html'; });
-                backToIndexBtn.addEventListener('click', () => { window.location.href = 'index.html'; });
-            }
+    function handleSinglePlayerCardClick(cardEl, cards) {
+        if (cardEl.classList.contains('flipped') || singlePlayerFlipped.length >= 2) return;
+        playFlipSound();
+        cardEl.classList.add('flipped');
+        singlePlayerFlipped.push(cardEl);
+        if (singlePlayerFlipped.length === 2) {
+            const [el1, el2] = singlePlayerFlipped;
+            const [idx1, idx2] = [parseInt(el1.dataset.index), parseInt(el2.dataset.index)];
+            if (cards[idx1].emoji === cards[idx2].emoji) {
+                singlePlayerMatched++;
+                document.getElementById('matched-counter').textContent = singlePlayerMatched;
+                el1.classList.add('matched'); el2.classList.add('matched');
+                singlePlayerFlipped = [];
+                if (singlePlayerMatched === 10) {
+                    gameOverOverlay.innerHTML = `<div class="modal-content"><div class="modal-header"><h2>🎉 성공! 🎉</h2></div><div class="modal-body"><p>모든 카드를 맞췄습니다!</p><div class="modal-buttons"><button id="single-retry-btn" class="menu-btn primary">다시 하기</button><button id="single-main-menu-btn" class="menu-btn secondary">메인으로</button></div></div></div>`;
+                    gameOverOverlay.style.display = 'flex';
+                    document.getElementById('single-retry-btn').addEventListener('click', () => { gameOverOverlay.style.display = 'none'; startSinglePlayerGame(); });
+                    document.getElementById('single-main-menu-btn').addEventListener('click', () => { sessionStorage.setItem('returnFromGame', 'true'); window.location.href = 'index.html'; });
+                }
+            } else { setTimeout(() => { el1.classList.remove('flipped'); el2.classList.remove('flipped'); singlePlayerFlipped = []; }, 1000); }
         }
-    });
-    </script>
+    }
+
+    myPlayerId = getPlayerId();
+    if (myPlayerId) {
+        const urlParams = new URLSearchParams(window.location.search);
+        const roomId = urlParams.get('roomId');
+
+        if (roomId) {
+            joinMultiplayerGame(roomId);
+        } else {
+            showView(startMenu);
+            singlePlayerBtn.addEventListener('click', startSinglePlayerCountdown);
+            multiplayerBtn.addEventListener('click', () => { window.location.href = '대기실.html'; });
+            backToIndexBtn.addEventListener('click', () => { window.location.href = 'index.html'; });
+        }
+    }
+});
+</script>
 </body>
 </html>
