@@ -401,6 +401,10 @@
             }
 
             Runner.run(runner, engine);
+            if (gameMode === 'multi' && isHost) {
+        // 방장은 0.1초(100ms)마다 게임 상태를 방송 시작
+        setInterval(hostBroadcastGameState, 1);
+    }
             requestAnimationFrame(gameLoop);
             
             Events.on(engine, 'afterUpdate', checkMovementEnd);
@@ -469,6 +473,7 @@
             
             requestAnimationFrame(gameLoop);
         }
+
 
         function isOutOfBoard(pos) {
             return pos.x < 0 || pos.x > boardWidth || 
@@ -591,6 +596,28 @@
 
             hasShotThisTurn = false;
         }
+
+        function hostBroadcastGameState() {
+    // 방장이 아니거나, 게임이 끝났거나, 방이 없으면 실행하지 않음
+    if (!isHost || isGameOver || !roomRef) return;
+
+    // 현재 살아있는 모든 돌의 위치 정보를 수집
+     const gameState = stones
+        .filter(s => s.active)
+        .map(s => ({
+            id: s.id,
+            // ▼▼▼▼▼ 여기를 수정하세요 ▼▼▼▼▼
+            x_norm: s.body.position.x / boardWidth,   // 너비에 대한 비율
+            y_norm: s.body.position.y / boardHeight,  // 높이에 대한 비율
+            // ▲▲▲▲▲ 수정 종료 ▲▲▲▲▲
+            vx: s.body.velocity.x, 
+            vy: s.body.velocity.y
+        }));
+
+    // 'gameStateSync' 라는 경로에 주기적으로 덮어쓰기
+    roomRef.child('gameStateSync').set(gameState);
+}
+
 
 // 1. endTurn() 함수 전체를 아래 코드로 교체하세요.
 function endTurn() {
@@ -907,6 +934,28 @@ function endTurn() {
                 currentRoomData = snapshot.val();
             });
 
+                // 게스트가 방장의 '좌표 방송'을 수신하는 리스너
+     roomRef.child('gameStateSync').on('value', snapshot => {
+        // 방장이거나, 데이터가 없으면 실행하지 않음
+        if (isHost || !snapshot.exists()) return;
+
+        const serverState = snapshot.val();
+        serverState.forEach(s_data => {
+            const stone = stones.find(s => s.id === s_data.id);
+            if (stone && stone.active) {
+                // ▼▼▼▼▼ 여기를 수정하세요 ▼▼▼▼▼
+                // 받은 비율 값에 나의 보드 크기를 곱해서 실제 위치를 계산합니다.
+                const newX = s_data.x_norm * boardWidth;
+                const newY = s_data.y_norm * boardHeight;
+
+                // 물리 엔진을 직접 건드려 방장의 위치/속도와 강제로 동기화
+                Body.setPosition(stone.body, { x: newX, y: newY });
+                Body.setVelocity(stone.body, { x: s_data.vx, y: s_data.vy });
+                // ▲▲▲▲▲ 수정 종료 ▲▲▲▲▲
+            }
+        });
+    });
+
 
 
      // 턴 종료 시 방장이 보낸 최종 돌 상태를 수신하여 동기화하는 리스너입니다.
@@ -938,23 +987,20 @@ function endTurn() {
 });
 
             roomRef.child('lastMove').on('value', snapshot => {
-        if (!snapshot.exists()) return;
-        
+        if (!snapshot.exists() || !isHost) return; // 방장이 아니면 무시
+
         const move = snapshot.val();
-        
-        // [수정] 내가 보낸 정보가 아니라면 물리엔진에 적용
+        // 게스트가 보낸 움직임 정보를 받아서 방장의 물리 엔진에만 적용
         if (move && move.playerId && move.playerId !== myPlayerId) {
             const stone = stones.find(s => s.id === move.stoneId);
-            
             if (stone && stone.active) {
                 const force = { x: move.forceX, y: move.forceY };
                 Body.applyForce(stone.body, stone.body.position, force);
-                hasShotThisTurn = true; // [추가] 상대방이 쐈을 때도 발사 상태로 변경
+                hasShotThisTurn = true;
                 canShoot = false;
             }
         }
     });
-    // ▲▲▲▲▲ 수정 종료 ▲▲▲▲▲
 
             roomRef.child('removedStones').on('child_added', snapshot => {
                 if (isHost) return;
