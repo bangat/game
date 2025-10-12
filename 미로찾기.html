@@ -306,18 +306,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         playerPos = { ...startPos };
 
-        if(roomRef) { // 멀티플레이어일 경우, DB에 내 시작 위치를 기록합니다.
-            roomRef.child('players').child(myPlayerId).update({
-                x: playerPos.x,
-                y: playerPos.y
-            });
-        } else { // 싱글플레이어일 경우
+        if(!roomRef) { // 싱글플레이어일 경우, 시작 위치 업데이트
             allPlayers[myPlayerId].x = playerPos.x;
             allPlayers[myPlayerId].y = playerPos.y;
         }
 
         drawMapAndEntities();
         isGameInitialized = true;
+    }
     
     function generateMaze(rows, cols) {
         let maze = Array(rows).fill(null).map(() => Array(cols).fill(1));
@@ -759,9 +755,17 @@ function listenToRoomChanges() {
 
             gameWrapper.style.display = 'flex';
             
-            if (gameState === 'playing' && !isGameInitialized) {
+           if (gameState === 'playing' && !isGameInitialized) {
                 if (maze) {
                     setupGameFromData(currentRoomData);
+                    // ▼▼▼▼▼ 아래 코드를 붙여넣으세요! ▼▼▼▼▼
+                    // 맵이 처음 생성된 후, 내 캐릭터의 시작 위치를 DB에 한번만 기록합니다.
+                    // 이렇게 하면 캐릭터가 정상적으로 표시되고, 무한 루프도 방지할 수 있습니다.
+                    const myServerData = players[myPlayerId];
+                    if (myServerData && typeof myServerData.x === 'undefined') {
+                        roomRef.child('players/' + myPlayerId).update({ x: playerPos.x, y: playerPos.y });
+                    }
+                    // ▲▲▲▲▲ 코드 추가 종료 ▲▲▲▲▲
                     if(ghostData) initializeGhosts(ghostData);
                 } else if (isHost) {
                     initializeGame(currentRoomData);
