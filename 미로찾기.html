@@ -677,7 +677,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const newY = playerPos.y + dy;
 
         // 벽이 아닐 때만 서버에 위치 업데이트를 '요청'합니다.
-        // 내 화면에서 직접 위치를 바꾸는 코드를 제거하여 데이터 충돌을 방지합니다.
         if (mazeLayout[newY]?.[newX] !== 1) {
             if (roomRef) {
                 // 멀티플레이 시에는 서버에만 위치를 알립니다.
@@ -784,9 +783,18 @@ function listenToRoomChanges() {
                 for (const pid in players) {
                     const p = players[pid];
                     if (p.x !== undefined) {
+                        // 다른 플레이어는 화면에 그리기만 합니다.
                         updatePlayerPosition(pid, p.x, p.y, p.avatar, { ...p.effects, isDead: p.isDead });
                     }
+                    
+                    // 내 플레이어일 경우, 서버 데이터로 내 모든 정보를 갱신합니다.
                     if (pid === myPlayerId) {
+                        // 1. 서버 좌표를 내 기준 좌표(playerPos)로 업데이트합니다. (핵심!)
+                        if (p.x !== undefined) {
+                            playerPos = { x: p.x, y: p.y };
+                        }
+                        
+                        // 2. 나머지 상태들도 모두 업데이트합니다.
                         isDead = !!p.isDead;
                         localPlayerEffects = p.effects || {};
                         if(isDead) stopMoving();
@@ -811,13 +819,11 @@ function listenToRoomChanges() {
             }
 
             if(isGameInitialized) {
-                // 내 위치가 서버 데이터와 다를 경우 동기화
-                const myServerPos = players?.[myPlayerId];
-                if(myServerPos && (myServerPos.x !== playerPos.x || myServerPos.y !== playerPos.y)){
-                    playerPos = { x: myServerPos.x, y: myServerPos.y };
-                }
+                // playerPos 업데이트 로직은 위로 옮겨졌으므로 여기서는 상호작용 체크만 합니다.
                 checkInteractions();
-if (isHost && gameState === 'playing' && !ghostMoveInterval) {
+                
+                // 유령 움직임 시작 로직은 그대로 둡니다.
+                if (isHost && gameState === 'playing' && !ghostMoveInterval) {
                     ghostMoveInterval = setInterval(moveGhosts, 500);
                 }
             }
