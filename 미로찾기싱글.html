@@ -97,12 +97,14 @@ document.addEventListener('DOMContentLoaded', () => {
     let myPlayerId, myAvatar, myNickname;
     let playerPos = { x: 0, y: 0 }, startPos = { x: 0, y: 0 }, goalPos = { x: 0, y: 0 };
     let cellSize = 0, mazeLayout = [], mazeRows = 39, mazeCols = 19;
-    let isDead = false, moveInterval = null, keyMoving = null;
-    let ghosts = [], ghostMoveInterval = null;
+let isDead = false, keyMoving = null; // moveInterval 제거
+    const keysPressed = { up: false, down: false, left: false, right: false };
+    let lastMoveTime = 0;
     let itemsOnMap = {};
     let localPlayerEffects = { hasGhostPass: false };
     let isGameRunning = false;
     let playerProfile = {};
+    let ghosts = [], ghostMoveInterval = null;
 
     const bgmList = ['https://blog.kakaocdn.net/dna/DNQLb/dJMb9XxycAX/AAAAAAAAAAAAAAAAAAAAAI0PFuL7ek0AzPlOTefGClzWlzULUuTO1XwqaU-J_PIh/%EC%9C%A0%EB%A0%B9%EB%B0%B0%EA%B2%BD%EC%9D%8C1.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=A4xFv8udTC2J9hu1NQVltXSWhoQ%3D&attach=1&knm=tfile.mp3', 'https://blog.kakaocdn.net/dna/bs8kot/dJMb8ZB9t6k/AAAAAAAAAAAAAAAAAAAAAOxk2WMLiINzJtlcW8XmrigYRG62tKlY36Dh34dF0l-6/%EC%9C%A0%EB%A0%B9%EB%B0%B0%EA%B2%BD%EC%9D%8C2.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=Qlq4IBg6emRfVcDzoUWVb4yfPRI%3D&attach=1&knm=tfile.mp3', 'https://blog.kakaocdn.net/dna/l5FLp/dJMb89Si31V/AAAAAAAAAAAAAAAAAAAAAMrBnVgoOMl0672AWUO9SYAbfe6oJ1C51PhMYFRVphka/%EC%9C%A0%EB%A0%B9%EB%B0%B0%EA%B2%BD%EC%9D%8C3.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=0p%2FNGTODZg4seFmJOG2qPWvsnp0%3D&attach=1&knm=tfile.mp3'];
     const winSound = new Audio('https://blog.kakaocdn.net/dna/yLiG9/dJMb9NBLH35/AAAAAAAAAAAAAAAAAAAAAHR816GoJ0hh_H3iBi2ryFMs7eTvtX1R2_MiNhMn1X1L/%EB%AF%B8%EB%A1%9C%EC%8A%B9%EB%A6%AC.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=etFa3TX%2Bm636tw%2BecTdKGFsE9%2Fo%3D&attach=1&knm=tfile.mp3');
@@ -143,7 +145,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 clearInterval(interval);
                 waitingOverlay.style.display = 'none';
                 startSinglePlayerGame();
+                requestAnimationFrame(gameLoop); // 게임 루프 시작
             }
+            
         }, 1000);
     }
 
@@ -416,7 +420,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     function handleDeath() {
         isDead = true;
-        stopMoving();
+    
         playerProfile.isDead = true; 
         updateHeaderUI(); 
         updatePlayerPosition(playerPos.x, playerPos.y, myAvatar);
@@ -425,7 +429,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function handleWin() {
         isGameRunning = false; 
-        stopMoving();
+
         showGameOverScreen(true);
     }
 
@@ -440,24 +444,64 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
-    function startMoving(dx, dy) { if (moveInterval) stopMoving(); move(dx, dy); moveInterval = setInterval(() => move(dx, dy), 150); }
-    function stopMoving() { clearInterval(moveInterval); moveInterval = null; }
+   // 기존 startMoving, stopMoving 함수를 gameLoop 로직으로 대체하므로 삭제하거나 아래 코드로 덮어씁니다.
+    function gameLoop(timestamp) {
+        if (!isGameRunning || isDead) {
+            // 게임이 실행 중이 아니어도 루프는 계속 호출되어야 재시작할 수 있습니다.
+            requestAnimationFrame(gameLoop);
+            return;
+        }
+
+        const moveSpeed = 120; // 이동 간격 (ms), 값이 작을수록 더 부드럽고 빠르게 느껴집니다.
+        if (timestamp - lastMoveTime > moveSpeed) {
+            let dx = 0, dy = 0;
+            // 동시에 눌린 키 상태를 확인하여 이동 방향을 결정합니다.
+            if (keysPressed.up) dy = -1;
+            if (keysPressed.down) dy = 1;
+            if (keysPressed.left) dx = -1;
+            if (keysPressed.right) dx = 1;
+
+            if (dx !== 0 || dy !== 0) {
+                move(dx, dy);
+                lastMoveTime = timestamp;
+            }
+        }
+        
+        // 다음 프레임에 gameLoop를 다시 호출합니다.
+        requestAnimationFrame(gameLoop);
+    }
     
-    ['up', 'down', 'left', 'right'].forEach(dir => {
-        const btn = document.getElementById(dir), dx = dir === 'left' ? -1 : dir === 'right' ? 1 : 0, dy = dir === 'up' ? -1 : dir === 'down' ? 1 : 0;
-        const start = e => { e.preventDefault(); startMoving(dx, dy); }, end = e => { e.preventDefault(); stopMoving(); };
-        btn.addEventListener('mousedown', start); btn.addEventListener('touchstart', start, { passive: false });
-        btn.addEventListener('mouseup', end); btn.addEventListener('mouseleave', end); btn.addEventListener('touchend', end);
+    ['up', 'down', 'left', 'right'].forEach(direction => {
+        const button = document.getElementById(direction);
+        const start = (e) => { e.preventDefault(); keysPressed[direction] = true; };
+        const end = (e) => { e.preventDefault(); keysPressed[direction] = false; };
+        button.addEventListener('mousedown', start);
+        button.addEventListener('touchstart', start, { passive: false });
+        button.addEventListener('mouseup', end);
+        button.addEventListener('mouseleave', end);
+        button.addEventListener('touchend', end);
     });
-    window.addEventListener('keydown', e => { if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key) && !keyMoving) { keyMoving = e.key; const dx = e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0, dy = e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0; startMoving(dx, dy); } });
-    window.addEventListener('keyup', e => { if(e.key === keyMoving) { keyMoving = null; stopMoving(); } });
-    
+   window.addEventListener('keydown', e => {
+        switch (e.key) {
+            case 'ArrowUp': keysPressed.up = true; break;
+            case 'ArrowDown': keysPressed.down = true; break;
+            case 'ArrowLeft': keysPressed.left = true; break;
+            case 'ArrowRight': keysPressed.right = true; break;
+        }
+    });
+    window.addEventListener('keyup', e => {
+        switch (e.key) {
+            case 'ArrowUp': keysPressed.up = false; break;
+            case 'ArrowDown': keysPressed.down = false; break;
+            case 'ArrowLeft': keysPressed.left = false; break;
+            case 'ArrowRight': keysPressed.right = false; break;
+        }
+    });
     function showGameOverScreen(isWin) {
         bgmAudio.pause();
         if(isWin) winSound.play(); else loseSound.play();
         isGameRunning = false;
         if (ghostMoveInterval) clearInterval(ghostMoveInterval);
-        stopMoving();
         const message = isWin ? '🎉 도착! 🎉' : '👻 유령에게 잡혔어요! 👻';
         const buttonsHTML = `<button id="restart-btn" class="menu-btn primary">다시 하기</button><button id="main-menu-btn" class="menu-btn secondary">메인으로</button>`;
         gameOverOverlay.innerHTML = `<div class="modal-content"><h2 id="game-over-message">${message}</h2><div class="modal-buttons">${buttonsHTML}</div></div>`;
