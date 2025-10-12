@@ -551,8 +551,13 @@
         
         let movementCheckTimeout = null;
 
-        function checkMovementEnd() {
-            if (!hasShotThisTurn || isDragging || isGameOver) return;
+  function checkMovementEnd() {
+    if (!hasShotThisTurn || isDragging || isGameOver) return;
+    
+    // [추가] 멀티플레이 모드에서는 방장(isHost)만 턴 종료를 판정합니다.
+    if (gameMode === 'multi' && !isHost) {
+        return;
+    }
 
             clearTimeout(movementCheckTimeout);
 
@@ -585,20 +590,36 @@
             hasShotThisTurn = false;
         }
 
-        function endTurn() {
-            console.log('🔄 턴 종료! 현재 턴:', currentTurnColor);
+function endTurn() {
+    console.log('🔄 턴 종료! 현재 턴:', currentTurnColor);
 
-            currentTurnColor = (currentTurnColor === 'white') ? 'black' : 'white';
-            console.log('✅ 다음 턴:', currentTurnColor);
-            
-            canShoot = true; 
+    currentTurnColor = (currentTurnColor === 'white') ? 'black' : 'white';
+    console.log('✅ 다음 턴:', currentTurnColor);
+    
+    hasShotThisTurn = false; // [추가] 턴이 끝나면 발사 상태를 확실히 초기화합니다.
+    canShoot = true; 
 
-            if (gameMode === 'single') {
-                checkTurn();
-            } else if (gameMode === 'multi' && roomRef && isHost) {
-                roomRef.update({ currentTurn: currentTurnColor });
-            }
-        }
+    if (gameMode === 'single') {
+        checkTurn();
+    } else if (gameMode === 'multi' && roomRef && isHost) {
+        // [추가] 방장은 턴 정보와 함께 모든 돌의 최종 상태를 전송하여 동기화합니다.
+        const finalStoneState = stones
+            .filter(s => s.active) // 살아있는 돌만
+            .map(s => ({
+                id: s.id,
+                x: s.body.position.x,
+                y: s.body.position.y,
+                vx: s.body.velocity.x,
+                vy: s.body.velocity.y
+            }));
+
+        roomRef.update({ 
+            currentTurn: currentTurnColor,
+            stoneState: finalStoneState // <-- 돌 상태 정보 추가!
+        });
+        // [추가 끝]
+    }
+}
         
         function setupInputHandlers() {
             const handleStart = (e) => {
@@ -750,46 +771,59 @@
         }
 
             const handleEnd = (e) => {
-                if (!isDragging || !selectedStone) return;
-                e.preventDefault();
-                
-                const pos = getEventPosition(e);
-                const stonePos = selectedStone.body.position;
-                const dx = stonePos.x - pos.x;
-                const dy = stonePos.y - pos.y;
-                const distance = Math.sqrt(dx * dx + dy * dy);
-                
-                if (distance > 5) {
-                    const maxDistance = boardWidth * 0.5;
-                    const clampedDistance = Math.min(distance, maxDistance);
-                    const normalizedPower = clampedDistance / maxDistance;
-                    
-                    const basePower = 0.09; // 파워 2배 증가
-                    const forceMagnitude = basePower * Math.pow(normalizedPower, 0.8);
-                    
-                    const angle = Math.atan2(dy, dx);
-                    const force = {
-                        x: Math.cos(angle) * forceMagnitude,
-                        y: Math.sin(angle) * forceMagnitude
-                    };
+    if (!isDragging || !selectedStone) return;
+    e.preventDefault();
+    
+    // [수정] 터치 종료 시 올바른 좌표를 얻도록 수정
+    const rect = gameBoard.getBoundingClientRect();
+    const clientX = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
+    const clientY = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
+    const pos = {
+        x: clientX - rect.left,
+        y: clientY - rect.top
+    };
+    // [수정 끝]
 
-                    Body.applyForce(selectedStone.body, selectedStone.body.position, force);
-                    playSound('shoot-sound');
-                    hasShotThisTurn = true;
-                    canShoot = false;
-                    
-                    if (gameMode === 'multi' && roomRef && isHost) {
-                        roomRef.child('lastMove').set({
-                            stoneId: selectedStone.id,
-                            forceX: force.x,
-                            forceY: force.y,
-                            timestamp: Date.now()
-                        });
-                    }
-                }
+    const stonePos = selectedStone.body.position;
+    const dx = stonePos.x - pos.x;
+    const dy = stonePos.y - pos.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    
+    if (distance > 5) {
+        const maxDistance = boardWidth * 0.5;
+        const clampedDistance = Math.min(distance, maxDistance);
+        const normalizedPower = clampedDistance / maxDistance;
+        
+        const basePower = 0.09;
+        const forceMagnitude = basePower * Math.pow(normalizedPower, 0.8);
+        
+        const angle = Math.atan2(dy, dx);
+        const force = {
+            x: Math.cos(angle) * forceMagnitude,
+            y: Math.sin(angle) * forceMagnitude
+        };
 
-                cleanup();
-            };
+        Body.applyForce(selectedStone.body, selectedStone.body.position, force);
+        playSound('shoot-sound');
+        hasShotThisTurn = true;
+        canShoot = false;
+        
+        // ▼▼▼▼▼ 여기를 수정하세요 ▼▼▼▼▼
+        // [수정] isHost 체크를 제거하여, 모든 플레이어가 자신의 움직임을 전송하도록 변경
+        if (gameMode === 'multi' && roomRef) { 
+            roomRef.child('lastMove').set({
+                stoneId: selectedStone.id,
+                forceX: force.x,
+                forceY: force.y,
+                playerId: myPlayerId, // [추가] 누가 쐈는지 식별하기 위한 ID 추가
+                timestamp: Date.now()
+            });
+        }
+        // ▲▲▲▲▲ 수정 종료 ▲▲▲▲▲
+    }
+
+    cleanup();
+};
 
             const cleanup = () => {
                 isDragging = false;
@@ -865,6 +899,23 @@
                 currentRoomData = snapshot.val();
             });
 
+             // [추가] 턴 종료 시 방장이 보낸 최종 돌 상태를 수신하여 동기화하는 리스너
+    roomRef.child('stoneState').on('value', snapshot => {
+        // 방장이거나, 데이터가 없으면 실행하지 않음
+        if (!snapshot.exists() || isHost) return;
+        
+        const stateData = snapshot.val();
+        stateData.forEach(s_data => {
+            const stone = stones.find(s => s.id === s_data.id);
+            if (stone && stone.active) {
+                // 물리적으로 위치와 속도를 강제로 설정하여 오차를 보정합니다.
+                Body.setPosition(stone.body, { x: s_data.x, y: s_data.y });
+                Body.setVelocity(stone.body, { x: s_data.vx, y: s_data.vy });
+            }
+        });
+    });
+    // [추가 끝]
+
             roomRef.child('currentTurn').on('value', snapshot => {
                 if (!snapshot.exists()) return;
                 const newTurnColor = snapshot.val();
@@ -874,18 +925,23 @@
             });
 
             roomRef.child('lastMove').on('value', snapshot => {
-                if (!snapshot.exists() || isHost) return;
-                
-                const move = snapshot.val();
-                if (!move || !move.stoneId) return;
-                
-                const stone = stones.find(s => s.id === move.stoneId);
-                
-                if (stone && stone.active) {
-                    const force = { x: move.forceX, y: move.forceY };
-                    Body.applyForce(stone.body, stone.body.position, force);
-                }
-            });
+        if (!snapshot.exists()) return;
+        
+        const move = snapshot.val();
+        
+        // [수정] 내가 보낸 정보가 아니라면 물리엔진에 적용
+        if (move && move.playerId && move.playerId !== myPlayerId) {
+            const stone = stones.find(s => s.id === move.stoneId);
+            
+            if (stone && stone.active) {
+                const force = { x: move.forceX, y: move.forceY };
+                Body.applyForce(stone.body, stone.body.position, force);
+                hasShotThisTurn = true; // [추가] 상대방이 쐈을 때도 발사 상태로 변경
+                canShoot = false;
+            }
+        }
+    });
+    // ▲▲▲▲▲ 수정 종료 ▲▲▲▲▲
 
             roomRef.child('removedStones').on('child_added', snapshot => {
                 if (isHost) return;
@@ -925,8 +981,9 @@
             const p1Color = (gameMode === 'single' || isHost) ? 'white' : 'black';
             const p2Color = (gameMode === 'single' || isHost) ? 'black' : 'white';
 
-            const p1Active = (currentTurnColor === p1Color);
-            const p2Active = (currentTurnColor === p2Color);
+      // P1은 항상 흰색, P2는 항상 검은색입니다.
+    const p1Active = (currentTurnColor === 'white');
+    const p2Active = (currentTurnColor === 'black');
             
             const p1Count = stones.filter(s => s.color === 'white' && s.active).length;
             const p2Count = stones.filter(s => s.color === 'black' && s.active).length;
