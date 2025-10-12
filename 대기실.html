@@ -163,8 +163,8 @@
 
         function getPlayerId() {
             let id = localStorage.getItem('myPlayerId');
-            if (!id || sessionStorage.getItem('isGuest') === 'true') { // 게스트는 로비 이용 불가
-                alert("로그인 후 이용해주세요.");
+            if (!id) { 
+                alert("로그인 정보가 없습니다. 메인 메뉴로 돌아갑니다.");
                 window.location.href = 'index.html';
                 return null;
             }
@@ -285,6 +285,13 @@
                 }
                 if (currentRoomData.gameState === 'waiting') { updateInGameLobbyUI(); }
                 if (currentRoomData.gameState === 'launching' && currentRoomData.launchUrl) {
+                    // ▼▼▼▼▼ onDisconnect 핸들러를 취소하는 코드 추가 ▼▼▼▼▼
+                    if (isHost) {
+                        roomRef.onDisconnect().cancel();
+                    } else {
+                        roomRef.child('players/' + myPlayerId).onDisconnect().cancel();
+                    }
+                    // ▲▲▲▲▲ onDisconnect 핸들러를 취소하는 코드 추가 ▲▲▲▲▲
                     roomRef.off();
                     window.location.href = currentRoomData.launchUrl;
                 }
@@ -332,12 +339,33 @@
             });
         }
         
-        function startGame() {
+       function startGame() {
             if (!isHost || !currentRoomData) return;
             const game = availableGames.find(g => g.id === currentRoomData.selectedGame);
             if (game) {
                 const launchUrl = `${game.file}?roomId=${roomRef.key}`;
-                roomRef.update({ gameState: 'launching', launchUrl });
+
+                // 미로찾기 게임일 경우, 데이터베이스 경로를 변경하고 이동
+                if (game.id === 'maze') {
+                    const mazeRoomRef = database.ref('mazeGameRooms').child(roomRef.key);
+                    
+                    // 1. 새로운 경로에 방 정보 쓰기
+                    mazeRoomRef.set(currentRoomData, (error) => {
+                        if (error) {
+                            console.error("미로찾기 방 생성 실패:", error);
+                            showInfoModal("오류", "게임 방 생성에 실패했습니다.");
+                        } else {
+                            // 2. 기존 방을 삭제하기 전에 모든 플레이어를 새 URL로 리디렉션
+                            roomRef.update({ gameState: 'launching', launchUrl: launchUrl }).then(() => {
+                                // 3. 모든 플레이어가 이동했을 것이므로, 기존 메모리게임 경로의 방은 삭제
+                                roomRef.remove(); 
+                            });
+                        }
+                    });
+                } else {
+                    // 메모리 게임은 기존 방식대로 시작
+                    roomRef.update({ gameState: 'launching', launchUrl: launchUrl });
+                }
             }
         }
 
