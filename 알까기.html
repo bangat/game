@@ -286,6 +286,7 @@
         let boardSize = 0;
         let boardWidth = 0, boardHeight = 0;
         let roomRef = null;
+        let dragStartPos = null;
         
         let opponentInfo = { id: 'ai', nickname: 'AI', avatar: '🤖' };
 
@@ -344,8 +345,8 @@
             
             const containerW = gameContainer.clientWidth;
             const containerH = gameContainer.clientHeight;
-            boardWidth = Math.min(containerW * 0.92, 450);
-            boardHeight = Math.min(containerH * 0.85, boardWidth * 1.2);
+            boardWidth = Math.min(containerW * 0.92, 400);
+            boardHeight = Math.min(containerH * 0.85, boardWidth * 1.6);
             
             gameBoard.style.width = `${boardWidth}px`;
             gameBoard.style.height = `${boardHeight}px`;
@@ -362,7 +363,7 @@
             engine = Engine.create({ gravity: { x: 0, y: 0 } });
             runner = Runner.create();
             
-            const stoneSize = boardWidth / 10;
+            const stoneSize = boardWidth / 12;
             stones = [];
             
             const wallThickness = 100;
@@ -374,9 +375,9 @@
             ];
             World.add(engine.world, walls);
             
-            for (let i = 0; i < 5; i++) {
-                createStone(boardWidth * 0.5 + (i - 2) * stoneSize * 1.1, boardHeight * 0.15, stoneSize, 'white', `white${i}`);
-                createStone(boardWidth * 0.5 + (i - 2) * stoneSize * 1.1, boardHeight * 0.85, stoneSize, 'black', `black${i}`);
+            for (let i = 0; i < 8; i++) {
+                createStone(boardWidth * 0.5 + (i - 3.5) * stoneSize * 1.1, boardHeight * 0.12, stoneSize, 'white', `white${i}`);
+                createStone(boardWidth * 0.5 + (i - 3.5) * stoneSize * 1.1, boardHeight * 0.88, stoneSize, 'black', `black${i}`);
             }
 
             Runner.run(runner, engine);
@@ -401,10 +402,11 @@
 
         function createStone(x, y, radius, color, id) {
             const body = Bodies.circle(x, y, radius / 2, {
-                restitution: 0.95,
-                friction: 0.001,
-                frictionAir: 0.015,
-                density: 0.001,
+                restitution: 0.85,
+                friction: 0.005,
+                frictionAir: 0.02,
+                density: 0.01,
+                mass: 1,
                 label: id,
                 inertia: Infinity
             });
@@ -464,11 +466,25 @@
         }
 
         let movementCheckTimeout;
+        let isCheckingMovement = false;
+        
         function checkMovementEnd() {
+            if (isCheckingMovement) return;
+            
             clearTimeout(movementCheckTimeout);
             movementCheckTimeout = setTimeout(() => {
-                const isMoving = stones.some(s => s.active && Vector.magnitude(s.body.velocity) > 0.1);
+                const isMoving = stones.some(s => {
+                    if (!s.active) return false;
+                    const speed = Math.sqrt(
+                        s.body.velocity.x * s.body.velocity.x + 
+                        s.body.velocity.y * s.body.velocity.y
+                    );
+                    return speed > 0.15;
+                });
+                
                 if (!isMoving && !isDragging) {
+                    isCheckingMovement = true;
+                    
                     const whiteStonesLeft = stones.filter(s => s.color === 'white' && s.active).length;
                     const blackStonesLeft = stones.filter(s => s.color === 'black' && s.active).length;
 
@@ -479,18 +495,36 @@
                     } else {
                         endTurn();
                     }
+                    
+                    setTimeout(() => { isCheckingMovement = false; }, 100);
                 }
-            }, 500);
+            }, 800);
         }
 
         function endTurn() {
             currentTurn = (currentTurn === 'white') ? 'black' : 'white';
+            
+            if (gameMode === 'multi' && roomRef && isHost) {
+                roomRef.update({ currentTurn: currentTurn });
+            }
+            
             checkTurn();
         }
         
         function setupInputHandlers() {
             const handleStart = (e) => {
                 if (!isMyTurn || isGameOver) return;
+                
+                const isMoving = stones.some(s => {
+                    if (!s.active) return false;
+                    const speed = Math.sqrt(
+                        s.body.velocity.x * s.body.velocity.x + 
+                        s.body.velocity.y * s.body.velocity.y
+                    );
+                    return speed > 0.1;
+                });
+                
+                if (isMoving) return;
                 
                 const pos = getEventPosition(e);
                 const clickedStone = stones.find(s => {
@@ -504,6 +538,7 @@
                     e.preventDefault();
                     isDragging = true;
                     selectedStone = clickedStone;
+                    dragStartPos = pos;
                     selectedStone.element.classList.add('selected');
                     powerIndicator.style.display = 'block';
                     Body.setVelocity(selectedStone.body, { x: 0, y: 0 });
@@ -532,7 +567,6 @@
                 const endX = stonePos.x + Math.cos(angle) * lineLength;
                 const endY = stonePos.y + Math.sin(angle) * lineLength;
                 
-                // 화살표 그리기
                 trajectoryCtx.strokeStyle = 'rgba(255, 50, 50, 0.9)';
                 trajectoryCtx.fillStyle = 'rgba(255, 50, 50, 0.9)';
                 trajectoryCtx.lineWidth = 5;
@@ -543,7 +577,6 @@
                 trajectoryCtx.lineTo(endX, endY);
                 trajectoryCtx.stroke();
                 
-                // 화살촉
                 const arrowSize = 15;
                 trajectoryCtx.beginPath();
                 trajectoryCtx.moveTo(endX, endY);
@@ -572,7 +605,7 @@
                 if (distance > 5) {
                     const maxDistance = boardWidth * 0.4;
                     const clampedDistance = Math.min(distance, maxDistance);
-                    const forceMagnitude = 0.025;
+                    const forceMagnitude = 0.008;
                     const power = clampedDistance * forceMagnitude;
                     
                     const angle = Math.atan2(dy, dx);
@@ -582,6 +615,14 @@
                     };
 
                     Body.applyForce(selectedStone.body, selectedStone.body.position, force);
+                    
+                    if (gameMode === 'multi' && roomRef) {
+                        roomRef.child('lastMove').set({
+                            stoneId: selectedStone.id,
+                            force: force,
+                            timestamp: Date.now()
+                        });
+                    }
                 }
 
                 cleanup();
@@ -589,6 +630,7 @@
 
             const cleanup = () => {
                 isDragging = false;
+                dragStartPos = null;
                 if (selectedStone) {
                     selectedStone.element.classList.remove('selected');
                 }
@@ -604,6 +646,7 @@
             document.addEventListener('touchmove', handleMove, { passive: false });
             document.addEventListener('mouseup', handleEnd);
             document.addEventListener('touchend', handleEnd);
+            document.addEventListener('touchcancel', handleEnd);
         }
 
         function getEventPosition(e) {
@@ -617,30 +660,32 @@
         }
         
         function aiMove() {
-            if (isGameOver) return;
+            if (isGameOver || isDragging) return;
             
             const aiStones = stones.filter(s => s.color === opponentColor && s.active);
             const targetStones = stones.filter(s => s.color === myColor && s.active);
             
             if (aiStones.length === 0 || targetStones.length === 0) return;
 
-            const shooter = aiStones[Math.floor(Math.random() * aiStones.length)];
-            const target = targetStones[Math.floor(Math.random() * targetStones.length)];
-            
-            const dx = target.body.position.x - shooter.body.position.x;
-            const dy = target.body.position.y - shooter.body.position.y;
-            const angle = Math.atan2(dy, dx);
-            
-            const randomOffset = (Math.random() - 0.5) * 0.4;
-            const finalAngle = angle + randomOffset;
-            
-            const power = (0.015 + Math.random() * 0.012);
-            const force = {
-                x: Math.cos(finalAngle) * power,
-                y: Math.sin(finalAngle) * power
-            };
+            setTimeout(() => {
+                const shooter = aiStones[Math.floor(Math.random() * aiStones.length)];
+                const target = targetStones[Math.floor(Math.random() * targetStones.length)];
+                
+                const dx = target.body.position.x - shooter.body.position.x;
+                const dy = target.body.position.y - shooter.body.position.y;
+                const angle = Math.atan2(dy, dx);
+                
+                const randomOffset = (Math.random() - 0.5) * 0.3;
+                const finalAngle = angle + randomOffset;
+                
+                const power = (0.005 + Math.random() * 0.004);
+                const force = {
+                    x: Math.cos(finalAngle) * power,
+                    y: Math.sin(finalAngle) * power
+                };
 
-            Body.applyForce(shooter.body, shooter.body.position, force);
+                Body.applyForce(shooter.body, shooter.body.position, force);
+            }, 500);
         }
 
         function updateHeaderUI() {
@@ -803,6 +848,13 @@
                 };
             }
             
+            if (roomData.hostId === myPlayerId) {
+                roomRef.update({ 
+                    currentTurn: 'white',
+                    gameState: 'waiting'
+                });
+            }
+            
             startCountdown('multi');
             listenToRoomChanges();
         }
@@ -834,6 +886,15 @@
                 if (roomData.currentTurn) {
                     currentTurn = roomData.currentTurn;
                     checkTurn();
+                }
+                
+                if (roomData.lastMove && roomData.lastMove.timestamp > (window.lastMoveTime || 0)) {
+                    window.lastMoveTime = roomData.lastMove.timestamp;
+                    const move = roomData.lastMove;
+                    const stone = stones.find(s => s.id === move.stoneId);
+                    if (stone && stone.active) {
+                        Body.applyForce(stone.body, stone.body.position, move.force);
+                    }
                 }
             });
         }
