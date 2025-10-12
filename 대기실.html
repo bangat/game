@@ -80,6 +80,17 @@
         
         #player-list { margin-top: 20px; font-size: 1.1em; width: 100%; max-width: 320px; }
         .player-item { background-color: #F3F7FD; color: var(--text-color-dark); padding: 12px; border-radius: 8px; margin-bottom: 8px; font-weight: 700; cursor: pointer; transition: background-color 0.2s; }
+.player-avatar-img {
+            width: 28px;
+            height: 28px;
+            object-fit: contain;
+            vertical-align: middle;
+        }
+        .player-avatar-emoji {
+            font-size: 1.5em;
+            line-height: 1;
+        }
+
         .player-item:hover { background-color: #e9eff8; }
         .player-item.is-host::after { content: ' (방장)'; color: var(--primary-color); font-weight: 700; }
         
@@ -121,6 +132,43 @@
             </div>
         </div>
     </div>
+
+
+<div id="profile-modal" class="overlay" style="display: none;">
+        <div class="modal-content" style="max-width: 380px;">
+            <div class="modal-body" style="padding: 25px;">
+                <div id="profile-header" style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px;">
+                    <div id="profile-avatar-container" style="font-size: 3.5em; width: 70px; height: 70px; display:flex; justify-content:center; align-items:center;">
+                        <span id="profile-avatar"></span>
+                    </div>
+                    <div id="profile-info-text" style="text-align: left;">
+                        <h3 id="profile-nickname" style="margin: 0 0 5px; font-size: 1.5em;"></h3>
+                        <span id="profile-level" style="font-size: 1em; color: #555; font-weight: 700;"></span>
+                    </div>
+                </div>
+                <div id="profile-stats-section" style="padding: 15px 0; border-top: 1px solid var(--panel-border); border-bottom: 1px solid var(--panel-border);">
+                    <div id="profile-stats" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; text-align: center;">
+                        <div class="stat-item">
+                            <h4 style="color: #888; font-size: 0.9em; margin-bottom: 4px;">승리</h4>
+                            <p id="profile-wins" style="font-size: 1.3em; font-weight: 700; color: #333; margin: 0;"></p>
+                        </div>
+                        <div class="stat-item">
+                            <h4 style="color: #888; font-size: 0.9em; margin-bottom: 4px;">패배</h4>
+                            <p id="profile-losses" style="font-size: 1.3em; font-weight: 700; color: #333; margin: 0;"></p>
+                        </div>
+                        <div class="stat-item">
+                            <h4 style="color: #888; font-size: 0.9em; margin-bottom: 4px;">승률</h4>
+                            <p id="profile-winrate" style="font-size: 1.3em; font-weight: 700; color: #333; margin: 0;"></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="lobby-modal-footer" style="padding: 20px;">
+                <button id="profile-close-btn" class="menu-btn secondary" style="margin:0;">닫기</button>
+            </div>
+        </div>
+    </div>
+
     <div id="game-select-modal" class="overlay" style="display: none; background-color: rgba(0,0,0,0.8);">
         <div class="modal-content">
             <div class="modal-header"><h2>어떤 게임을 할까요?</h2></div>
@@ -134,114 +182,113 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <script>
-    document.addEventListener('DOMContentLoaded', () => {
-        const firebaseConfig = {
-            apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw", authDomain: "goodluck-7c14b.firebaseapp.com",
-            databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com", projectId: "goodluck-7c14b",
-            storageBucket: "goodluck-7c14b.firebasestorage.app", messagingSenderId: "858281658455",
-            appId: "1:858281658455:web:9131280a459be983933b12"
-        };
-        firebase.initializeApp(firebaseConfig);
-const database = firebase.database();
+document.addEventListener('DOMContentLoaded', () => {
+    const firebaseConfig = {
+        apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw", authDomain: "goodluck-7c14b.firebaseapp.com",
+        databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com", projectId: "goodluck-7c14b",
+        storageBucket: "goodluck-7c14b.firebasestorage.app", messagingSenderId: "858281658455",
+        appId: "1:858281658455:web:9131280a459be983933b12"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
     const gameRoomsRef = database.ref('memoryGameRooms');
-        
-        const lobbyView = document.getElementById('lobby-view'),
-              backToIndexBtn = document.getElementById('back-to-index-btn'),
-              createRoomBtn = document.getElementById('create-room-btn'),
-              roomListContainer = document.getElementById('room-list-container'),
-              waitingOverlay = document.getElementById('waiting-overlay'),
-              infoOverlay = document.getElementById('info-overlay'),
-              infoTitle = document.getElementById('info-title'),
-              infoMessage = document.getElementById('info-message'),
-              infoConfirmBtn = document.getElementById('info-confirm-btn'),
-              gameSelectModal = document.getElementById('game-select-modal');
-        
-const availableGames = [
-            { id: 'memory', name: '메모리게임', icon: '🧠', color: '#4CAF50', file: '메모리게임.html' },
-            { id: 'maze', name: '미로찾기', icon: '🚀', color: '#34495e', file: '미로찾기멀티.html' }
-        ];
+    
+    const lobbyView = document.getElementById('lobby-view'),
+          backToIndexBtn = document.getElementById('back-to-index-btn'),
+          createRoomBtn = document.getElementById('create-room-btn'),
+          roomListContainer = document.getElementById('room-list-container'),
+          waitingOverlay = document.getElementById('waiting-overlay'),
+          infoOverlay = document.getElementById('info-overlay'),
+          infoTitle = document.getElementById('info-title'),
+          infoMessage = document.getElementById('info-message'),
+          infoConfirmBtn = document.getElementById('info-confirm-btn'),
+          gameSelectModal = document.getElementById('game-select-modal');
+    
+    const availableGames = [
+        { id: 'memory', name: '메모리게임', icon: '🧠', color: '#4CAF50', file: '메모리게임.html' },
+        { id: 'maze', name: '미로찾기', icon: '🚀', color: '#34495e', file: '미로찾기멀티.html' }
+    ];
 
-        let myPlayerId, myNickname, myAvatar, roomRef, currentRoomData, isHost = false;
-        let lobbyListener = null; 
+    let myPlayerId, myNickname, myAvatar, roomRef, currentRoomData, isHost = false;
+    let lobbyListener = null; 
 
-        function getPlayerId() {
-            let id = localStorage.getItem('myPlayerId');
-            if (!id) { 
-                alert("로그인 정보가 없습니다. 메인 메뉴로 돌아갑니다.");
-                window.location.href = 'index.html';
-                return null;
-            }
-            myNickname = localStorage.getItem('userNickname');
-            myAvatar = localStorage.getItem('userAvatar');
-            return id;
+    function getPlayerId() {
+        let id = localStorage.getItem('myPlayerId');
+        if (!id) { 
+            alert("로그인 정보가 없습니다. 메인 메뉴로 돌아갑니다.");
+            window.location.href = 'index.html';
+            return null;
         }
+        myNickname = localStorage.getItem('userNickname');
+        myAvatar = localStorage.getItem('userAvatar');
+        return id;
+    }
 
-        function showInfoModal(title, message, onConfirm) {
-            infoTitle.textContent = title;
-            infoMessage.textContent = message;
-            infoConfirmBtn.onclick = () => {
-                infoOverlay.style.display = 'none';
-                if (onConfirm) onConfirm();
-            };
-            infoOverlay.style.display = 'flex';
-        }
+    function showInfoModal(title, message, onConfirm) {
+        infoTitle.textContent = title;
+        infoMessage.textContent = message;
+        infoConfirmBtn.onclick = () => {
+            infoOverlay.style.display = 'none';
+            if (onConfirm) onConfirm();
+        };
+        infoOverlay.style.display = 'flex';
+    }
 
-        function cleanupOldRoomState() {
-            if (roomRef) { roomRef.off(); roomRef.onDisconnect().cancel(); }
-            roomRef = null; currentRoomData = null; isHost = false;
-        }
+    function cleanupOldRoomState() {
+        if (roomRef) { roomRef.off(); roomRef.onDisconnect().cancel(); }
+        roomRef = null; currentRoomData = null; isHost = false;
+    }
 
-        function startLobbyListener() {
-            stopLobbyListener();
-            roomListContainer.innerHTML = `<div class="spinner"></div>`;
-            const query = gameRoomsRef.orderByChild('createdAt').limitToLast(20);
-                    lobbyListener = query.on('value', snapshot => {
+    function startLobbyListener() {
+        stopLobbyListener();
+        roomListContainer.innerHTML = `<div class="spinner"></div>`;
+        const query = gameRoomsRef.orderByChild('createdAt').limitToLast(20);
+        lobbyListener = query.on('value', snapshot => {
             roomListContainer.innerHTML = '';
             if (!snapshot.exists()) {
-                // 활성화된 방이 없으면 자동으로 방 만들기 시작
                 createNewPublicRoom();
                 return;
             }
-                let roomCount = 0;
-                snapshot.forEach(childSnapshot => {
-                    const room = childSnapshot.val();
-                    if(!room || !room.players || !room.roomName || Object.keys(room.players).length === 0) return;
-                    roomCount++;
-                    const playerCount = Object.keys(room.players).length;
-                    const isPlaying = room.gameState === 'playing' || room.gameState === 'launching';
-                    const isFull = playerCount >= 4;
-                    const game = room.selectedGame ? availableGames.find(g => g.id === room.selectedGame) : null;
-                    const gameInfo = game ? `${game.icon} ${game.name}` : `<span style="color:#999">선택중...</span>`;
-                    const statusText = isPlaying ? '게임중' : '대기중';
-                    const statusClass = isPlaying ? 'playing' : 'waiting';
+            let roomCount = 0;
+            snapshot.forEach(childSnapshot => {
+                const room = childSnapshot.val();
+                if(!room || !room.players || !room.roomName || Object.keys(room.players).length === 0) return;
+                roomCount++;
+                const playerCount = Object.keys(room.players).length;
+                const isPlaying = room.gameState === 'playing' || room.gameState === 'launching';
+                const isFull = playerCount >= 4;
+                const game = room.selectedGame ? availableGames.find(g => g.id === room.selectedGame) : null;
+                const gameInfo = game ? `${game.icon} ${game.name}` : `<span style="color:#999">선택중...</span>`;
+                const statusText = isPlaying ? '게임중' : '대기중';
+                const statusClass = isPlaying ? 'playing' : 'waiting';
 
-                    const roomItem = document.createElement('div');
-                    roomItem.className = 'room-item';
-                    roomItem.innerHTML = `
-                        <div class="room-main-info">
-                            <div class="room-name">${room.roomName}</div>
-                            <div class="room-detail-line game"><span class="detail-label">게임</span><span class="detail-value">${gameInfo}</span></div>
-                            <div class="room-detail-line status-players">
-                                <div class="status-wrapper"><span class="detail-label">상태</span><span class="detail-value room-status ${statusClass}">[ ${statusText} ]</span></div>
-                                <div class="players-wrapper"><span class="detail-label">인원</span><span class="detail-value">${playerCount} / 4</span></div>
-                            </div>
+                const roomItem = document.createElement('div');
+                roomItem.className = 'room-item';
+                roomItem.innerHTML = `
+                    <div class="room-main-info">
+                        <div class="room-name">${room.roomName}</div>
+                        <div class="room-detail-line game"><span class="detail-label">게임</span><span class="detail-value">${gameInfo}</span></div>
+                        <div class="room-detail-line status-players">
+                            <div class="status-wrapper"><span class="detail-label">상태</span><span class="detail-value room-status ${statusClass}">[ ${statusText} ]</span></div>
+                            <div class="players-wrapper"><span class="detail-label">인원</span><span class="detail-value">${playerCount} / 4</span></div>
                         </div>
-                        <button class="menu-btn join-btn primary" data-room-id="${childSnapshot.key}" ${isFull || isPlaying ? 'disabled' : ''}>참가하기</button>
-                    `;
-                    roomListContainer.prepend(roomItem);
-                });
-                if (roomCount === 0) {
-                    roomListContainer.innerHTML = `<p style="color: #999; padding: 20px 0; text-align: center; font-weight: 500;">활성화된 방이 없어요.<br>새로운 방을 만들어보세요!</p>`;
-                }
-                document.querySelectorAll('.join-btn').forEach(btn => btn.addEventListener('click', e => joinRoom(e.target.dataset.roomId)));
+                    </div>
+                    <button class="menu-btn join-btn primary" data-room-id="${childSnapshot.key}" ${isFull || isPlaying ? 'disabled' : ''}>참가하기</button>
+                `;
+                roomListContainer.prepend(roomItem);
             });
-        }
+            if (roomCount === 0) {
+                roomListContainer.innerHTML = `<p style="color: #999; padding: 20px 0; text-align: center; font-weight: 500;">활성화된 방이 없어요.<br>새로운 방을 만들어보세요!</p>`;
+            }
+            document.querySelectorAll('.join-btn').forEach(btn => btn.addEventListener('click', e => joinRoom(e.target.dataset.roomId)));
+        });
+    }
 
-        function stopLobbyListener() {
-            if (lobbyListener) { gameRoomsRef.off('value', lobbyListener); lobbyListener = null; }
-        }
+    function stopLobbyListener() {
+        if (lobbyListener) { gameRoomsRef.off('value', lobbyListener); lobbyListener = null; }
+    }
 
-        function createNewPublicRoom() {
+    function createNewPublicRoom() {
         gameRoomsRef.orderByChild('hostId').equalTo(myPlayerId).once('value', snapshot => {
             const creationAction = () => {
                 stopLobbyListener();
@@ -258,116 +305,136 @@ const availableGames = [
             };
 
             if (snapshot.exists()) {
-                // 이미 만든 방이 있으면 삭제 후 새로 생성
                 const existingRoomId = Object.keys(snapshot.val())[0];
                 gameRoomsRef.child(existingRoomId).remove().then(creationAction);
             } else {
-                // 만든 방이 없으면 바로 생성
                 creationAction();
             }
         });
     }
 
-        function joinRoom(roomId) {
-            stopLobbyListener();
-            cleanupOldRoomState();
-            isHost = false;
-            roomRef = gameRoomsRef.child(roomId);
-            roomRef.transaction(currentData => {
-                if (currentData === null) return null;
-                if (currentData.gameState === 'waiting' && currentData.players && Object.keys(currentData.players).length < 4) {
-                    currentData.players[myPlayerId] = { nickname: myNickname, avatar: myAvatar, score: 0, isHost: false };
-                    return currentData;
-                } return;
-            }, (error, committed) => {
-                 if (!committed) { 
-                     showInfoModal("입장 실패", "방이 꽉 찼거나 이미 시작되어 참여할 수 없습니다."); 
-                     startLobbyListener();
-                 } else { roomRef.child('players/' + myPlayerId).onDisconnect().remove(); listenToRoomChanges(); }
-            });
-        }
+    function joinRoom(roomId) {
+        stopLobbyListener();
+        cleanupOldRoomState();
+        isHost = false;
+        roomRef = gameRoomsRef.child(roomId);
+        roomRef.transaction(currentData => {
+            if (currentData === null) return null;
+            if (currentData.gameState === 'waiting' && currentData.players && Object.keys(currentData.players).length < 4) {
+                currentData.players[myPlayerId] = { nickname: myNickname, avatar: myAvatar, score: 0, isHost: false };
+                return currentData;
+            } return;
+        }, (error, committed) => {
+             if (!committed) { 
+                 showInfoModal("입장 실패", "방이 꽉 찼거나 이미 시작되어 참여할 수 없습니다."); 
+                 startLobbyListener();
+             } else { roomRef.child('players/' + myPlayerId).onDisconnect().remove(); listenToRoomChanges(); }
+        });
+    }
 
-        function listenToRoomChanges() {
-            lobbyView.classList.add('hidden');
-            roomRef.on('value', snapshot => {
-                currentRoomData = snapshot.val();
-                if (!currentRoomData || !currentRoomData.players || !currentRoomData.players[myPlayerId]) {
-                    showInfoModal("방이 해체되었습니다", "방장이 게임을 떠나 대기실로 이동합니다.", () => {
-                        cleanupOldRoomState();
-                        waitingOverlay.style.display = 'none';
-                        lobbyView.classList.remove('hidden');
-                        startLobbyListener();
-                    });
-                    return;
+    function listenToRoomChanges() {
+        lobbyView.classList.add('hidden');
+        roomRef.on('value', snapshot => {
+            currentRoomData = snapshot.val();
+            if (!currentRoomData || !currentRoomData.players || !currentRoomData.players[myPlayerId]) {
+                showInfoModal("방이 해체되었습니다", "방장이 게임을 떠나 대기실로 이동합니다.", () => {
+                    cleanupOldRoomState();
+                    waitingOverlay.style.display = 'none';
+                    lobbyView.classList.remove('hidden');
+                    startLobbyListener();
+                });
+                return;
+            }
+            if (currentRoomData.gameState === 'waiting') { updateInGameLobbyUI(); }
+            if (currentRoomData.gameState === 'launching' && currentRoomData.launchUrl) {
+                if (isHost) {
+                    roomRef.onDisconnect().cancel();
+                } else {
+                    roomRef.child('players/' + myPlayerId).onDisconnect().cancel();
                 }
-                if (currentRoomData.gameState === 'waiting') { updateInGameLobbyUI(); }
-                if (currentRoomData.gameState === 'launching' && currentRoomData.launchUrl) {
-                    // ▼▼▼▼▼ onDisconnect 핸들러를 취소하는 코드 추가 ▼▼▼▼▼
-                    if (isHost) {
-                        roomRef.onDisconnect().cancel();
-                    } else {
-                        roomRef.child('players/' + myPlayerId).onDisconnect().cancel();
-                    }
-                    // ▲▲▲▲▲ onDisconnect 핸들러를 취소하는 코드 추가 ▲▲▲▲▲
-                    roomRef.off();
-                    window.location.href = currentRoomData.launchUrl;
-                }
-            });
-        }
+                roomRef.off();
+                window.location.href = currentRoomData.launchUrl;
+            }
+        });
+    }
 
-        function updateInGameLobbyUI() {
-            const { players, selectedGame, roomName } = currentRoomData;
-            const playerCount = Object.keys(players).length;
-            
-            let selectedGameHTML = '';
-            if (selectedGame) {
-                const game = availableGames.find(g => g.id === selectedGame);
-                selectedGameHTML = `<div id="selected-game-display" style="cursor: ${isHost ? 'pointer' : 'default'};">게임: ${game.icon} ${game.name}</div>`;
-            } else {
-                selectedGameHTML = `<div id="selected-game-display" style="cursor: ${isHost ? 'pointer' : 'default'};"><span class="placeholder">${isHost ? '플레이할 게임을 선택해주세요!' : '방장이 게임을 선택 중입니다...'}</span></div>`;
-            }
-            let playerListHTML = '';
-            Object.entries(players).sort().forEach(([pid, p]) => {
-                playerListHTML += `<div class="player-item ${p.isHost ? 'is-host' : ''}">${p.avatar} ${p.nickname} ${pid === myPlayerId ? ' (나)' : ''}</div>`;
-            });
-            const canStart = playerCount >= 2 && selectedGame;
-            const startGameBtnHTML = isHost ? `<button id="start-game-btn" class="menu-btn primary" ${!canStart ? 'disabled' : ''}>게임 시작</button>` : '';
-            
-            waitingOverlay.innerHTML = `
-                <div class="modal-content">
-                    <div class="modal-header"><h2>${roomName}</h2></div>
-                    <div class="modal-body">${selectedGameHTML}<div id="player-list">${playerListHTML}</div></div>
-                    <div class="lobby-modal-footer">
-                        <button id="leave-room-btn" class="menu-btn secondary">나가기</button>${startGameBtnHTML}
-                    </div>
-                </div>`;
-            waitingOverlay.style.display = 'flex';
-            if(isHost) {
-                document.getElementById('start-game-btn').addEventListener('click', startGame);
-                document.getElementById('selected-game-display').addEventListener('click', showGameSelectModal);
-            }
-            document.getElementById('leave-room-btn').addEventListener('click', () => {
-                waitingOverlay.style.display = 'none';
-                const playerRef = roomRef.child('players/' + myPlayerId);
-                cleanupOldRoomState(); 
-                playerRef.remove(); 
-                lobbyView.classList.remove('hidden');
-                startLobbyListener(); 
-            });
-        }
+    function updateInGameLobbyUI() {
+        const { players, selectedGame, roomName } = currentRoomData;
+        const playerCount = Object.keys(players).length;
         
-       function startGame() {
-            if (!isHost || !currentRoomData) return;
-            const game = availableGames.find(g => g.id === currentRoomData.selectedGame);
-            if (game) {
-                const launchUrl = `${game.file}?roomId=${roomRef.key}`;
-                // 더 이상 데이터베이스 경로를 바꾸지 않습니다.
-                // 그냥 현재 방의 상태를 '게임 시작 중'으로 업데이트하고 URL을 알려줍니다.
-                roomRef.update({ gameState: 'launching', launchUrl: launchUrl });
-            }
+        let selectedGameHTML = '';
+        if (selectedGame) {
+            const game = availableGames.find(g => g.id === selectedGame);
+            selectedGameHTML = `<div id="selected-game-display" style="cursor: ${isHost ? 'pointer' : 'default'};">게임: ${game.icon} ${game.name}</div>`;
+        } else {
+            selectedGameHTML = `<div id="selected-game-display" style="cursor: ${isHost ? 'pointer' : 'default'};"><span class="placeholder">${isHost ? '플레이할 게임을 선택해주세요!' : '방장이 게임을 선택 중입니다...'}</span></div>`;
+        }
+        let playerListHTML = '';
+            Object.entries(players).sort().forEach(([pid, p]) => {
+                
+                // --- 아래 로직이 핵심입니다! ---
+                // 아바타가 이미지 주소인지 이모지인지 확인하여 그에 맞는 HTML을 생성합니다.
+                let avatarHTML = '';
+                if (p.avatar.startsWith('http')) {
+                    // 이미지 주소일 경우 <img> 태그 사용
+                    avatarHTML = `<img src="${p.avatar}" class="player-avatar-img">`;
+                } else {
+                    // 이모지일 경우 <span> 태그 사용
+                    avatarHTML = `<span class="player-avatar-emoji">${p.avatar}</span>`;
+                }
+
+                // '나' 또는 게스트를 제외한 다른 플레이어들에게만 클릭할 수 있는 속성 추가
+                const clickAttribute = (pid === myPlayerId || pid.startsWith('guest_')) ? '' : `data-player-id="${pid}"`;
+
+                // 생성된 아바타 HTML을 플레이어 목록에 추가합니다.
+                playerListHTML += `<div class="player-item ${p.isHost ? 'is-host' : ''}" ${clickAttribute}>${avatarHTML} ${p.nickname} ${pid === myPlayerId ? ' (나)' : ''}</div>`;
+            });
+
+        const canStart = playerCount >= 2 && selectedGame;
+        const startGameBtnHTML = isHost ? `<button id="start-game-btn" class="menu-btn primary" ${!canStart ? 'disabled' : ''}>게임 시작</button>` : '';
+        
+        waitingOverlay.innerHTML = `
+            <div class="modal-content">
+                <div class="modal-header"><h2>${roomName}</h2></div>
+                <div class="modal-body">${selectedGameHTML}<div id="player-list">${playerListHTML}</div></div>
+                <div class="lobby-modal-footer">
+                    <button id="leave-room-btn" class="menu-btn secondary">나가기</button>${startGameBtnHTML}
+                </div>
+            </div>`;
+        waitingOverlay.style.display = 'flex';
+        
+        if(isHost) {
+            document.getElementById('start-game-btn').addEventListener('click', startGame);
+            document.getElementById('selected-game-display').addEventListener('click', showGameSelectModal);
         }
 
-        function showGameSelectModal() {
+        document.querySelectorAll('.player-item[data-player-id]').forEach(item => {
+            item.addEventListener('click', () => {
+                const playerId = item.dataset.playerId;
+                showPlayerProfileModal(playerId);
+            });
+        });
+
+        document.getElementById('leave-room-btn').addEventListener('click', () => {
+            waitingOverlay.style.display = 'none';
+            const playerRef = roomRef.child('players/' + myPlayerId);
+            cleanupOldRoomState(); 
+            playerRef.remove(); 
+            lobbyView.classList.remove('hidden');
+            startLobbyListener(); 
+        });
+    }
+    
+    function startGame() {
+        if (!isHost || !currentRoomData) return;
+        const game = availableGames.find(g => g.id === currentRoomData.selectedGame);
+        if (game) {
+            const launchUrl = `${game.file}?roomId=${roomRef.key}`;
+            roomRef.update({ gameState: 'launching', launchUrl: launchUrl });
+        }
+    }
+
+    function showGameSelectModal() {
         const optionsContainer = document.getElementById('game-select-options');
         optionsContainer.innerHTML = '';
         availableGames.forEach(game => {
@@ -380,33 +447,61 @@ const availableGames = [
             optionsContainer.appendChild(btn);
         });
 
-        // ▼▼▼▼▼ 아래 버튼 이벤트 리스너를 추가하세요 ▼▼▼▼▼
         document.getElementById('cancel-game-select-btn').onclick = () => {
             gameSelectModal.style.display = 'none';
-            // 방장이 나갔을 때 방이 삭제되도록 처리
-            if(isHost && roomRef) {
-                roomRef.remove();
-            }
-            cleanupOldRoomState();
-            startLobbyListener(); // 로비로 돌아가기
         };
-        // ▲▲▲▲▲ 코드 추가 종료 ▲▲▲▲▲
-
         gameSelectModal.style.display = 'flex';
     }
 
-        function selectGame(gameId) {
-            if (isHost && roomRef) { roomRef.update({ selectedGame: gameId }); }
-            gameSelectModal.style.display = 'none';
-        }
+    function selectGame(gameId) {
+        if (isHost && roomRef) { roomRef.update({ selectedGame: gameId }); }
+        gameSelectModal.style.display = 'none';
+    }
 
-        myPlayerId = getPlayerId();
-        if (myPlayerId) {
-            startLobbyListener();
-            backToIndexBtn.addEventListener('click', () => { window.location.href = 'index.html'; });
-            createRoomBtn.addEventListener('click', createNewPublicRoom);
+    function showPlayerProfileModal(playerId) {
+        if (playerId.startsWith('guest_')) {
+            showInfoModal("알림", "게스트 유저는 전적 정보를 볼 수 없습니다.");
+            return;
         }
-    });
-    </script>
+        const playersRef = database.ref(`users/${playerId}`);
+        playersRef.once('value', snapshot => {
+            if (snapshot.exists()) {
+                displayProfileData(snapshot.val());
+                document.getElementById('profile-modal').style.display = 'flex';
+            } else {
+                showInfoModal("오류", "플레이어 정보를 불러오는 데 실패했습니다.");
+            }
+        });
+    }
+
+    function displayProfileData(data) {
+        const profileModal = document.getElementById('profile-modal');
+        const stats = data.stats || {};
+        const totalWins = Object.values(stats).reduce((sum, game) => sum + (game.wins || 0), 0);
+        const totalLosses = Object.values(stats).reduce((sum, game) => sum + (game.losses || 0), 0);
+        const totalGames = totalWins + totalLosses;
+        const winRate = totalGames > 0 ? ((totalWins / totalGames) * 100).toFixed(1) + '%' : '-';
+        
+        profileModal.querySelector('#profile-avatar').textContent = data.avatar;
+        profileModal.querySelector('#profile-nickname').textContent = data.nickname;
+        profileModal.querySelector('#profile-level').textContent = `Lv. ${data.level || 1}`;
+        profileModal.querySelector('#profile-wins').textContent = `${totalWins} 승`;
+        profileModal.querySelector('#profile-losses').textContent = `${totalLosses} 패`;
+        profileModal.querySelector('#profile-winrate').textContent = winRate;
+    }
+
+    myPlayerId = getPlayerId();
+    if (myPlayerId) {
+        startLobbyListener();
+        backToIndexBtn.addEventListener('click', () => { window.location.href = 'index.html'; });
+
+        document.getElementById('profile-close-btn').addEventListener('click', () => {
+            document.getElementById('profile-modal').style.display = 'none';
+        });
+
+        createRoomBtn.addEventListener('click', createNewPublicRoom);
+    }
+});
+</script>
 </body>
 </html>
