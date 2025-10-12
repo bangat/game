@@ -665,9 +665,43 @@
                 document.getElementById('game-select-btn')?.addEventListener('click', showGameSelectModal);
             }
 
+                        // ▼▼▼▼▼ 아래 코드로 교체하세요 ▼▼▼▼▼
             document.querySelectorAll('.player-slot-compact, .player-item').forEach(item => {
-                item.addEventListener('click', () => showPlayerProfileModal(item.dataset.playerId));
+                item.addEventListener('click', () => {
+                    const clickedPlayerId = item.dataset.playerId;
+                    const clickedPlayer = currentRoomData.players[clickedPlayerId];
+
+                    // 방장이고, 자기 자신이 아닌 다른 플레이어를 클릭했을 때
+                    if (isHost && clickedPlayerId !== myPlayerId) {
+                        const menu = document.getElementById('player-context-menu');
+                        menu.querySelector('#context-menu-nickname').textContent = clickedPlayer.nickname;
+                        
+                        // 프로필 보기 버튼 클릭 시
+                        menu.querySelector('#context-profile-btn').onclick = () => {
+                            menu.style.display = 'none';
+                            showPlayerProfileModal(clickedPlayerId);
+                        };
+
+                        // 강퇴하기 버튼 클릭 시
+                        menu.querySelector('#context-kick-btn').onclick = () => {
+                            if (confirm(`${clickedPlayer.nickname}님을 방에서 내보내시겠습니까?`)) {
+                                // Firebase에서 해당 플레이어 제거
+                                roomRef.child('players/' + clickedPlayerId).remove();
+                                menu.style.display = 'none';
+                            }
+                        };
+                        
+                        menu.querySelector('#context-cancel-btn').onclick = () => menu.style.display = 'none';
+                        menu.style.display = 'flex';
+                    
+                    } else {
+                        // 방장이 아니거나, 자기 자신을 클릭했을 때는 프로필만 보여줌
+                        showPlayerProfileModal(clickedPlayerId);
+                    }
+                });
             });
+            // ▲▲▲▲▲ 코드 교체 종료 ▲▲▲▲▲
+
 
             document.getElementById('leave-room-btn').addEventListener('click', () => {
                 waitingOverlay.style.display = 'none';
@@ -844,5 +878,19 @@
         }
     });
     </script>
+
+<div id="player-context-menu" class="overlay" style="display: none; background-color: rgba(0,0,0,0.4);">
+    <div class="modal-content" style="max-width: 280px;">
+        <div class="modal-body" style="padding: 20px 20px 15px;">
+            <h3 id="context-menu-nickname" style="font-size: 1.4em; margin-bottom: 20px;"></h3>
+            <button id="context-profile-btn" class="menu-btn secondary" style="margin:0; width: 100%;">프로필 보기</button>
+            <button id="context-kick-btn" class="menu-btn" style="margin:10px 0 0; width: 100%; background-color: var(--danger-color); color: white;">내보내기</button>
+        </div>
+        <div class="lobby-modal-footer" style="padding: 0 15px 15px;">
+             <button id="context-cancel-btn" class="menu-btn secondary" style="margin:0;">취소</button>
+        </div>
+    </div>
+</div>
+
 </body>
 </html>
