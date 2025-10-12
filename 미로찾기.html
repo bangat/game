@@ -192,10 +192,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const bgmAudio = document.getElementById('bgm-audio');
     
     const ITEM_TYPES = {
-        'ghost-pass': { emoji: '🛡️', probability: 30 },
-        'slow':       { emoji: '🐌', probability: 25, duration: 3000 },
-        'darkness':   { emoji: '🔦', probability: 25, duration: 3000 },
-        'teleport':   { emoji: '🌀', probability: 5 }
+        'ghost-pass':    { emoji: '🛡️', probability: 25 },
+        'slow':          { emoji: '🐌', probability: 20, duration: 3000 },
+        'darkness':      { emoji: '🔦', probability: 20, duration: 3000 },
+        'teleport':      { emoji: '🌀', probability: 5 },
+        'ghost-speed':   { emoji: '🚀', probability: 10, duration: 5000 },
+        'add-ghosts':    { emoji: '💀', probability: 5 },
+        'remove-ghosts': { emoji: '✨', probability: 5 },
+        'freeze-players':{ emoji: '🥶', probability: 5, duration: 2000 }
     };
 
     function getPlayerInfo() {
@@ -239,6 +243,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function startSinglePlayerGame() {
+        bgmAudio.src = bgmList[Math.floor(Math.random() * bgmList.length)];
+        bgmAudio.play().catch(e => console.log("BGM auto-play failed"));
+        
         isGameRunning = true;
         isGameInitialized = false;
         isDead = false;
@@ -380,15 +387,15 @@ document.addEventListener('DOMContentLoaded', () => {
     function initializeGhosts(initialGhostsData) {
         ghosts = [];
         document.querySelectorAll('.ghost').forEach(el => el.remove());
-        const ghostEmojis = ['👻', '🎃', '💀', '👽', '👾'];
+        const ghostEmojis = ['👻', '🎃', '👽', '👾'];
         let i = 0;
         for (const id in initialGhostsData) {
             const pos = initialGhostsData[id];
             const ghostElement = document.createElement('div');
             ghostElement.className = 'ghost';
-            ghostElement.textContent = ghostEmojis[i++ % ghostEmojis.length];
+            ghostElement.textContent = pos.type === 'reaper' ? '💀' : ghostEmojis[i++ % ghostEmojis.length];
             mazeContainer.appendChild(ghostElement);
-            const ghost = { id, x: pos.x, y: pos.y, element: ghostElement, path: [] };
+            const ghost = { id, x: pos.x, y: pos.y, element: ghostElement, path: [], type: pos.type };
             ghosts.push(ghost);
             updateGhostPosition(ghost);
         }
@@ -506,29 +513,33 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const updates = {};
         const livingPlayers = Object.values(allPlayers).filter(p => !p.isDead && p.x !== undefined);
+        const speedEffect = currentRoomData?.ghostSpeedEffect;
+        const moveCount = (speedEffect && Date.now() < speedEffect.expiresAt) ? 2 : 1;
 
         ghosts.forEach(ghost => {
-            if (ghost.path.length === 0 || Math.random() < 0.2) {
-                if(livingPlayers.length > 0) {
-                    const target = livingPlayers[Math.floor(Math.random() * livingPlayers.length)];
-                    const newPath = bfs({x: ghost.x, y: ghost.y}, {x: target.x, y: target.y});
-                    if(newPath) ghost.path = newPath.slice(1);
+            for (let i=0; i < moveCount; i++) {
+                if (ghost.path.length === 0 || Math.random() < 0.2) {
+                    if(livingPlayers.length > 0) {
+                        const target = livingPlayers[Math.floor(Math.random() * livingPlayers.length)];
+                        const newPath = bfs({x: ghost.x, y: ghost.y}, {x: target.x, y: target.y});
+                        if(newPath) ghost.path = newPath.slice(1);
+                    }
+                }
+                if(ghost.path.length > 0) {
+                    const nextMove = ghost.path.shift();
+                    ghost.x = nextMove.x; ghost.y = nextMove.y;
+                } else {
+                    const { x, y } = ghost;
+                    const moves = [[0,1], [0,-1], [1,0], [-1,0]].filter(([dx,dy]) => mazeLayout[y+dy]?.[x+dx] !== 1);
+                    if(moves.length > 0) { const [dx, dy] = moves[Math.floor(Math.random() * moves.length)]; ghost.x += dx; ghost.y += dy; }
                 }
             }
-            if(ghost.path.length > 0) {
-                const nextMove = ghost.path.shift();
-                ghost.x = nextMove.x; ghost.y = nextMove.y;
-            } else {
-                const { x, y } = ghost;
-                const moves = [[0,1], [0,-1], [1,0], [-1,0]].filter(([dx,dy]) => mazeLayout[y+dy]?.[x+dx] !== 1);
-                if(moves.length > 0) { const [dx, dy] = moves[Math.floor(Math.random() * moves.length)]; ghost.x += dx; ghost.y += dy; }
-            }
             updateGhostPosition(ghost); 
-            if(roomRef) updates[ghost.id] = { x: ghost.x, y: ghost.y };
+            if(roomRef) updates[ghost.id] = { x: ghost.x, y: ghost.y, type: ghost.type };
         });
         
         if(roomRef && Object.keys(updates).length > 0) roomRef.child('ghosts').update(updates);
-        if(!roomRef || isHost) checkInteractions();
+        if(!roomRef) checkInteractions();
     }
     
     function checkInteractions() {
@@ -555,7 +566,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (d && d.players && d.players[myPlayerId]) {
                     d.players[myPlayerId].isDead = true;
                     const living = Object.values(d.players).filter(p => !p.isDead);
-                    if (living.length === 1) d.winner = living[0].id; 
+                    if (living.length === 1) d.winner = living.find(p => !p.isDead).id;
                     else if (living.length === 0) d.winner = 'draw';
                 }
                 return d;
@@ -570,6 +581,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function move(dx, dy) {
+        const freezeEffect = currentRoomData?.freezeEffect;
+        if (freezeEffect && Date.now() < freezeEffect.expiresAt) return;
         if (isDead || !isGameRunning) return;
         const nX = playerPos.x + dx, nY = playerPos.y + dy;
         if (mazeLayout[nY]?.[nX] !== 1) {
@@ -604,6 +617,7 @@ document.addEventListener('DOMContentLoaded', () => {
             allPlayers = players || {};
             isHost = currentRoomData.hostId === myPlayerId;
             if (isHost) roomRef.onDisconnect().remove(); else roomRef.child('players/' + myPlayerId).onDisconnect().remove();
+            
             if (isHost && gameState === 'waiting' && !isGameInitialized) { initializeGame(currentRoomData); return; } 
             
             if (gameState === 'playing' && !isGameInitialized) {
@@ -622,12 +636,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         bgmAudio.play().catch(e => {});
                         if (maze) {
                            setupGameFromData(currentRoomData);
-                           if (!players[myPlayerId]?.x) roomRef.child('players/' + myPlayerId).update({ x: playerPos.x, y: playerPos.y });
+                           if (players[myPlayerId] && typeof players[myPlayerId].x === 'undefined') roomRef.child('players/' + myPlayerId).update({ x: playerPos.x, y: playerPos.y });
                            if(ghostData) initializeGhosts(ghostData);
                         }
                     }
                 }, 1000);
             }
+
             gameWrapper.style.display = 'flex';
             if (winner) { showGameOverScreen({ winnerId: winner !== 'draw' ? winner : null, isDraw: winner === 'draw' }); roomRef.off(); return; }
             
@@ -657,7 +672,32 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (isHost && Object.keys(effectUpdates).length > 0) roomRef.update(effectUpdates);
             }
             
-            if(ghostData && !isHost) ghosts.forEach(g => { if(ghostData[g.id]){ g.x = ghostData[g.id].x; g.y = ghostData[g.id].y; updateGhostPosition(g); } });
+            if (ghostData) {
+                const serverGhostIds = Object.keys(ghostData);
+                const clientGhostIds = ghosts.map(g => g.id);
+                clientGhostIds.forEach(id => {
+                    if (!serverGhostIds.includes(id)) {
+                        const ghostToRemove = ghosts.find(g => g.id === id);
+                        if (ghostToRemove && ghostToRemove.element) ghostToRemove.element.remove();
+                    }
+                });
+                ghosts = ghosts.filter(g => serverGhostIds.includes(g.id));
+
+                serverGhostIds.forEach(id => {
+                    if (!clientGhostIds.includes(id)) {
+                        const newGhostData = ghostData[id];
+                        const ghostElement = document.createElement('div');
+                        ghostElement.className = 'ghost';
+                        ghostElement.textContent = newGhostData.type === 'reaper' ? '💀' : '👻';
+                        mazeContainer.appendChild(ghostElement);
+                        const ghostObject = { id, x: newGhostData.x, y: newGhostData.y, element: ghostElement, path: [], type: newGhostData.type };
+                        ghosts.push(ghostObject);
+                        updateGhostPosition(ghostObject);
+                    }
+                });
+                if (!isHost) ghosts.forEach(g => { if(ghostData[g.id]){ g.x = ghostData[g.id].x; g.y = ghostData[g.id].y; updateGhostPosition(g); } });
+            }
+            
             if (items !== undefined) itemsOnMap = items || {};
             if(isGameInitialized && isHost && gameState === 'playing' && !ghostMoveInterval) ghostMoveInterval = setInterval(moveGhosts, 500);
         });
@@ -669,11 +709,44 @@ document.addEventListener('DOMContentLoaded', () => {
 
         roomRef.child('events').on('child_added', snapshot => {
             const event = snapshot.val();
-            if(!event || !isHost) { if(isHost) snapshot.ref.remove(); return; };
+            if(!event || !isHost) { if(isHost) snapshot.ref.remove(); return; }
             const { type, from } = event;
             const updates = {};
-            if (type === 'slow') updates['/slowEffect'] = { from, expiresAt: Date.now() + ITEM_TYPES.slow.duration };
-            else if (type === 'darkness') Object.keys(allPlayers).forEach(pid => { if (pid !== from) updates[`/players/${pid}/effects/darkness`] = Date.now() + ITEM_TYPES.darkness.duration; });
+            switch (type) {
+                case 'slow':
+                    updates['/slowEffect'] = { from, expiresAt: Date.now() + ITEM_TYPES.slow.duration };
+                    break;
+                case 'darkness':
+                    Object.keys(allPlayers).forEach(pid => { if (pid !== from) updates[`/players/${pid}/effects/darkness`] = Date.now() + ITEM_TYPES.darkness.duration; });
+                    break;
+                case 'ghost-speed':
+                    updates['/ghostSpeedEffect'] = { expiresAt: Date.now() + ITEM_TYPES['ghost-speed'].duration };
+                    break;
+                case 'add-ghosts':
+                    for (let i = 0; i < 2; i++) {
+                        let gx, gy;
+                        do {
+                            gx = Math.floor(Math.random() * (mazeCols - 2)) + 1;
+                            gy = Math.floor(Math.random() * (mazeRows - 2)) + 1;
+                        } while (mazeLayout[gy]?.[gx] !== 0);
+                        const newGhostId = `reaper${Date.now() + i}`;
+                        updates[`/ghosts/${newGhostId}`] = { x: gx, y: gy, type: 'reaper' };
+                    }
+                    break;
+                case 'remove-ghosts':
+                    const ghostKeys = Object.keys(currentRoomData.ghosts || {});
+                    if (ghostKeys.length > 2) {
+                        for(let i=0; i<2; i++) {
+                            const randomIndex = Math.floor(Math.random() * ghostKeys.length);
+                            const keyToRemove = ghostKeys.splice(randomIndex, 1)[0];
+                            if(keyToRemove) updates[`/ghosts/${keyToRemove}`] = null;
+                        }
+                    }
+                    break;
+                case 'freeze-players':
+                    updates['/freezeEffect'] = { expiresAt: Date.now() + ITEM_TYPES['freeze-players'].duration };
+                    break;
+            }
             if (Object.keys(updates).length > 0) roomRef.update(updates);
             snapshot.ref.remove();
         });
@@ -735,7 +808,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 </script>
-
 
 <audio id="bgm-audio" loop></audio>
     <audio id="win-sound" src="https://blog.kakaocdn.net/dna/yLiG9/dJMb9NBLH35/AAAAAAAAAAAAAAAAAAAAAHR816GoJ0hh_H3iBi2ryFMs7eTvtX1R2_MiNhMn1X1L/%EB%AF%B8%EB%A1%9C%EC%8A%B9%EB%A6%AC.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=etFa3TX%2Bm636tw%2BecTdKGFsE9%2Fo%3D&attach=1&knm=tfile.mp3"></audio>
