@@ -49,15 +49,9 @@
         box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2); border-radius: 10px;
         overflow: hidden; background-color: var(--path-color); position: relative; margin: 0 auto;
     }
-    /* [수정] 맵을 CSS Grid로 변경하여 렌더링 안정성을 높입니다. */
-    #maze { 
-        width: 100%; height: 100%;
-        display: grid;
-        grid-template-rows: repeat(39, 1fr);
-        grid-template-columns: repeat(19, 1fr);
-    }
+    #maze { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
 
-    .wall { background-color: var(--wall-color); }
+    .wall { background-color: var(--wall-color); position: absolute; }
 
 
     .player-avatar, .opponent-player { position: absolute; display: flex; justify-content: center; align-items: center; transition: all 0.12s linear; border-radius: 50%; z-index: 10; }
@@ -69,17 +63,7 @@
     @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.2); } 100% { transform: scale(1); } }
     
     .ghost, .item { position: absolute; display: flex; justify-content: center; align-items: center; }
-.ghost { 
-        transition: all 0.4s linear, opacity 0.5s ease-in-out, transform 0.5s ease-in-out; /* [수정] 부드러운 등장을 위해 transition 추가 */
-        z-index: 8; 
-        animation: float 2s ease-in-out infinite; 
-    }
-    /* ▼▼▼▼▼ 아래 코드를 붙여넣으세요! ▼▼▼▼▼ */
-    .ghost.hidden {
-        opacity: 0;
-        transform: scale(0.5);
-    }
-    /* ▲▲▲▲▲ 코드 추가 종료 ▲▲▲▲▲ */
+    .ghost { transition: all 0.4s linear; z-index: 8; animation: float 2s ease-in-out infinite; }
     @keyframes float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-5px); } }
     .item { z-index: 7; animation: spin-item 3s linear infinite; }
     @keyframes spin-item { from { transform: rotateY(0deg); } to { transform: rotateY(360deg); } }
@@ -169,7 +153,7 @@
         </div>
     </div>
 
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
 
 <script>
@@ -177,7 +161,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const firebaseConfig = { apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw", authDomain: "goodluck-7c14b.firebaseapp.com", databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com", projectId: "goodluck-7c14b", storageBucket: "goodluck-7c14b.firebasestorage.app", messagingSenderId: "858281658455", appId: "1:858281658455:web:9131280a459be983933b12" };
     firebase.initializeApp(firebaseConfig);
     const database = firebase.database();
-    // ✅ [수정] 미로찾기 게임 전용 데이터베이스 경로 사용
     const gameRoomsRef = database.ref('mazeGameRooms');
 
     const gameWrapper = document.getElementById('game-wrapper'),
@@ -197,9 +180,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let localPlayerEffects = { hasGhostPass: false, isSlowed: false };
     let isGameRunning = false, isGameInitialized = false;
     let allPlayers = {};
-let isBgmPlaying = false; // [추가] BGM 재생 여부를 확인하는 변수
 
-const bgmList = [
+    const bgmList = [
         'https://blog.kakaocdn.net/dna/DNQLb/dJMb9XxycAX/AAAAAAAAAAAAAAAAAAAAAI0PFuL7ek0AzPlOTefGClzWlzULUuTO1XwqaU-J_PIh/%EC%9C%A0%EB%A0%B9%EB%B0%B0%EA%B2%BD%EC%9D%8C1.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=A4xFv8udTC2J9hu1NQVltXSWhoQ%3D&attach=1&knm=tfile.mp3',
         'https://blog.kakaocdn.net/dna/bs8kot/dJMb8ZB9t6k/AAAAAAAAAAAAAAAAAAAAAOxk2WMLiINzJtlcW8XmrigYRG62tKlY36Dh34dF0l-6/%EC%9C%A0%EB%A0%B9%EB%B0%B0%EA%B2%BD%EC%9D%8C2.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=Qlq4IBg6emRfVcDzoUWVb4yfPRI%3D&attach=1&knm=tfile.mp3',
         'https://blog.kakaocdn.net/dna/l5FLp/dJMb89Si31V/AAAAAAAAAAAAAAAAAAAAAMrBnVgoOMl0672AWUO9SYAbfe6oJ1C51PhMYFRVphka/%EC%9C%A0%EB%A0%B9%EB%B0%B0%EA%B2%BD%EC%9D%8C3.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=0p%2FNGTODZg4seFmJOG2qPWvsnp0%3D&attach=1&knm=tfile.mp3'
@@ -208,9 +190,6 @@ const bgmList = [
     const loseSound = document.getElementById('lose-sound');
     const itemSound = document.getElementById('item-sound');
     const bgmAudio = document.getElementById('bgm-audio');
-    winSound.src = 'https://blog.kakaocdn.net/dna/yLiG9/dJMb9NBLH35/AAAAAAAAAAAAAAAAAAAAAHR816GoJ0hh_H3iBi2ryFMs7eTvtX1R2_MiNhMn1X1L/%EB%AF%B8%EB%A1%9C%EC%8A%B9%EB%A6%AC.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=etFa3TX%2Bm636tw%2BecTdKGFsE9%2Fo%3D&attach=1&knm=tfile.mp3';
-    loseSound.src = 'https://blog.kakaocdn.net/dna/YqeBo/dJMb9OHqWKw/AAAAAAAAAAAAAAAAAAAAAM8axaXYQq2O5N2k8agpwDy0McSjUZXAYGl-stM9OdBB/%EB%AF%B8%EB%A1%9C%ED%8C%A8%EB%B0%B0.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=EMAsInuCHrrRTqY%2Bxyab6N4Gd%2Fs%3D&attach=1&knm=tfile.mp3';
-    itemSound.src = 'https://blog.kakaocdn.net/dna/I1rs7/dJMb9OAFEW9/AAAAAAAAAAAAAAAAAAAAAGZ7k2cQ3I3jz4QPLzHVktwmXWCejW9gq1_ks5eGVS8X/%EB%AF%B8%EB%A1%9C%EC%95%84%EC%9D%B4%ED%85%9C%EB%93%9C%EB%9E%8D.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=xSvePfPnvnygwGW9LxvZwdD%2BFOY%3D&attach=1&knm=tfile.mp3';
     
     const ITEM_TYPES = {
         'ghost-pass': { emoji: '🛡️', probability: 30 },
@@ -240,28 +219,17 @@ const bgmList = [
             startSinglePlayerCountdown();
         }
     }
-    
-    window.addEventListener('beforeunload', () => {
-        if (roomRef && myPlayerId) {
-            // 페이지를 떠날 때만 플레이어 데이터를 제거하도록 onDisconnect를 설정하는 것이 더 안정적입니다.
-            // 직접 .remove()를 호출하면 게임 종료 후 로비로 돌아갈 때도 데이터가 사라질 수 있습니다.
-        }
-    });
 
     function startSinglePlayerCountdown() {
         gameWrapper.style.display = 'flex';
-        waitingOverlay.innerHTML = `<div id="countdown-container"><h2>게임 시작!</h2><p id="countdown-number"></p></div>`;
+        waitingOverlay.innerHTML = `<div id="countdown-container"><h2>게임 시작!</h2><p id="countdown-number">3</p></div>`;
         waitingOverlay.style.display = 'flex';
-        
         let count = 3;
         const countdownEl = document.getElementById('countdown-number');
-        const updateCount = () => { countdownEl.textContent = count; };
-        
-        updateCount();
         const interval = setInterval(() => {
             count--;
             if (count > 0) {
-                updateCount();
+                countdownEl.textContent = count;
             } else {
                 clearInterval(interval);
                 waitingOverlay.style.display = 'none';
@@ -271,22 +239,20 @@ const bgmList = [
     }
 
     function startSinglePlayerGame() {
-        // 싱글플레이어 게임 상태 초기화
         isGameRunning = true;
         isGameInitialized = false;
         isDead = false;
         localPlayerEffects = { hasGhostPass: false, isSlowed: false };
-
-        // 플레이어 정보 설정
-        allPlayers = { [myPlayerId]: { avatar: myAvatar, nickname: myNickname, isDead: false, x: 0, y: 0, inventory: [], effects: {} }};
+        const initialInventory = ['ghost-pass'];
+        allPlayers = { [myPlayerId]: { avatar: myAvatar, nickname: myNickname, isDead: false, x: 0, y: 0, inventory: initialInventory, effects: {} }};
         updateHeaderUI(allPlayers);
-        
-        // 게임 초기화 (미로, 아이템, 유령 생성)
+        updateInventoryUI(initialInventory);
         initializeGame();
     }
     
     function joinMultiplayerGame(roomId) {
         roomRef = gameRoomsRef.child(roomId);
+        updateInventoryUI();
         listenToRoomChanges();
     }
 
@@ -294,63 +260,58 @@ const bgmList = [
         mazeContainer.innerHTML = '';
         gameOverOverlay.style.display = 'none';
         if (ghostMoveInterval) clearInterval(ghostMoveInterval);
-        
+
         const isMultiplayer = !!roomData;
         const playerCount = isMultiplayer ? Object.keys(roomData.players).length : 1;
 
-        // 방장이거나 싱글플레이어일 때만 게임 월드 생성
         if (!isMultiplayer || isHost) {
             mazeLayout = generateMaze(mazeRows, mazeCols);
             placeStartAndGoal(mazeLayout);
             itemsOnMap = createItems();
             const initialGhosts = createInitialGhosts(playerCount);
-            
-            const initialGameState = { 
-                maze: mazeLayout, 
-                items: itemsOnMap, 
-                ghosts: initialGhosts, 
-                gameState: 'playing' 
+
+            const initialGameState = {
+                maze: mazeLayout,
+                items: itemsOnMap,
+                ghosts: initialGhosts,
+                gameState: 'playing'
             };
-            
+
             if (isMultiplayer) {
-                roomRef.update(initialGameState);
+                const updates = { ...initialGameState };
+                Object.keys(roomData.players).forEach(pid => {
+                    updates[`players/${pid}/inventory`] = ['ghost-pass'];
+                });
+                roomRef.update(updates);
             } else {
-                // 싱글플레이어는 생성된 데이터로 즉시 게임 설정
                 setupGameFromData(initialGameState);
                 initializeGhosts(initialGameState.ghosts);
-                // 싱글플레이어 유령 움직임 시작
                 ghostMoveInterval = setInterval(moveGhosts, 500);
             }
         }
     }
 
     function setupGameFromData(data) {
-    // [핵심 수정] 이 함수는 이제 게임 시작 시 '단 한 번'만 호출되어 맵의 틀을 완성합니다.
-    if (!data.maze) return;
-    mazeLayout = data.maze;
-    
-    // 시작점과 도착점 위치 설정
-    for (let y = 0; y < mazeRows; y++) {
-        for (let x = 0; x < mazeCols; x++) {
-            if (mazeLayout[y][x] === 'S') startPos = { x, y };
-            else if (mazeLayout[y][x] === 'G') goalPos = { x, y };
+        if (!data.maze) return;
+        mazeLayout = data.maze;
+        itemsOnMap = data.items || {};
+        
+        for (let y = 0; y < mazeRows; y++) {
+            for (let x = 0; x < mazeCols; x++) {
+                if (mazeLayout[y][x] === 'S') startPos = { x, y };
+                else if (mazeLayout[y][x] === 'G') goalPos = { x, y };
+            }
         }
-    }
-    playerPos = { ...startPos };
+        playerPos = { ...startPos };
 
-    // 싱글플레이어 시작 위치 설정
-    if(!roomRef) {
-        allPlayers[myPlayerId].x = playerPos.x;
-        allPlayers[myPlayerId].y = playerPos.y;
-    }
+        if(!roomRef) {
+            allPlayers[myPlayerId].x = playerPos.x;
+            allPlayers[myPlayerId].y = playerPos.y;
+        }
 
-    // 맵의 벽과 도착 지점 그리기 (다시는 실행되지 않을 부분)
-    drawMapAndEntities(); 
-    
-    // 게임이 완전히 준비되었음을 알림
-    isGameInitialized = true;
-    isGameRunning = true;
-}
+        drawMapAndEntities();
+        isGameRunning = true;
+    }
     
     function generateMaze(rows, cols) {
         let maze = Array(rows).fill(null).map(() => Array(cols).fill(1));
@@ -368,44 +329,27 @@ const bgmList = [
         };
         carve(1, 1);
         const wallsToRemove = Math.floor((rows * cols) * 0.08);
-        let removedCount = 0;
-        while (removedCount < wallsToRemove) {
+        for (let i = 0; i < wallsToRemove; i++) {
             const x = Math.floor(Math.random() * (cols - 2)) + 1;
             const y = Math.floor(Math.random() * (rows - 2)) + 1;
-            if (maze[y][x] === 1) {
-                maze[y][x] = 0;
-                removedCount++;
-            }
+            if (maze[y][x] === 1) maze[y][x] = 0;
         }
         return maze;
     }
     
     function placeStartAndGoal(layout) {
-        const startX = Math.floor(mazeCols / 2);
-        const startY = 1;
-        for (let y = startY - 2; y <= startY + 2; y++) {
-            for (let x = startX - 2; x <= startX + 2; x++) {
-                if(layout[y]?.[x] !== undefined) layout[y][x] = 0;
-            }
-        }
+        const startX = Math.floor(mazeCols / 2), startY = 1;
+        for (let y = startY - 2; y <= startY + 2; y++) for (let x = startX - 2; x <= startX + 2; x++) if(layout[y]?.[x] !== undefined) layout[y][x] = 0;
         layout[startY][startX] = 'S';
-
-        const goalX = Math.floor(mazeCols / 2);
-        const goalY = mazeRows - 2;
-        for (let y = goalY - 2; y <= goalY + 2; y++) {
-            for (let x = goalX - 2; x <= goalX + 2; x++) {
-                 if(layout[y]?.[x] !== undefined) layout[y][x] = 0;
-            }
-        }
+        const goalX = Math.floor(mazeCols / 2), goalY = mazeRows - 2;
+        for (let y = goalY - 2; y <= goalY + 2; y++) for (let x = goalX - 2; x <= goalX + 2; x++) if(layout[y]?.[x] !== undefined) layout[y][x] = 0;
         layout[goalY][goalX] = 'G';
     }
 
     function createItems() {
         const items = {};
         const weightedList = [];
-        for (const type in ITEM_TYPES) {
-            for(let i=0; i<ITEM_TYPES[type].probability; i++) weightedList.push(type);
-        }
+        for (const type in ITEM_TYPES) for(let i=0; i<ITEM_TYPES[type].probability; i++) weightedList.push(type);
         const itemCount = 7;
         for (let i = 0; i < itemCount; i++) {
             let x, y;
@@ -427,7 +371,7 @@ const bgmList = [
             do {
                 gx = Math.floor(Math.random() * (mazeCols - 2)) + 1;
                 gy = Math.floor(Math.random() * (mazeRows - 10)) + 8;
-            } while (mazeLayout[gy][gx] !== 0 || (Math.abs(gx - startPos.x) < 10 && Math.abs(gy - startPos.y) < 10));
+            } while (mazeLayout[gy]?.[gx] !== 0 || (Math.abs(gx - startPos.x) < 10 && Math.abs(gy - startPos.y) < 10));
             initialGhosts['g' + i] = { x: gx, y: gy };
         }
         return initialGhosts;
@@ -441,7 +385,7 @@ const bgmList = [
         for (const id in initialGhostsData) {
             const pos = initialGhostsData[id];
             const ghostElement = document.createElement('div');
-            ghostElement.className = 'ghost hidden'; // [수정] 처음엔 보이지 않도록 hidden 클래스 추가
+            ghostElement.className = 'ghost';
             ghostElement.textContent = ghostEmojis[i++ % ghostEmojis.length];
             mazeContainer.appendChild(ghostElement);
             const ghost = { id, x: pos.x, y: pos.y, element: ghostElement, path: [] };
@@ -453,36 +397,17 @@ const bgmList = [
     function drawMapAndEntities() {
         const wrapper = document.getElementById('maze-wrapper');
         if (wrapper.offsetWidth === 0) { setTimeout(drawMapAndEntities, 100); return; }
-        
-        // [수정] cellSize는 플레이어, 아이템 등 절대 위치 요소에만 사용됩니다.
-        cellSize = wrapper.offsetWidth / mazeCols; 
-        
-        // [수정] CSS Grid를 사용하므로, 벽만 생성하고 절대 위치 스타일은 제거합니다.
-        let mazeHTML = '';
-        for (let y = 0; y < mazeRows; y++) {
-            for (let x = 0; x < mazeCols; x++) {
-                if (mazeLayout[y][x] === 1) {
-                    mazeHTML += `<div class="wall" style="grid-row: ${y + 1}; grid-column: ${x + 1};"></div>`;
-                }
-            }
-        }
-        mazeContainer.innerHTML = mazeHTML;
-        
-        // 도착 지점, 아이템, 플레이어 등은 기존처럼 절대 위치로 mazeContainer 위에 올립니다.
+        cellSize = wrapper.offsetWidth / mazeCols;
+        let html = '';
+        for (let y = 0; y < mazeRows; y++) for (let x = 0; x < mazeCols; x++) if (mazeLayout[y][x] === 1) html += `<div class="wall" style="width:${cellSize + 1}px; height:${cellSize + 1}px; left:${x*cellSize}px; top:${y*cellSize}px;"></div>`;
+        mazeContainer.innerHTML = html;
         const goalEl = document.createElement('div');
         goalEl.id = 'goal';
         goalEl.textContent = '🏁';
-        goalEl.style.cssText = `position: absolute; width:${cellSize}px; height:${cellSize}px; font-size:${cellSize*0.8}px; left:${goalPos.x*cellSize}px; top:${goalPos.y*cellSize}px; z-index: 6;`;
+        goalEl.style.cssText = `width:${cellSize}px; height:${cellSize}px; font-size:${cellSize*0.8}px; left:${goalPos.x*cellSize}px; top:${goalPos.y*cellSize}px;`;
         mazeContainer.appendChild(goalEl);
-        
         drawItems();
-        
-        for(const pid in allPlayers) {
-            const p = allPlayers[pid];
-            if (p.x !== undefined) {
-                updatePlayerPosition(pid, p.x, p.y, p.avatar, { ...p.effects, isDead: p.isDead });
-            }
-        }
+        for(const pid in allPlayers) if (allPlayers[pid].x !== undefined) updatePlayerPosition(pid, allPlayers[pid].x, allPlayers[pid].y, allPlayers[pid].avatar, { ...allPlayers[pid].effects, isDead: allPlayers[pid].isDead });
     }
 
     function drawItems() {
@@ -504,8 +429,7 @@ const bgmList = [
             const slot = document.createElement('div');
             slot.className = 'inventory-slot';
             if (inventory[i]) {
-                const item = ITEM_TYPES[inventory[i]];
-                slot.textContent = item.emoji;
+                slot.textContent = ITEM_TYPES[inventory[i]].emoji;
                 slot.dataset.itemType = inventory[i];
                 slot.addEventListener('click', handleItemUse);
             }
@@ -515,8 +439,7 @@ const bgmList = [
 
     function updateHeaderUI(players) {
         gameHeader.innerHTML = '';
-        const playerOrder = Object.keys(players).sort();
-        playerOrder.forEach(pid => {
+        Object.keys(players).sort().forEach(pid => {
             const p = players[pid];
             const statusEl = document.createElement('div');
             statusEl.className = 'player-status';
@@ -527,18 +450,18 @@ const bgmList = [
     }
 
     function updatePlayerPosition(pid, x, y, avatar, effects = {}) {
-        let playerElement = document.getElementById('player-' + pid);
-        if (!playerElement) {
-            playerElement = document.createElement('div');
-            playerElement.id = 'player-' + pid;
-            playerElement.className = pid === myPlayerId ? 'player-avatar' : 'opponent-player';
-            mazeContainer.appendChild(playerElement);
+        let el = document.getElementById('player-' + pid);
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'player-' + pid;
+            el.className = pid === myPlayerId ? 'player-avatar' : 'opponent-player';
+            mazeContainer.appendChild(el);
         }
-        if (avatar) playerElement.textContent = avatar;
-        playerElement.style.cssText = `width: ${cellSize * 0.9}px; height: ${cellSize * 0.9}px; font-size: ${cellSize * 0.7}px; left: ${x * cellSize + (cellSize * 0.05)}px; top: ${y * cellSize + (cellSize * 0.05)}px;`;
-        playerElement.classList.toggle('dead', !!effects.isDead);
-        playerElement.classList.toggle('ghost-pass', !!effects.hasGhostPass);
-        playerElement.classList.toggle('slowed', !!effects.isSlowed);
+        if (avatar) el.textContent = avatar;
+        el.style.cssText = `width: ${cellSize * 0.9}px; height: ${cellSize * 0.9}px; font-size: ${cellSize * 0.7}px; left: ${x * cellSize + (cellSize * 0.05)}px; top: ${y * cellSize + (cellSize * 0.05)}px;`;
+        el.classList.toggle('dead', !!effects.isDead);
+        el.classList.toggle('ghost-pass', !!effects.hasGhostPass);
+        el.classList.toggle('slowed', !!effects.isSlowed);
     }
     
     function updateGhostPosition(ghost) {
@@ -549,58 +472,27 @@ const bgmList = [
     function handleItemUse(event) {
         const itemType = event.currentTarget.dataset.itemType;
         if (!itemType || isDead) return;
-
-        const removeItemFromInventory = () => {
-            if(roomRef) {
-                roomRef.child(`players/${myPlayerId}/inventory`).transaction(inv => {
-                    if (!inv) return [];
-                    const index = inv.indexOf(itemType);
-                    if (index > -1) inv.splice(index, 1);
-                    return inv;
-                });
-            } else {
-                const myInv = allPlayers[myPlayerId].inventory;
-                const index = myInv.indexOf(itemType);
-                if(index > -1) myInv.splice(index, 1);
-                updateInventoryUI(myInv);
-            }
+        const removeItem = () => {
+            if(roomRef) roomRef.child(`players/${myPlayerId}/inventory`).transaction(inv => { if (!inv) return []; const i = inv.indexOf(itemType); if (i > -1) inv.splice(i, 1); return inv; });
+            else { const myInv = allPlayers[myPlayerId].inventory, i = myInv.indexOf(itemType); if(i > -1) myInv.splice(i, 1); updateInventoryUI(myInv); }
             event.currentTarget.classList.add('used');
         };
-
-        if (itemType === 'ghost-pass') {
-            localPlayerEffects.hasGhostPass = true;
-            if (roomRef) roomRef.child(`players/${myPlayerId}/effects/hasGhostPass`).set(true);
-            removeItemFromInventory();
-        } else if (itemType === 'teleport') {
-            playerPos = { ...startPos };
-            if (roomRef) roomRef.child(`players/${myPlayerId}`).update({ x: startPos.x, y: startPos.y });
-            else allPlayers[myPlayerId].x = startPos.x; allPlayers[myPlayerId].y = startPos.y;
-            removeItemFromInventory();
-        } else {
-            if (roomRef) {
-                roomRef.child('events').push({ type: itemType, from: myPlayerId });
-            } else {
-                // 싱글플레이어에서는 다른 플레이어가 없으므로 아이템 효과 없음 (혹은 자신에게 거는 효과로 구현 가능)
-            }
-            removeItemFromInventory();
-        }
+        if (itemType === 'ghost-pass') { if (roomRef) roomRef.child(`players/${myPlayerId}/effects/hasGhostPass`).set(true); else localPlayerEffects.hasGhostPass = true; removeItem(); }
+        else if (itemType === 'teleport') { playerPos = { ...startPos }; if (roomRef) roomRef.child(`players/${myPlayerId}`).update({ x: startPos.x, y: startPos.y }); else { allPlayers[myPlayerId].x = startPos.x; allPlayers[myPlayerId].y = startPos.y; } removeItem(); }
+        else { if (roomRef) roomRef.child('events').push({ type: itemType, from: myPlayerId }); removeItem(); }
     }
     
     function bfs(start, end) {
-        const queue = [[start]];
-        const visited = new Set([`${start.x},${start.y}`]);
+        const queue = [[start]], visited = new Set([`${start.x},${start.y}`]);
         while(queue.length > 0) {
-            const path = queue.shift();
-            const pos = path[path.length - 1];
+            const path = queue.shift(), pos = path[path.length - 1];
             if(pos.x === end.x && pos.y === end.y) return path;
             const dirs = [[0,1], [0,-1], [1,0], [-1,0]].sort(() => Math.random() - 0.5);
             for(const [dx, dy] of dirs) {
-                const nextX = pos.x + dx;
-                const nextY = pos.y + dy;
-                if(mazeLayout[nextY]?.[nextX] !== 1 && !visited.has(`${nextX},${nextY}`)) {
-                    visited.add(`${nextX},${nextY}`);
-                    const newPath = [...path, {x: nextX, y: nextY}];
-                    queue.push(newPath);
+                const n = {x: pos.x + dx, y: pos.y + dy};
+                if(mazeLayout[n.y]?.[n.x] !== 1 && !visited.has(`${n.x},${n.y}`)) {
+                    visited.add(`${n.x},${n.y}`);
+                    queue.push([...path, n]);
                 }
             }
         }
@@ -609,6 +501,9 @@ const bgmList = [
 
     function moveGhosts() {
         if (!isGameRunning) return;
+        const slowEffect = currentRoomData?.slowEffect;
+        if (slowEffect && Date.now() < slowEffect.expiresAt) return;
+        
         const updates = {};
         const livingPlayers = Object.values(allPlayers).filter(p => !p.isDead && p.x !== undefined);
 
@@ -620,490 +515,217 @@ const bgmList = [
                     if(newPath) ghost.path = newPath.slice(1);
                 }
             }
-            
             if(ghost.path.length > 0) {
                 const nextMove = ghost.path.shift();
                 ghost.x = nextMove.x; ghost.y = nextMove.y;
             } else {
                 const { x, y } = ghost;
                 const moves = [[0,1], [0,-1], [1,0], [-1,0]].filter(([dx,dy]) => mazeLayout[y+dy]?.[x+dx] !== 1);
-                if(moves.length > 0) {
-                    const [dx, dy] = moves[Math.floor(Math.random() * moves.length)];
-                    ghost.x += dx; ghost.y += dy;
-                }
+                if(moves.length > 0) { const [dx, dy] = moves[Math.floor(Math.random() * moves.length)]; ghost.x += dx; ghost.y += dy; }
             }
-            
-            // [수정] 멀티플레이든 싱글플레이든 상관없이, 계산이 끝나면 바로 화면에 위치를 업데이트합니다.
             updateGhostPosition(ghost); 
-            
-            if(roomRef) {
-                updates[ghost.id] = { x: ghost.x, y: ghost.y };
-            }
+            if(roomRef) updates[ghost.id] = { x: ghost.x, y: ghost.y };
         });
         
-        if(roomRef && Object.keys(updates).length > 0) {
-            roomRef.child('ghosts').update(updates);
-        }
-        
-        // 유령 움직임은 방장만 체크하도록 isHost 조건을 추가합니다.
-        if(!roomRef || isHost) {
-            checkInteractions();
-        }
+        if(roomRef && Object.keys(updates).length > 0) roomRef.child('ghosts').update(updates);
+        if(!roomRef || isHost) checkInteractions();
     }
     
     function checkInteractions() {
         if (isDead || !isGameRunning) return;
-
-        if (!localPlayerEffects.hasGhostPass) {
-            for (const ghost of ghosts) {
-                if (ghost.x === playerPos.x && ghost.y === playerPos.y) { handleDeath(); return; }
-            }
-        } else {
-            for (const ghost of ghosts) {
-                if (ghost.x === playerPos.x && ghost.y === playerPos.y) {
-                    localPlayerEffects.hasGhostPass = false;
-                    if(roomRef) roomRef.child(`players/${myPlayerId}/effects/hasGhostPass`).set(false);
-                    break; 
-                }
-            }
-        }
-
-       const itemKey = `${playerPos.x}-${playerPos.y}`;
-        const item = itemsOnMap[itemKey];
+        if (!localPlayerEffects.hasGhostPass) { for (const ghost of ghosts) if (ghost.x === playerPos.x && ghost.y === playerPos.y) { handleDeath(); return; } }
+        else { for (const ghost of ghosts) if (ghost.x === playerPos.x && ghost.y === playerPos.y) { if(roomRef) roomRef.child(`players/${myPlayerId}/effects/hasGhostPass`).set(false); else localPlayerEffects.hasGhostPass = false; break; } }
+        const itemKey = `${playerPos.x}-${playerPos.y}`, item = itemsOnMap[itemKey];
         if (item) {
+            itemSound.play();
             if (roomRef) {
-                roomRef.child('items').child(itemKey).transaction(currentItemData => {
-                    if (currentItemData === null) return; 
-                    return null;
-                }, (error, committed, snapshot) => {
-                    if (error) {
-                        console.error("아이템 획득 실패:", error);
-                    } else if (committed) {
-                        itemSound.play(); // [추가] 아이템 획득 효과음
-                        const itemType = item.type; 
-                        roomRef.child(`players/${myPlayerId}/inventory`).transaction(inv => {
-                            if (!inv) inv = [];
-                            if (inv.length < 4) {
-                                inv.push(itemType);
-                            }
-                            return inv;
-                        });
-                    }
+                roomRef.child('items').child(itemKey).transaction(d => d === null ? undefined : null, (err, com, snap) => {
+                    if (com) roomRef.child(`players/${myPlayerId}/inventory`).transaction(inv => { if (!inv) inv = []; if (inv.length < 4) inv.push(item.type); return inv; });
                 });
-            } else {
-                itemSound.play(); // [추가] 아이템 획득 효과음 (싱글)
-                const myInv = allPlayers[myPlayerId].inventory;
-                if (myInv.length < 4) {
-                    myInv.push(itemsOnMap[itemKey].type);
-                    updateInventoryUI(myInv);
-                    delete itemsOnMap[itemKey];
-                    drawItems();
-                }
-            }
+            } else { const myInv = allPlayers[myPlayerId].inventory; if (myInv.length < 4) { myInv.push(item.type); updateInventoryUI(myInv); delete itemsOnMap[itemKey]; drawItems(); } }
         }
-        
-        if (playerPos.x === goalPos.x && playerPos.y === goalPos.y) {
-            handleWin();
-        }
+        if (playerPos.x === goalPos.x && playerPos.y === goalPos.y) handleWin();
     }
     
-   function handleDeath() {
+    function handleDeath() {
         isDead = true;
         stopMoving();
         if (roomRef) {
-            // [수정] transaction을 사용하여 죽음 처리와 승자 판정을 한번에 안전하게 처리합니다.
-            roomRef.transaction(roomData => {
-                if (roomData && roomData.players && roomData.players[myPlayerId]) {
-                    // 1. 내 상태를 '죽음'으로 변경
-                    roomData.players[myPlayerId].isDead = true;
-
-                    // 2. 살아남은 플레이어 수 계산
-                    const livingPlayers = Object.values(roomData.players).filter(p => !p.isDead);
-                    
-                    // 3. 승자 판정
-                    if (livingPlayers.length === 1) {
-                        // 1명 남았으면 그 사람이 승자
-                        roomData.winner = livingPlayers[0].id; 
-                    } else if (livingPlayers.length === 0) {
-                        // 아무도 없으면 무승부
-                        roomData.winner = 'draw';
-                    }
+            roomRef.transaction(d => {
+                if (d && d.players && d.players[myPlayerId]) {
+                    d.players[myPlayerId].isDead = true;
+                    const living = Object.values(d.players).filter(p => !p.isDead);
+                    if (living.length === 1) d.winner = living[0].id; 
+                    else if (living.length === 0) d.winner = 'draw';
                 }
-                return roomData;
+                return d;
             });
-        } else {
-            allPlayers[myPlayerId].isDead = true;
-            updateHeaderUI(allPlayers);
-            updatePlayerPosition(myPlayerId, playerPos.x, playerPos.y, myAvatar, {isDead: true});
-            showGameOverScreen({ winnerId: null, isDraw: true });
-        }
+        } else { allPlayers[myPlayerId].isDead = true; updateHeaderUI(allPlayers); updatePlayerPosition(myPlayerId, playerPos.x, playerPos.y, myAvatar, {isDead: true}); showGameOverScreen({ winnerId: null, isDraw: true }); }
     }
 
     function handleWin() {
-        isGameRunning = false;
-        stopMoving();
-        if (roomRef) {
-            // 내가 도착했음을 서버에 알리고, winner로 내 ID를 기록합니다.
-            roomRef.child('winner').set(myPlayerId);
-        } else {
-             // 싱글플레이어 승리
-            showGameOverScreen({ winnerId: myPlayerId });
-        }
+        isGameRunning = false; stopMoving();
+        if (roomRef) roomRef.child('winner').set(myPlayerId);
+        else showGameOverScreen({ winnerId: myPlayerId });
     }
 
     function move(dx, dy) {
         if (isDead || !isGameRunning) return;
-        const newX = playerPos.x + dx;
-        const newY = playerPos.y + dy;
-
-        // 벽이 아닐 때만 서버에 위치 업데이트를 '요청'합니다.
-        if (mazeLayout[newY]?.[newX] !== 1) {
-            if (roomRef) {
-                // 멀티플레이 시에는 서버에만 위치를 알립니다.
-                roomRef.child('players').child(myPlayerId).update({ x: newX, y: newY });
-            } else {
-                // 싱글플레이 시에는 기존처럼 직접 위치를 업데이트합니다.
-                playerPos.x = newX;
-                playerPos.y = newY;
-                allPlayers[myPlayerId].x = newX;
-                allPlayers[myPlayerId].y = newY;
-                updatePlayerPosition(myPlayerId, newX, newY, myAvatar, { ...localPlayerEffects, isDead });
-                checkInteractions();
-            }
+        const nX = playerPos.x + dx, nY = playerPos.y + dy;
+        if (mazeLayout[nY]?.[nX] !== 1) {
+            if (roomRef) roomRef.child(`players/${myPlayerId}`).update({ x: nX, y: nY });
+            else { playerPos.x = nX; playerPos.y = nY; allPlayers[myPlayerId].x = nX; allPlayers[myPlayerId].y = nY; updatePlayerPosition(myPlayerId, nX, nY, myAvatar, { ...localPlayerEffects, isDead }); checkInteractions(); }
         }
     }
-
-
-    function startGameSequence() {
-        // 2초 후에 실행
-        setTimeout(() => {
-            // 모든 유령의 hidden 클래스를 제거하여 화면에 보이게 함
-            ghosts.forEach(ghost => {
-                if (ghost.element) {
-                    ghost.element.classList.remove('hidden');
-                }
-            });
-
-            // 배경음악 재생
-            bgmAudio.src = bgmList[Math.floor(Math.random() * bgmList.length)];
-            bgmAudio.play().catch(e => {
-                console.warn("사용자 상호작용이 없어 BGM 자동재생이 차단되었을 수 있습니다.");
-            });
-        }, 3000); // 2000밀리초 = 2초
-    }
-
     
-function startMoving(dx, dy) {
-        // [추가] 플레이어의 첫 움직임일 때만 게임 시퀀스(유령 등장, BGM 재생)를 시작합니다.
-        if (!isBgmPlaying && isGameRunning) {
-            isBgmPlaying = true; // 플래그를 올려 다시 실행되지 않도록 함
-            startGameSequence();
-        }
-
+    function startMoving(dx, dy) {
         if (isDead || !isGameRunning) return; 
         if (moveInterval) stopMoving(); 
-
         const moveSpeed = localPlayerEffects.isSlowed ? 300 : 150;
         move(dx, dy);
         moveInterval = setInterval(() => move(dx, dy), moveSpeed);
     }
 
-    function stopMoving() {
-        clearInterval(moveInterval);
-        moveInterval = null;
-    }
-
+    function stopMoving() { clearInterval(moveInterval); moveInterval = null; }
     ['up', 'down', 'left', 'right'].forEach(dir => {
-        const btn = document.getElementById(dir);
-        let dx = 0, dy = 0;
-        if (dir === 'up') dy = -1; if (dir === 'down') dy = 1;
-        if (dir === 'left') dx = -1; if (dir === 'right') dx = 1;
-        const start = (e) => { e.preventDefault(); startMoving(dx, dy); };
-        const end = (e) => { e.preventDefault(); stopMoving(); };
-        btn.addEventListener('mousedown', start);
-        btn.addEventListener('touchstart', start, { passive: false });
-        btn.addEventListener('mouseup', end);
-        btn.addEventListener('mouseleave', end);
-        btn.addEventListener('touchend', end);
+        const btn = document.getElementById(dir), dx = dir === 'left' ? -1 : dir === 'right' ? 1 : 0, dy = dir === 'up' ? -1 : dir === 'down' ? 1 : 0;
+        const start = e => { e.preventDefault(); startMoving(dx, dy); }, end = e => { e.preventDefault(); stopMoving(); };
+        btn.addEventListener('mousedown', start); btn.addEventListener('touchstart', start, { passive: false });
+        btn.addEventListener('mouseup', end); btn.addEventListener('mouseleave', end); btn.addEventListener('touchend', end);
     });
+    window.addEventListener('keydown', e => { if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key) && !keyMoving) { keyMoving = e.key; const dx = e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0, dy = e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0; startMoving(dx, dy); } });
+    window.addEventListener('keyup', e => { if(e.key === keyMoving) { keyMoving = null; stopMoving(); } });
     
-    window.addEventListener('keydown', (e) => {
-        if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key) && !keyMoving) {
-            keyMoving = e.key;
-            let dx = 0, dy = 0;
-            if (e.key === 'ArrowUp') dy = -1; if (e.key === 'ArrowDown') dy = 1;
-            if (e.key === 'ArrowLeft') dx = -1; if (e.key === 'ArrowRight') dx = 1;
-            startMoving(dx, dy);
-        }
-    });
-
-    window.addEventListener('keyup', (e) => {
-        if(e.key === keyMoving) {
-            keyMoving = null;
-            stopMoving();
-        }
-    });
-    
-function listenToRoomChanges() {
-    roomRef.on('value', snapshot => {
-        if (!snapshot.exists()) return;
-        currentRoomData = snapshot.val();
-        const { players, maze, ghosts: ghostData, items, winner, gameState } = currentRoomData;
-        
-        isHost = currentRoomData.hostId === myPlayerId;
-
-        // onDisconnect 설정 (연결이 끊어졌을 때의 동작 예약)
-        if (roomRef.onDisconnect) {
-            if (isHost) {
-                roomRef.onDisconnect().remove();
-            } else {
-                roomRef.child('players/' + myPlayerId).onDisconnect().remove();
-            }
-        }
-        
-        // [핵심 수정] 게임 시작 전과 후의 로직을 완벽하게 분리합니다.
-        if (!isGameInitialized) {
-            // ===================================
-            // 게임 시작 전 로직 (최초 1회 실행 구간)
-            // ===================================
-            if (isHost && gameState === 'waiting') {
-                initializeGame(currentRoomData);
-                return;
-            }
-            if (gameState === 'ready') {
-                mazeLayout = maze; // 지도 데이터를 여기서 단 한번만 설정!
-                
-                bgmAudio.pause();
+    function listenToRoomChanges() {
+        roomRef.on('value', snapshot => {
+            if (!snapshot.exists()) return;
+            currentRoomData = snapshot.val();
+            const { players, maze, ghosts: ghostData, items, winner, gameState } = currentRoomData;
+            allPlayers = players || {};
+            isHost = currentRoomData.hostId === myPlayerId;
+            if (isHost) roomRef.onDisconnect().remove(); else roomRef.child('players/' + myPlayerId).onDisconnect().remove();
+            if (isHost && gameState === 'waiting' && !isGameInitialized) { initializeGame(currentRoomData); return; } 
+            
+            if (gameState === 'playing' && !isGameInitialized) {
+                isGameInitialized = true;
                 waitingOverlay.innerHTML = `<div id="countdown-container"><h2>게임 시작!</h2><p id="countdown-number">3</p></div>`;
                 waitingOverlay.style.display = 'flex';
                 let count = 3;
                 const countdownEl = document.getElementById('countdown-number');
                 const interval = setInterval(() => {
                     count--;
-                    if (count > 0) {
-                        countdownEl.textContent = count;
-                    } else {
+                    if (count > 0) countdownEl.textContent = count;
+                    else {
                         clearInterval(interval);
                         waitingOverlay.style.display = 'none';
-                        
-                        setupGameFromData(currentRoomData); // 맵 그리기
-                        const myServerData = players?.[myPlayerId];
-                        if (myServerData && typeof myServerData.x === 'undefined') {
-                            roomRef.child('players/' + myPlayerId).update({ x: playerPos.x, y: playerPos.y });
+                        bgmAudio.src = bgmList[Math.floor(Math.random() * bgmList.length)];
+                        bgmAudio.play().catch(e => {});
+                        if (maze) {
+                           setupGameFromData(currentRoomData);
+                           if (!players[myPlayerId]?.x) roomRef.child('players/' + myPlayerId).update({ x: playerPos.x, y: playerPos.y });
+                           if(ghostData) initializeGhosts(ghostData);
                         }
-                        if (ghostData) initializeGhosts(ghostData);
                     }
                 }, 1000);
             }
-        } else {
-            // ===================================
-            // 게임 시작 후 로직 (계속 반복 실행되는 구간)
-            // ===================================
-            allPlayers = players || {};
+            gameWrapper.style.display = 'flex';
+            if (winner) { showGameOverScreen({ winnerId: winner !== 'draw' ? winner : null, isDraw: winner === 'draw' }); roomRef.off(); return; }
             
-            // 게임 종료 처리
-            if (winner) {
-                const gameResult = { winnerId: winner !== 'draw' ? winner : null, isDraw: winner === 'draw' };
-                showGameOverScreen(gameResult);
-                roomRef.off();
-                return;
-            }
-            
-            // 플레이어/유령/아이템 등 '움직이는 모든 것'들의 상태를 업데이트합니다.
-            // 여기서는 절대로 맵을 다시 그리지 않습니다.
-            updateHeaderUI(players);
+            if (players) {
+                updateHeaderUI(players);
+                const effectUpdates = {};
+                const slowEffect = currentRoomData.slowEffect;
+                const isGlobalSlowActive = slowEffect && Date.now() < slowEffect.expiresAt;
+                if (isHost && slowEffect && !isGlobalSlowActive) effectUpdates['/slowEffect'] = null;
 
-            for (const pid in players) {
-                const p = players[pid];
-                if (p.x !== undefined) {
-                    updatePlayerPosition(pid, p.x, p.y, p.avatar, { ...p.effects, isDead: p.isDead });
-                }
-                if (pid === myPlayerId) {
-                    if (p.x !== undefined && (playerPos.x !== p.x || playerPos.y !== p.y)) {
-                        playerPos = { x: p.x, y: p.y };
-                        checkInteractions();
+                for (const pid in players) {
+                    const p = players[pid];
+                    const playerEffects = p.effects || {};
+                    if (isHost && playerEffects.darkness && Date.now() > playerEffects.darkness) effectUpdates[`/players/${pid}/effects/darkness`] = null;
+                    if (p.x !== undefined) updatePlayerPosition(pid, p.x, p.y, p.avatar, { isSlowed: isGlobalSlowActive && slowEffect.from !== pid, hasGhostPass: playerEffects.hasGhostPass, isDead: p.isDead });
+                    if (pid === myPlayerId) {
+                        if (p.x !== undefined && (playerPos.x !== p.x || playerPos.y !== p.y)) { playerPos = { x: p.x, y: p.y }; checkInteractions(); }
+                        isDead = !!p.isDead;
+                        localPlayerEffects.isSlowed = isGlobalSlowActive && slowEffect.from !== myPlayerId;
+                        localPlayerEffects.hasGhostPass = playerEffects.hasGhostPass;
+                        const inDarkness = playerEffects.darkness && Date.now() < playerEffects.darkness;
+                        darknessOverlay.style.display = inDarkness ? 'block' : 'none';
+                        if(isDead) stopMoving();
+                        updateInventoryUI(p.inventory);
                     }
-                    isDead = !!p.isDead;
-                    localPlayerEffects = p.effects || {};
-                    if (isDead) stopMoving();
-                    updateInventoryUI(p.inventory);
                 }
+                if (isHost && Object.keys(effectUpdates).length > 0) roomRef.update(effectUpdates);
             }
             
-            if (ghostData && !isHost) {
-                 ghosts.forEach(ghost => {
-                    if(ghostData[ghost.id]){
-                        ghost.x = ghostData[ghost.id].x;
-                        ghost.y = ghostData[ghost.id].y;
-                        updateGhostPosition(ghost);
-                    }
-                 });
-            }
-            
-            if (items !== undefined) {
-                itemsOnMap = items || {};
-                drawItems(); 
-            }
+            if(ghostData && !isHost) ghosts.forEach(g => { if(ghostData[g.id]){ g.x = ghostData[g.id].x; g.y = ghostData[g.id].y; updateGhostPosition(g); } });
+            if (items !== undefined) itemsOnMap = items || {};
+            if(isGameInitialized && isHost && gameState === 'playing' && !ghostMoveInterval) ghostMoveInterval = setInterval(moveGhosts, 500);
+        });
 
-            if (isHost && gameState === 'playing' && !ghostMoveInterval) {
-                ghostMoveInterval = setInterval(moveGhosts, 500);
-            }
-        }
-    });
+        roomRef.child('items').on('child_removed', snapshot => {
+            const el = document.getElementById('item-' + snapshot.key);
+            if (el) { el.style.transition = 'transform 0.3s ease, opacity 0.3s ease'; el.style.transform = 'scale(0)'; el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }
+        });
 
-    // 이벤트(아이템 효과) 리스너
-    const eventsRef = roomRef.child('events');
-    eventsRef.on('child_added', snapshot => {
-        const event = snapshot.val();
-        if(!event) return;
-        const { type, from } = event;
-
-        if (myPlayerId !== from) {
-            if (type === 'slow') {
-                localPlayerEffects.isSlowed = true;
-                setTimeout(() => localPlayerEffects.isSlowed = false, ITEM_TYPES.slow.duration);
-            } else if (type === 'darkness') {
-                darknessOverlay.style.display = 'block';
-                const darknessInterval = setInterval(updateDarknessOverlay, 50);
-                setTimeout(() => {
-                    clearInterval(darknessInterval);
-                    darknessOverlay.style.display = 'none';
-                }, ITEM_TYPES.darkness.duration);
-            }
-        }
-        snapshot.ref.remove();
-    });
-}
-
-    document.addEventListener('mousemove', e => {
-        darknessOverlay.style.background = `radial-gradient(circle at ${e.clientX}px ${e.clientY}px, transparent 100px, black 150px)`;
-    });
-    document.addEventListener('touchmove', e => {
-        if(e.touches.length === 0) return;
-        const touch = e.touches[0];
-        darknessOverlay.style.background = `radial-gradient(circle at ${touch.clientX}px ${touch.clientY}px, transparent 100px, black 150px)`;
-    });
-
-
-// [추가] 암흑 시야 효과를 위한 함수
-    function updateDarknessOverlay() {
-        if (darknessOverlay.style.display !== 'block' || isDead) return;
-        const playerElement = document.getElementById('player-' + myPlayerId);
-        if (playerElement) {
-            const rect = playerElement.getBoundingClientRect();
-            const centerX = rect.left + rect.width / 2;
-            const centerY = rect.top + rect.height / 2;
-            darknessOverlay.style.background = `radial-gradient(circle at ${centerX}px ${centerY}px, transparent 100px, black 150px)`;
-        }
+        roomRef.child('events').on('child_added', snapshot => {
+            const event = snapshot.val();
+            if(!event || !isHost) { if(isHost) snapshot.ref.remove(); return; };
+            const { type, from } = event;
+            const updates = {};
+            if (type === 'slow') updates['/slowEffect'] = { from, expiresAt: Date.now() + ITEM_TYPES.slow.duration };
+            else if (type === 'darkness') Object.keys(allPlayers).forEach(pid => { if (pid !== from) updates[`/players/${pid}/effects/darkness`] = Date.now() + ITEM_TYPES.darkness.duration; });
+            if (Object.keys(updates).length > 0) roomRef.update(updates);
+            snapshot.ref.remove();
+        });
     }
 
-function startRematch() {
+    const updateDarkness = (x, y) => { darknessOverlay.style.background = `radial-gradient(circle at ${x}px ${y}px, transparent 100px, black 150px)`; };
+    document.addEventListener('mousemove', e => updateDarkness(e.clientX, e.clientY));
+    document.addEventListener('touchmove', e => { if(e.touches.length > 0) updateDarkness(e.touches[0].clientX, e.touches[0].clientY); });
+
+    function startRematch() {
         if (!isHost) return;
-        
-        isGameInitialized = false;
-        isBgmPlaying = false; // [추가] 재시작 시 BGM을 다시 재생할 수 있도록 초기화
-
         const players = currentRoomData.players;
-        Object.keys(players).forEach(pid => {
-            players[pid].wantsRematch = null;
-            players[pid].isDead = false;
-            players[pid].inventory = [];
-            players[pid].effects = {};
-        });
-
-        mazeLayout = generateMaze(mazeRows, mazeCols);
-        placeStartAndGoal(mazeLayout);
-        itemsOnMap = createItems();
-        const initialGhosts = createInitialGhosts(Object.keys(players).length);
-
-        roomRef.update({
-            gameState: 'ready',
-            maze: mazeLayout,
-            items: itemsOnMap,
-            ghosts: initialGhosts,
-            winner: null,
-            players: players
-        });
+        Object.keys(players).forEach(pid => { players[pid] = { ...players[pid], wantsRematch: null, isDead: false, inventory: ['ghost-pass'], effects: {} }; });
+        const newMaze = generateMaze(mazeRows, mazeCols);
+        placeStartAndGoal(newMaze);
+        roomRef.update({ gameState: 'playing', maze: newMaze, items: createItems(), ghosts: createInitialGhosts(Object.keys(players).length), winner: null, players });
     }
+
     function showGameOverScreen(result) {
-        bgmAudio.pause(); // [추가] 배경음악 정지
+        bgmAudio.pause();
+        if(result.winnerId && result.winnerId === myPlayerId) winSound.play(); else loseSound.play();
         isGameRunning = false;
         isGameInitialized = false;
         if (ghostMoveInterval) { clearInterval(ghostMoveInterval); ghostMoveInterval = null; }
         stopMoving();
-        
-        let message = '';
-        let buttonsHTML = '';
-        let isWinner = false;
-
+        let message = '', buttonsHTML = '';
         if (!roomRef) {
-            isWinner = !!result.winnerId;
-            message = isWinner ? '🎉 도착! 🎉' : '👻 유령에게 잡혔어요! 👻';
-            buttonsHTML = `
-                <button id="restart-btn" class="menu-btn primary">다시 하기</button>
-                <button id="main-menu-btn" class="menu-btn secondary">메인으로</button>
-            `;
-        } else { 
-            isWinner = result.winnerId === myPlayerId;
-            if (result.isDraw) {
-                message = '아무도 살아남지 못했습니다!';
-            } else if (result.winnerId) {
-                const winnerData = currentRoomData.players[result.winnerId];
-                if(winnerData) {
-                    message = isWinner ? `🎉 승리했습니다! 🎉` : `🎉 ${winnerData.nickname}님 승리! 🎉`;
-                } else {
-                    message = '게임 종료';
-                }
-            } else {
-                message = '게임 종료';
-            }
-            buttonsHTML = `
-                <button id="rematch-btn" class="menu-btn primary">다시 하기</button>
-                <button id="lobby-btn" class="menu-btn secondary">나가기</button>
-            `;
-        }
-        
-        // [추가] 승패에 따라 효과음 재생
-        if (isWinner) {
-            winSound.play();
+            message = result.winnerId ? '🎉 도착! 🎉' : '👻 유령에게 잡혔어요! 👻';
+            buttonsHTML = `<button id="restart-btn" class="menu-btn primary">다시 하기</button><button id="main-menu-btn" class="menu-btn secondary">메인으로</button>`;
         } else {
-            loseSound.play();
+            if (result.isDraw) message = '아무도 살아남지 못했습니다!';
+            else if (result.winnerId) {
+                const winnerData = currentRoomData.players[result.winnerId];
+                message = winnerData.id === myPlayerId ? `🎉 승리했습니다! 🎉` : `🎉 ${winnerData.nickname}님 승리! 🎉`;
+            } else message = '게임 종료';
+            buttonsHTML = `<button id="rematch-btn" class="menu-btn primary">다시 하기</button><button id="lobby-btn" class="menu-btn secondary">나가기</button>`;
         }
-        
-        gameOverOverlay.innerHTML = `
-            <div class="modal-content">
-                <h2 id="game-over-message">${message}</h2>
-                <div class="modal-buttons">${buttonsHTML}</div>
-            </div>`;
+        gameOverOverlay.innerHTML = `<div class="modal-content"><h2 id="game-over-message">${message}</h2><div class="modal-buttons">${buttonsHTML}</div></div>`;
         gameOverOverlay.style.display = 'flex';
-
         if (!roomRef) {
-            document.getElementById('restart-btn').addEventListener('click', () => {
-                gameOverOverlay.style.display = 'none';
-                startSinglePlayerCountdown();
-            });
-            document.getElementById('main-menu-btn').addEventListener('click', () => {
-                window.location.href = 'index.html';
-            });
+            document.getElementById('restart-btn').addEventListener('click', () => { gameOverOverlay.style.display = 'none'; startSinglePlayerCountdown(); });
+            document.getElementById('main-menu-btn').addEventListener('click', () => { window.location.href = 'index.html'; });
         } else {
             document.getElementById('rematch-btn').addEventListener('click', () => {
-                const btn = document.getElementById('rematch-btn');
-                btn.textContent = '대기중...';
-                btn.disabled = true;
+                const btn = document.getElementById('rematch-btn'); btn.textContent = '대기중...'; btn.disabled = true;
                 roomRef.child(`players/${myPlayerId}/wantsRematch`).set(true);
             });
-            document.getElementById('lobby-btn').addEventListener('click', () => {
-                window.location.href = '대기실.html';
-            });
-            
+            document.getElementById('lobby-btn').addEventListener('click', () => { window.location.href = '대기실.html'; });
             const rematchListenerRef = roomRef.child('players');
             rematchListenerRef.on('value', snapshot => {
-                if (!snapshot.exists() || !currentRoomData || !currentRoomData.winner) {
-                    rematchListenerRef.off();
-                    return;
-                }
-                const currentPlayers = snapshot.val();
-                if (Object.values(currentPlayers).every(p => p.wantsRematch)) {
+                if (!snapshot.exists() || currentRoomData?.gameState !== 'gameOver') { rematchListenerRef.off(); return; }
+                if (Object.values(snapshot.val()).every(p => p.wantsRematch)) {
                     rematchListenerRef.off();
                     gameOverOverlay.style.display = 'none';
                     if (isHost) startRematch();
@@ -1116,8 +738,8 @@ function startRematch() {
 
 
 <audio id="bgm-audio" loop></audio>
-    <audio id="win-sound"></audio>
-    <audio id="lose-sound"></audio>
-    <audio id="item-sound"></audio>
-    </body>
+    <audio id="win-sound" src="https://blog.kakaocdn.net/dna/yLiG9/dJMb9NBLH35/AAAAAAAAAAAAAAAAAAAAAHR816GoJ0hh_H3iBi2ryFMs7eTvtX1R2_MiNhMn1X1L/%EB%AF%B8%EB%A1%9C%EC%8A%B9%EB%A6%AC.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=etFa3TX%2Bm636tw%2BecTdKGFsE9%2Fo%3D&attach=1&knm=tfile.mp3"></audio>
+    <audio id="lose-sound" src="https://blog.kakaocdn.net/dna/YqeBo/dJMb9OHqWKw/AAAAAAAAAAAAAAAAAAAAAM8axaXYQq2O5N2k8agpwDy0McSjUZXAYGl-stM9OdBB/%EB%AF%B8%EB%A1%9C%ED%8C%A8%EB%B0%B0.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=EMAsInuCHrrRTqY%2Bxyab6N4Gd%2Fs%3D&attach=1&knm=tfile.mp3"></audio>
+    <audio id="item-sound" src="https://blog.kakaocdn.net/dna/I1rs7/dJMb9OAFEW9/AAAAAAAAAAAAAAAAAAAAAGZ7k2cQ3I3jz4QPLzHVktwmXWCejW9gq1_ks5eGVS8X/%EB%AF%B8%EB%A1%9C%EC%95%84%EC%9D%B4%ED%85%9C%EB%93%9C%EB%9E%8D.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=xSvePfPnvnygwGW9LxvZwdD%2BFOY%3D&attach=1&knm=tfile.mp3"></audio>
+</body>
 </html>
