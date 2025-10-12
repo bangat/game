@@ -302,7 +302,8 @@
         let isHost = false;
         let canShoot = true; // 발사 가능 여부
         let hasShotThisTurn = false; // 이번 턴에 발사했는지 여부
-        
+        let isFirstTurn = true;
+
         function playSound(id) {
             const sound = document.getElementById(id);
             if (sound) {
@@ -422,6 +423,7 @@
             setupGame();
             currentTurnColor = 'white';
             isMyTurn = (currentTurnColor === myColor);
+            canShoot = true;
             updateHeaderUI();
         }
 
@@ -627,20 +629,22 @@ function endTurn() {
                     e.preventDefault();
                     return;
                 }
-                
-                const isMoving = stones.some(s => {
-                    if (!s.active) return false;
-                    const speed = Math.sqrt(
-                        s.body.velocity.x * s.body.velocity.x + 
-                        s.body.velocity.y * s.body.velocity.y
-                    );
-                    return speed > 0.05;
-                });
-                
-                if (isMoving) {
-                    e.preventDefault();
-                    return;
-                }
+
+    if (!isFirstTurn) { // 첫 턴이 아닐 때만 움직임을 체크합니다.
+        const isMoving = stones.some(s => {
+            if (!s.active) return false;
+            const speed = Math.sqrt(
+                s.body.velocity.x * s.body.velocity.x + 
+                s.body.velocity.y * s.body.velocity.y
+            );
+            return speed > 0.05;
+        });
+        
+        if (isMoving) {
+            e.preventDefault();
+            return;
+        }
+    }
                 
                 const pos = getEventPosition(e);
                 const clickedStone = stones.find(s => {
@@ -807,6 +811,7 @@ function endTurn() {
         playSound('shoot-sound');
         hasShotThisTurn = true;
         canShoot = false;
+        isFirstTurn = false;
         
         // ▼▼▼▼▼ 여기를 수정하세요 ▼▼▼▼▼
         // [수정] isHost 체크를 제거하여, 모든 플레이어가 자신의 움직임을 전송하도록 변경
@@ -873,7 +878,7 @@ function endTurn() {
                 const roomData = snapshot.val();
                 const players = Object.keys(roomData.players);
                 
-                isHost = (players[0] === myPlayerId);
+                isHost = (roomData.hostId === myPlayerId);
                 myColor = isHost ? 'white' : 'black';
                 opponentColor = isHost ? 'black' : 'white';
                 currentTurnColor = 'white';
@@ -916,13 +921,16 @@ function endTurn() {
     });
     // [추가 끝]
 
-            roomRef.child('currentTurn').on('value', snapshot => {
-                if (!snapshot.exists()) return;
-                const newTurnColor = snapshot.val();
-                currentTurnColor = newTurnColor;
-                isMyTurn = (currentTurnColor === myColor);
-                updateHeaderUI();
-            });
+           roomRef.child('currentTurn').on('value', snapshot => {
+    if (!snapshot.exists()) return;
+    const newTurnColor = snapshot.val();
+    currentTurnColor = newTurnColor;
+    isMyTurn = (currentTurnColor === myColor);
+
+    canShoot = isMyTurn; // 내 턴일 때만 발사 가능하도록 명확하게 변경합니다.
+
+    updateHeaderUI();
+});
 
             roomRef.child('lastMove').on('value', snapshot => {
         if (!snapshot.exists()) return;
