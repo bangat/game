@@ -15,13 +15,13 @@
         background-color: var(--bg-color); display: flex; flex-direction: column;
         justify-content: center; align-items: center; -webkit-user-select: none; user-select: none; touch-action: manipulation;
     }
-        #game-wrapper { 
+    #game-wrapper { 
         width: 100%; 
         height: 100%; 
         display: none; 
         flex-direction: column; 
         min-height: 0;
-        overflow: hidden; /* 이 속성을 추가하여 내부 요소가 부모를 넘어가지 못하게 함 */
+        overflow: hidden;
     }
     #game-header { flex-shrink: 0; display: flex; align-items: center; width: 100%; padding: 8px 10px; gap: 8px; background-color: rgba(0,0,0,0.1); z-index: 5; overflow-x: auto; }
     #game-header::-webkit-scrollbar { display: none; }
@@ -29,30 +29,31 @@
     .player-status { background-color: rgba(255,255,255,0.8); padding: 4px 10px; border-radius: 20px; display: flex; align-items: center; gap: 6px; font-size: 0.8em; font-weight: bold; color: #333; box-shadow: 0 1px 4px rgba(0,0,0,0.1); white-space: nowrap; transition: all 0.3s ease; }
     .player-status.dead { opacity: 0.5; filter: grayscale(80%); transform: scale(0.95); }
     .player-status .avatar { font-size: 1.1em; }
-    #game-container { 
-        width: 100%; 
-        flex-grow: 1; 
-        display: flex; 
-        justify-content: center; 
-        align-items: center; 
-        min-height: 0; 
-        position: relative; 
-        padding: 5px; 
-        /* 아래 속성 추가 */
-        overflow: hidden; 
-    }
-    #maze-wrapper { 
-    width: 100%; /* 너비를 100%로 먼저 지정하여 JS가 크기를 측정할 수 있게 함 */
-    height: auto; /* 높이는 너비와 비율에 따라 자동으로 결정되도록 함 */
-    max-height: 100%; /* 동시에 높이가 컨테이너를 넘어가지 않도록 제한 */
-    aspect-ratio: 19 / 39; 
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2); 
-    border-radius: 10px; 
-    overflow: hidden; 
-    background-color: var(--path-color); 
-    position: relative; 
-    margin: 0 auto; 
+    #game-container {
+    width: 100%;
+    flex-grow: 1;
+    display: flex; /* grid 대신 flex 사용 */
+    justify-content: center; /* 수평 중앙 정렬 */
+    align-items: center;     /* 수직 중앙 정렬 */
+    min-height: 0;
+    position: relative;
+    padding: 5px; /* 싱글 버전과 동일하게 약간의 여백 추가 */
+    /* overflow: hidden; 속성은 제거해도 괜찮습니다. */
 }
+#maze-wrapper {
+    /* width: auto; -> 삭제 */
+    /* height: 100%; -> 삭제 */
+    max-width: 100%;
+    height: 100%; /* 추가: 높이도 100%를 넘지 않도록 제한 */
+    aspect-ratio: 19 / 39;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    border-radius: 10px;
+    overflow: hidden;
+    background-color: var(--path-color);
+    position: relative;
+    margin: 0 auto;
+}
+    
     #maze { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
     .wall { background-color: var(--wall-color); position: absolute; }
     .player-avatar, .opponent-player { position: absolute; display: flex; justify-content: center; align-items: center; transition: all 0.12s linear; border-radius: 50%; z-index: 10; }
@@ -75,7 +76,7 @@
     #d-pad button:active { transform: scale(0.95); background-color: var(--button-hover); }
     #up { top: 0; left: 46px; } #down { bottom: 0; left: 46px; } #left { left: 0; top: 46px; } #right { right: 0; top: 46px; }
     #inventory-bar { width: 100%; flex-shrink: 0; background-color: #dde5f3; padding: 10px; padding-bottom: max(10px, env(safe-area-inset-bottom)); border-top: 2px solid #c9d5e8; display: flex; justify-content: center; align-items: center; z-index: 5; }
-#inventory-container { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+    #inventory-container { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
     .inventory-slot { width: 50px; height: 50px; background-color: #fff; border: 2px solid #b0bec5; border-radius: 10px; font-size: 2em; display: flex; justify-content: center; align-items: center; cursor: pointer; box-shadow: inset 0 2px 4px rgba(0,0,0,0.1); }
     .inventory-slot:empty { background-color: rgba(255,255,255,0.5); cursor: default; }
     .inventory-slot.used { animation: use-item-anim 0.4s ease-out; }
@@ -123,8 +124,6 @@
     </div>
    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
-
-
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     const firebaseConfig = { apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw", authDomain: "goodluck-7c14b.firebaseapp.com", databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com", projectId: "goodluck-7c14b", storageBucket: "goodluck-7c14b.firebasestorage.app", messagingSenderId: "858281658455", appId: "1:858281658455:web:9131280a459be983933b12" };
@@ -192,14 +191,10 @@ document.addEventListener('DOMContentLoaded', () => {
     
     function initializeMultiplayerGame(roomData) {
         if (!isHost) return;
-        
         const playerCount = Object.keys(roomData.players).length;
-        // 로컬 변수로 미로를 생성하여 시작/종료 지점을 설정하고 업데이트에 사용합니다.
         const newMaze = generateMaze(mazeRows, mazeCols);
-        // mazeLayout 전역 변수도 함께 업데이트하여 다른 함수(createItems, createInitialGhosts 등)에서 참조할 수 있도록 합니다.
         mazeLayout = newMaze; 
         placeStartAndGoal(newMaze);
-        
         const updates = {
             maze: newMaze,
             items: createItems(),
@@ -219,8 +214,6 @@ document.addEventListener('DOMContentLoaded', () => {
             updates[`players/${pid}/x`] = null; 
             updates[`players/${pid}/y`] = null;
         });
-        
-        // 단일 업데이트로 모든 정보를 한 번에 전송합니다.
         roomRef.update(updates);
     }
 
@@ -238,25 +231,21 @@ document.addEventListener('DOMContentLoaded', () => {
             allPlayers = players || {};
             isHost = currentRoomData.hostId === myPlayerId;
 
-            // 연결이 끊겼을 때의 처리: 방장은 방을 삭제하고, 게스트는 자신만 나갑니다.
             if (isHost) {
                 roomRef.onDisconnect().remove(); 
             } else {
                 if (myPlayerId) roomRef.child('players/' + myPlayerId).onDisconnect().remove();
             }
 
-            // 1. 방장이 게임 데이터 생성 (최초 1회 실행)
             if (isHost && gameState === 'launching' && !isGameInitialized) {
                 initializeMultiplayerGame(currentRoomData);
-                return; // 데이터 생성 후, 다음 value 이벤트에서 'ready' 상태를 처리하도록 함수를 종료합니다.
+                return;
             }
             
-            // 2. 모든 플레이어가 카운트다운 시작 (최초 1회 실행)
             if (gameState === 'ready' && !isGameInitialized && currentRoomData.maze) {
                 startMultiplayerCountdown();
             }
 
-            // 게임 진행 중일 때만 화면 정보 업데이트
             if (gameState === 'playing' && isGameRunning) {
                 updateHeaderUI(players);
                 updateAllPlayerEffectsAndPositions(players);
@@ -264,13 +253,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 itemsOnMap = items || {};
             }
 
-            // 게임 종료 처리
             if (gameState === 'gameOver' && winner && isGameRunning) {
                 showGameOverScreen({ winnerId: winner !== 'draw' ? winner : null, isDraw: winner === 'draw' });
                 return;
             }
-
-            // 게임 화면 표시
             gameWrapper.style.display = 'flex';
         });
 
@@ -294,25 +280,18 @@ document.addEventListener('DOMContentLoaded', () => {
             count--;
             if (count > 0) {
                 countdownEl.textContent = count;
-            } else {
+} else {
                 clearInterval(interval);
                 waitingOverlay.style.display = 'none';
-                
-                if (currentRoomData) { // currentRoomData가 있는지 확인
+                if (currentRoomData) {
                     bgmAudio.src = bgmList[Math.floor(Math.random() * bgmList.length)];
                     bgmAudio.play().catch(e => {});
-
                     setupGameFromData(currentRoomData);
-                    if (currentRoomData.ghosts) {
-                        initializeGhosts(currentRoomData.ghosts);
-                    }
-
+      
                     if(isHost) {
                          roomRef.update({ gameState: 'playing' });
                     }
-                    
                     roomRef.child('players/' + myPlayerId).update({ x: playerPos.x, y: playerPos.y });
-                    
                     if (isHost) {
                         ghostMoveInterval = setInterval(moveGhosts, 500);
                     }
@@ -324,7 +303,6 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateAllPlayerEffectsAndPositions(players) {
         const slowEffect = currentRoomData.slowEffect;
         const isGlobalSlowActive = slowEffect && Date.now() < slowEffect.expiresAt;
-
         for (const pid in players) {
             const p = players[pid];
             if(!p) continue;
@@ -380,7 +358,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
-    function setupGameFromData(data) {
+     function setupGameFromData(data) {
         if (!data.maze) return;
         isGameRunning = true;
         mazeLayout = data.maze;
@@ -390,14 +368,20 @@ document.addEventListener('DOMContentLoaded', () => {
             else if (mazeLayout[y][x] === 'G') goalPos = { x, y };
         }
         playerPos = { ...startPos };
-        drawMapAndEntities(); 
+        
+        requestAnimationFrame(() => {
+            drawMapAndEntities();
+            // ▼▼▼▼▼ 맵을 그린 직후, 여기에 유령 생성 코드를 추가합니다. ▼▼▼▼▼
+            if (currentRoomData && currentRoomData.ghosts) {
+                initializeGhosts(currentRoomData.ghosts);
+            }
+        });
     }
     
     function generateMaze(rows, cols) {
-        let maze = Array(rows).fill(null).map(() => Array(cols).fill(1)); // 1은 벽
-        // 1. 기본적인 외길 미로 생성
+        let maze = Array(rows).fill(null).map(() => Array(cols).fill(1));
         const carve = (x, y) => {
-            maze[y][x] = 0; // 0은 길
+            maze[y][x] = 0;
             let directions = [[1, 0], [-1, 0], [0, 1], [0, -1]];
             directions.sort(() => Math.random() - 0.5);
             for (let [dx, dy] of directions) {
@@ -409,14 +393,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
         carve(1, 1);
-
-        // 2. 여러 갈래 길을 만들기 위해 벽을 추가로 허무는 로직
-        const wallsToRemove = Math.floor((rows * cols) * 0.18); // 전체 셀의 18% 만큼 벽을 허물어 길을 냄
+        const wallsToRemove = Math.floor((rows * cols) * 0.18);
         for (let i = 0; i < wallsToRemove; i++) {
-            // 경계선(가장자리)을 제외한 내부 벽 중에서 무작위로 위치 선택
             const x = Math.floor(Math.random() * (cols - 2)) + 1;
             const y = Math.floor(Math.random() * (rows - 2)) + 1;
-            // 해당 위치가 벽(1)일 경우에만 길(0)으로 만듦
             if (maze[y][x] === 1) {
                 maze[y][x] = 0;
             }
@@ -434,7 +414,7 @@ document.addEventListener('DOMContentLoaded', () => {
         for(let n=0;n<7;n++){let x,y;do{x=Math.floor(Math.random()*(mazeCols-2))+1;y=Math.floor(Math.random()*(mazeRows-2))+1;}while(mazeLayout[y]?.[x]!==0||i[`${x}-${y}`]||(x===startPos.x&&y===startPos.y));const t=w[Math.floor(Math.random()*w.length)];i[`${x}-${y}`]={x,y,type:t};}return i;
     }
 
-function createInitialGhosts(playerCount) {
+    function createInitialGhosts(playerCount) {
         const g={},c=playerCount+1;for(let i=0;i<c;i++){let x,y;do{x=Math.floor(Math.random()*(mazeCols-2))+1;y=Math.floor(Math.random()*(mazeRows-10))+8;}while(mazeLayout[y]?.[x]!==0||(Math.abs(x-startPos.x)<10&&Math.abs(y-startPos.y)<10));g['g'+i]={x,y, type: 'normal'};}return g;
     }
     
@@ -450,7 +430,7 @@ function createInitialGhosts(playerCount) {
             itemSound.play();
             const itemType = itemsOnMap[itemKey].type;
             roomRef.child('items').child(itemKey).remove();
-roomRef.child(`players/${myPlayerId}/inventory`).transaction(inv=>{if(!inv)inv=[];if(inv.length<5)inv.push(itemType);return inv;});
+            roomRef.child(`players/${myPlayerId}/inventory`).transaction(inv=>{if(!inv)inv=[];if(inv.length<5)inv.push(itemType);return inv;});
         }
         if (playerPos.x === goalPos.x && playerPos.y === goalPos.y) handleWin();
     }
@@ -458,21 +438,12 @@ roomRef.child(`players/${myPlayerId}/inventory`).transaction(inv=>{if(!inv)inv=[
     function move(dx, dy) {
         const freezeEffect = currentRoomData?.freezeEffect;
         if (isDead || !isGameRunning || (freezeEffect && Date.now() < freezeEffect.expiresAt)) return;
-
         const nX = playerPos.x + dx, nY = playerPos.y + dy;
-        
         if (mazeLayout[nY]?.[nX] !== 1) {
-            // 1. 먼저 로컬(내 화면)에서 위치를 즉시 업데이트합니다.
             playerPos.x = nX;
             playerPos.y = nY;
-
-            // 2. 서버에 내 새로운 위치를 알립니다.
             roomRef.child(`players/${myPlayerId}`).update({ x: nX, y: nY });
-            
-            // 3. 내 화면의 캐릭터를 즉시 움직입니다.
             updatePlayerPosition(myPlayerId, nX, nY, myAvatar, localPlayerEffects);
-            
-            // 4. 이동 직후, 서버를 기다리지 않고 바로 충돌 검사를 실행합니다.
             checkInteractions(); 
         }
     }
@@ -491,20 +462,14 @@ roomRef.child(`players/${myPlayerId}/inventory`).transaction(inv=>{if(!inv)inv=[
     }
 
     function handleDeath() {
-        if (isDead) return; // 이미 죽었다면 다시 실행하지 않음
+        if (isDead) return;
         isDead = true;
         stopMoving();
-
         roomRef.transaction(currentRoomData => {
             if (currentRoomData && currentRoomData.players && currentRoomData.players[myPlayerId]) {
-                
                 currentRoomData.players[myPlayerId].isDead = true;
-                
-                // 살아있는 플레이어의 'ID' 목록을 직접 찾음
                 const livingPlayerIds = Object.keys(currentRoomData.players).filter(pid => !currentRoomData.players[pid].isDead);
-                
                 if (livingPlayerIds.length === 1) {
-                    // 남은 한 명의 ID를 winner로 지정
                     currentRoomData.winner = livingPlayerIds[0]; 
                     currentRoomData.gameState = 'gameOver';
                 } else if (livingPlayerIds.length === 0) {
@@ -517,12 +482,10 @@ roomRef.child(`players/${myPlayerId}/inventory`).transaction(inv=>{if(!inv)inv=[
     }
 
     function handleWin() {
-        // 방장인 경우, DB 업데이트 전에 유령 움직임부터 즉시 멈춥니다.
         if (isHost && ghostMoveInterval) {
             clearInterval(ghostMoveInterval);
             ghostMoveInterval = null;
         }
-        isGameRunning = false; 
         stopMoving();
         roomRef.update({ winner: myPlayerId, gameState: 'gameOver' });
     }
@@ -561,33 +524,20 @@ roomRef.child(`players/${myPlayerId}/inventory`).transaction(inv=>{if(!inv)inv=[
     }
 
     function showGameOverScreen(result) {
-        isGameRunning=false;if(ghostMoveInterval)clearInterval(ghostMoveInterval);ghostMoveInterval=null;stopMoving();bgmAudio.pause();const amIWinner=result.winnerId===myPlayerId;updatePlayerStats(amIWinner);if(amIWinner)winSound.play();else loseSound.play();let msg;if(result.isDraw)msg='아무도 살아남지 못했습니다!';else if(result.winnerId&&allPlayers[result.winnerId])msg=amIWinner?`🎉 승리했습니다! 🎉`:`🎉 ${allPlayers[result.winnerId].nickname}님 승리! 🎉`;else msg='👻 유령에게 잡혔습니다 👻';const btns=`<button id="rematch-btn" class="menu-btn primary">다시 하기</button><button id="lobby-btn" class="menu-btn secondary">나가기</button>`;gameOverOverlay.innerHTML=`<div class="modal-content"><h2 id="game-over-message">${msg}</h2><div class="modal-buttons">${btns}</div></div>`;gameOverOverlay.style.display='flex';
+        isGameRunning = false;
+        if(ghostMoveInterval)clearInterval(ghostMoveInterval);ghostMoveInterval=null;stopMoving();bgmAudio.pause();const amIWinner=result.winnerId===myPlayerId;updatePlayerStats(amIWinner);if(amIWinner)winSound.play();else loseSound.play();let msg;if(result.isDraw)msg='아무도 살아남지 못했습니다!';else if(result.winnerId&&allPlayers[result.winnerId])msg=amIWinner?`🎉 승리했습니다! 🎉`:`🎉 ${allPlayers[result.winnerId].nickname}님 승리! 🎉`;else msg='👻 유령에게 잡혔습니다 👻';const btns=`<button id="rematch-btn" class="menu-btn primary">다시 하기</button><button id="lobby-btn" class="menu-btn secondary">나가기</button>`;gameOverOverlay.innerHTML=`<div class="modal-content"><h2 id="game-over-message">${msg}</h2><div class="modal-buttons">${btns}</div></div>`;gameOverOverlay.style.display='flex';
         document.getElementById('rematch-btn').addEventListener('click',()=>{const b=document.getElementById('rematch-btn');b.textContent='대기중...';b.disabled=true;roomRef.child(`players/${myPlayerId}/wantsRematch`).set(true);});
         document.getElementById('lobby-btn').addEventListener('click',()=>{window.location.href='대기실.html'});
         if(rematchListener) roomRef.off('value', rematchListener);
         rematchListener = snapshot => {
             const data = snapshot.val();
-            if(!data || !data.players || data.gameState !== 'gameOver'){
-                if(roomRef && rematchListener) roomRef.off('value', rematchListener);
-                return;
-            }
+            if(!data || !data.players || data.gameState !== 'gameOver'){ if(roomRef && rematchListener) roomRef.off('value', rematchListener); return; }
             const players = Object.values(data.players);
             if(players.length > 0 && players.every(p => p.wantsRematch)){
-                // --- 아래 코드가 핵심입니다! ---
-                // 1. 모든 클라이언트(방장, 승자, 패자)의 로컬 상태를 초기화합니다.
-                isGameInitialized = false;
-                isGameRunning = false;
-                isDead = false;
-                
-                // 2. 화면에 떠 있는 오버레이들을 모두 숨깁니다.
-                gameOverOverlay.style.display = 'none';
-                spectatorOverlay.style.display = 'none';
-
-                // 3. 리스너를 확실하게 제거합니다.
+                isGameInitialized = false; isGameRunning = false; isDead = false;
+                gameOverOverlay.style.display = 'none'; spectatorOverlay.style.display = 'none';
                 if(roomRef && rematchListener) roomRef.off('value', rematchListener);
                 rematchListener = null;
-
-                // 4. 방장만 재시작 신호를 보냅니다.
                 if(isHost) startRematch();
             }
         };
@@ -596,20 +546,42 @@ roomRef.child(`players/${myPlayerId}/inventory`).transaction(inv=>{if(!inv)inv=[
 
     function startRematch() { 
         if (isHost) {
-            // 이제 이 함수는 단순히 재시작을 위한 게임 상태 변경만 담당합니다.
             roomRef.update({ gameState: 'launching' });
         }
     }
     
     function drawMapAndEntities() {
-        const w=document.getElementById('maze-wrapper');if(w.offsetWidth===0){setTimeout(drawMapAndEntities,100);return;}cellSize=w.offsetWidth/mazeCols;let h='';for(let y=0;y<mazeRows;y++)for(let x=0;x<mazeCols;x++)if(mazeLayout[y][x]===1)h+=`<div class="wall" style="width:${cellSize+1}px; height:${cellSize+1}px; left:${x*cellSize}px; top:${y*cellSize}px;"></div>`;mazeContainer.innerHTML=h;const g=document.createElement('div');g.id='goal';g.textContent='🏁';g.style.cssText=`width:${cellSize}px; height:${cellSize}px; font-size:${cellSize*0.8}px; left:${goalPos.x*cellSize}px; top:${goalPos.y*cellSize}px;`;mazeContainer.appendChild(g);drawItems();for(const p in allPlayers){const d=allPlayers[p];if(d.x!==undefined&&d.x!==null)updatePlayerPosition(p,d.x,d.y,d.avatar);}}
+    const w = document.getElementById('maze-wrapper');
+    if (w.offsetWidth === 0 || w.offsetHeight === 0) {
+        setTimeout(drawMapAndEntities, 100);
+        return;
+    }
+    // 가로와 세로 비율을 모두 계산해 더 작은 값을 기준으로 cellSize를 정합니다.
+    const cellWidth = w.offsetWidth / mazeCols;
+    const cellHeight = w.offsetHeight / mazeRows;
+    cellSize = Math.min(cellWidth, cellHeight);
 
+    let h = '';
+    for (let y = 0; y < mazeRows; y++) {
+        for (let x = 0; x < mazeCols; x++) {
+            if (mazeLayout[y][x] === 1) h += `<div class="wall" style="width:${cellSize + 1}px; height:${cellSize + 1}px; left:${x * cellSize}px; top:${y * cellSize}px;"></div>`;
+        }
+    }
+    mazeContainer.innerHTML = h;
+    const g = document.createElement('div');
+    g.id = 'goal';
+    g.textContent = '🏁';
+    g.style.cssText = `width:${cellSize}px; height:${cellSize}px; font-size:${cellSize * 0.8}px; left:${goalPos.x * cellSize}px; top:${goalPos.y * cellSize}px;`;
+    mazeContainer.appendChild(g);
+    drawItems();
+    for (const p in allPlayers) {
+        const d = allPlayers[p];
+        if (d.x !== undefined && d.x !== null) updatePlayerPosition(p, d.x, d.y, d.avatar);
+    }
+}
     function drawItems() { document.querySelectorAll('.item').forEach(e=>e.remove());for(const k in itemsOnMap){const i=itemsOnMap[k];const e=document.createElement('div');e.className='item';e.textContent='🎁';e.id='item-'+k;e.style.cssText=`width:${cellSize}px; height:${cellSize}px; font-size:${cellSize*0.8}px; left:${i.x*cellSize}px; top:${i.y*cellSize}px;`;mazeContainer.appendChild(e);} }
-
-function updateInventoryUI(inv=[]) { inventoryContainer.innerHTML='';for(let i=0;i<5;i++){const s=document.createElement('div');s.className='inventory-slot';if(inv[i]){s.textContent=ITEM_TYPES[inv[i]].emoji;s.dataset.itemType=inv[i];s.addEventListener('click',handleItemUse);}inventoryContainer.appendChild(s);}}
-
+    function updateInventoryUI(inv=[]) { inventoryContainer.innerHTML='';for(let i=0;i<5;i++){const s=document.createElement('div');s.className='inventory-slot';if(inv[i]){s.textContent=ITEM_TYPES[inv[i]].emoji;s.dataset.itemType=inv[i];s.addEventListener('click',handleItemUse);}inventoryContainer.appendChild(s);}}
     function updateHeaderUI(players) { gameHeader.innerHTML='';const pids=Object.keys(players).sort();pids.forEach(pid=>{const p=players[pid];const s=document.createElement('div');s.className='player-status';s.classList.toggle('dead',p.isDead);s.innerHTML=`<span class="avatar">${p.avatar}</span> <span class="nickname">${p.nickname}</span>`;gameHeader.appendChild(s);}); }
-
     function updatePlayerPosition(pid, x, y, avatar, effects = {}) {
         let el=document.getElementById('player-'+pid);if(!el){el=document.createElement('div');el.id='player-'+pid;el.className=pid===myPlayerId?'player-avatar':'opponent-player';el.style.position = 'absolute'; mazeContainer.appendChild(el);}
         if(avatar.startsWith('http')){el.innerHTML=`<img src="${avatar}" style="width:100%; height:100%; object-fit:contain; border-radius:50%;">`;}else{el.textContent=avatar;}
@@ -620,20 +592,12 @@ function updateInventoryUI(inv=[]) { inventoryContainer.innerHTML='';for(let i=0
         el.style.top = `${y * cellSize + (cellSize * 0.05)}px`;
         el.classList.toggle('dead',!!effects.isDead);el.classList.toggle('ghost-pass',!!effects.hasGhostPass);el.classList.toggle('slowed',!!effects.isSlowed);
     }
-    
     function updateGhostPosition(g){if(g.element){g.element.style.width=`${cellSize}px`; g.element.style.height=`${cellSize}px`; g.element.style.fontSize=`${cellSize*0.8}px`; g.element.style.left=`${g.x*cellSize}px`; g.element.style.top=`${g.y*cellSize}px`;}}
     const updateDarkness=(x,y)=>{darknessOverlay.style.background=`radial-gradient(circle at ${x}px ${y}px, transparent 100px, black 150px)`;};
-
     ['up','down','left','right'].forEach(d=>{const b=document.getElementById(d),dx=d==='left'?-1:d==='right'?1:0,dy=d==='up'?-1:d==='down'?1:0;const s=e=>{e.preventDefault();startMoving(dx,dy);},n=e=>{e.preventDefault();stopMoving();};b.addEventListener('mousedown',s);b.addEventListener('touchstart',s,{passive:false});b.addEventListener('mouseup',n);b.addEventListener('mouseleave',n);b.addEventListener('touchend',n);});
     window.addEventListener('keydown',e=>{if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)&&!keyMoving){keyMoving=e.key;const dx=e.key==='ArrowLeft'?-1:e.key==='ArrowRight'?1:0,dy=e.key==='ArrowUp'?-1:e.key==='ArrowDown'?1:0;startMoving(dx,dy);}});
     window.addEventListener('keyup',e=>{if(e.key===keyMoving){keyMoving=null;stopMoving();}});
 });
 </script>
-
-
-<audio id="bgm-audio" loop></audio>
-<audio id="win-sound" src="https://blog.kakaocdn.net/dna/yLiG9/dJMb9NBLH35/AAAAAAAAAAAAAAAAAAAAAHR816GoJ0hh_H3iBi2ryFMs7eTvtX1R2_MiNhMn1X1L/%EB%AF%B8%EB%A1%9C%EC%8A%B9%EB%A6%AC.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=etFa3TX%2Bm636tw%2BecTdKGFsE9%2Fo%3D&attach=1&knm=tfile.mp3"></audio>
-<audio id="lose-sound" src="https://blog.kakaocdn.net/dna/YqeBo/dJMb9OHqWKw/AAAAAAAAAAAAAAAAAAAAAM8axaXYQq2O5N2k8agpwDy0McSjUZXAYGl-stM9OdBB/%EB%AF%B8%EB%A1%9C%ED%8C%A8%EB%B0%B0.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=EMAsInuCHrrRTqY%2Bxyab6N4Gd%2Fs%3D&attach=1&knm=tfile.mp3"></audio>
-<audio id="item-sound" src="https://blog.kakaocdn.net/dna/I1rs7/dJMb9OAFEW9/AAAAAAAAAAAAAAAAAAAAAGZ7k2cQ3I3jz4QPLzHVktwmXWCejW9gq1_ks5eGVS8X/%EB%AF%B8%EB%A1%9C%EC%95%84%EC%9D%B4%ED%85%9C%EB%93%9C%EB%9E%8D.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=xSvePfPnvnygwGW9LxvZwdD%2BFOY%3D&attach=1&knm=tfile.mp3"></audio>
 </body>
 </html>
