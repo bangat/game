@@ -151,7 +151,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let myPlayerId, myNickname, myAvatar, roomRef, currentRoomData, isHost = false;
     let playerPos = { x: 0, y: 0 }, startPos = { x: 0, y: 0 }, goalPos = { x: 0, y: 0 };
     let cellSize = 0, mazeLayout = [], mazeRows = 39, mazeCols = 19;
-    let isDead = false, moveInterval = null, keyMoving = null;
+let isDead = false, keyMoving = null; // moveInterval 제거
+    const keysPressed = { up: false, down: false, left: false, right: false };
+    let lastMoveTime = 0;
     let ghosts = [], ghostMoveInterval = null;
     let itemsOnMap = {};
     let localPlayerEffects = { hasGhostPass: false, isSlowed: false };
@@ -302,6 +304,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (isHost) {
                         ghostMoveInterval = setInterval(moveGhosts, 500);
                     }
+                    requestAnimationFrame(gameLoop);
                 }
             }
         }, 1000);
@@ -455,8 +458,32 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
-    function startMoving(dx, dy) { if (!isDead && isGameRunning) { if (moveInterval) stopMoving(); const moveSpeed = localPlayerEffects.isSlowed ? 300 : 150; move(dx, dy); moveInterval = setInterval(() => move(dx, dy), moveSpeed); } }
-    function stopMoving() { clearInterval(moveInterval); moveInterval = null; }
+    // 기존 startMoving, stopMoving 함수를 gameLoop 로직으로 대체하므로 삭제하거나 아래 코드로 덮어씁니다.
+    function gameLoop(timestamp) {
+        if (!isGameRunning || isDead) {
+            // 게임이 실행 중이 아닐 때도 루프는 계속 돌려야 다시 시작할 수 있습니다.
+            requestAnimationFrame(gameLoop);
+            return;
+        }
+
+        const moveSpeed = localPlayerEffects.isSlowed ? 250 : 120; // 이동 속도 (ms), 값이 작을수록 빠릅니다.
+        if (timestamp - lastMoveTime > moveSpeed) {
+            let dx = 0, dy = 0;
+            // 동시에 눌린 키 상태를 확인하여 이동 방향을 결정합니다.
+            if (keysPressed.up) dy = -1;
+            if (keysPressed.down) dy = 1;
+            if (keysPressed.left) dx = -1;
+            if (keysPressed.right) dx = 1;
+
+            if (dx !== 0 || dy !== 0) {
+                move(dx, dy);
+                lastMoveTime = timestamp;
+            }
+        }
+        
+        // 다음 프레임에 gameLoop를 다시 호출합니다.
+        requestAnimationFrame(gameLoop);
+    }
     
     function handleItemUse(event) {
         const itemType = event.currentTarget.dataset.itemType;
@@ -471,7 +498,6 @@ document.addEventListener('DOMContentLoaded', () => {
     function handleDeath() {
         if (isDead) return;
         isDead = true;
-        stopMoving();
         roomRef.transaction(currentRoomData => {
             if (currentRoomData && currentRoomData.players && currentRoomData.players[myPlayerId]) {
                 currentRoomData.players[myPlayerId].isDead = true;
@@ -493,7 +519,6 @@ document.addEventListener('DOMContentLoaded', () => {
             clearInterval(ghostMoveInterval);
             ghostMoveInterval = null;
         }
-        stopMoving();
         roomRef.update({ winner: myPlayerId, gameState: 'gameOver' });
     }
     
@@ -532,7 +557,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function showGameOverScreen(result) {
         isGameRunning = false;
-        if(ghostMoveInterval)clearInterval(ghostMoveInterval);ghostMoveInterval=null;stopMoving();bgmAudio.pause();const amIWinner=result.winnerId===myPlayerId;updatePlayerStats(amIWinner);if(amIWinner)winSound.play();else loseSound.play();let msg;if(result.isDraw)msg='아무도 살아남지 못했습니다!';else if(result.winnerId&&allPlayers[result.winnerId])msg=amIWinner?`🎉 승리했습니다! 🎉`:`🎉 ${allPlayers[result.winnerId].nickname}님 승리! 🎉`;else msg='👻 유령에게 잡혔습니다 👻';const btns=`<button id="rematch-btn" class="menu-btn primary">다시 하기</button><button id="lobby-btn" class="menu-btn secondary">나가기</button>`;gameOverOverlay.innerHTML=`<div class="modal-content"><h2 id="game-over-message">${msg}</h2><div class="modal-buttons">${btns}</div></div>`;gameOverOverlay.style.display='flex';
+        if(ghostMoveInterval)clearInterval(ghostMoveInterval);ghostMoveInterval=null;bgmAudio.pause();
+  const amIWinner=result.winnerId===myPlayerId;updatePlayerStats(amIWinner);if(amIWinner)winSound.play();else loseSound.play();let msg;if(result.isDraw)msg='아무도 살아남지 못했습니다!';else if(result.winnerId&&allPlayers[result.winnerId])msg=amIWinner?`🎉 승리했습니다! 🎉`:`🎉 ${allPlayers[result.winnerId].nickname}님 승리! 🎉`;else msg='👻 유령에게 잡혔습니다 👻';const btns=`<button id="rematch-btn" class="menu-btn primary">다시 하기</button><button id="lobby-btn" class="menu-btn secondary">나가기</button>`;gameOverOverlay.innerHTML=`<div class="modal-content"><h2 id="game-over-message">${msg}</h2><div class="modal-buttons">${btns}</div></div>`;gameOverOverlay.style.display='flex';
         document.getElementById('rematch-btn').addEventListener('click',()=>{const b=document.getElementById('rematch-btn');b.textContent='대기중...';b.disabled=true;roomRef.child(`players/${myPlayerId}/wantsRematch`).set(true);});
         document.getElementById('lobby-btn').addEventListener('click',()=>{window.location.href='대기실.html'});
         if(rematchListener) roomRef.off('value', rematchListener);
@@ -601,9 +627,32 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     function updateGhostPosition(g){if(g.element){g.element.style.width=`${cellSize}px`; g.element.style.height=`${cellSize}px`; g.element.style.fontSize=`${cellSize*0.8}px`; g.element.style.left=`${g.x*cellSize}px`; g.element.style.top=`${g.y*cellSize}px`;}}
     const updateDarkness=(x,y)=>{darknessOverlay.style.background=`radial-gradient(circle at ${x}px ${y}px, transparent 100px, black 150px)`;};
-    ['up','down','left','right'].forEach(d=>{const b=document.getElementById(d),dx=d==='left'?-1:d==='right'?1:0,dy=d==='up'?-1:d==='down'?1:0;const s=e=>{e.preventDefault();startMoving(dx,dy);},n=e=>{e.preventDefault();stopMoving();};b.addEventListener('mousedown',s);b.addEventListener('touchstart',s,{passive:false});b.addEventListener('mouseup',n);b.addEventListener('mouseleave',n);b.addEventListener('touchend',n);});
-    window.addEventListener('keydown',e=>{if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)&&!keyMoving){keyMoving=e.key;const dx=e.key==='ArrowLeft'?-1:e.key==='ArrowRight'?1:0,dy=e.key==='ArrowUp'?-1:e.key==='ArrowDown'?1:0;startMoving(dx,dy);}});
-    window.addEventListener('keyup',e=>{if(e.key===keyMoving){keyMoving=null;stopMoving();}});
+   ['up','down','left','right'].forEach(direction => {
+        const button = document.getElementById(direction);
+        const start = (e) => { e.preventDefault(); keysPressed[direction] = true; };
+        const end = (e) => { e.preventDefault(); keysPressed[direction] = false; };
+        button.addEventListener('mousedown', start);
+        button.addEventListener('touchstart', start, { passive: false });
+        button.addEventListener('mouseup', end);
+        button.addEventListener('mouseleave', end);
+        button.addEventListener('touchend', end);
+    });
+    window.addEventListener('keydown', e => {
+        switch (e.key) {
+            case 'ArrowUp': keysPressed.up = true; break;
+            case 'ArrowDown': keysPressed.down = true; break;
+            case 'ArrowLeft': keysPressed.left = true; break;
+            case 'ArrowRight': keysPressed.right = true; break;
+        }
+    });
+    window.addEventListener('keyup', e => {
+        switch (e.key) {
+            case 'ArrowUp': keysPressed.up = false; break;
+            case 'ArrowDown': keysPressed.down = false; break;
+            case 'ArrowLeft': keysPressed.left = false; break;
+            case 'ArrowRight': keysPressed.right = false; break;
+        }
+    });
 });
 </script>
 </body>
