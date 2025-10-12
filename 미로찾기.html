@@ -411,10 +411,6 @@ document.addEventListener('DOMContentLoaded', () => {
             ghosts.push(ghost);
             updateGhostPosition(ghost);
         }
-        // 방장만 유령 움직임 로직 실행
-        if (roomRef && isHost && !ghostMoveInterval) {
-            ghostMoveInterval = setInterval(moveGhosts, 500);
-        }
     }
 
     function drawMapAndEntities() {
@@ -679,12 +675,17 @@ document.addEventListener('DOMContentLoaded', () => {
         if (isDead || !isGameRunning) return;
         const newX = playerPos.x + dx;
         const newY = playerPos.y + dy;
+
+        // 벽이 아닐 때만 서버에 위치 업데이트를 '요청'합니다.
+        // 내 화면에서 직접 위치를 바꾸는 코드를 제거하여 데이터 충돌을 방지합니다.
         if (mazeLayout[newY]?.[newX] !== 1) {
-            playerPos.x = newX;
-            playerPos.y = newY;
             if (roomRef) {
+                // 멀티플레이 시에는 서버에만 위치를 알립니다.
                 roomRef.child('players').child(myPlayerId).update({ x: newX, y: newY });
             } else {
+                // 싱글플레이 시에는 기존처럼 직접 위치를 업데이트합니다.
+                playerPos.x = newX;
+                playerPos.y = newY;
                 allPlayers[myPlayerId].x = newX;
                 allPlayers[myPlayerId].y = newY;
                 updatePlayerPosition(myPlayerId, newX, newY, myAvatar, { ...localPlayerEffects, isDead });
@@ -816,6 +817,9 @@ function listenToRoomChanges() {
                     playerPos = { x: myServerPos.x, y: myServerPos.y };
                 }
                 checkInteractions();
+if (isHost && gameState === 'playing' && !ghostMoveInterval) {
+                    ghostMoveInterval = setInterval(moveGhosts, 500);
+                }
             }
         });
 
