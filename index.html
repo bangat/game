@@ -45,6 +45,14 @@
         }
         #user-profile-clickable:hover { background-color: #f0f0f0; }
         #user-profile-clickable .avatar { font-size: 1.8em; margin-right: 10px; }
+#user-profile-clickable .avatar img {
+            width: 40px;      /* 이미지의 가로 크기 */
+            height: 40px;     /* 이미지의 세로 크기 */
+            object-fit: contain; /* 이미지가 찌그러지지 않도록 설정 */
+            border-radius: 50%; /* 이미지를 동그랗게 만듦 */
+            display: block;   /* 안정적인 레이아웃을 위해 추가 */
+        }
+
         #user-profile-clickable #user-nickname-text {
             font-size: 1.1em; font-weight: 700; color: #333;
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px;
@@ -306,6 +314,15 @@
         .char-option:hover { background-color: #d0e1f3; }
         #character-grid .char-option { background-color: #f8f9fa; border: 2px solid transparent; }
         #character-grid .char-option.selected { border-color: var(--primary-color); box-shadow: 0 0 10px rgba(30, 136, 229, 0.5); transform: scale(1.1); }
+
+/* ▼▼▼▼▼ 아래 스타일을 새로 추가하세요 ▼▼▼▼▼ */
+        #main-menu-profile #profile-avatar.has-image {
+            font-size: initial; /* 이미지일 경우, 이모지용 글자 크기 초기화 */
+            line-height: initial;
+            width: 100%;
+            height: 100%;
+        }
+        /* ▲▲▲▲▲ 코드 추가 종료 ▲▲▲▲▲ */
     </style>
 </head>
 <body>
@@ -588,8 +605,9 @@
                         localStorage.setItem('userNickname', profile.nickname);
                         localStorage.setItem('userAvatar', profile.avatar);
                         
-                        if (profile.avatar.startsWith('http')) {
-                            userAvatar.innerHTML = `<img src="${profile.avatar}" style="width:100%;height:100%;object-fit:contain;border-radius:50%;">`;
+   if (profile.avatar.startsWith('http')) {
+           
+                            userAvatar.innerHTML = `<img src="${profile.avatar}" alt="User Avatar">`;
                         } else {
                             userAvatar.textContent = profile.avatar;
                         }
@@ -757,26 +775,43 @@
             const totalLosses = Object.values(stats).reduce((sum, game) => sum + (game.losses || 0), 0);
             const totalGames = totalWins + totalLosses;
             const winRate = totalGames > 0 ? ((totalWins / totalGames) * 100).toFixed(1) + '%' : '-';
-            const expForNextLevel = data.level * 100;
-            const expPercent = expForNextLevel > 0 ? (data.exp / expForNextLevel) * 100 : 0;
-
+            
             if (uid) { checkAndUnlockAchievements(uid, totalWins, data.unlockedAvatars); }
+
+            // --- 여기가 핵심! 레벨업 계산 로직 ---
+            let displayLevel = data.level || 1;
+            let displayExp = data.exp || 0;
+            let expForNextLevel = displayLevel * 100;
+
+            // 현재 경험치가 레벨업 요구치를 넘는 동안 계속 반복 (여러 레벨 동시 상승 처리)
+            while (displayExp >= expForNextLevel) {
+                displayExp -= expForNextLevel; // 현재 레벨업에 필요한 경험치 차감
+                displayLevel++; // 레벨 1 증가
+                expForNextLevel = displayLevel * 100; // 다음 레벨에 필요한 경험치 재계산
+            }
+            // --- 계산 로직 종료 ---
+
+            const expPercent = expForNextLevel > 0 ? (displayExp / expForNextLevel) * 100 : 0;
             
             const avatarContainer = container.querySelector('#profile-avatar');
             if (data.avatar.startsWith('http')) {
                 avatarContainer.innerHTML = `<img src="${data.avatar}" alt="avatar">`;
+                avatarContainer.classList.add('has-image');
             } else {
                 avatarContainer.textContent = data.avatar;
+                avatarContainer.classList.remove('has-image');
             }
+
+            // 계산된 최종 레벨과 경험치를 화면에 표시
             container.querySelector('#profile-nickname').textContent = data.nickname;
-            container.querySelector('#profile-level').textContent = `Lv. ${data.level}`;
+            container.querySelector('#profile-level').textContent = `Lv. ${displayLevel}`;
             container.querySelector('#profile-wins').textContent = `${totalWins} 승`;
             container.querySelector('#profile-losses').textContent = `${totalLosses} 패`;
             container.querySelector('#profile-winrate').textContent = winRate;
             const expBar = container.querySelector('#exp-bar');
             const expText = container.querySelector('#exp-text');
             expBar.style.width = `${expPercent}%`;
-            expText.textContent = `${data.exp} / ${expForNextLevel}`;
+            expText.textContent = `${displayExp} / ${expForNextLevel}`;
         }
 
         function showPlayerProfile(playerId) {
@@ -830,14 +865,14 @@
         }
 
         async function selectAvatar(uid, avatarValue) {
+            // 1. Firebase 데이터베이스에 새로운 아바타 정보를 저장합니다.
             await playersRef.child(uid).child('avatar').set(avatarValue);
+            
+            // 2. 브라우저 저장소(localStorage)에도 즉시 반영합니다.
             localStorage.setItem('userAvatar', avatarValue);
-            showPlayerProfile(uid);
-            if (avatarValue.startsWith('http')) {
-                userAvatar.innerHTML = `<img src="${avatarValue}" style="width:100%;height:100%;object-fit:contain;border-radius:50%;">`;
-            } else {
-                userAvatar.textContent = avatarValue;
-            }
+
+            // 3. 페이지를 새로고침하여 변경사항을 완벽하게 적용합니다.
+            location.reload(); 
         }
 
         profileModal.querySelector('.avatar-tab-btn[data-tab="default"]').addEventListener('click', (e) => {
