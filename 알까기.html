@@ -221,6 +221,47 @@
             0% { transform: rotate(0deg); } 
             100% { transform: rotate(360deg); } 
         }
+
+        /* ▼▼▼▼▼ 아래 스타일을 새로 추가하세요 ▼▼▼▼▼ */
+.style-option {
+    border: 3px solid transparent;
+    border-radius: 12px;
+    padding: 15px;
+    background-color: rgba(0,0,0,0.2);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: center;
+}
+.style-option:hover {
+    border-color: var(--accent-color);
+    background-color: rgba(0,0,0,0.3);
+}
+.style-option.selected { /* 자바스크립트에서 선택 시 추가할 클래스 */
+    border-color: var(--accent-color);
+    box-shadow: 0 0 15px var(--accent-color);
+}
+.style-option h4 {
+    margin-top: 10px;
+    font-size: 1em;
+}
+.preview-board {
+    width: 120px;
+    height: 70px;
+    background-color: var(--board-color);
+    border-radius: 6px;
+    position: relative;
+}
+.preview-stone {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+}
+.preview-stone.white { background-color: var(--stone-white); }
+.preview-stone.black { background-color: var(--stone-black); }
+/* ▲▲▲▲▲ 코드 추가 종료 ▲▲▲▲▲ */
+
     </style>
 </head>
 <body>
@@ -251,12 +292,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <script>
     document.addEventListener('DOMContentLoaded', () => {
-        window.addEventListener('beforeunload', (e) => {
-            if (gameMode === 'multi' && roomRef && !isGameOver) {
-                e.preventDefault();
-                e.returnValue = '';
-            }
-        });
+    
 
         const firebaseConfig = {
             apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
@@ -357,16 +393,120 @@
                     clearInterval(interval);
                     playSound('game-start-sound');
                     waitingOverlay.style.display = 'none';
-                    if (gameMode === 'single') {
-                        setupSinglePlayerGame();
-                    } else if (gameMode === 'multi') {
-                        setupMultiplayerGame();
-                    }
+                    // 게임 설정 대신 배치 모달을 띄웁니다.
+                    showPlacementModal();
                 }
             }, 1000);
         }
+
+
+// ▼▼▼▼▼ 아래 함수를 새로 추가하세요 ▼▼▼▼▼
+function showPlacementModal() {
+    const modal = document.getElementById('placement-modal');
+    const options = modal.querySelectorAll('.style-option');
+    const waitingText = document.getElementById('placement-waiting-text');
+    modal.style.display = 'flex';
+    
+    // 싱글플레이 모드
+    if (gameMode === 'single') {
+        options.forEach(opt => {
+            opt.addEventListener('click', () => {
+                const selectedStyle = opt.dataset.style;
+                modal.style.display = 'none';
+                setupSinglePlayerGame(selectedStyle);
+            });
+        });
+        return;
+    }
+
+    // --- 멀티플레이 모드 ---
+    // Firebase에 선택 정보를 기록할 경로를 초기화 (방장만)
+    if (isHost) {
+        roomRef.child('placementChoices').set(null);
+    }
+    
+    // 1. 내가 스타일을 선택했을 때의 로직
+    options.forEach(opt => {
+        opt.addEventListener('click', function onStyleClick() {
+            const selectedStyle = this.dataset.style;
+            
+            // 시각적으로 선택되었음을 표시
+            options.forEach(o => o.classList.remove('selected'));
+            this.classList.add('selected');
+            
+            // 한번 선택하면 다시 선택 못하게 막고, 대기 텍스트 표시
+            options.forEach(o => o.style.pointerEvents = 'none');
+            waitingText.textContent = '상대방의 선택을 기다리는 중...';
+            waitingText.style.display = 'block';
+
+            // Firebase에 나의 선택을 기록
+            roomRef.child('placementChoices').child(myPlayerId).set(selectedStyle);
+        });
+    });
+
+    // 2. 두 명 모두 선택을 완료했는지 감지하는 리스너
+    roomRef.child('placementChoices').on('value', function onBothChosen(snapshot) {
+        if (!snapshot.exists()) return;
+
+        const choices = snapshot.val();
+        const playerCount = Object.keys(currentRoomData.players).length;
         
-        function setupGame() {
+        // 두 명의 선택이 모두 기록되었으면 게임 시작
+        if (Object.keys(choices).length === playerCount) {
+            roomRef.child('placementChoices').off('value', onBothChosen); // 리스너 정리
+            
+            const hostChoice = choices[currentRoomData.hostId];
+            const guestId = Object.keys(currentRoomData.players).find(id => id !== currentRoomData.hostId);
+            const guestChoice = choices[guestId];
+            
+            modal.style.display = 'none';
+            // 방장은 흰 돌(hostChoice), 게스트는 검은 돌(guestChoice) 스타일로 게임 시작
+            setupMultiplayerGame(hostChoice, guestChoice);
+        }
+    });
+}
+
+        
+
+        // ▼▼▼▼▼ 아래 함수를 새로 추가하세요 ▼▼▼▼▼
+function placeStones(whiteStyle, blackStyle) {
+    const stoneSize = boardWidth / 14;
+    stones = [];
+    gameBoard.querySelectorAll('.stone').forEach(el => el.remove());
+
+    // --- 흰색 돌 배치 (whiteStyle 기준) ---
+    if (whiteStyle === 'style1') {
+        for (let i = 0; i < 8; i++) {
+            const x = boardWidth * 0.5 + (i - 3.5) * stoneSize * 1.2;
+            createStone(x, boardHeight * 0.15, stoneSize, 'white', `white${i}`);
+        }
+    } else if (whiteStyle === 'style2') {
+        for (let i = 0; i < 5; i++) {
+            createStone(boardWidth * 0.5 + (i - 2) * stoneSize * 1.5, boardHeight * 0.1, stoneSize, 'white', `white${i}`);
+        }
+        for (let i = 0; i < 3; i++) {
+            createStone(boardWidth * 0.5 + (i - 1) * stoneSize * 1.8, boardHeight * 0.25, stoneSize, 'white', `white${i + 5}`);
+        }
+    }
+
+    // --- 검은색 돌 배치 (blackStyle 기준) ---
+    if (blackStyle === 'style1') {
+        for (let i = 0; i < 8; i++) {
+            const x = boardWidth * 0.5 + (i - 3.5) * stoneSize * 1.2;
+            createStone(x, boardHeight * 0.85, stoneSize, 'black', `black${i}`);
+        }
+    } else if (blackStyle === 'style2') {
+        for (let i = 0; i < 5; i++) {
+            createStone(boardWidth * 0.5 + (i - 2) * stoneSize * 1.5, boardHeight * 0.9, stoneSize, 'black', `black${i}`);
+        }
+        for (let i = 0; i < 3; i++) {
+            createStone(boardWidth * 0.5 + (i - 1) * stoneSize * 1.8, boardHeight * 0.75, stoneSize, 'black', `black${i + 5}`);
+        }
+    }
+}
+
+
+       function setupGame() {
             isGameOver = false;
             canShoot = true;
             hasShotThisTurn = false;
@@ -375,7 +515,8 @@
             const containerW = gameContainer.clientWidth;
             const containerH = gameContainer.clientHeight;
             boardWidth = Math.min(containerW * 0.92, 400);
-            boardHeight = Math.min(containerH * 0.85, boardWidth * 1.6);
+            // 바둑판 세로 길이를 줄이고 상하 여백을 확보하도록 수정
+            boardHeight = Math.min(containerH * 0.75, boardWidth * 1.4); 
             
             gameBoard.style.width = `${boardWidth}px`;
             gameBoard.style.height = `${boardHeight}px`;
@@ -392,19 +533,15 @@
             engine = Engine.create({ gravity: { x: 0, y: 0 } });
             runner = Runner.create();
             
-            const stoneSize = boardWidth / 12;
+            // 돌 배열만 초기화하고, 실제 생성은 placeStones() 함수로 이동했습니다.
             stones = [];
             
-            for (let i = 0; i < 8; i++) {
-                createStone(boardWidth * 0.5 + (i - 3.5) * stoneSize * 1.1, boardHeight * 0.12, stoneSize, 'white', `white${i}`);
-                createStone(boardWidth * 0.5 + (i - 3.5) * stoneSize * 1.1, boardHeight * 0.88, stoneSize, 'black', `black${i}`);
-            }
+            // ★★★★★ 이곳에 있던 돌 자동 생성 for 루프가 삭제되었습니다. ★★★★★
 
             Runner.run(runner, engine);
             if (gameMode === 'multi' && isHost) {
-        // 방장은 0.1초(100ms)마다 게임 상태를 방송 시작
-        setInterval(hostBroadcastGameState, 1);
-    }
+                setInterval(hostBroadcastGameState, 1);
+            }
             requestAnimationFrame(gameLoop);
             
             Events.on(engine, 'afterUpdate', checkMovementEnd);
@@ -412,24 +549,28 @@
             setupInputHandlers();
         }
         
-        function setupSinglePlayerGame() {
-            setupGame();
-            myColor = 'white';
-            opponentColor = 'black';
-            currentTurnColor = 'white';
-            isMyTurn = true;
-            player1Info = { nickname: myNickname, avatar: myAvatar };
-            player2Info = { nickname: 'AI', avatar: '🤖' };
-            updateHeaderUI();
-        }
+function setupSinglePlayerGame(style) {
+    setupGame();
+    // 싱글 플레이에서는 AI도 나의 선택을 따라오도록 두 스타일 모두 동일하게 전달
+    placeStones(style, style);
+    myColor = 'white';
+    opponentColor = 'black';
+    currentTurnColor = 'white';
+    isMyTurn = true;
+    player1Info = { nickname: myNickname, avatar: myAvatar };
+    player2Info = { nickname: 'AI', avatar: '🤖' };
+    updateHeaderUI();
+}
 
-        function setupMultiplayerGame() {
-            setupGame();
-            currentTurnColor = 'white';
-            isMyTurn = (currentTurnColor === myColor);
-            canShoot = true;
-            updateHeaderUI();
-        }
+function setupMultiplayerGame(whiteStyle, blackStyle) {
+    setupGame();
+    // 이제 흰 돌과 검은 돌의 스타일을 각각 전달
+    placeStones(whiteStyle, blackStyle);
+    currentTurnColor = 'white';
+    isMyTurn = (currentTurnColor === myColor);
+    canShoot = true;
+    updateHeaderUI();
+}
 
         function createStone(x, y, radius, color, id) {
             const body = Bodies.circle(x, y, radius / 2, {
@@ -828,7 +969,7 @@ function endTurn() {
         const clampedDistance = Math.min(distance, maxDistance);
         const normalizedPower = clampedDistance / maxDistance;
         
-        const basePower = 0.09;
+        const basePower = 0.072;
         const forceMagnitude = basePower * Math.pow(normalizedPower, 0.8);
         
         const angle = Math.atan2(dy, dx);
@@ -891,6 +1032,115 @@ function endTurn() {
             };
         }
 
+        // ▼▼▼▼▼ 아래 함수 전체를 새로 추가하세요 ▼▼▼▼▼
+        function listenToMultiplayerEvents() {
+            roomRef.on('value', snapshot => {
+                currentRoomData = snapshot.val();
+            });
+
+            roomRef.child('gameStateSync').on('value', snapshot => {
+                if (isHost || !snapshot.exists()) return;
+                const serverState = snapshot.val();
+                serverState.forEach(s_data => {
+                    const stone = stones.find(s => s.id === s_data.id);
+                    if (stone && stone.active) {
+                        const newX = s_data.x_norm * boardWidth;
+                        const newY = s_data.y_norm * boardHeight;
+                        Body.setPosition(stone.body, { x: newX, y: newY });
+                        Body.setVelocity(stone.body, { x: s_data.vx, y: s_data.vy });
+                    }
+                });
+            });
+
+            roomRef.child('stoneState').on('value', snapshot => {
+                if (!snapshot.exists() || isHost) return;
+                const stateData = snapshot.val();
+                stateData.forEach(s_data => {
+                    const stone = stones.find(s => s.id === s_data.id);
+                    if (stone && stone.active) {
+                        Body.setPosition(stone.body, { x: s_data.x, y: s_data.y });
+                        Body.setVelocity(stone.body, { x: s_data.vx, y: s_data.vy });
+                    }
+                });
+            });
+
+            roomRef.child('currentTurn').on('value', snapshot => {
+                if (!snapshot.exists()) return;
+                const newTurnColor = snapshot.val();
+                currentTurnColor = newTurnColor;
+                isMyTurn = (currentTurnColor === myColor);
+                canShoot = isMyTurn;
+                updateHeaderUI();
+            });
+
+            roomRef.child('lastMove').on('value', snapshot => {
+                if (!snapshot.exists() || isHost) return;
+                const move = snapshot.val();
+                if (move && move.playerId && move.playerId !== myPlayerId) {
+                    const stone = stones.find(s => s.id === move.stoneId);
+                    if (stone && stone.active) {
+                        const force = { x: move.forceX, y: move.forceY };
+                        Body.applyForce(stone.body, stone.body.position, force);
+                        hasShotThisTurn = true;
+                        canShoot = false;
+                    }
+                }
+            });
+
+            roomRef.child('removedStones').on('child_added', snapshot => {
+                if (isHost) return;
+                const stoneId = snapshot.key;
+                const stone = stones.find(s => s.id === stoneId);
+                if (stone && stone.active) {
+                    removeStone(stone);
+                }
+            });
+
+            roomRef.child('gameOver').on('value', snapshot => {
+                if (!snapshot.exists()) return;
+                const result = snapshot.val();
+                if (result && result.winner) {
+                    showGameOver(result.winner);
+                }
+            });
+
+            roomRef.child('players').on('value', snapshot => {
+                if (!snapshot.exists() || Object.keys(snapshot.val()).length < 2) {
+                    if (!isGameOver) {
+                        alert('상대방이 게임을 나갔습니다.');
+                        window.location.href = 'index.html';
+                    }
+                }
+            });
+
+            // '다시하기' 요청을 감지하는 리스너
+            roomRef.child('rematchRequests').on('value', snapshot => {
+                if (!snapshot.exists() || !currentRoomData) return;
+                const requests = snapshot.val();
+                const requestCount = Object.keys(requests).length;
+                const playerCount = Object.keys(currentRoomData.players).length;
+                if (requestCount === playerCount) {
+                    if (isHost) {
+                        roomRef.update({
+                            gameState: 'restarting',
+                            rematchRequests: null, gameOver: null, lastMove: null,
+                            placementStyle: null, placementChoices: null, removedStones: null,
+                            stoneState: null, currentTurn: 'white'
+                        });
+                    }
+                }
+            });
+
+            // 게임 재시작 신호를 감지하는 리스너
+            roomRef.child('gameState').on('value', snapshot => {
+                if (snapshot.val() === 'restarting') {
+                    location.reload();
+                }
+            });
+        }
+// ▲▲▲▲▲ 코드 추가 종료 ▲▲▲▲▲
+
+
         function joinMultiplayerGame(roomId) {
             waitingOverlay.innerHTML = `<div class="modal-content"><div class="modal-body"><p style="margin-bottom: 20px; font-size: 1.3em;">게임에 참가하는 중...</p><div class="spinner"></div></div></div>`;
             waitingOverlay.style.display = 'flex';
@@ -906,25 +1156,31 @@ function endTurn() {
                 }
                 
                 const roomData = snapshot.val();
+                currentRoomData = roomData; // currentRoomData를 여기서 먼저 할당
                 const players = Object.keys(roomData.players);
                 
                 isHost = (roomData.hostId === myPlayerId);
                 myColor = isHost ? 'white' : 'black';
                 opponentColor = isHost ? 'black' : 'white';
-                currentTurnColor = 'white';
                 
                 const opponentId = players.find(id => id !== myPlayerId);
-                const opponentData = roomData.players[opponentId];
-                player1Info = isHost ? { nickname: myNickname, avatar: myAvatar } : { nickname: opponentData.nickname, avatar: opponentData.avatar };
-                player2Info = isHost ? { nickname: opponentData.nickname, avatar: opponentData.avatar } : { nickname: myNickname, avatar: myAvatar };
-                
+                if(opponentId) { // 상대방이 있을 때만 정보 설정
+                    const opponentData = roomData.players[opponentId];
+                    player1Info = isHost ? { nickname: myNickname, avatar: myAvatar } : { nickname: opponentData.nickname, avatar: opponentData.avatar };
+                    player2Info = isHost ? { nickname: opponentData.nickname, avatar: opponentData.avatar } : { nickname: myNickname, avatar: myAvatar };
+                } else { // 상대방이 아직 없을 경우 (오류 방지)
+                     player1Info = { nickname: myNickname, avatar: myAvatar };
+                     player2Info = { nickname: '대기중...', avatar: '❓' };
+                }
+
                 roomRef.child('players/' + myPlayerId).onDisconnect().remove();
                 
                 if (isHost) {
-                    roomRef.update({ currentTurn: 'white' });
+                     // 재시작 후를 대비해 gameState를 waiting으로 초기화
+                    roomRef.update({ currentTurn: 'white', gameState: 'waiting' });
                 }
                 
-                listenToMultiplayerEvents();
+                listenToMultiplayerEvents(); // 이벤트 리스너 함수 호출
                 startCountdown('multi');
             });
         }
@@ -1159,5 +1415,43 @@ function endTurn() {
 <audio id="success-sound" src="https://blog.kakaocdn.net/dna/crLSSK/dJMb8Y4jJZ6/AAAAAAAAAAAAAAAAAAAAAHSoWfFNw21Plu9ufn_jnmod1cp9rUDWubdEaHmSdsC0/%EC%95%8C%EA%B9%8C%EA%B8%B0%EC%84%B1%EA%B3%B5.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=mkf47bHt8yFioqWm6JBr8yiLKr0%3D&attach=1&knm=tfile.mp3" preload="auto"></audio>
 <audio id="win-sound" src="https://blog.kakaocdn.net/dna/kC4is/dJMb8WZJowA/AAAAAAAAAAAAAAAAAAAAAIQeZhVDJf0ZGAWyyMr_hsc6TMe3BFUVXd0FNTl5VDcY/%EA%B2%8C%EC%9E%84%EC%8A%B9%EB%A6%AC.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=qZKwGj5NQeAFNrOvCPAMXc6aX9I%3D&attach=1&knm=tfile.mp3" preload="auto"></audio>
 <audio id="loss-sound" src="https://blog.kakaocdn.net/dna/Zqr4u/dJMb9V0NWlD/AAAAAAAAAAAAAAAAAAAAANQFEr99iVFS25T5ZW3Q2dixeZXsbUzh7OWB40uYQMu9/%EC%95%8C%EA%B9%8C%EA%B8%B0%ED%8C%A8%EB%B0%B0.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=2xNnbSadPzs2ZZi1BssfyCye8jI%3D&attach=1&knm=tfile.mp3" preload="auto"></audio>
+
+<div id="placement-modal" class="overlay" style="display: none;">
+    <div class="modal-content" style="background: #5a4a42; max-width: 420px;">
+        <div style="padding: 25px;">
+            <h2 style="font-size: 1.8em; margin-bottom: 25px;">배치 스타일선택</h2>
+            <div id="style-options-container" style="display: flex; gap: 20px; justify-content: center;">
+                
+                <div class="style-option" data-style="style1">
+                    <div class="preview-board">
+                        <div class="preview-stone white" style="top: 20%; left: 10%;"></div>
+                        <div class="preview-stone white" style="top: 20%; left: 30%;"></div>
+                        <div class="preview-stone white" style="top: 20%; left: 50%;"></div>
+                        <div class="preview-stone white" style="top: 20%; left: 70%;"></div>
+                        <div class="preview-stone white" style="top: 20%; left: 90%;"></div>
+                    </div>
+                    <h4>기본 배치</h4>
+                </div>
+
+                <div class="style-option" data-style="style2">
+                    <div class="preview-board">
+                        <div class="preview-stone white" style="top: 15%; left: 10%;"></div>
+                        <div class="preview-stone white" style="top: 15%; left: 30%;"></div>
+                        <div class="preview-stone white" style="top: 15%; left: 50%;"></div>
+                        <div class="preview-stone white" style="top: 15%; left: 70%;"></div>
+                        <div class="preview-stone white" style="top: 15%; left: 90%;"></div>
+                        <div class="preview-stone white" style="top: 35%; left: 25%;"></div>
+                        <div class="preview-stone white" style="top: 35%; left: 50%;"></div>
+                        <div class="preview-stone white" style="top: 35%; left: 75%;"></div>
+                    </div>
+                    <h4>수비형 배치</h4>
+                </div>
+
+            </div>
+            <p id="placement-waiting-text" style="margin-top: 20px; font-size: 1em; color: var(--accent-color); display: none;">상대방이 배치 스타일을 선택 중입니다...</p>
+        </div>
+    </div>
+</div>
+
 </body>
 </html>
