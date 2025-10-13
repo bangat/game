@@ -335,6 +335,7 @@
         let hasShotThisTurn = false;
         let isFirstTurn = true;
         let movementCheckTimeout = null;
+let isGameLive = false; // 게임이 활성화되었는지 확인하는 변수
 
         const FRICTION = 0.985;
         const RESTITUTION = 0.9;
@@ -529,6 +530,7 @@
         }
 
         function setupMultiplayerGame(whiteStyle, blackStyle) {
+             isGameLive = true; // 게임이 시작되었음을 명시적으로 기록
             setupGame();
             placeStones(whiteStyle, blackStyle);
             currentTurnColor = 'white';
@@ -1093,15 +1095,34 @@
                 }
             });
 
-            roomRef.child('players').on('value', snapshot => {
-                if (!isGameOver && snapshot.exists() && currentRoomData) {
-                    const serverPlayers = snapshot.val();
-                    if(Object.keys(serverPlayers).length < Object.keys(currentRoomData.players).length && Object.keys(currentRoomData.players).length === 2) {
-                        alert('상대방이 게임을 나갔습니다.');
-                        window.location.href = 'index.html';
-                    }
-                }
-            });
+            // players 리스너를 함수 외부에서 정의하여 명확하게 참조할 수 있도록 합니다.
+const onPlayerChange = function(snapshot) {
+    if (!snapshot.exists()) {
+        return;
+    }
+    const playerCount = Object.keys(snapshot.val()).length;
+
+    if (playerCount < 2) {
+        // 이 리스너의 목적은 상대방이 나간 것을 감지하는 것이므로, isGameOver 상태를 여기서 확인하지 않습니다.
+        // isGameLive 상태에 따라 다른 처리를 합니다.
+        if (isGameLive) {
+            // Case 1: 게임이 진행 중이었을 때 -> 승리 처리
+            if (isGameOver) return; // 이미 다른 이유로 게임이 끝났으면 무시
+            isGameOver = true;
+            roomRef.child('players').off('value', onPlayerChange); // 이름으로 리스너 제거
+            alert('상대방이 나가서 승리했습니다! 확인을 누르면 대기실로 이동합니다.');
+            window.location.href = '대기실.html';
+        } else {
+            // Case 2: 게임 시작 전(준비 단계)이었을 때 -> 게임 무효 처리
+            roomRef.child('players').off('value', onPlayerChange); // 이름으로 리스너 제거
+            alert('상대방이 방을 나갔습니다. 대기실로 이동합니다.');
+            window.location.href = '대기실.html';
+        }
+    }
+};
+
+// listenToMultiplayerEvents 함수 안에서는 이 함수를 등록만 합니다.
+roomRef.child('players').on('value', onPlayerChange);
 
             // [추가] '다시하기' 요청을 감지하는 리스너
 roomRef.child('rematchRequests').on('value', snapshot => {
