@@ -205,10 +205,11 @@
         </div>
     </div>
     <div id="info-overlay" class="overlay">
-        <div class="modal-content">
+        <div id="info-modal-content" class="modal-content">
             <h2 id="info-title">게임 접속 중</h2>
             <p id="info-message">잠시만 기다려주세요...</p>
             <div class="spinner" id="info-spinner"></div>
+            <div id="info-buttons" style="display: flex; flex-direction: column; gap: 10px; margin-top: 20px;"></div>
         </div>
     </div>
 
@@ -246,6 +247,7 @@
         let myPlayerId, myNickname, myAvatar, roomId, roomRef, isHost = false;
         let currentRoomData = null;
         let isGameInitialized = false;
+        let rematchListener = null;
 
         const CARD_RANKS = ['2','3','4','5','6','7','8','9','10','A'];
         const TOTAL_ROUNDS = 5;
@@ -322,8 +324,9 @@
             roomRef.on('value', (snapshot) => {
                 if (!snapshot.exists()) {
                     roomRef.off();
+                    if(rematchListener) roomRef.child('rematchRequests').off('value', rematchListener);
                     if(isGameInitialized) {
-                        showInfoModal('알림', '방장이 게임을 종료했거나, 게임 중 오류가 발생했습니다.', false, () => window.location.href = '대기실.html');
+                        showInfoModal('알림', '방장이 게임을 종료했거나, 연결이 끊겼습니다.', false, () => window.location.href = '대기실.html');
                     }
                     return;
                 }
@@ -344,8 +347,15 @@
                 const playerIds = Object.keys(currentRoomData.players || {});
                 if (isGameInitialized && currentRoomData.gameState !== 'finalGameOver' && playerIds.length < 2) {
                     if (playerIds.includes(myPlayerId) && isHost) {
-                        endGameOnDisconnect();
+                        showInfoModal('알림', '상대방이 게임을 떠났습니다. 당신의 승리입니다!', false, () => {
+                            endGameOnDisconnect();
+                        });
                     }
+                    return;
+                }
+
+                if (currentRoomData.gameState === 'restarting' && isGameInitialized) {
+                    location.reload();
                     return;
                 }
 
@@ -380,7 +390,6 @@
             setTimeout(() => { bubbleEl.classList.remove('show'); }, 3000);
         }
 
-        // ▼▼▼▼▼ [수정] startGame: actionsThisRound 카운터 추가 ▼▼▼▼▼
         function startGame() {
             if (!isHost) return;
             const playerIds = Object.keys(currentRoomData.players);
@@ -395,25 +404,23 @@
                 gameState: 'startingRound', 
                 currentRound: 0, 
                 carryOverPot: 0,
-                actionsThisRound: 0 // 카운터 초기화
+                actionsThisRound: 0,
+                rematchRequests: null
             });
         }
         
-        // ▼▼▼▼▼ [수정] handleHostLogic: 자동 플레이 방지를 위한 조건 강화 ▼▼▼▼▼
         function handleHostLogic() {
             const { gameState, players, actionsThisRound } = currentRoomData;
             if (!isHost || !gameState || !players) return;
             
             if (gameState === 'startingRound') {
-                setTimeout(startNewRound, 1000);
+                setTimeout(startNewRound, 3000); // ▼▼▼▼▼ [수정] 라운드 간 대기 시간 3초로 증가
             } else if (gameState === 'betting') {
                 const activePlayers = Object.values(players).filter(p => p && !p.hasFolded);
                 if (activePlayers.length <= 1) { setTimeout(endRound, 1500); return; }
                 const firstPlayerBet = activePlayers[0].bet;
                 const allPlayersMatched = activePlayers.every(p => p.bet === firstPlayerBet);
                 const allPlayersActed = activePlayers.every(p => p.lastAction !== null);
-
-                // ★★★ 조건 강화: 모든 플레이어가 최소 1번씩 행동했는지 확인 ★★★
                 if (allPlayersMatched && allPlayersActed && actionsThisRound >= activePlayers.length) {
                     roomRef.update({ gameState: 'showdown' });
                 }
@@ -422,7 +429,6 @@
             }
         }
         
-        // ▼▼▼▼▼ [수정] startNewRound: actionsThisRound 카운터 리셋 ▼▼▼▼▼
         function startNewRound() {
             if (!isHost) return;
             const { players, currentRound, carryOverPot } = currentRoomData;
@@ -433,7 +439,7 @@
                 return;
             }
             const deck = shuffleDeck();
-            const updates = { pot: 0, currentBet: 0, gameLog: `라운드 ${nextRound} 시작!`, gameState: 'dealing', actionsThisRound: 0 }; // 카운터 리셋
+            const updates = { pot: 0, currentBet: 0, gameLog: `라운드 ${nextRound} 시작!`, gameState: 'dealing', actionsThisRound: 0 };
             const newPlayers = { ...players };
             let currentPot = carryOverPot || 0;
             playerIdsWithChips.forEach(pid => {
@@ -529,9 +535,7 @@
             if (data.gameState === 'finalGameOver') {
                 const winnerNickname = data.players[data.finalWinnerId]?.nickname || '';
                 let message = data.isDraw ? "👏 최종 결과: 무승부! 👏" : (data.finalWinnerId === myPlayerId ? "🎉 당신이 최종 승리했습니다! 🎉" : `😢 ${winnerNickname}님의 최종 승리! 😢`);
-                showInfoModal('게임 종료!', message, false, () => {
-                     if (isHost) roomRef.remove(); else window.location.href = '대기실.html';
-                });
+                showInfoModal('게임 종료!', message, false);
                 return;
             }
             const { players } = data;
@@ -556,7 +560,11 @@
                         </div>
                         <div class="bet-display"><img src="${chipImg}" class="chip-icon"><span>${p.bet || 0}</span></div>
                     </div>`;
-                const cardHTML = `<div class="player-card ${isMe ? 'hidden' : ''}">${p.card ? (isMe ? '❓' : p.card) : ''}</div>`;
+                // ▼▼▼▼▼ 쇼다운 시 내 카드도 보이도록 로직 수정 ▼▼▼▼▼
+                const isCardHidden = isMe && data.gameState !== 'showdown';
+                const cardContent = p.card ? (isCardHidden ? '❓' : p.card) : '';
+                const cardHTML = `<div class="player-card ${isCardHidden ? 'hidden' : ''}">${cardContent}</div>`;
+                // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
                 if (isMe) { myZone.innerHTML = playerLayoutHTML; myCardContainer.innerHTML = cardHTML; } 
                 else { opponentZone.innerHTML = playerLayoutHTML; opponentCardContainer.innerHTML = cardHTML; }
             });
@@ -588,12 +596,11 @@
         function openBetModal() { betModalOverlay.style.display = 'flex'; }
         function performBet(amount) { betModalOverlay.style.display = 'none'; performAction('bet', amount); }
 
-        // ▼▼▼▼▼ [수정] performAction: actionsThisRound 카운터 증가 로직 추가 ▼▼▼▼▼
         function performAction(type, amount = 0) {
             const myPlayer = currentRoomData.players[myPlayerId];
             if (!myPlayer) return;
             const updates = {};
-            updates['/actionsThisRound'] = firebase.database.ServerValue.increment(1); // ★★★ 행동 횟수 1 증가
+            updates['/actionsThisRound'] = firebase.database.ServerValue.increment(1);
             let logMessage = `${myPlayer.nickname}님이 `;
             let potIncrease = 0;
             updates[`/players/${myPlayerId}/lastAction`] = type;
@@ -647,21 +654,56 @@
             return deck;
         }
 
-        function showInfoModal(title, message, showSpinner = true, onConfirm = null) {
-            const confirmBtnText = (title === '게임 종료!') ? '나가기' : '확인';
-            infoOverlay.querySelector('#info-title').textContent = title;
-            infoOverlay.querySelector('#info-message').textContent = message;
-            infoOverlay.querySelector('#info-spinner').style.display = showSpinner ? 'block' : 'none';
-            let confirmBtn = infoOverlay.querySelector('.menu-btn.primary');
-            if (confirmBtn) confirmBtn.remove();
-            if (onConfirm) {
-                confirmBtn = document.createElement('button');
-                confirmBtn.className = 'menu-btn primary';
-                confirmBtn.textContent = confirmBtnText;
-                confirmBtn.onclick = () => { infoOverlay.style.display = 'none'; onConfirm(); };
-                infoOverlay.querySelector('.modal-content').appendChild(confirmBtn);
-            }
+        // ▼▼▼▼▼ [수정] showInfoModal: 다시하기/나가기 버튼 및 리스너 추가 ▼▼▼▼▼
+        function showInfoModal(title, message, showSpinner = true) {
             infoOverlay.style.display = 'flex';
+            document.getElementById('info-title').textContent = title;
+            document.getElementById('info-message').textContent = message;
+            document.getElementById('info-spinner').style.display = showSpinner ? 'block' : 'none';
+            const buttonsContainer = document.getElementById('info-buttons');
+            buttonsContainer.innerHTML = '';
+
+            if (title === '게임 종료!') {
+                const rematchBtn = document.createElement('button');
+                rematchBtn.className = 'menu-btn primary';
+                rematchBtn.textContent = '다시 하기';
+                rematchBtn.onclick = () => {
+                    rematchBtn.textContent = '대기중...';
+                    rematchBtn.disabled = true;
+                    roomRef.child('rematchRequests/' + myPlayerId).set(true);
+                };
+
+                const exitBtn = document.createElement('button');
+                exitBtn.className = 'menu-btn';
+                exitBtn.style.backgroundColor = '#777';
+                exitBtn.style.color = 'white';
+                exitBtn.textContent = '나가기';
+                exitBtn.onclick = () => {
+                    const promise = isHost ? roomRef.remove() : roomRef.child('players/' + myPlayerId).remove();
+                    promise.then(() => window.location.href = '대기실.html');
+                };
+                
+                buttonsContainer.appendChild(rematchBtn);
+                buttonsContainer.appendChild(exitBtn);
+
+                if (rematchListener) roomRef.child('rematchRequests').off('value', rematchListener);
+                rematchListener = roomRef.child('rematchRequests').on('value', snapshot => {
+                    if (!snapshot.exists() || !currentRoomData.players) return;
+                    if (Object.keys(snapshot.val()).length === Object.keys(currentRoomData.players).length) {
+                        if (rematchListener) roomRef.child('rematchRequests').off('value', rematchListener);
+                        if (isHost) {
+                            roomRef.child('gameState').set('restarting');
+                        }
+                    }
+                });
+
+            } else {
+                const confirmBtn = document.createElement('button');
+                confirmBtn.className = 'menu-btn primary';
+                confirmBtn.textContent = '확인';
+                confirmBtn.onclick = () => { window.location.href = '대기실.html' };
+                buttonsContainer.appendChild(confirmBtn);
+            }
         }
 
         initialize();
