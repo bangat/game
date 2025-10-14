@@ -456,9 +456,18 @@
 
         function listenToRoomChanges() {
             lobbyView.classList.add('hidden');
-            roomRef.on('value', snapshot => {
+
+            // --- 1. 최초 한 번만 전체 UI를 그립니다. ---
+            roomRef.once('value', snapshot => {
+                if (!snapshot.exists()) return; // 방이 없으면 중단
                 currentRoomData = snapshot.val();
-                if (!currentRoomData || !currentRoomData.players || !currentRoomData.players[myPlayerId]) {
+                updateInGameLobbyUI(); // 전체 UI 렌더링
+                setupChat(currentRoomData.players); // 채팅 리스너 설정
+            });
+            
+            // --- 2. 방의 상태가 바뀔 때만 감지하는 리스너 ---
+            roomRef.on('value', snapshot => {
+                if (!snapshot.exists()) {
                     showInfoModal("방이 해체되었습니다", "방장이 게임을 떠나 대기실로 이동합니다.", () => {
                         cleanupOldRoomState();
                         waitingOverlay.style.display = 'none';
@@ -467,13 +476,17 @@
                     });
                     return;
                 }
-                if (currentRoomData.gameState === 'waiting') { updateInGameLobbyUI(); }
+                currentRoomData = snapshot.val();
+                
+                // 플레이어나 게임 선택이 변경될 때만 UI를 업데이트합니다. (채팅은 무시)
+                if (currentRoomData.gameState === 'waiting') {
+                    updateLobbyPlayersAndGame();
+                }
+
+                // 게임 시작 로직은 그대로 유지
                 if (currentRoomData.gameState === 'launching' && currentRoomData.launchUrl) {
-                    if (isHost) {
-                        roomRef.onDisconnect().cancel();
-                    } else {
-                        roomRef.child('players/' + myPlayerId).onDisconnect().cancel();
-                    }
+                    if (isHost) roomRef.onDisconnect().cancel();
+                    else roomRef.child('players/' + myPlayerId).onDisconnect().cancel();
                     roomRef.off();
                     window.location.href = currentRoomData.launchUrl;
                 }
@@ -571,6 +584,55 @@
                 startLobbyListener(); 
             });
         }
+
+ function updateLobbyPlayersAndGame() {
+            if (!currentRoomData) return;
+            const { players, selectedGame } = currentRoomData;
+            const playerEntries = Object.entries(players);
+
+            // --- 게임 정보 부제목 업데이트 ---
+            const gameSubtitle = document.querySelector('.in-game-lobby .game-subtitle');
+            if (gameSubtitle) {
+                if (selectedGame) {
+                    const game = availableGames.find(g => g.id === selectedGame);
+                    gameSubtitle.innerHTML = `${game.icon} ${game.name}`;
+                } else {
+                    gameSubtitle.innerHTML = `게임 선택 대기중...`;
+                }
+            }
+            
+            // --- 모바일/PC 플레이어 목록 업데이트 ---
+            let playerListHorizontalHTML = '';
+            playerEntries.forEach(([pid, p]) => {
+                const avatarHTML = p.avatar.startsWith('http') ? `<img src="${p.avatar}" alt="av">` : p.avatar;
+                const clickAttribute = (pid === myPlayerId || pid.startsWith('guest_')) ? '' : `data-player-id="${pid}"`;
+                playerListHorizontalHTML += `<div class="player-slot-compact ${p.isHost ? 'is-host' : ''}" ${clickAttribute}><div class="avatar">${avatarHTML}</div><div class="nickname">${p.nickname}</div></div>`;
+            });
+            const horizontalList = document.getElementById('player-list-horizontal');
+            if(horizontalList) horizontalList.innerHTML = playerListHorizontalHTML;
+            
+            let playerListVerticalHTML = '';
+            playerEntries.forEach(([pid, p]) => {
+                let avatarHTML = p.avatar.startsWith('http') ? `<img src="${p.avatar}" class="player-avatar-img">` : `<span class="player-avatar-emoji">${p.avatar}</span>`;
+                const clickAttribute = (pid === myPlayerId || pid.startsWith('guest_')) ? '' : `data-player-id="${pid}"`;
+                playerListVerticalHTML += `<div class="player-item ${p.isHost ? 'is-host' : ''}" ${clickAttribute}>${avatarHTML} <span class="nickname">${p.nickname} ${pid === myPlayerId ? ' (나)' : ''}</span></div>`;
+            });
+            const verticalWrapper = document.getElementById('player-list-vertical-wrapper');
+            if(verticalWrapper) verticalWrapper.innerHTML = playerListVerticalHTML;
+
+            // 클릭 이벤트 다시 연결
+            document.querySelectorAll('.player-slot-compact[data-player-id], .player-item[data-player-id]').forEach(item => {
+                item.addEventListener('click', () => showPlayerProfileModal(item.dataset.playerId));
+            });
+
+            // --- 시작 버튼 활성화 상태 업데이트 ---
+            const startGameBtn = document.getElementById('start-game-btn');
+            if(startGameBtn){
+                const canStart = playerEntries.length >= 2 && selectedGame;
+                startGameBtn.disabled = !canStart;
+            }
+        }
+
         
         function startGame() {
             if (!isHost || !currentRoomData) return;
