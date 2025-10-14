@@ -319,12 +319,13 @@
             });
         }
         
+        // ▼▼▼▼▼ [수정] listenToRoom: 다시하기 로직(restarting) 제거, 퇴장 메시지 개선 ▼▼▼▼▼
         function listenToRoom() {
             let lastChatTimestamp = 0;
             roomRef.on('value', (snapshot) => {
                 if (!snapshot.exists()) {
-                    roomRef.off();
                     if(rematchListener) roomRef.child('rematchRequests').off('value', rematchListener);
+                    roomRef.off();
                     if(isGameInitialized) {
                         showInfoModal('알림', '방장이 게임을 종료했거나, 연결이 끊겼습니다.', false, () => window.location.href = '대기실.html');
                     }
@@ -347,21 +348,16 @@
                 const playerIds = Object.keys(currentRoomData.players || {});
                 if (isGameInitialized && currentRoomData.gameState !== 'finalGameOver' && playerIds.length < 2) {
                     if (playerIds.includes(myPlayerId) && isHost) {
-                        showInfoModal('알림', '상대방이 게임을 떠났습니다. 당신의 승리입니다!', false, () => {
-                            endGameOnDisconnect();
-                        });
+                        endGameOnDisconnect();
                     }
-                    return;
-                }
-
-                if (currentRoomData.gameState === 'restarting' && isGameInitialized) {
-                    location.reload();
                     return;
                 }
 
                 if (currentRoomData.gameState && currentRoomData.gameState !== 'launching') {
                     gameWrapper.style.display = 'flex';
-                    infoOverlay.style.display = 'none';
+                    if (currentRoomData.gameState !== 'finalGameOver') {
+                        infoOverlay.style.display = 'none';
+                    }
                     renderGame();
                 }
 
@@ -408,13 +404,20 @@
                 rematchRequests: null
             });
         }
+
+        // ▼▼▼▼▼ [추가] 다시하기 기능 함수 ▼▼▼▼▼
+        function startRematch() {
+            if (!isHost) return;
+            // startGame 함수가 게임 상태를 완벽하게 초기화하므로 그대로 호출
+            startGame();
+        }
         
         function handleHostLogic() {
             const { gameState, players, actionsThisRound } = currentRoomData;
             if (!isHost || !gameState || !players) return;
             
             if (gameState === 'startingRound') {
-                setTimeout(startNewRound, 3000); // ▼▼▼▼▼ [수정] 라운드 간 대기 시간 3초로 증가
+                setTimeout(startNewRound, 3000);
             } else if (gameState === 'betting') {
                 const activePlayers = Object.values(players).filter(p => p && !p.hasFolded);
                 if (activePlayers.length <= 1) { setTimeout(endRound, 1500); return; }
@@ -499,6 +502,7 @@
         }
         
         function endGame() {
+            if(!isHost) return;
             const players = Object.values(currentRoomData.players);
             if (players.length < 2) { return endGameOnDisconnect(); }
             const p1 = players[0], p2 = players[1];
@@ -510,14 +514,22 @@
             roomRef.update({ gameState: 'finalGameOver', finalWinnerId: isDraw ? null : winnerId, isDraw });
         }
         
-        function endGameOnDisconnect() {
+       function endGameOnDisconnect() {
             if (!isHost) return;
-            const playerIds = Object.keys(currentRoomData.players);
+            const playerIds = Object.keys(currentRoomData.players || {});
             const winnerId = playerIds.find(pid => pid === myPlayerId);
             if (!winnerId) return;
+
             const loser = Object.values(currentRoomData.players).find(p => p.id !== winnerId);
             updateFinalStats(winnerId, loser ? loser.id : null, false);
-            roomRef.update({ gameState: 'finalGameOver', finalWinnerId: winnerId, isDraw: false });
+            
+            // ▼▼▼▼▼ 접속 종료로 게임이 끝났다는 표시(endedByDisconnect: true) 추가 ▼▼▼▼▼
+            roomRef.update({ 
+                gameState: 'finalGameOver', 
+                finalWinnerId: winnerId, 
+                isDraw: false,
+                endedByDisconnect: true 
+            });
         }
 
         async function updateFinalStats(winnerId, loserId, isDraw) {
@@ -533,7 +545,8 @@
         function renderGame() {
             const data = currentRoomData;
             if (data.gameState === 'finalGameOver') {
-                const winnerNickname = data.players[data.finalWinnerId]?.nickname || '';
+                const winnerInfo = data.players[data.finalWinnerId];
+                const winnerNickname = winnerInfo ? winnerInfo.nickname : '무승부';
                 let message = data.isDraw ? "👏 최종 결과: 무승부! 👏" : (data.finalWinnerId === myPlayerId ? "🎉 당신이 최종 승리했습니다! 🎉" : `😢 ${winnerNickname}님의 최종 승리! 😢`);
                 showInfoModal('게임 종료!', message, false);
                 return;
@@ -560,11 +573,9 @@
                         </div>
                         <div class="bet-display"><img src="${chipImg}" class="chip-icon"><span>${p.bet || 0}</span></div>
                     </div>`;
-                // ▼▼▼▼▼ 쇼다운 시 내 카드도 보이도록 로직 수정 ▼▼▼▼▼
                 const isCardHidden = isMe && data.gameState !== 'showdown';
                 const cardContent = p.card ? (isCardHidden ? '❓' : p.card) : '';
                 const cardHTML = `<div class="player-card ${isCardHidden ? 'hidden' : ''}">${cardContent}</div>`;
-                // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
                 if (isMe) { myZone.innerHTML = playerLayoutHTML; myCardContainer.innerHTML = cardHTML; } 
                 else { opponentZone.innerHTML = playerLayoutHTML; opponentCardContainer.innerHTML = cardHTML; }
             });
@@ -655,7 +666,7 @@
         }
 
         // ▼▼▼▼▼ [수정] showInfoModal: 다시하기/나가기 버튼 및 리스너 추가 ▼▼▼▼▼
-        function showInfoModal(title, message, showSpinner = true) {
+      function showInfoModal(title, message, showSpinner = true, onConfirm = null) {
             infoOverlay.style.display = 'flex';
             document.getElementById('info-title').textContent = title;
             document.getElementById('info-message').textContent = message;
@@ -664,48 +675,66 @@
             buttonsContainer.innerHTML = '';
 
             if (title === '게임 종료!') {
-                const rematchBtn = document.createElement('button');
-                rematchBtn.className = 'menu-btn primary';
-                rematchBtn.textContent = '다시 하기';
-                rematchBtn.onclick = () => {
-                    rematchBtn.textContent = '대기중...';
-                    rematchBtn.disabled = true;
-                    roomRef.child('rematchRequests/' + myPlayerId).set(true);
-                };
+                // ▼▼▼▼▼ 상대방 접속 종료로 게임이 끝났는지 확인하는 로직 추가 ▼▼▼▼▼
+                if (currentRoomData.endedByDisconnect) {
+                    document.getElementById('info-message').textContent = '상대방이 접속을 종료하여 승리했습니다.';
+                    const lobbyBtn = document.createElement('button');
+                    lobbyBtn.className = 'menu-btn primary';
+                    lobbyBtn.textContent = '대기실로 이동';
+                    lobbyBtn.onclick = () => {
+                        roomRef.off();
+                        if (isHost) roomRef.remove().then(() => window.location.href = '대기실.html');
+                        else window.location.href = '대기실.html';
+                    };
+                    buttonsContainer.appendChild(lobbyBtn);
+                } else {
+                // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+                    const rematchBtn = document.createElement('button');
+                    rematchBtn.className = 'menu-btn primary';
+                    rematchBtn.textContent = '다시 하기';
+                    rematchBtn.onclick = () => {
+                        rematchBtn.textContent = '대기중...';
+                        rematchBtn.disabled = true;
+                        roomRef.child('rematchRequests/' + myPlayerId).set(true);
+                    };
 
-                const exitBtn = document.createElement('button');
-                exitBtn.className = 'menu-btn';
-                exitBtn.style.backgroundColor = '#777';
-                exitBtn.style.color = 'white';
-                exitBtn.textContent = '나가기';
-                exitBtn.onclick = () => {
-                    const promise = isHost ? roomRef.remove() : roomRef.child('players/' + myPlayerId).remove();
-                    promise.then(() => window.location.href = '대기실.html');
-                };
-                
-                buttonsContainer.appendChild(rematchBtn);
-                buttonsContainer.appendChild(exitBtn);
-
-                if (rematchListener) roomRef.child('rematchRequests').off('value', rematchListener);
-                rematchListener = roomRef.child('rematchRequests').on('value', snapshot => {
-                    if (!snapshot.exists() || !currentRoomData.players) return;
-                    if (Object.keys(snapshot.val()).length === Object.keys(currentRoomData.players).length) {
+                    const exitBtn = document.createElement('button');
+                    exitBtn.className = 'menu-btn';
+                    exitBtn.style.backgroundColor = '#777';
+                    exitBtn.style.color = 'white';
+                    exitBtn.textContent = '나가기';
+                    exitBtn.onclick = () => {
                         if (rematchListener) roomRef.child('rematchRequests').off('value', rematchListener);
-                        if (isHost) {
-                            roomRef.child('gameState').set('restarting');
-                        }
-                    }
-                });
+                        roomRef.off();
+                        const promise = isHost ? roomRef.remove() : roomRef.child('players/' + myPlayerId).remove();
+                        promise.finally(() => {
+                            window.location.href = '대기실.html';
+                        });
+                    };
+                    
+                    buttonsContainer.appendChild(rematchBtn);
+                    buttonsContainer.appendChild(exitBtn);
 
-            } else {
+                    if (rematchListener) roomRef.child('rematchRequests').off('value', rematchListener);
+                    rematchListener = roomRef.child('rematchRequests').on('value', snapshot => {
+                        if (!snapshot.exists() || !currentRoomData.players) return;
+                        const playerCount = Object.keys(currentRoomData.players).length;
+                        if (playerCount > 0 && Object.keys(snapshot.val()).length >= playerCount) {
+                            if (rematchListener) roomRef.child('rematchRequests').off('value', rematchListener);
+                            if (isHost) {
+                                startRematch();
+                            }
+                        }
+                    });
+                }
+            } else if (onConfirm) {
                 const confirmBtn = document.createElement('button');
                 confirmBtn.className = 'menu-btn primary';
                 confirmBtn.textContent = '확인';
-                confirmBtn.onclick = () => { window.location.href = '대기실.html' };
+                confirmBtn.onclick = () => { infoOverlay.style.display = 'none'; onConfirm(); };
                 buttonsContainer.appendChild(confirmBtn);
             }
         }
-
         initialize();
     });
     </script>
