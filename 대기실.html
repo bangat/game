@@ -399,44 +399,47 @@
             roomListContainer.innerHTML = `<div class="spinner"></div>`;
             const query = gameRoomsRef.orderByChild('createdAt').limitToLast(20);
             lobbyListener = query.on('value', snapshot => {
-                roomListContainer.innerHTML = '';
-                if (!snapshot.exists() || snapshot.numChildren() === 0) {
-                    roomListContainer.innerHTML = '<p style="text-align:center; color:#888; padding: 20px 0;">아직 방이 없어요. 새 방을 만들어보세요!</p>';
-                    return;
+                roomListContainer.innerHTML = ''; // 일단 목록을 비웁니다.
+                
+                if (snapshot.exists()) {
+                    snapshot.forEach(childSnapshot => {
+                        const room = childSnapshot.val();
+                        if (!room || !room.players || !room.roomName) return;
+                        
+                        const playerCount = Object.keys(room.players).length;
+                        if (playerCount === 0) {
+                            gameRoomsRef.child(childSnapshot.key).remove();
+                            return;
+                        }
+                        
+                        const isPlaying = room.gameState === 'playing' || room.gameState === 'launching';
+                        const isFull = playerCount >= 4;
+                        const game = room.selectedGame ? availableGames.find(g => g.id === room.selectedGame) : null;
+                        const gameInfo = game ? `${game.icon} ${game.name}` : `<span style="color:#999">선택중...</span>`;
+                        const statusText = isPlaying ? '게임중' : '대기중';
+                        const statusClass = isPlaying ? 'playing' : 'waiting';
+
+                        const roomItem = document.createElement('div');
+                        roomItem.className = 'room-item';
+                        roomItem.innerHTML = `
+                            <div class="room-main-info">
+                                <div class="room-name">${room.roomName}</div>
+                                <div class="room-detail-line game"><span class="detail-label">게임</span><span class="detail-value">${gameInfo}</span></div>
+                                <div class="room-detail-line status-players">
+                                    <div class="status-wrapper"><span class="detail-label">상태</span><span class="detail-value room-status ${statusClass}">[ ${statusText} ]</span></div>
+                                    <div class="players-wrapper"><span class="detail-label">인원</span><span class="detail-value">${playerCount} / 4</span></div>
+                                </div>
+                            </div>
+                            <button class="menu-btn join-btn primary" data-room-id="${childSnapshot.key}" ${isFull || isPlaying ? 'disabled' : ''}>참가하기</button>
+                        `;
+                        roomListContainer.prepend(roomItem);
+                    });
                 }
                 
-                snapshot.forEach(childSnapshot => {
-                    const room = childSnapshot.val();
-                    if(!room || !room.players || !room.roomName) return;
-                    
-                    const playerCount = Object.keys(room.players).length;
-                    if(playerCount === 0) { // 플레이어가 없는 유령 방은 삭제
-                        gameRoomsRef.child(childSnapshot.key).remove();
-                        return;
-                    }
-                    
-                    const isPlaying = room.gameState === 'playing' || room.gameState === 'launching';
-                    const isFull = playerCount >= 4;
-                    const game = room.selectedGame ? availableGames.find(g => g.id === room.selectedGame) : null;
-                    const gameInfo = game ? `${game.icon} ${game.name}` : `<span style="color:#999">선택중...</span>`;
-                    const statusText = isPlaying ? '게임중' : '대기중';
-                    const statusClass = isPlaying ? 'playing' : 'waiting';
 
-                    const roomItem = document.createElement('div');
-                    roomItem.className = 'room-item';
-                    roomItem.innerHTML = `
-                        <div class="room-main-info">
-                            <div class="room-name">${room.roomName}</div>
-                            <div class="room-detail-line game"><span class="detail-label">게임</span><span class="detail-value">${gameInfo}</span></div>
-                            <div class="room-detail-line status-players">
-                                <div class="status-wrapper"><span class="detail-label">상태</span><span class="detail-value room-status ${statusClass}">[ ${statusText} ]</span></div>
-                                <div class="players-wrapper"><span class="detail-label">인원</span><span class="detail-value">${playerCount} / 4</span></div>
-                            </div>
-                        </div>
-                        <button class="menu-btn join-btn primary" data-room-id="${childSnapshot.key}" ${isFull || isPlaying ? 'disabled' : ''}>참가하기</button>
-                    `;
-                    roomListContainer.prepend(roomItem);
-                });
+                if (roomListContainer.children.length === 0) {
+                    roomListContainer.innerHTML = '<p style="text-align:center; color:#888; padding: 20px 0;">아직 방이 없어요. 새 방을 만들어보세요!</p>';
+                }
                 
                 document.querySelectorAll('.join-btn').forEach(btn => btn.addEventListener('click', e => joinRoom(e.target.dataset.roomId)));
             });
