@@ -470,7 +470,7 @@ function sanitizeHTML(text) {
             roomRef.transaction(currentData => {
                 if (currentData === null) return null;
                 if (currentData.gameState === 'waiting' && currentData.players && Object.keys(currentData.players).length < 4) {
-                    if (!currentData.players[myPlayerId]) { // 중복 입장 방지
+                    if (!currentData.players[myPlayerId]) {
                         currentData.players[myPlayerId] = { nickname: myNickname, avatar: myAvatar, score: 0, isHost: false };
                     }
                     return currentData;
@@ -486,6 +486,8 @@ function sanitizeHTML(text) {
             });
         }
 
+        // ▼▼▼▼▼ [수정] 아래 함수들이 통째로 교체됩니다 ▼▼▼▼▼
+
         function listenToRoomChanges() {
             lobbyView.classList.add('hidden');
             roomRef.on('value', snapshot => {
@@ -499,66 +501,39 @@ function sanitizeHTML(text) {
                     });
                     return;
                 }
-                if (currentRoomData.gameState === 'waiting') { updateInGameLobbyUI(); }
-                if (currentRoomData.gameState === 'launching' && currentRoomData.launchUrl) {
-                    sessionStorage.setItem('returnFromGame', 'true');
-                    if (isHost) {
-                        roomRef.onDisconnect().cancel();
+
+                if (currentRoomData.gameState === 'waiting') {
+                    // 대기실 UI가 아직 화면에 없는 경우에만 전체를 그리고, 아니면 내용만 업데이트합니다.
+                    if (!document.querySelector('.in-game-lobby')) {
+                        renderFullInGameLobby(); // 최초 1회 전체 렌더링
+                        setupChat();            // 채팅 기능도 최초 1회만 설정
                     } else {
-                        roomRef.child('players/' + myPlayerId).onDisconnect().cancel();
+                        updateLobbyDynamicContent(); // 변화가 있을 때마다 내용만 업데이트
                     }
+                } else if (currentRoomData.gameState === 'launching' && currentRoomData.launchUrl) {
+                    sessionStorage.setItem('returnFromGame', 'true');
+                    if (isHost) roomRef.onDisconnect().cancel();
+                    else roomRef.child('players/' + myPlayerId).onDisconnect().cancel();
                     roomRef.off();
                     window.location.href = `${currentRoomData.launchUrl}&uid=${myPlayerId}`;
                 }
             });
         }
 
-        function updateInGameLobbyUI() {
-            const { players, selectedGame, roomName } = currentRoomData;
-            const playerEntries = Object.entries(players);
-
-            let gameSubtitleHTML = `<div class="game-subtitle">`;
-            if (selectedGame) {
-                const game = availableGames.find(g => g.id === selectedGame);
-                gameSubtitleHTML += `${game.icon} ${game.name}`;
-            } else {
-                gameSubtitleHTML += `게임 선택 대기중...`;
-            }
-            gameSubtitleHTML += `</div>`;
-
-            let playerListHorizontalHTML = '';
-            playerEntries.forEach(([pid, p]) => {
-                const avatarHTML = p.avatar && p.avatar.startsWith('http') ? `<img src="${p.avatar}" alt="av">` : (p.avatar || '👤');
-                const clickAttribute = (pid === myPlayerId || pid.startsWith('guest_')) ? '' : `data-player-id="${pid}"`;
-                playerListHorizontalHTML += `
-                    <div class="player-slot-compact ${p.isHost ? 'is-host' : ''}" ${clickAttribute}>
-                        <div class="avatar">${avatarHTML}</div>
-                        <div class="nickname">${p.nickname}</div>
-                    </div>`;
-            });
-
-            let playerListVerticalHTML = '';
-            playerEntries.forEach(([pid, p]) => {
-                let avatarHTML = p.avatar && p.avatar.startsWith('http') ? `<img src="${p.avatar}" class="player-avatar-img">` : `<span class="player-avatar-emoji">${p.avatar || '👤'}</span>`;
-                const clickAttribute = (pid === myPlayerId || pid.startsWith('guest_')) ? '' : `data-player-id="${pid}"`;
-                playerListVerticalHTML += `<div class="player-item ${p.isHost ? 'is-host' : ''}" ${clickAttribute}>${avatarHTML} <span class="nickname">${p.nickname} ${pid === myPlayerId ? ' (나)' : ''}</span></div>`;
-            });
-
-            const canStart = playerEntries.length >= 2 && selectedGame;
-            const startGameBtnHTML = isHost ? `<button id="start-game-btn" class="menu-btn primary" ${!canStart ? 'disabled' : ''}>시작</button>` : '';
+        // 대기실의 전체적인 틀을 최초 1회만 그리는 함수
+        function renderFullInGameLobby() {
+            const { roomName } = currentRoomData;
+            const startGameBtnHTML = isHost ? `<button id="start-game-btn" class="menu-btn primary" disabled>시작</button>` : '';
 
             waitingOverlay.innerHTML = `
                 <div class="modal-content in-game-lobby">
                     <div class="modal-header">
                         <h2>${roomName}</h2>
-                        ${gameSubtitleHTML}
+                        <div class="game-subtitle">게임 선택 대기중...</div>
                     </div>
                     <div class="modal-body">
                         <div id="player-list-wrapper">
-                            <div id="player-list-horizontal">${playerListHorizontalHTML}</div>
-                        </div>
-                        <div id="player-list-vertical-wrapper">
-                            ${playerListVerticalHTML}
+                            <div id="player-list-horizontal"></div>
                         </div>
                         <div id="chat-container"></div>
                     </div>
@@ -580,20 +555,54 @@ function sanitizeHTML(text) {
                 </div>`;
             waitingOverlay.style.display = 'flex';
             
-            setupChat(players);
+            // 최초 렌더링 후 내용 채우기 및 버튼 이벤트 연결
+            updateLobbyDynamicContent(); 
 
             if(isHost) {
                 document.getElementById('start-game-btn')?.addEventListener('click', startGame);
                 document.getElementById('game-select-btn')?.addEventListener('click', showGameSelectModal);
             }
-
-            document.querySelectorAll('.player-slot-compact[data-player-id], .player-item[data-player-id]').forEach(item => {
-                item.addEventListener('click', () => showPlayerProfileModal(item.dataset.playerId));
-            });
-
             document.getElementById('leave-room-btn').addEventListener('click', () => {
                 if (roomRef) roomRef.child('players/' + myPlayerId).remove(); 
             });
+        }
+
+        // 플레이어 목록, 게임 상태 등 자주 바뀌는 내용만 업데이트하는 함수
+        function updateLobbyDynamicContent() {
+            const { players, selectedGame } = currentRoomData;
+            const playerEntries = Object.entries(players);
+
+            // 게임 부제목 업데이트
+            const subtitleEl = document.querySelector('.game-subtitle');
+            if (subtitleEl) {
+                const game = selectedGame ? availableGames.find(g => g.id === selectedGame) : null;
+                subtitleEl.innerHTML = game ? `${game.icon} ${game.name}` : `게임 선택 대기중...`;
+            }
+
+            // 플레이어 목록 업데이트
+            const playerListEl = document.getElementById('player-list-horizontal');
+            if (playerListEl) {
+                playerListEl.innerHTML = playerEntries.map(([pid, p]) => {
+                    const avatarHTML = p.avatar && p.avatar.startsWith('http') ? `<img src="${p.avatar}" alt="av">` : (p.avatar || '👤');
+                    const clickAttribute = (pid === myPlayerId || pid.startsWith('guest_')) ? '' : `data-player-id="${pid}"`;
+                    return `
+                        <div class="player-slot-compact ${p.isHost ? 'is-host' : ''}" ${clickAttribute}>
+                            <div class="avatar">${avatarHTML}</div>
+                            <div class="nickname">${p.nickname}</div>
+                        </div>`;
+                }).join('');
+
+                playerListEl.querySelectorAll('.player-slot-compact[data-player-id]').forEach(item => {
+                    item.addEventListener('click', () => showPlayerProfileModal(item.dataset.playerId));
+                });
+            }
+
+            // 시작 버튼 상태 업데이트
+            const startBtn = document.getElementById('start-game-btn');
+            if (startBtn) {
+                const canStart = playerEntries.length >= 2 && selectedGame;
+                startBtn.disabled = !canStart;
+            }
         }
         
         function startGame() {
@@ -605,12 +614,16 @@ function sanitizeHTML(text) {
             }
         }
                 
-        function setupChat(players) {
+        function setupChat() { // players 매개변수 제거
             const chatDisplay = document.getElementById('chat-container');
             const chatInput = document.getElementById('chat-input');
             const sendBtn = document.getElementById('send-chat-btn');
             const emojiToggleBtn = document.getElementById('emoji-toggle-btn');
             const emojiPopover = document.getElementById('emoji-popover');
+
+            // 리스너가 이미 설정되었다면 중복 실행 방지
+            if (chatDisplay.dataset.listenerAttached === 'true') return;
+            chatDisplay.dataset.listenerAttached = 'true';
 
             const sendMessage = (messageContent) => {
                 if (!messageContent.trim() || !roomRef) return;
@@ -640,19 +653,20 @@ function sanitizeHTML(text) {
                 emojiBtn.onclick = () => {
                     sendMessage(emojiBtn.textContent);
                     emojiPopover.classList.remove('active');
-};
+                };
             });
 
-            document.onclick = (e) => {
+            document.addEventListener('click', (e) => {
                 if (emojiPopover.classList.contains('active') && !emojiPopover.contains(e.target) && e.target !== emojiToggleBtn) {
                     emojiPopover.classList.remove('active');
                 }
-            };
+            });
 
             const chatRef = roomRef.child('chat').limitToLast(50);
             chatRef.on('child_added', snapshot => {
                 const msg = snapshot.val();
-                const senderInfo = players[msg.senderId];
+                // stale players 정보 대신, 항상 최신 정보인 currentRoomData를 참조
+                const senderInfo = currentRoomData.players[msg.senderId];
                 if (!chatDisplay || !senderInfo) return;
 
                 const avatarHTML = senderInfo.avatar && senderInfo.avatar.startsWith('http') 
@@ -663,7 +677,7 @@ function sanitizeHTML(text) {
                 msgElement.classList.add('chat-message');
                 if (msg.senderId === myPlayerId) msgElement.classList.add('my-message');
                 
-      msgElement.innerHTML = `
+                msgElement.innerHTML = `
                     <div class="sender-avatar">${avatarHTML}</div>
                     <div class="msg-body">
                         <div class="sender">${sanitizeHTML(senderInfo.nickname)}</div>
