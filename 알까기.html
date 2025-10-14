@@ -262,6 +262,33 @@
         .preview-stone.white { background-color: var(--stone-white); }
         .preview-stone.black { background-color: var(--stone-black); }
 
+        #vision-block-overlay {
+    position: absolute;
+    left: 0; width: 100%; height: 50%;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.95), rgba(0,0,0,0.7));
+    backdrop-filter: blur(3px);
+    z-index: 10;
+    pointer-events: none;
+    display: none;
+    /* transform 속성은 삭제하고, top/bottom은 JS에서 제어 */
+}
+.item-option { /* 아이템 UI를 위한 CSS */
+    width: 110px; padding: 10px; border: 3px solid transparent; border-radius: 10px;
+    background-color: rgba(0,0,0,0.2); cursor: pointer; text-align: center; transition: all 0.2s ease;
+}
+.item-option:hover { border-color: var(--accent-color); transform: translateY(-5px); }
+.item-option.selected { border-color: var(--accent-color); box-shadow: 0 0 15px var(--accent-color); transform: translateY(-5px); }
+.item-icon { font-size: 2.5em; }
+.item-name { font-size: 0.9em; font-weight: 700; margin-top: 5px; }
+/* 아이템 설명(item-desc) 스타일은 삭제합니다. */
+
+/* 아이템 컨테이너 스타일을 아래와 같이 수정합니다. */
+#item-options-container {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+}
+
     </style>
 </head>
 <body>
@@ -273,16 +300,17 @@
     </div>
 
     <div id="game-wrapper" class="view">
-        <div id="game-header"></div>
-        <div id="game-container">
-            <div id="game-board">
-                <canvas id="trajectory-canvas"></canvas>
-            </div>
-            <div id="power-indicator">
-                <div id="power-fill"></div>
-            </div>
+    <div id="vision-block-overlay"></div>
+    <div id="game-header"></div>
+    <div id="game-container">
+        <div id="game-board">
+            <canvas id="trajectory-canvas"></canvas>
+        </div>
+        <div id="power-indicator">
+            <div id="power-fill"></div>
         </div>
     </div>
+</div>
     
     <div id="game-over-overlay" class="overlay" style="display: none;"></div>
     <div id="waiting-overlay" class="overlay" style="display: none;"></div>
@@ -353,7 +381,12 @@ let isGameLive = false; // 게임이 활성화되었는지 확인하는 변수
         }
 
         function initialize() {
-            myPlayerId = localStorage.getItem('myPlayerId');
+            const urlParams = new URLSearchParams(window.location.search);
+            const roomId = urlParams.get('roomId');
+            
+            // ★★★ URL에서 myPlayerId를 먼저 읽고, 없으면 localStorage에서 찾도록 수정 ★★★
+            myPlayerId = urlParams.get('myPlayerId') || localStorage.getItem('myPlayerId');
+            
             if (!myPlayerId) {
                 alert("플레이어 정보가 없습니다. 메인 메뉴로 돌아갑니다.");
                 window.location.href = 'index.html';
@@ -362,13 +395,11 @@ let isGameLive = false; // 게임이 활성화되었는지 확인하는 변수
             myNickname = localStorage.getItem('userNickname') || 'Player';
             myAvatar = localStorage.getItem('userAvatar') || '😊';
 
-            const urlParams = new URLSearchParams(window.location.search);
-            const roomId = urlParams.get('roomId');
-            
             if (roomId) {
                 startMenu.style.display = 'none';
                 joinMultiplayerGame(roomId);
             } else {
+                // 싱글플레이 또는 잘못된 접근 처리
                 document.getElementById('single-player-btn').addEventListener('click', () => startCountdown('single'));
                 document.getElementById('multiplayer-btn').addEventListener('click', () => { 
                     window.location.href = '대기실.html'; 
@@ -399,88 +430,113 @@ let isGameLive = false; // 게임이 활성화되었는지 확인하는 변수
         }
 
         function showPlacementModal() {
-            const modal = document.getElementById('placement-modal');
-            const options = modal.querySelectorAll('.style-option');
-            const waitingText = document.getElementById('placement-waiting-text');
-            modal.style.display = 'flex';
-            
-            if (gameMode === 'single') {
-                options.forEach(opt => {
-                    opt.addEventListener('click', () => {
-                        const selectedStyle = opt.dataset.style;
-                        modal.style.display = 'none';
-                        setupSinglePlayerGame(selectedStyle);
-                    });
-                });
-                return;
+    const modal = document.getElementById('placement-modal');
+    const styleOptions = modal.querySelectorAll('.style-option');
+    const itemOptions = modal.querySelectorAll('.item-option');
+    const waitingText = document.getElementById('placement-waiting-text');
+
+    modal.style.display = 'flex';
+    let myStyle = null;
+    let myItem = null;
+
+    if (gameMode === 'multi') {
+        if (isHost) roomRef.child('choices').set(null);
+
+        function checkReadyState() {
+            if (myStyle && myItem) {
+                waitingText.textContent = '상대방의 선택을 기다리는 중...';
+                waitingText.style.display = 'block';
+                roomRef.child('choices').child(myPlayerId).set({ placement: myStyle, item: myItem });
             }
-
-            if (isHost) {
-                roomRef.child('placementChoices').set(null);
-            }
-            
-            options.forEach(opt => {
-                opt.addEventListener('click', function onStyleClick() {
-                    const selectedStyle = this.dataset.style;
-                    options.forEach(o => o.classList.remove('selected'));
-                    this.classList.add('selected');
-                    options.forEach(o => o.style.pointerEvents = 'none');
-                    waitingText.textContent = '상대방의 선택을 기다리는 중...';
-                    waitingText.style.display = 'block';
-                    roomRef.child('placementChoices').child(myPlayerId).set(selectedStyle);
-                });
-            });
-
-   roomRef.child('placementChoices').on('value', function onBothChosen(snapshot) {
-    if (!snapshot.exists() || !currentRoomData || !currentRoomData.players) return;
-
-    const choices = snapshot.val();
-    const playerCount = Object.keys(currentRoomData.players).length;
-                
-                if (Object.keys(choices).length === playerCount) {
-                    roomRef.child('placementChoices').off('value', onBothChosen);
-                    const hostChoice = choices[currentRoomData.hostId];
-                    const guestId = Object.keys(currentRoomData.players).find(id => id !== currentRoomData.hostId);
-                    const guestChoice = choices[guestId];
-                    
-                    modal.style.display = 'none';
-                    setupMultiplayerGame(hostChoice, guestChoice);
-                }
-            });
         }
+
+        styleOptions.forEach(opt => {
+            opt.addEventListener('click', () => {
+                myStyle = opt.dataset.style;
+                styleOptions.forEach(o => o.classList.remove('selected'));
+                opt.classList.add('selected');
+                checkReadyState();
+            });
+        });
+
+        itemOptions.forEach(opt => {
+            opt.addEventListener('click', () => {
+                myItem = opt.dataset.item;
+                itemOptions.forEach(o => o.classList.remove('selected'));
+                opt.classList.add('selected');
+                checkReadyState();
+            });
+        });
+
+        roomRef.child('choices').on('value', function onBothReady(snapshot) {
+            // ▼▼▼▼▼ [수정] 게임이 이미 시작되었다면, 이 로직을 다시 실행하지 않도록 방지합니다. ▼▼▼▼▼
+            if (isGameLive || !snapshot.exists() || !currentRoomData || !currentRoomData.players) return;
+
+            const choices = snapshot.val();
+            if (Object.keys(choices).length !== 2) return;
+            if (!Object.values(choices).every(c => c.placement && c.item)) return;
+
+            roomRef.child('choices').off('value', onBothReady);
+
+            const hostId = currentRoomData.hostId;
+            const guestId = Object.keys(choices).find(id => id !== hostId);
+
+            const hostChoice = choices[hostId];
+            const guestChoice = choices[guestId];
+
+            player1Info.item = hostChoice.item;
+            player2Info.item = guestChoice.item;
+
+            let hostStoneCount = 5;
+            if (hostChoice.item === 'extraStone') hostStoneCount = 6;
+
+            let guestStoneCount = 5;
+            if (guestChoice.item === 'extraStone') guestStoneCount = 6;
+
+            modal.style.display = 'none';
+            setupMultiplayerGame(hostChoice.placement, guestChoice.placement, hostStoneCount, guestStoneCount);
+        });
+    }
+}
         
-     function placeStones(whiteStyle, blackStyle) {
+    function placeStones(whiteStyle, blackStyle, whiteStoneCount = 5, blackStoneCount = 5) {
     const stoneSize = boardWidth / 14;
     stones = [];
     gameBoard.querySelectorAll('.stone').forEach(el => el.remove());
 
-    // --- 흰색 돌 배치 (5개) ---
+    // --- 흰색 돌 배치 ---
     if (whiteStyle === 'style1') {
-        for (let i = 0; i < 5; i++) {
-            const x = boardWidth * 0.5 + (i - 2) * stoneSize * 2.2; // 2.0에서 2.2로 간격 확대
-            createStone(x, boardHeight * 0.15, stoneSize, 'white', `white${i}`);
+        if (whiteStoneCount === 6) { 
+            for (let i = 0; i < 5; i++) createStone(boardWidth * 0.5 + (i - 2) * stoneSize * 2.2, boardHeight * 0.15, stoneSize, 'white', `white${i}`);
+            createStone(boardWidth * 0.5, boardHeight * 0.3, stoneSize, 'white', 'white5');
+        } else {
+            for (let i = 0; i < 5; i++) createStone(boardWidth * 0.5 + (i - 2) * stoneSize * 2.2, boardHeight * 0.15, stoneSize, 'white', `white${i}`);
         }
-    } else if (whiteStyle === 'style2') { // 그려주신 3-2 배치
-        for (let i = 0; i < 3; i++) {
-            createStone(boardWidth * 0.5 + (i - 1) * stoneSize * 3.5, boardHeight * 0.1, stoneSize, 'white', `white${i}`); // 2.2에서 3.5로 대폭 확대
-        }
-        for (let i = 0; i < 2; i++) {
-            createStone(boardWidth * 0.5 + (i - 0.5) * stoneSize * 2.0, boardHeight * 0.25, stoneSize, 'white', `white${i + 3}`); // 2.8에서 2.0으로 좁혀 안쪽으로 배치
+    } else if (whiteStyle === 'style2') {
+        if (whiteStoneCount === 6) { // 6개일 때: 뒤3 앞3
+            for (let i = 0; i < 3; i++) createStone(boardWidth * 0.5 + (i - 1) * stoneSize * 4.0, boardHeight * 0.1, stoneSize, 'white', `white${i}`);
+            for (let i = 0; i < 3; i++) createStone(boardWidth * 0.5 + (i - 1) * stoneSize * 2.5, boardHeight * 0.25, stoneSize, 'white', `white${i + 3}`);
+        } else { // 5개일 때: 뒤3 앞2 (간격 넓게 수정)
+            for (let i = 0; i < 3; i++) createStone(boardWidth * 0.5 + (i - 1) * stoneSize * 4.5, boardHeight * 0.1, stoneSize, 'white', `white${i}`);
+            for (let i = 0; i < 2; i++) createStone(boardWidth * 0.5 + (i - 0.5) * stoneSize * 3.0, boardHeight * 0.25, stoneSize, 'white', `white${i + 3}`);
         }
     }
 
-    // --- 검은색 돌 배치 (5개) ---
+    // --- 검은색 돌 배치 ---
     if (blackStyle === 'style1') {
-        for (let i = 0; i < 5; i++) {
-            const x = boardWidth * 0.5 + (i - 2) * stoneSize * 2.2; // 2.0에서 2.2로 간격 확대
-            createStone(x, boardHeight * 0.85, stoneSize, 'black', `black${i}`);
+        if (blackStoneCount === 6) {
+            for (let i = 0; i < 5; i++) createStone(boardWidth * 0.5 + (i - 2) * stoneSize * 2.2, boardHeight * 0.85, stoneSize, 'black', `black${i}`);
+            createStone(boardWidth * 0.5, boardHeight * 0.7, stoneSize, 'black', 'black5');
+        } else {
+            for (let i = 0; i < 5; i++) createStone(boardWidth * 0.5 + (i - 2) * stoneSize * 2.2, boardHeight * 0.85, stoneSize, 'black', `black${i}`);
         }
-    } else if (blackStyle === 'style2') { // 그려주신 3-2 배치
-        for (let i = 0; i < 3; i++) {
-            createStone(boardWidth * 0.5 + (i - 1) * stoneSize * 3.5, boardHeight * 0.9, stoneSize, 'black', `black${i}`); // 2.2에서 3.5로 대폭 확대
-        }
-        for (let i = 0; i < 2; i++) {
-            createStone(boardWidth * 0.5 + (i - 0.5) * stoneSize * 2.0, boardHeight * 0.75, stoneSize, 'black', `black${i + 3}`); // 2.8에서 2.0으로 좁혀 안쪽으로 배치
+    } else if (blackStyle === 'style2') {
+         if (blackStoneCount === 6) { // 6개일 때: 뒤3 앞3
+            for (let i = 0; i < 3; i++) createStone(boardWidth * 0.5 + (i - 1) * stoneSize * 4.0, boardHeight * 0.9, stoneSize, 'black', `black${i}`);
+            for (let i = 0; i < 3; i++) createStone(boardWidth * 0.5 + (i - 1) * stoneSize * 2.5, boardHeight * 0.75, stoneSize, 'black', `black${i + 3}`);
+        } else { // 5개일 때: 뒤3 앞2 (간격 넓게 수정)
+            for (let i = 0; i < 3; i++) createStone(boardWidth * 0.5 + (i - 1) * stoneSize * 4.5, boardHeight * 0.9, stoneSize, 'black', `black${i}`);
+            for (let i = 0; i < 2; i++) createStone(boardWidth * 0.5 + (i - 0.5) * stoneSize * 3.0, boardHeight * 0.75, stoneSize, 'black', `black${i + 3}`);
         }
     }
 }
@@ -529,15 +585,19 @@ let isGameLive = false; // 게임이 활성화되었는지 확인하는 변수
             updateHeaderUI();
         }
 
-        function setupMultiplayerGame(whiteStyle, blackStyle) {
-             isGameLive = true; // 게임이 시작되었음을 명시적으로 기록
-            setupGame();
-            placeStones(whiteStyle, blackStyle);
-            currentTurnColor = 'white';
-            isMyTurn = (currentTurnColor === myColor);
-            canShoot = true;
-            updateHeaderUI();
-        }
+       function setupMultiplayerGame(whiteStyle, blackStyle, whiteStoneCount, blackStoneCount) {
+    isGameLive = true;
+    setupGame();
+    // placeStones 함수에 돌 개수를 전달합니다.
+    placeStones(whiteStyle, blackStyle, whiteStoneCount, blackStoneCount);
+    currentTurnColor = 'white';
+    isMyTurn = (currentTurnColor === myColor);
+    canShoot = true;
+    // 아이템 사용 여부 초기화
+    if (player1Info) player1Info.itemUsed = {};
+    if (player2Info) player2Info.itemUsed = {};
+    updateHeaderUI();
+}
 
         function createStone(x, y, diameter, color, id) {
             const element = document.createElement('div');
@@ -736,14 +796,30 @@ let isGameLive = false; // 게임이 활성화되었는지 확인하는 변수
             }, 500);
         }
 
-        function checkTurn() {
-            isMyTurn = (currentTurnColor === myColor);
-            updateHeaderUI();
-            
-            if (gameMode === 'single' && !isMyTurn && !isGameOver) {
-                setTimeout(aiMove, 500);
-            }
+       function checkTurn() {
+    isMyTurn = (currentTurnColor === myColor);
+    canShoot = isMyTurn; // [수정] 턴이 바뀔 때 canShoot 상태를 확실하게 동기화합니다.
+    updateHeaderUI();
+
+    const opponentInfo = (myColor === 'white') ? player2Info : player1Info;
+
+    if (isMyTurn && opponentInfo && opponentInfo.item === 'visionBlock' && !opponentInfo.itemUsed?.visionBlock) {
+        if (myColor === 'white') {
+            visionBlockOverlay.style.top = 'auto';
+            visionBlockOverlay.style.bottom = '0px';
+        } else {
+            visionBlockOverlay.style.top = '0px';
+            visionBlockOverlay.style.bottom = 'auto';
         }
+        visionBlockOverlay.style.display = 'block';
+    } else {
+        visionBlockOverlay.style.display = 'none';
+    }
+
+    if (gameMode === 'single' && !isMyTurn && !isGameOver) {
+        setTimeout(aiMove, 500);
+    }
+}
         
         function checkMovementEnd() {
             if (!hasShotThisTurn || isDragging || isGameOver) return;
@@ -783,24 +859,36 @@ let isGameLive = false; // 게임이 활성화되었는지 확인하는 변수
         }
 
         function endTurn() {
-            currentTurnColor = (currentTurnColor === 'white') ? 'black' : 'white';
-            hasShotThisTurn = false;
-            canShoot = true; 
-
-            if (gameMode === 'single') {
-                checkTurn();
-            } else if (gameMode === 'multi' && roomRef && isHost) {
-                const finalStoneState = stones
-                    .filter(s => s.active)
-                    .map(s => ({
-                        id: s.id, x: s.x, y: s.y, vx: s.vx, vy: s.vy
-                    }));
-                roomRef.update({ 
-                    currentTurn: currentTurnColor,
-                    stoneState: finalStoneState 
-                });
-            }
+    // 방금 턴을 마친 플레이어(currentTurnColor)가 '시야 방해' 아이템 사용자이고, 아직 사용 전이라면
+    const itemUser = (currentTurnColor === 'white') ? player1Info : player2Info;
+    if(itemUser && itemUser.item === 'visionBlock' && !itemUser.itemUsed?.visionBlock) {
+        if (!itemUser.itemUsed) itemUser.itemUsed = {};
+        itemUser.itemUsed.visionBlock = true;
+        // 멀티플레이 시, 호스트가 아이템 사용 완료 상태를 동기화
+        if(gameMode === 'multi' && isHost) {
+            roomRef.child('itemEffects/' + currentTurnColor).set({ visionBlock: true });
         }
+    }
+
+    // --- 여기서부터 기존 코드 ---
+    currentTurnColor = (currentTurnColor === 'white') ? 'black' : 'white';
+    hasShotThisTurn = false;
+    canShoot = true; 
+
+    if (gameMode === 'single') {
+        checkTurn();
+    } else if (gameMode === 'multi' && roomRef && isHost) {
+        const finalStoneState = stones
+            .filter(s => s.active)
+            .map(s => ({
+                id: s.id, x: s.x, y: s.y, vx: s.vx, vy: s.vy
+            }));
+        roomRef.update({ 
+            currentTurn: currentTurnColor,
+            stoneState: finalStoneState 
+        });
+    }
+}
         
         function setupInputHandlers() {
             const handleStart = (e) => {
@@ -972,49 +1060,46 @@ let isGameLive = false; // 게임이 활성화되었는지 확인하는 변수
 
     const gameRoomsRef = database.ref('gameRooms');
     roomRef = gameRoomsRef.child(roomId);
+    
+    let isGameSetup = false; // ★★★ 게임이 한번만 설정되도록 플래그 추가
 
-    // 1. 먼저 내 정보를 방에 등록하여 나의 존재를 알립니다.
-    const myPlayerData = {
-        nickname: myNickname,
-        avatar: myAvatar
-    };
-    roomRef.child('players/' + myPlayerId).set(myPlayerData).then(() => {
-        // 2. 내 정보 등록이 완료된 후, 방 전체 정보를 한 번만 가져옵니다.
-        roomRef.once('value', snapshot => {
-            if (!snapshot.exists()) {
-                alert('게임 방을 찾을 수 없습니다.');
-                window.location.href = '대기실.html';
-                return;
-            }
+    // ★★★ roomRef.once를 roomRef.on으로 변경하여 데이터 변경을 계속 감지
+    roomRef.on('value', snapshot => {
+        if (!snapshot.exists() || isGameSetup) return; // 데이터가 없거나, 게임이 이미 설정되었다면 종료
 
-            const roomData = snapshot.val();
-            currentRoomData = roomData;
+        const roomData = snapshot.val();
+        currentRoomData = roomData;
 
-            // onDisconnect는 내 정보 등록 후에 설정해야 안전합니다.
-            roomRef.child('players/' + myPlayerId).onDisconnect().remove();
+        // 상대방이 아직 입장하지 않았다면, 설정하지 않고 대기
+        const playerIds = Object.keys(roomData.players || {});
+        if (playerIds.length < 2) return;
 
-            const players = Object.keys(roomData.players);
-            isHost = (roomData.hostId === myPlayerId);
-            myColor = isHost ? 'white' : 'black';
-            opponentColor = isHost ? 'black' : 'white';
+        isGameSetup = true; // 설정 시작!
+        
+        // onDisconnect는 내 정보 등록 후에 설정해야 안전합니다.
+        roomRef.child('players/' + myPlayerId).onDisconnect().remove();
 
-            const opponentId = players.find(id => id !== myPlayerId);
-            if(opponentId) {
-                const opponentData = roomData.players[opponentId];
-                player1Info = isHost ? { nickname: myNickname, avatar: myAvatar } : { nickname: opponentData.nickname, avatar: opponentData.avatar };
-                player2Info = isHost ? { nickname: opponentData.nickname, avatar: opponentData.avatar } : { nickname: myNickname, avatar: myAvatar };
-            } else {
-                 player1Info = { nickname: myNickname, avatar: myAvatar };
-                 player2Info = { nickname: '대기중...', avatar: '❓' };
-            }
+        isHost = (roomData.hostId === myPlayerId);
+        myColor = isHost ? 'white' : 'black';
+        opponentColor = isHost ? 'black' : 'white';
 
-            if (isHost) {
-                roomRef.update({ currentTurn: 'white', gameState: 'waiting' });
-            }
+        const opponentId = playerIds.find(id => id !== myPlayerId);
+        if (opponentId && roomData.players[opponentId]) {
+            const opponentData = roomData.players[opponentId];
+            player1Info = isHost ? { nickname: myNickname, avatar: myAvatar } : { nickname: opponentData.nickname, avatar: opponentData.avatar };
+            player2Info = isHost ? { nickname: opponentData.nickname, avatar: opponentData.avatar } : { nickname: myNickname, avatar: myAvatar };
+        } else {
+             // 비정상적인 상황이지만 방어 코드
+             player1Info = { nickname: myNickname, avatar: myAvatar };
+             player2Info = { nickname: '상대 없음', avatar: '❓' };
+        }
 
-            listenToMultiplayerEvents();
-            startCountdown('multi');
-        });
+        if (isHost) {
+            roomRef.update({ currentTurn: 'white', gameState: 'waiting' });
+        }
+
+        listenToMultiplayerEvents();
+        startCountdown('multi');
     });
 }
 
@@ -1022,6 +1107,19 @@ let isGameLive = false; // 게임이 활성화되었는지 확인하는 변수
             roomRef.on('value', snapshot => {
                 currentRoomData = snapshot.val();
             });
+
+            // 아이템 사용 효과를 동기화하는 리스너입니다.
+    roomRef.child('itemEffects').on('child_added', snapshot => {
+        if (isHost) return; // 호스트는 이 리스너를 무시합니다.
+        const color = snapshot.key; // 'white' or 'black'
+        const effect = snapshot.val();
+        const itemUser = (color === 'white') ? player1Info : player2Info;
+        if (itemUser && effect.visionBlock) {
+            if (!itemUser.itemUsed) itemUser.itemUsed = {};
+            itemUser.itemUsed.visionBlock = true;
+        }
+    });
+    // ▲▲▲▲▲ 코드 추가 종료 ▲▲▲▲▲
 
             roomRef.child('gameStateSync').on('value', snapshot => {
     if (isHost || !snapshot.exists() || !stones.length) return;
@@ -1055,13 +1153,14 @@ let isGameLive = false; // 게임이 활성화되었는지 확인하는 변수
             */
 
             roomRef.child('currentTurn').on('value', snapshot => {
-                if (!snapshot.exists()) return;
-                const newTurnColor = snapshot.val();
-                currentTurnColor = newTurnColor;
-                isMyTurn = (currentTurnColor === myColor);
-                canShoot = isMyTurn;
-                updateHeaderUI();
-            });
+    if (!snapshot.exists()) return;
+    const newTurnColor = snapshot.val();
+    // 턴이 실제로 변경되었을 때만 checkTurn()을 호출합니다.
+    if (currentTurnColor !== newTurnColor) {
+        currentTurnColor = newTurnColor;
+        checkTurn(); // '시야 방해' 등의 턴 시작 효과를 여기서 발동시킵니다.
+    }
+});
 
             roomRef.child('lastMove').on('value', snapshot => {
                 if (!snapshot.exists() || !isHost) return;
@@ -1097,31 +1196,24 @@ let isGameLive = false; // 게임이 활성화되었는지 확인하는 변수
 
             // players 리스너를 함수 외부에서 정의하여 명확하게 참조할 수 있도록 합니다.
 const onPlayerChange = function(snapshot) {
-    if (!snapshot.exists()) {
+    // 게임이 이미 끝났거나, 방에 플레이어가 없으면 아무것도 하지 않음
+    if (isGameOver || !snapshot.exists()) {
         return;
     }
+
     const playerCount = Object.keys(snapshot.val()).length;
 
-    if (playerCount < 2) {
-        // 이 리스너의 목적은 상대방이 나간 것을 감지하는 것이므로, isGameOver 상태를 여기서 확인하지 않습니다.
-        // isGameLive 상태에 따라 다른 처리를 합니다.
-        if (isGameLive) {
-            // Case 1: 게임이 진행 중이었을 때 -> 승리 처리
-            if (isGameOver) return; // 이미 다른 이유로 게임이 끝났으면 무시
-            isGameOver = true;
-            roomRef.child('players').off('value', onPlayerChange); // 이름으로 리스너 제거
-            alert('상대방이 나가서 승리했습니다! 확인을 누르면 대기실로 이동합니다.');
-            window.location.href = '대기실.html';
-        } else {
-            // Case 2: 게임 시작 전(준비 단계)이었을 때 -> 게임 무효 처리
-            roomRef.child('players').off('value', onPlayerChange); // 이름으로 리스너 제거
-            alert('상대방이 방을 나갔습니다. 대기실로 이동합니다.');
-            window.location.href = '대기실.html';
-        }
+    // 게임이 시작된 이후(isGameLive === true)에 플레이어 수가 2명 미만이 되면 실행
+    if (isGameLive && playerCount < 2) {
+        isGameOver = true;
+        // 리스너가 중복 실행되지 않도록 제거
+        roomRef.child('players').off('value', onPlayerChange);
+
+        alert('상대방이 접속을 종료하여 승리했습니다. 대기실로 이동합니다.');
+        window.location.href = '대기실.html';
     }
 };
-
-// listenToMultiplayerEvents 함수 안에서는 이 함수를 등록만 합니다.
+// listenToMultiplayerEvents 함수 안에서 이 함수를 등록만 합니다.
 roomRef.child('players').on('value', onPlayerChange);
 
             // [추가] '다시하기' 요청을 감지하는 리스너
@@ -1283,37 +1375,55 @@ rematchBtn.addEventListener('click', () => {
 <audio id="loss-sound" src="https://blog.kakaocdn.net/dna/Zqr4u/dJMb9V0NWlD/AAAAAAAAAAAAAAAAAAAAANQFEr99iVFS25T5ZW3Q2dixeZXsbUzh7OWB40uYQMu9/%EC%95%8C%EA%B9%8C%EA%B8%B0%ED%8C%A8%EB%B0%B0.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=2xNnbSadPzs2ZZi1BssfyCye8jI%3D&attach=1&knm=tfile.mp3" preload="auto"></audio>
 
 <div id="placement-modal" class="overlay" style="display: none;">
-    <div class="modal-content" style="background: #5a4a42; max-width: 420px;">
+    <div class="modal-content" style="background: #5a4a42; max-width: 560px;">
         <div style="padding: 25px;">
-            <h2 style="font-size: 1.8em; margin-bottom: 25px;">배치 스타일선택</h2>
-            <div id="style-options-container" style="display: flex; gap: 20px; justify-content: center;">
-    <div class="style-option" data-style="style1">
-        <div class="preview-board">
-            <div class="preview-stone white" style="top: 20%; left: 10%;"></div>
-            <div class="preview-stone white" style="top: 20%; left: 30%;"></div>
-            <div class="preview-stone white" style="top: 20%; left: 50%;"></div>
-            <div class="preview-stone white" style="top: 20%; left: 70%;"></div>
-            <div class="preview-stone white" style="top: 20%; left: 90%;"></div>
-        </div>
-        <h4>기본 배치</h4>
-    </div>
+            <h2 style="font-size: 1.8em; margin-bottom: 25px;">전략 선택</h2>
 
-    <div class="style-option" data-style="style2">
-        <div class="preview-board">
-            <div class="preview-stone white" style="top: 15%; left: 15%;"></div>
-            <div class="preview-stone white" style="top: 15%; left: 50%;"></div>
-            <div class="preview-stone white" style="top: 15%; left: 85%;"></div>
-            <div class="preview-stone white" style="top: 35%; left: 35%;"></div>
-            <div class="preview-stone white" style="top: 35%; left: 65%;"></div>
-        </div>
-        <h4>수비형 배치</h4>
-    </div>
-</div>
-            <p id="placement-waiting-text" style="margin-top: 20px; font-size: 1.em; color: var(--accent-color); display: none;">상대방이 배치 스타일을 선택 중입니다...</p>
+            <div id="style-section">
+                <h3 style="font-size: 1.2em; margin-bottom: 15px; opacity: 0.9;">배치 스타일</h3>
+                <div id="style-options-container" style="display: flex; gap: 20px; justify-content: center;">
+                    <div class="style-option" data-style="style1">
+                        <div class="preview-board">
+                            <div class="preview-stone white" style="top: 20%; left: 10%;"></div>
+                            <div class="preview-stone white" style="top: 20%; left: 30%;"></div>
+                            <div class="preview-stone white" style="top: 20%; left: 50%;"></div>
+                            <div class="preview-stone white" style="top: 20%; left: 70%;"></div>
+                            <div class="preview-stone white" style="top: 20%; left: 90%;"></div>
+                        </div>
+                        <h4>기본 배치</h4>
+                    </div>
+                    <div class="style-option" data-style="style2">
+                        <div class="preview-board">
+                            <div class="preview-stone white" style="top: 15%; left: 15%;"></div>
+                            <div class="preview-stone white" style="top: 15%; left: 50%;"></div>
+                            <div class="preview-stone white" style="top: 15%; left: 85%;"></div>
+                            <div class="preview-stone white" style="top: 35%; left: 35%;"></div>
+                            <div class="preview-stone white" style="top: 35%; left: 65%;"></div>
+                        </div>
+                        <h4>수비형 배치</h4>
+                    </div>
+                </div>
+            </div>
+
+            <hr style="border-color: rgba(255,255,255,0.2); margin: 25px 0;">
+
+            <div id="item-section">
+                <h3 style="font-size: 1.2em; margin-bottom: 15px; opacity: 0.9;">시작 아이템 (1개 선택)</h3>
+                <div id="item-options-container">
+                    <div class="item-option" data-item="extraStone">
+                        <div class="item-icon">➕</div>
+                        <div class="item-name">돌 추가</div>
+                    </div>
+                    <div class="item-option" data-item="visionBlock">
+                        <div class="item-icon">🕶️</div>
+                        <div class="item-name">시야 방해</div>
+                    </div>
+                </div>
+            </div>
+            <p id="placement-waiting-text" style="margin-top: 25px; font-size: 1.1em; color: var(--accent-color); display: none; height: 20px;"></p>
         </div>
     </div>
 </div>
 
 </body>
 </html>
-
