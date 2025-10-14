@@ -458,11 +458,11 @@
             lobbyView.classList.add('hidden');
 
             // --- 1. 최초 한 번만 전체 UI를 그립니다. ---
-            roomRef.once('value', snapshot => {
+             roomRef.once('value', snapshot => {
                 if (!snapshot.exists()) return; // 방이 없으면 중단
                 currentRoomData = snapshot.val();
                 updateInGameLobbyUI(); // 전체 UI 렌더링
-                setupChat(currentRoomData.players); // 채팅 리스너 설정
+                setupChat(); // 채팅 리스너 설정 (인자 제거)
             });
             
             // --- 2. 방의 상태가 바뀔 때만 감지하는 리스너 ---
@@ -554,7 +554,7 @@
     <button>😏</button><button>👌</button><button>😭</button><button>🤗</button>
 
     <button>💖</button><button>😡</button><button>🤔</button><button>😱</button></div>
-                        <input type="text" id="chat-input" placeholder="메시지 입력.." maxlength="50">
+                        <input type="text" id="chat-input" placeholder="메시지 입력.." maxlength="50" autocomplete="off" autocorrect="off">
                         <button id="send-chat-btn">➤</button>
                     </div>
                     <div class="lobby-modal-footer">
@@ -565,7 +565,32 @@
                 </div>`;
             waitingOverlay.style.display = 'flex';
             
-            setupChat(players); // players 정보를 chat으로 넘겨줍니다.
+    const chatInput = document.getElementById('chat-input');
+            const sendBtn = document.getElementById('send-chat-btn');
+            const emojiToggleBtn = document.getElementById('emoji-toggle-btn');
+            const emojiPopover = document.getElementById('emoji-popover');
+            
+            // 메시지 전송 함수 (setupChat에서 가져옴)
+            const sendMessage = (messageContent) => {
+                if (!messageContent.trim() || !roomRef) return;
+                const messageData = {
+                    senderId: myPlayerId,
+                    senderNickname: myNickname,
+                    content: messageContent.trim(),
+                    timestamp: firebase.database.ServerValue.TIMESTAMP
+                };
+                roomRef.child('chat').push(messageData);
+                chatInput.value = '';
+            };
+
+            // 이벤트 리스너를 새로 할당 (중복 방지)
+            sendBtn.onclick = () => sendMessage(chatInput.value);
+            chatInput.onkeypress = (e) => { if (e.key === 'Enter') { e.preventDefault(); sendMessage(chatInput.value); }};
+            emojiToggleBtn.onclick = (e) => { e.stopPropagation(); emojiPopover.classList.toggle('active'); };
+            
+            emojiPopover.querySelectorAll('button').forEach(emojiBtn => {
+                emojiBtn.onclick = () => { sendMessage(emojiBtn.textContent); emojiPopover.classList.remove('active'); };
+            });
 
             if(isHost) {
                 document.getElementById('start-game-btn')?.addEventListener('click', startGame);
@@ -633,6 +658,66 @@
             }
         }
 
+        function setupChat() {
+            const chatDisplay = document.getElementById('chat-container');
+            const chatInput = document.getElementById('chat-input');
+const sendBtn = document.getElementById('send-chat-btn');
+const emojiToggleBtn = document.getElementById('emoji-toggle-btn');
+const emojiPopover = document.getElementById('emoji-popover');
+
+// 메시지 전송 함수 (setupChat에서 가져옴)
+const sendMessage = (messageContent) => {
+    if (!messageContent.trim() || !roomRef) return;
+    const messageData = {
+        senderId: myPlayerId,
+        senderNickname: myNickname,
+        content: messageContent.trim(),
+        timestamp: firebase.database.ServerValue.TIMESTAMP
+    };
+    roomRef.child('chat').push(messageData);
+    chatInput.value = '';
+    chatInput.focus(); // ★★★ 이 줄을 추가하여 키보드를 유지합니다. ★★★
+};
+
+// 이벤트 리스너를 새로 할당 (중복 방지)
+sendBtn.onclick = () => sendMessage(chatInput.value);
+chatInput.onkeypress = (e) => { if (e.key === 'Enter') { e.preventDefault(); sendMessage(chatInput.value); }};
+emojiToggleBtn.onclick = (e) => { e.stopPropagation(); emojiPopover.classList.toggle('active'); };
+
+emojiPopover.querySelectorAll('button').forEach(emojiBtn => {
+    emojiBtn.onclick = () => { sendMessage(emojiBtn.textContent); emojiPopover.classList.remove('active'); };
+});
+
+            const chatRef = roomRef.child('chat').limitToLast(50);
+            chatRef.on('child_added', snapshot => {
+                const msg = snapshot.val();
+                // ★★★ 핵심: currentRoomData에서 최신 플레이어 정보를 가져옵니다 ★★★
+                const senderInfo = currentRoomData.players[msg.senderId];
+                if (!chatDisplay || !senderInfo) return; 
+
+                const avatarHTML = senderInfo.avatar.startsWith('http') 
+                    ? `<img src="${senderInfo.avatar}" alt="av">` 
+                    : senderInfo.avatar;
+
+                const msgElement = document.createElement('div');
+                msgElement.classList.add('chat-message');
+                if (msg.senderId === myPlayerId) msgElement.classList.add('my-message');
+                
+                msgElement.innerHTML = `
+                    <div class="sender-avatar">${avatarHTML}</div>
+                    <div class="msg-body">
+                        <div class="sender">${msg.senderNickname}</div>
+                        <div class="content"></div>
+                    </div>`;
+
+                // XSS 방지를 위해 메시지 내용은 textContent로 설정합니다.
+                msgElement.querySelector('.content').textContent = msg.content;
+                
+                chatDisplay.appendChild(msgElement);
+                chatDisplay.scrollTop = chatDisplay.scrollHeight;
+            });
+        }
+
         
         function startGame() {
             if (!isHost || !currentRoomData) return;
@@ -645,93 +730,7 @@
 
 
                 
-    function setupChat(players) { // players 인자를 받도록 수정되었습니다.
-            const chatDisplay = document.getElementById('chat-container');
-            const chatInput = document.getElementById('chat-input');
-            const sendBtn = document.getElementById('send-chat-btn');
-            const emojiToggleBtn = document.getElementById('emoji-toggle-btn');
-            const emojiPopover = document.getElementById('emoji-popover');
-
-            const sendMessage = (messageContent) => {
-                if (!messageContent.trim() || !roomRef) return;
-                const messageData = {
-                    senderId: myPlayerId,
-                    senderNickname: myNickname,
-                    content: messageContent.trim(),
-                    timestamp: firebase.database.ServerValue.TIMESTAMP
-                };
-                roomRef.child('chat').push(messageData);
-                if (chatInput) chatInput.value = '';
-            };
-
-            sendBtn.addEventListener('click', () => sendMessage(chatInput.value));
-            chatInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    sendMessage(chatInput.value);
-                }
-            });
-            
-            emojiToggleBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                emojiPopover.classList.toggle('active');
-            });
-            
-            emojiPopover.querySelectorAll('button').forEach(emojiBtn => {
-                emojiBtn.addEventListener('click', () => {
-                    sendMessage(emojiBtn.textContent);
-                    emojiPopover.classList.remove('active');
-                });
-            });
-
-            document.addEventListener('click', (e) => {
-                if (emojiPopover.classList.contains('active') && !emojiPopover.contains(e.target) && e.target !== emojiToggleBtn) {
-                    emojiPopover.classList.remove('active');
-                }
-            });
-
-            const chatRef = roomRef.child('chat').limitToLast(50);
-            chatRef.on('child_added', snapshot => {
-                const msg = snapshot.val();
-                const senderInfo = players[msg.senderId]; // 보낸 사람의 정보를 players 객체에서 찾습니다.
-                if (!chatDisplay || !senderInfo) return; // 정보가 없으면 오류 방지를 위해 중단
-
-                // 보낸 사람의 아바타가 이미지인지 이모지인지 판별합니다.
-                const avatarHTML = senderInfo.avatar.startsWith('http') 
-                    ? `<img src="${senderInfo.avatar}" alt="av">` 
-                    : senderInfo.avatar;
-
-                const msgElement = document.createElement('div');
-               msgElement.classList.add('chat-message');
-                if (msg.senderId === myPlayerId) msgElement.classList.add('my-message');
-                
-                // XSS 공격 방지를 위해 innerHTML 대신 DOM 요소를 직접 생성하고 textContent를 사용합니다.
-                msgElement.innerHTML = ''; // 기존 내용을 비웁니다.
-
-                const senderAvatar = document.createElement('div');
-                senderAvatar.className = 'sender-avatar';
-                senderAvatar.innerHTML = avatarHTML; // 아바타는 내부적으로 생성된 HTML이므로 안전합니다.
-
-                const msgBody = document.createElement('div');
-                msgBody.className = 'msg-body';
-
-                const sender = document.createElement('div');
-                sender.className = 'sender';
-                sender.textContent = msg.senderNickname; // 닉네임을 textContent로 설정합니다.
-
-                const content = document.createElement('div');
-                content.className = 'content';
-                content.textContent = msg.content; // ★★★ 핵심: 메시지 내용을 textContent로 설정하여 스크립트 실행을 방지합니다.
-
-                msgBody.appendChild(sender);
-                msgBody.appendChild(content);
-                msgElement.appendChild(senderAvatar);
-                msgElement.appendChild(msgBody);
-                
-                chatDisplay.appendChild(msgElement);
-                chatDisplay.scrollTop = chatDisplay.scrollHeight;
-            });
-        }
+    
 
         function showGameSelectModal() {
             const optionsContainer = document.getElementById('game-select-options');
