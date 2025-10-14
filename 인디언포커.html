@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>인디언 포커</title>
+    <link href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff" as="font" type="font/woff" crossorigin>
+    <style>
+        @font-face {
+            font-family: 'GmarketSans';
+            src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff') format('woff');
+            font-weight: 500;
+        }
+        @font-face {
+            font-family: 'GmarketSans';
+            src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansBold.woff') format('woff');
+            font-weight: 700;
+        }
+
+        :root {
+            --table-bg: #006442; --table-border: #8B4513; --card-bg: #fff;
+            --card-border: #aaa; --chip-red: #d9534f; --chip-blue: #428bca;
+            --chip-green: #5cb85c; --text-light: #fff; --text-dark: #333;
+            --accent-color: #ffc107;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%; height: 100%; overflow: hidden; font-family: 'GmarketSans', sans-serif;
+            background-color: #1a1a1a; color: var(--text-light);
+            -webkit-user-select: none; user-select: none; touch-action: manipulation;
+        }
+
+        #game-wrapper {
+            width: 100%; height: 100%; display: flex; flex-direction: column;
+            justify-content: center; align-items: center; background: var(--table-bg);
+            background-image: radial-gradient(ellipse at center, #00784e, #005034);
+            position: relative;
+        }
+
+        #game-table {
+            position: relative; width: 95vw; height: 95vw; max-width: 600px; max-height: 600px;
+            border: 10px solid var(--table-border); border-radius: 50%;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.5), 0 5px 15px rgba(0,0,0,0.4);
+        }
+
+        .player-zone {
+            position: absolute; width: 100px; height: 120px;
+            transform: translate(-50%, -50%);
+            display: flex; flex-direction: column; align-items: center;
+            transition: all 0.3s ease;
+        }
+        .player-zone.my-turn {
+            transform: translate(-50%, -50%) scale(1.1);
+            filter: drop-shadow(0 0 15px var(--accent-color));
+        }
+        .player-zone.folded { opacity: 0.5; filter: grayscale(80%); }
+
+        .player-info { text-align: center; }
+        .player-info .avatar {
+            width: 50px; height: 50px; border-radius: 50%;
+            font-size: 2em; display: flex; justify-content: center; align-items: center;
+            background-color: #f0f0f0; margin: 0 auto 5px; border: 2px solid var(--text-light);
+            overflow: hidden;
+        }
+        .player-info .avatar img { width: 100%; height: 100%; object-fit: contain; }
+        .player-info .nickname { font-weight: 700; font-size: 0.9em; white-space: nowrap; }
+        .player-info .chips { font-size: 0.8em; font-weight: 700; color: var(--accent-color); }
+
+        .player-card {
+            width: 50px; height: 70px; background-color: var(--card-bg);
+            border: 1px solid var(--card-border); border-radius: 5px;
+            margin-top: 8px; display: flex; justify-content: center; align-items: center;
+            font-size: 2em; font-weight: bold; color: var(--text-dark);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        .player-card.hidden {
+            background-image: linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%);
+            background-size: 20px 20px; background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+            background-color: #eee; font-size: 2.5em;
+        }
+
+        .bet-amount {
+            position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%);
+            background-color: rgba(0,0,0,0.6); padding: 3px 8px; border-radius: 10px;
+            font-size: 0.8em; font-weight: 700;
+        }
+        
+        #pot-container {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            text-align: center; color: var(--text-light);
+        }
+        #pot-label { font-size: 1em; }
+        #pot-amount { font-size: 1.5em; font-weight: 700; color: var(--accent-color); }
+
+        #action-controls {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            display: none; gap: 10px; z-index: 100;
+        }
+        .action-btn {
+            padding: 12px 20px; font-size: 1.1em; font-weight: 700;
+            border: none; border-radius: 25px; cursor: pointer;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            font-family: 'GmarketSans', sans-serif;
+            transition: all 0.15s ease;
+        }
+        .action-btn:active { transform: scale(0.95); }
+        #fold-btn { background-color: #777; color: white; }
+        #call-btn { background-color: var(--chip-blue); color: white; }
+        #bet-btn, #raise-btn { background-color: var(--chip-red); color: white; }
+
+        .overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 200; text-align: center; background-color: rgba(0,0,0,0.8);
+        }
+        .modal-content {
+            background: #2c3e50; padding: 30px; border-radius: 20px;
+            width: 90%; max-width: 350px;
+        }
+        .modal-content h2 { font-size: 1.8em; margin-bottom: 15px; }
+        .modal-content p { font-size: 1.1em; margin-bottom: 25px; color: #ddd; }
+        .modal-buttons { display: flex; flex-direction: column; gap: 10px; align-items: center; }
+        .menu-btn {
+            width: 100%; max-width: 250px; padding: 15px; font-size: 1.2em;
+            font-weight: bold; border-radius: 12px; border: none; cursor: pointer;
+        }
+        .menu-btn.primary { background-color: var(--accent-color); color: var(--text-dark); }
+        .menu-btn.secondary { background-color: #f0f3f4; color: var(--text-dark); }
+
+        #game-log {
+            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+            background-color: rgba(0,0,0,0.5); padding: 8px 15px;
+            border-radius: 15px; font-size: 0.9em; z-index: 50;
+        }
+
+        .spinner {
+            margin: 20px auto; border: 4px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%; border-top: 4px solid white;
+            width: 40px; height: 40px; animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div id="game-wrapper" style="display: none;">
+        <div id="game-table">
+            <div id="pot-container">
+                <div id="pot-label">POT</div>
+                <div id="pot-amount">0</div>
+            </div>
+        </div>
+        <div id="game-log"></div>
+        <div id="action-controls"></div>
+    </div>
+
+    <div id="info-overlay" class="overlay">
+        <div class="modal-content">
+            <h2 id="info-title">게임 접속 중</h2>
+            <p id="info-message">잠시만 기다려주세요...</p>
+            <div class="spinner" id="info-spinner"></div>
+        </div>
+    </div>
+    
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const firebaseConfig = {
+            apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw", authDomain: "goodluck-7c14b.firebaseapp.com",
+            databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com", projectId: "goodluck-7c14b",
+            storageBucket: "goodluck-7c14b.firebasestorage.app", messagingSenderId: "858281658455",
+            appId: "1:858281658455:web:9131280a459be983933b12"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+        const gameRoomsRef = database.ref('memoryGameRooms');
+
+        const gameWrapper = document.getElementById('game-wrapper');
+        const gameTable = document.getElementById('game-table');
+        const potAmountEl = document.getElementById('pot-amount');
+        const actionControls = document.getElementById('action-controls');
+        const gameLogEl = document.getElementById('game-log');
+        const infoOverlay = document.getElementById('info-overlay');
+
+        let myPlayerId, myNickname, myAvatar, roomId, roomRef, isHost = false;
+        let currentRoomData = null;
+        let isGameInitialized = false;
+
+        const CARD_RANKS = ['2','3','4','5','6','7','8','9','10','A'];
+        const PLAYER_POSITIONS = [
+            { top: '85%', left: '50%' }, { top: '15%', left: '50%' },
+            { top: '50%', left: '15%' }, { top: '50%', left: '85%' }
+        ];
+        const STARTING_CHIPS = 100;
+        const ANTE = 1;
+
+        function initialize() {
+            myPlayerId = localStorage.getItem('myPlayerId');
+            myNickname = localStorage.getItem('userNickname');
+            myAvatar = localStorage.getItem('userAvatar');
+            const urlParams = new URLSearchParams(window.location.search);
+            roomId = urlParams.get('roomId');
+
+            if (!myPlayerId || !roomId) {
+                alert("잘못된 접근입니다."); window.location.href = 'index.html'; return;
+            }
+            
+            roomRef = gameRoomsRef.child(roomId);
+            joinGame();
+        }
+
+        function showInfoModal(title, message, showSpinner = false, onConfirm = null) {
+            infoOverlay.querySelector('#info-title').textContent = title;
+            infoOverlay.querySelector('#info-message').textContent = message;
+            infoOverlay.querySelector('#info-spinner').style.display = showSpinner ? 'block' : 'none';
+            
+            let confirmBtn = infoOverlay.querySelector('#info-confirm-btn');
+            if (!confirmBtn) {
+                confirmBtn = document.createElement('button');
+                confirmBtn.id = 'info-confirm-btn';
+                confirmBtn.className = 'menu-btn primary';
+                infoOverlay.querySelector('.modal-content').appendChild(confirmBtn);
+            }
+            
+            if (onConfirm) {
+                confirmBtn.style.display = 'block';
+                confirmBtn.textContent = '확인';
+                confirmBtn.onclick = () => { infoOverlay.style.display = 'none'; onConfirm(); };
+            } else {
+                confirmBtn.style.display = 'none';
+            }
+            infoOverlay.style.display = 'flex';
+        }
+
+        function joinGame() {
+            roomRef.child('players/' + myPlayerId).set({
+                nickname: myNickname,
+                avatar: myAvatar
+            }).then(() => {
+                roomRef.on('value', handleSnapshot);
+            });
+        }
+
+        function handleSnapshot(snapshot) {
+            if (!snapshot.exists()) {
+                roomRef.off();
+                showInfoModal('알림', '방이 사라졌습니다. 대기실로 이동합니다.', false, () => window.location.href = '대기실.html');
+                return;
+            }
+            currentRoomData = snapshot.val();
+            isHost = currentRoomData.hostId === myPlayerId;
+
+            if (isHost) { roomRef.onDisconnect().remove(); } 
+            else { roomRef.child('players/' + myPlayerId).onDisconnect().remove(); }
+
+            // 방장이면서, 게임이 시작되지 않았고, 모든 준비가 끝나면 게임 초기화
+            if (isHost && currentRoomData.gameState === 'launching' && !isGameInitialized) {
+                isGameInitialized = true;
+                startGame();
+                return;
+            }
+
+            // 게임 데이터가 준비되면 렌더링 시작
+            if (currentRoomData.gameState && currentRoomData.gameState !== 'launching') {
+                gameWrapper.style.display = 'flex';
+                infoOverlay.style.display = 'none';
+                renderGame(currentRoomData);
+            }
+            
+            if (isHost) {
+                handleGameLogic(currentRoomData);
+            }
+        }
+        
+        function startGame() {
+            if (!isHost) return;
+
+            const playerIds = Object.keys(currentRoomData.players);
+            const players = {};
+            playerIds.forEach(pid => {
+                players[pid] = { ...currentRoomData.players[pid], chips: STARTING_CHIPS };
+            });
+
+            const firstDealerId = playerIds[0];
+            roomRef.update({
+                players: players,
+                dealerId: firstDealerId,
+                gameState: 'startingRound' // 라운드 시작 준비 상태
+            }).then(() => {
+                startNewRound({ ...currentRoomData, players, dealerId: firstDealerId });
+            });
+        }
+
+        function handleGameLogic(data) {
+            const { gameState, players } = data;
+            if (!gameState || !players) return;
+            const playerIds = Object.keys(players);
+            
+            switch (gameState) {
+                case 'betting':
+                    const activePlayers = playerIds.filter(pid => players[pid] && !players[pid].hasFolded);
+                    if (activePlayers.length <= 1) {
+                        setTimeout(() => endRound(data), 1000); return;
+                    }
+                    const firstBettor = activePlayers.find(pid => players[pid].lastAction);
+                    const allBettingDone = firstBettor && activePlayers.every(pid => 
+                        players[pid].lastAction && players[pid].bet === data.currentBet
+                    );
+                    if (allBettingDone) {
+                        roomRef.update({ gameState: 'showdown' });
+                    }
+                    break;
+                case 'showdown':
+                     setTimeout(() => endRound(data), 3000);
+                    break;
+            }
+        }
+        
+        function startNewRound(data) {
+            if (!isHost) return;
+            
+            const playerIdsWithChips = Object.keys(data.players).filter(pid => data.players[pid].chips > 0);
+            if (playerIdsWithChips.length < 2) {
+                const winner = data.players[playerIdsWithChips[0]];
+                roomRef.update({ gameState: 'gameOver', winner: winner ? winner.nickname : '없음' });
+                return;
+            }
+
+            const deck = shuffleDeck();
+            const updates = { pot: 0, currentBet: 0, gameLog: '새로운 라운드 시작!', gameState: 'dealing' };
+            const players = { ...data.players };
+            let currentPot = 0;
+            
+            playerIdsWithChips.forEach(pid => {
+                const p = players[pid];
+                p.card = deck.pop();
+                p.hasFolded = false;
+                p.bet = Math.min(ANTE, p.chips);
+                p.chips -= p.bet;
+                p.lastAction = null;
+                currentPot += p.bet;
+            });
+
+            updates.pot = currentPot;
+            updates.currentBet = ANTE;
+            updates.players = players;
+
+            const dealerIndex = playerIdsWithChips.indexOf(data.dealerId);
+            const nextTurnIndex = (dealerIndex + 1) % playerIdsWithChips.length;
+            updates.currentTurnPlayerId = playerIdsWithChips[nextTurnIndex];
+            
+            roomRef.update(updates).then(() => {
+                setTimeout(() => roomRef.update({ gameState: 'betting' }), 1000);
+            });
+        }
+
+        function endRound(data) {
+            if (!isHost || data.gameState === 'startingRound') return;
+            roomRef.update({ gameState: 'startingRound' });
+
+            const { players, pot } = data;
+            const activePlayers = Object.keys(players).filter(pid => players[pid] && !players[pid].hasFolded && players[pid].chips >= 0);
+
+            let winnerId, logMessage;
+            if (activePlayers.length === 1) {
+                winnerId = activePlayers[0];
+                logMessage = `${players[winnerId].nickname}님이 모두 폴드하여 승리!`;
+            } else {
+                let highestCardRank = -1, winners = [];
+                activePlayers.forEach(pid => {
+                    const rank = CARD_RANKS.indexOf(players[pid].card);
+                    if (rank > highestCardRank) { highestCardRank = rank; winners = [pid]; } 
+                    else if (rank === highestCardRank) { winners.push(pid); }
+                });
+                if (winners.length === 1) {
+                    winnerId = winners[0];
+                } else {
+                    const playerIds = Object.keys(players);
+                    const dealerIndex = playerIds.indexOf(data.dealerId);
+                    let minDistance = playerIds.length;
+                    winners.forEach(pid => {
+                        const playerIndex = playerIds.indexOf(pid);
+                        const distance = (playerIndex - dealerIndex + playerIds.length) % playerIds.length;
+                        if (distance < minDistance) { minDistance = distance; winnerId = pid; }
+                    });
+                }
+                logMessage = `${players[winnerId].nickname}님이 승리! (카드: ${players[winnerId].card})`;
+            }
+
+            const updatedPlayers = { ...players };
+            updatedPlayers[winnerId].chips += pot;
+            
+            const playerIdsWithChips = Object.keys(players).filter(p => players[p].chips > 0);
+            const currentDealerIndex = playerIdsWithChips.indexOf(data.dealerId);
+            const nextDealerId = playerIdsWithChips.length > 0 ? playerIdsWithChips[(currentDealerIndex + 1) % playerIdsWithChips.length] : data.dealerId;
+
+            roomRef.update({ players: updatedPlayers, dealerId: nextDealerId, gameLog: logMessage }).then(() => {
+                setTimeout(() => startNewRound({ ...data, players: updatedPlayers, dealerId: nextDealerId }), 3000);
+            });
+        }
+        
+        function renderGame(data) {
+            if (data.gameState === 'gameOver') {
+                showInfoModal('게임 종료!', `${data.winner}님의 최종 승리!`, false, () => {
+                     if (isHost) roomRef.remove();
+                     window.location.href = '대기실.html';
+                });
+                return;
+            }
+
+            const { players } = data;
+            gameTable.innerHTML = '';
+            potAmountEl.textContent = data.pot || 0;
+            gameLogEl.textContent = data.gameLog || '인디언 포커에 오신 것을 환영합니다!';
+            
+            const playerIds = Object.keys(players || {});
+            const myIndex = playerIds.indexOf(myPlayerId);
+            const reorderedPlayerIds = myIndex === -1 ? playerIds : playerIds.slice(myIndex).concat(playerIds.slice(0, myIndex));
+            
+            reorderedPlayerIds.forEach((pid, index) => {
+                const p = players[pid];
+                if (!p) return;
+                const pos = PLAYER_POSITIONS[index];
+                const playerZone = document.createElement('div');
+                playerZone.className = 'player-zone';
+                playerZone.style.top = pos.top;
+                playerZone.style.left = pos.left;
+                if (pid === data.currentTurnPlayerId) playerZone.classList.add('my-turn');
+                if (p.hasFolded) playerZone.classList.add('folded');
+                const avatarHTML = p.avatar.startsWith('http') ? `<img src="${p.avatar}" style="width:100%;height:100%;object-fit:contain;">` : p.avatar;
+                const cardToShow = (pid === myPlayerId) ? '❓' : p.card;
+                const cardClass = (pid === myPlayerId) ? 'hidden' : '';
+                playerZone.innerHTML = `
+                    <div class="player-info">
+                        <div class="avatar">${avatarHTML}</div>
+                        <div class="nickname">${p.nickname}</div>
+                        <div class="chips">칩: ${p.chips || 0}</div>
+                    </div>
+                    <div class="player-card ${cardClass}">${p.card ? cardToShow : ''}</div>
+                    ${p.bet > 0 ? `<div class="bet-amount">Bet: ${p.bet}</div>` : ''}
+                `;
+                gameTable.appendChild(playerZone);
+            });
+            
+            actionControls.innerHTML = '';
+            if (data.gameState === 'betting' && data.currentTurnPlayerId === myPlayerId) {
+                actionControls.style.display = 'flex';
+                const myBet = players[myPlayerId].bet || 0;
+                const toCall = data.currentBet - myBet;
+                actionControls.innerHTML = `
+                    <button id="fold-btn" class="action-btn">폴드</button>
+                    <button id="call-btn" class="action-btn">${toCall > 0 ? `콜 (${toCall})` : '체크'}</button>
+                    <button id="bet-btn" class="action-btn">베팅 (10)</button>
+                `;
+                document.getElementById('fold-btn').onclick = handleFold;
+                document.getElementById('call-btn').onclick = handleCall;
+                document.getElementById('bet-btn').onclick = () => handleBet(10);
+            } else {
+                actionControls.style.display = 'none';
+            }
+        }
+        
+        function handleFold() {
+            const updates = {};
+            updates[`/players/${myPlayerId}/hasFolded`] = true;
+            updates[`/players/${myPlayerId}/lastAction`] = 'fold';
+            updates['/gameLog'] = `${myNickname}님이 폴드했습니다.`;
+            roomRef.update(updates).then(() => advanceTurn());
+        }
+
+        function handleCall() {
+            const myPlayer = currentRoomData.players[myPlayerId];
+            const toCall = currentRoomData.currentBet - myPlayer.bet;
+            if (myPlayer.chips < toCall) { alert('칩이 부족합니다.'); return; }
+            const updates = {};
+            updates[`/players/${myPlayerId}/chips`] = myPlayer.chips - toCall;
+            updates[`/players/${myPlayerId}/bet`] = myPlayer.bet + toCall;
+            updates[`/pot`] = currentRoomData.pot + toCall;
+            updates[`/players/${myPlayerId}/lastAction`] = 'call';
+            updates['/gameLog'] = `${toCall > 0 ? myNickname + '님이 콜했습니다.' : myNickname + '님이 체크했습니다.'}`;
+            roomRef.update(updates).then(() => advanceTurn());
+        }
+
+        function handleBet(amount) {
+            const myPlayer = currentRoomData.players[myPlayerId];
+            const toCall = currentRoomData.currentBet - myPlayer.bet;
+            const totalBetAmount = toCall + amount;
+            if (myPlayer.chips < totalBetAmount) { alert('칩이 부족합니다.'); return; }
+            const updates = {};
+            updates[`/players/${myPlayerId}/chips`] = myPlayer.chips - totalBetAmount;
+            updates[`/players/${myPlayerId}/bet`] = myPlayer.bet + totalBetAmount;
+            updates[`/pot`] = currentRoomData.pot + totalBetAmount;
+            updates[`/currentBet`] = myPlayer.bet + totalBetAmount;
+            updates[`/players/${myPlayerId}/lastAction`] = 'bet';
+            updates['/gameLog'] = `${myNickname}님이 ${amount}만큼 베팅했습니다.`;
+            Object.keys(currentRoomData.players).forEach(pid => {
+                if (pid !== myPlayerId) { updates[`/players/${pid}/lastAction`] = null; }
+            });
+            roomRef.update(updates).then(() => advanceTurn());
+        }
+
+        function advanceTurn() {
+            if (!isHost) return;
+            const playerIdsWithChips = Object.keys(currentRoomData.players).filter(pid => currentRoomData.players[pid].chips >= 0);
+            const activePlayers = playerIdsWithChips.filter(pid => !currentRoomData.players[pid].hasFolded);
+            if (activePlayers.length === 0) return;
+            const currentIndex = activePlayers.indexOf(currentRoomData.currentTurnPlayerId);
+            const nextIndex = (currentIndex + 1) % activePlayers.length;
+            roomRef.child('currentTurnPlayerId').set(activePlayers[nextIndex]);
+        }
+
+        function shuffleDeck() {
+            const deck = [...CARD_RANKS];
+            for (let i = deck.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [deck[i], deck[j]] = [deck[j], deck[i]];
+            }
+            return deck;
+        }
+
+        initialize();
+    });
+    </script>
+</body>
+</html>
