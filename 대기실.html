@@ -318,10 +318,11 @@
               infoConfirmBtn = document.getElementById('info-confirm-btn'),
               gameSelectModal = document.getElementById('game-select-modal');
         
-    const availableGames = [
+const availableGames = [
         { id: 'memory', name: '메모리게임', icon: '🧠', color: '#4CAF50', file: '메모리게임.html' },
         { id: 'maze', name: '미로찾기', icon: '🚀', color: '#34495e', file: '미로찾기멀티.html' },
-        { id: 'alkkagi', name: '알까기', icon: '⚪', color: '#8d6e63', file: '알까기.html' }
+        { id: 'alkkagi', name: '알까기', icon: '⚪', color: '#8d6e63', file: '알까기.html' },
+        { id: 'reversi', name: '리버시', icon: '⚫', color: '#00897B', file: '리버시.html' }
     ];
 
         let myPlayerId, myNickname, myAvatar, roomRef, currentRoomData, isHost = false;
@@ -362,45 +363,55 @@
             stopLobbyListener();
             roomListContainer.innerHTML = `<div class="spinner"></div>`;
             const query = gameRoomsRef.orderByChild('createdAt').limitToLast(20);
- lobbyListener = query.on('value', snapshot => {
+lobbyListener = query.on('value', snapshot => {
                 roomListContainer.innerHTML = '';
-                if (!snapshot.exists()) {
-                    createNewPublicRoom();
-                    return;
-                }
-                let roomCount = 0;
-                snapshot.forEach(childSnapshot => {
-                    const room = childSnapshot.val();
-                    if(!room || !room.players || !room.roomName || Object.keys(room.players).length === 0) return;
-                    roomCount++;
-                    const playerCount = Object.keys(room.players).length;
-                    const isPlaying = room.gameState === 'playing' || room.gameState === 'launching';
-                    const isFull = playerCount >= 4;
-                    const game = room.selectedGame ? availableGames.find(g => g.id === room.selectedGame) : null;
-                    const gameInfo = game ? `${game.icon} ${game.name}` : `<span style="color:#999">선택중...</span>`;
-                    const statusText = isPlaying ? '게임중' : '대기중';
-                    const statusClass = isPlaying ? 'playing' : 'waiting';
+                let roomCount = 0; // 방 개수를 세는 변수
 
-                    const roomItem = document.createElement('div');
-                    roomItem.className = 'room-item';
-                    roomItem.innerHTML = `
-                        <div class="room-main-info">
-                            <div class="room-name">${room.roomName}</div>
-                            <div class="room-detail-line game"><span class="detail-label">게임</span><span class="detail-value">${gameInfo}</span></div>
-                            <div class="room-detail-line status-players">
-                                <div class="status-wrapper"><span class="detail-label">상태</span><span class="detail-value room-status ${statusClass}">[ ${statusText} ]</span></div>
-                                <div class="players-wrapper"><span class="detail-label">인원</span><span class="detail-value">${playerCount} / 4</span></div>
+                if (snapshot.exists()) {
+                    snapshot.forEach(childSnapshot => {
+                        const room = childSnapshot.val();
+                        const roomKey = childSnapshot.key;
+
+                        // ★★★ 핵심 수정: 유령방 자동 삭제 로직 ★★★
+                        // 1. 플레이어가 없거나, 2. 방 정보가 비정상적인 경우
+                        if (!room || !room.players || Object.keys(room.players).length === 0) {
+                            console.log(`유령 방(${roomKey})을 발견하여 자동으로 삭제합니다.`);
+                            gameRoomsRef.child(roomKey).remove(); // 해당 방을 DB에서 삭제
+                            return; // 다음 방으로 넘어감
+                        }
+                        
+                        roomCount++; // 유효한 방 개수 증가
+                        const playerCount = Object.keys(room.players).length;
+                        const isPlaying = room.gameState === 'playing' || room.gameState === 'launching';
+                        const isFull = playerCount >= 4;
+                        const game = room.selectedGame ? availableGames.find(g => g.id === room.selectedGame) : null;
+                        const gameInfo = game ? `${game.icon} ${game.name}` : `<span style="color:#999">선택중...</span>`;
+                        const statusText = isPlaying ? '게임중' : '대기중';
+                        const statusClass = isPlaying ? 'playing' : 'waiting';
+
+                        const roomItem = document.createElement('div');
+                        roomItem.className = 'room-item';
+                        roomItem.innerHTML = `
+                            <div class="room-main-info">
+                                <div class="room-name">${room.roomName}</div>
+                                <div class="room-detail-line game"><span class="detail-label">게임</span><span class="detail-value">${gameInfo}</span></div>
+                                <div class="room-detail-line status-players">
+                                    <div class="status-wrapper"><span class="detail-label">상태</span><span class="detail-value room-status ${statusClass}">[ ${statusText} ]</span></div>
+                                    <div class="players-wrapper"><span class="detail-label">인원</span><span class="detail-value">${playerCount} / 4</span></div>
+                                </div>
                             </div>
-                        </div>
-                        <button class="menu-btn join-btn primary" data-room-id="${childSnapshot.key}" ${isFull || isPlaying ? 'disabled' : ''}>참가하기</button>
-                    `;
-                    roomListContainer.prepend(roomItem);
-                });
-                // 대기실.html 파일의 174번째 줄 근처
+                            <button class="menu-btn join-btn primary" data-room-id="${childSnapshot.key}" ${isFull || isPlaying ? 'disabled' : ''}>참가하기</button>
+                        `;
+                        roomListContainer.prepend(roomItem);
+                    });
+                }
+
+                // ★★★ 핵심 수정 ★★★
+                // 방이 하나도 없을 경우, 안내 메시지를 표시하고 자동 생성을 하지 않음
                 if (roomCount === 0) {
-                    // 활성화된 방이 없을 경우 다시 자동 생성 로직을 호출 (유지)
-                    createNewPublicRoom(); 
-                } else { // 방이 있을 때만 버튼에 이벤트 리스너를 붙입니다.
+                    roomListContainer.innerHTML = `<p style="text-align:center; color:#888; padding-top: 40px;">현재 참여 가능한 방이 없습니다.<br>새로운 방을 만들어보세요!</p>`;
+                } else {
+                    // 방이 있을 때만 참가 버튼에 이벤트 리스너를 추가
                     document.querySelectorAll('.join-btn').forEach(btn => btn.addEventListener('click', e => joinRoom(e.target.dataset.roomId)));
                 }
             });
