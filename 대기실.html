@@ -452,16 +452,28 @@ lobbyListener = query.on('value', snapshot => {
             isHost = false;
             roomRef = gameRoomsRef.child(roomId);
             roomRef.transaction(currentData => {
-                if (currentData === null) return null;
-                if (currentData.gameState === 'waiting' && currentData.players && Object.keys(currentData.players).length < 4) {
+                // 입장하려는 방이 존재하고, 대기중이며, 4명 미만일 때만 로직 실행
+                if (currentData && currentData.gameState === 'waiting' && currentData.players && Object.keys(currentData.players).length < 4) {
                     currentData.players[myPlayerId] = { nickname: myNickname, avatar: myAvatar, score: 0, isHost: false };
-                    return currentData;
-                } return;
- }, (error, committed) => {
-                 if (!committed) { 
-                     // showInfoModal("입장 실패", "방이 꽉 찼거나 이미 시작되어 참여할 수 없습니다."); <- 이 알림을 무시합니다.
-                     createNewPublicRoom(); // 방 생성 실패 시 자동 방 생성 시도 (기존 로직 무시)
-                 } else { roomRef.child('players/' + myPlayerId).onDisconnect().remove(); listenToRoomChanges(); }
+                    return currentData; // 변경된 데이터를 DB에 저장
+                }
+                // 조건에 맞지 않으면 아무것도 변경하지 않고 트랜잭션을 중단
+                return; 
+            }, (error, committed, snapshot) => {
+                if (error) {
+                    console.error("Transaction failed: ", error);
+                    showInfoModal("입장 실패", "오류가 발생했습니다. 다시 시도해주세요.");
+                    startLobbyListener(); // 로비로 복귀
+                } else if (!committed) {
+                    // ★★★ 핵심 수정 ★★★
+                    // 입장에 실패(committed=false)하면, 방을 만들지 않고 알림을 띄우고 로비로 돌아갑니다.
+                    showInfoModal("입장 실패", "방이 꽉 찼거나 이미 게임이 시작되었습니다.");
+                    startLobbyListener(); // 로비 목록을 다시 불러옴
+                } else {
+                    // 성공적으로 입장한 경우
+                    roomRef.child('players/' + myPlayerId).onDisconnect().remove();
+                    listenToRoomChanges();
+                }
             });
         }
 

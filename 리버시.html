@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>리버시 게임</title>
+    <link href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff" as="font" type="font/woff" crossorigin>
+    <style>
+        @font-face {
+            font-family: 'GmarketSans';
+            src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff') format('woff');
+            font-weight: 500;
+        }
+        @font-face {
+            font-family: 'GmarketSans';
+            src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansBold.woff') format('woff');
+            font-weight: 700;
+        }
+
+        :root {
+            --bg-color: #1a2a1a;
+            --board-bg: #006A4E; /* 클래식한 녹색 펠트 색상 */
+            --border-color: #4a2c2a;
+            --stone-white: #f5f5f5;
+            --stone-black: #333;
+            --primary-color: #4a8dff;
+            --accent-color: #ffc84a;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%; height: 100%; overflow: hidden;
+            font-family: 'GmarketSans', sans-serif;
+            background-color: var(--bg-color); color: white;
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            -webkit-user-select: none; user-select: none;
+            touch-action: manipulation;
+        }
+
+        #game-wrapper {
+            width: 100%; height: 100%;
+            display: flex; flex-direction: column;
+        }
+        #game-header {
+            flex-shrink: 0; display: flex;
+            justify-content: space-around; align-items: center;
+            padding: 10px 15px; background-color: rgba(0,0,0,0.3);
+            gap: 15px;
+        }
+        .player-info {
+            display: flex; flex-direction: row;
+            align-items: center; gap: 12px; padding: 8px 12px;
+            border-radius: 12px; transition: all 0.3s ease;
+            background-color: rgba(255,255,255,0.1);
+            min-width: 150px; flex: 1; justify-content: center;
+        }
+        .player-info.my-turn {
+            background-color: var(--accent-color);
+            transform: scale(1.05); color: #111;
+            box-shadow: 0 0 20px rgba(255, 171, 64, 0.5);
+        }
+        .player-info .avatar { font-size: 1.8em; }
+        .player-info .avatar img {
+            width: 36px; height: 36px;
+            object-fit: contain; border-radius: 50%;
+        }
+        .player-info .info-text { text-align: left; }
+        .player-info .nickname { font-weight: 700; font-size: 1em; }
+        .player-info .stone-count { font-size: 1.1em; font-weight: 700; margin-left: auto; }
+        
+        #game-container {
+            width: 100%; flex-grow: 1;
+            display: flex; justify-content: center; align-items: center;
+            position: relative; overflow: hidden; padding: 15px;
+            background-image: url('https://www.transparenttextures.com/patterns/wood-pattern.png');
+        }
+        #game-board {
+            position: relative;
+            background-color: var(--board-bg);
+            border: 8px solid var(--border-color);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5), inset 0 0 15px rgba(0,0,0,0.4);
+            border-radius: 8px;
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            grid-template-rows: repeat(8, 1fr);
+            aspect-ratio: 1 / 1;
+            padding: 5px; gap: 2px;
+            width: 100%; max-width: 500px;
+        }
+        .board-cell {
+            background-color: rgba(0,0,0,0.15);
+            border-radius: 4px;
+            display: flex; justify-content: center; align-items: center;
+        }
+        .board-cell.valid-move::after {
+            content: '';
+            width: 30%; height: 30%;
+            background-color: rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            cursor: pointer;
+            animation: pulse-valid 1.5s infinite;
+        }
+        @keyframes pulse-valid { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
+        
+        .stone {
+            width: 90%; height: 90%;
+            border-radius: 50%;
+            transition: transform 0.6s;
+            transform-style: preserve-3d;
+            position: relative;
+        }
+        .stone-face {
+            position: absolute; width: 100%; height: 100%;
+            border-radius: 50%;
+            backface-visibility: hidden; -webkit-backface-visibility: hidden;
+            box-shadow: inset 0 -3px 6px rgba(0,0,0,0.3), inset 0 3px 6px rgba(255,255,255,0.2), 0 3px 6px rgba(0,0,0,0.4);
+        }
+        .stone-face.black-face {
+            background: radial-gradient(circle at 30% 30%, #555, #333 50%, #222);
+            transform: rotateY(180deg);
+        }
+        .stone-face.white-face {
+            background: radial-gradient(circle at 30% 30%, #ffffff, #f5f5f5 50%, #e0e0e0);
+        }
+        .stone.black { transform: rotateY(180deg); }
+        .stone.white { transform: rotateY(0deg); }
+        .stone.placed { animation: place-anim 0.3s ease-out; }
+        @keyframes place-anim { from { transform: scale(0.5); } to { transform: scale(1); } }
+        
+        .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 200; text-align: center; background-color: rgba(0,0,0,0.7); }
+        .modal-content { background: var(--bg-color); color: #333; padding: 0; border-radius: 20px; width: 90%; max-width: 400px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); overflow: hidden; }
+        .modal-header { background-color: var(--primary-color); padding: 15px; }
+        .modal-header h2 { color: white; font-size: 1.8em; }
+        .modal-body { padding: 25px; }
+        .menu-btn { width: 100%; padding: 15px; font-size: 1.2em; font-weight: bold; border-radius: 12px; border: none; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.1s; margin: 8px 0; }
+        .menu-btn.primary { background-color: var(--primary-color); color: white; }
+        .menu-btn.secondary { background-color: #e9eff8; color: #333; }
+        .menu-btn:active { transform: scale(0.98); }
+        #countdown-number { font-size: 8em; font-weight: 700; color: white; text-shadow: 0 0 30px rgba(255,255,255,0.8); animation: countdown-pop 1s; }
+        @keyframes countdown-pop { from { transform: scale(0.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+        #score-board { margin: 20px 0; }
+        .score-row { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-radius: 8px; font-size: 1.2em; font-weight: 700; margin: 8px auto; max-width: 300px; }
+        .score-row.winner { background-color: var(--accent-color); color: #111; transform: scale(1.05); }
+        .score-row.loser { background-color: #f0f3f4; color: #333; }
+    </style>
+</head>
+<body>
+    <div id="game-wrapper">
+        <div id="game-header"></div>
+        <div id="game-container"><div id="game-board"></div></div>
+    </div>
+    
+    <div id="game-over-overlay" class="overlay" style="display: none;"></div>
+    <div id="waiting-overlay" class="overlay" style="display: none;"></div>
+    <div id="info-overlay" class="overlay" style="display: none;"></div>
+
+    <audio id="place-sound" src="https://blog.kakaocdn.net/dna/bE9rWk/dJMb9LL2JvO/AAAAAAAAAAAAAAAAAAAAAL7Z8Z6lgrLbuF7h_J2_2kg8Q4TCT_074K-wB72L3uGq/%EC%95%8C%EA%B9%8C%EA%B8%B0%EB%8F%8C%EB%86%93%EB%8A%94%EC%86%8C%EB%A6%AC.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=RwnoH%2B1K3bU1oWlQ43s6x%2B6xP74%3D&attach=1&knm=tfile.mp3" preload="auto"></audio>
+    <audio id="flip-sound" src="https://blog.kakaocdn.net/dna/bBfLgT/dJMb9YwY4fF/AAAAAAAAAAAAAAAAAAAAAAKzHw-12dE9FjL7iWk1m70Y0JqL243dYvG7b5gJ0wK1/cardsound32562-37691.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=2XU4lIeFhV%2Fz11qWnQc4%252B0V5I8o%253D&attach=1&knm=tfile.mp3" preload="auto"></audio>
+    <audio id="win-sound" src="https://blog.kakaocdn.net/dna/kC4is/dJMb8WZJowA/AAAAAAAAAAAAAAAAAAAAAIQeZhVDJf0ZGAWyyMr_hsc6TMe3BFUVXd0FNTl5VDcY/%EA%B2%8C%EC%9E%84%EC%8A%B9%EB%A6%AC.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=qZKwGj5NQeAFNrOvCPAMXc6aX9I%3D&attach=1&knm=tfile.mp3" preload="auto"></audio>
+    <audio id="lose-sound" src="https://blog.kakaocdn.net/dna/btdC98/dJMb9XxycmG/AAAAAAAAAAAAAAAAAAAAAE_i_Qk3V2708E5E0WwYlqK1wL1287h2z5H713K3t32d/%EC%95%8C%EA%B9%8C%EA%B8%B0%ED%8C%A8%EB%B0%B0.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=8yH9X35q%2F1L29Qf8YgK8s8U5Yv4%3D&attach=1&knm=tfile.mp3" preload="auto"></audio>
+    
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const firebaseConfig = {
+            apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw", authDomain: "goodluck-7c14b.firebaseapp.com",
+            databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com", projectId: "goodluck-7c14b",
+            storageBucket: "goodluck-7c14b.firebasestorage.app", messagingSenderId: "858281658455",
+            appId: "1:858281658455:web:9131280a459be983933b12"
+        };
+        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+        const gameRoomsRef = database.ref('memoryGameRooms');
+        const playersStatsRef = database.ref('users');
+
+        const gameBoard = document.getElementById('game-board');
+        const gameHeader = document.getElementById('game-header');
+        const waitingOverlay = document.getElementById('waiting-overlay');
+        const gameOverOverlay = document.getElementById('game-over-overlay');
+        
+        let myPlayerId, myNickname, myAvatar, myColor;
+        let roomRef, currentRoomData, isHost, isGameLive = false, roomListener;
+
+        function playSound(id) {
+            const sound = document.getElementById(id);
+            if (sound) { sound.currentTime = 0; sound.play().catch(e => {}); }
+        }
+
+        function getPlayerInfo() {
+            const urlParams = new URLSearchParams(window.location.search);
+            myPlayerId = urlParams.get('myPlayerId') || localStorage.getItem('myPlayerId');
+            if (!myPlayerId) {
+                alert("플레이어 정보가 없습니다. 메인 메뉴로 돌아갑니다.");
+                window.location.href = 'index.html';
+                return false;
+            }
+            myNickname = localStorage.getItem('userNickname');
+            myAvatar = localStorage.getItem('userAvatar');
+            return true;
+        }
+
+        function joinMultiplayerGame(roomId) {
+            waitingOverlay.innerHTML = `
+                <div class="modal-content">
+                    <div class="modal-body">
+                        <p style="margin-bottom: 20px; font-size: 1.3em; color: #333;">게임에 참가하는 중...</p>
+                        <div class="spinner" style="border: 4px solid rgba(0,0,0,0.1); border-top-color: var(--primary-color);"></div>
+                    </div>
+                </div>`;
+            waitingOverlay.style.display = 'flex';
+
+            roomRef = gameRoomsRef.child(roomId);
+
+            const myPlayerData = { nickname: myNickname, avatar: myAvatar };
+            roomRef.child('players/' + myPlayerId).set(myPlayerData).then(() => {
+                roomRef.child('players/' + myPlayerId).onDisconnect().remove();
+                listenToRoomChanges(); // 방에 참가 후 즉시 실시간 감지를 시작합니다.
+            });
+        }
+
+        function initializeFirstGame() {
+            if (!isHost) return;
+            const players = currentRoomData.players;
+            const playerIds = Object.keys(players);
+            
+            // 흑/백 랜덤 배정
+            playerIds.sort(() => Math.random() - 0.5);
+            players[playerIds[0]].color = 'black';
+            players[playerIds[1]].color = 'white';
+            if(playerIds.length > 2) players[playerIds[2]].color = 'black'; // 3-4인용 확장 시
+            if(playerIds.length > 4) players[playerIds[3]].color = 'white';
+            
+            Object.values(players).forEach(p => { p.score = 2; p.wantsRematch = null; });
+
+            // 초기 보드 상태
+            const initialBoard = Array(64).fill(null);
+            initialBoard[27] = 'white'; initialBoard[28] = 'black';
+            initialBoard[35] = 'black'; initialBoard[36] = 'white';
+
+            roomRef.update({
+                gameState: 'ready',
+                board: initialBoard,
+                turn: 'black', // 흑돌이 항상 선
+                players: players,
+                passedTurn: false
+            });
+        }
+
+        function listenToRoomChanges() {
+            isGameLive = true;
+            if(roomListener) roomRef.off('value', roomListener);
+
+            roomListener = roomRef.on('value', snapshot => {
+                if (!isGameLive || !snapshot.exists()) {
+                    if(isGameLive) alert("방이 해체되었습니다. 대기실로 이동합니다.");
+                    cleanupAndExit();
+                    return;
+                }
+                currentRoomData = snapshot.val();
+                if (!currentRoomData.players || !currentRoomData.players[myPlayerId]) {
+                    if (isGameLive) alert("방에서 제외되었습니다. 대기실로 이동합니다.");
+                    cleanupAndExit();
+                    return;
+                }
+                
+                const players = currentRoomData.players;
+                const playerCount = Object.keys(players).length;
+                isHost = currentRoomData.hostId === myPlayerId;
+
+                // 1. 방장만 실행: 2명이 다 모였고, 게임 시작 신호('launching')가 오면 게임 데이터를 생성합니다.
+                if (isHost && playerCount === 2 && currentRoomData.gameState === 'launching') {
+                    initializeFirstGame();
+                    return; // 데이터 생성이 완료될 때까지 기다립니다.
+                }
+
+                // 2. 모든 플레이어 실행: 게임 상태에 따라 화면을 그립니다.
+                //    데이터가 준비되었는지 항상 확인하여 오류를 방지합니다.
+                switch(currentRoomData.gameState) {
+                    case 'ready':
+                        myColor = players[myPlayerId]?.color;
+                        updateHeaderUI();
+                        startCountdown();
+                        break;
+                    case 'playing':
+                        myColor = players[myPlayerId]?.color;
+                        updateHeaderUI();
+                        drawBoard();
+                        break;
+                    case 'gameOver':
+                        myColor = players[myPlayerId]?.color;
+                        updateHeaderUI();
+                        drawBoard();
+                        showGameOverScreen();
+                        break;
+                }
+            });
+        }
+
+        function startCountdown() {
+            // ★★★ 핵심 수정 ★★★
+            // 카운트다운이 이미 진행 중이면 다시 시작하지 않도록 방지합니다.
+            if (document.getElementById('countdown-number')) return;
+
+            waitingOverlay.innerHTML = `<div id="countdown-number">3</div>`;
+            waitingOverlay.style.display = 'flex';
+            let count = 3;
+            
+            // 카운트다운 UI를 업데이트하는 별도의 함수
+            const updateCountdown = () => {
+                const countdownEl = document.getElementById('countdown-number');
+                if (countdownEl) countdownEl.textContent = count;
+            };
+            
+            updateCountdown(); // 즉시 '3'을 표시
+
+            const interval = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    updateCountdown();
+                } else {
+                    clearInterval(interval);
+                    waitingOverlay.style.display = 'none';
+                    // 방장만 게임 상태를 'playing'으로 변경합니다.
+                    if (isHost) {
+                        roomRef.child('gameState').set('playing');
+                    }
+                }
+            }, 1000);
+        }
+
+        function drawBoard() {
+            // ★★★ 안전장치 추가: board 데이터가 없으면 실행하지 않음 ★★★
+            if (!currentRoomData || !currentRoomData.board) return;
+
+            gameBoard.innerHTML = '';
+            const { board, turn } = currentRoomData;
+            const validMoves = (myColor === turn) ? findValidMoves(board, myColor) : [];
+
+            board.forEach((cell, index) => {
+                const cellEl = document.createElement('div');
+                cellEl.className = 'board-cell';
+                if (validMoves.includes(index)) {
+                    cellEl.classList.add('valid-move');
+                    cellEl.addEventListener('click', () => handleCellClick(index));
+                }
+
+                if (cell) {
+                    const stoneEl = document.createElement('div');
+                    stoneEl.className = 'stone';
+                    stoneEl.innerHTML = `<div class="stone-face white-face"></div><div class="stone-face black-face"></div>`;
+                    
+                    if (currentRoomData.lastMove === index) {
+                         setTimeout(() => stoneEl.classList.add(cell), 50);
+                         stoneEl.classList.add('placed');
+                    } else {
+                         stoneEl.classList.add(cell);
+                    }
+                    cellEl.appendChild(stoneEl);
+                }
+                gameBoard.appendChild(cellEl);
+            });
+        }
+
+        function handleCellClick(index) {
+            const { turn, board } = currentRoomData;
+            if (turn !== myColor) return;
+            
+            const moves = findValidMoves(board, myColor);
+            if (!moves.includes(index)) return;
+
+            playSound('place-sound');
+            const newBoard = [...board];
+            newBoard[index] = myColor;
+            
+            const opponentColor = myColor === 'black' ? 'white' : 'black';
+            const directions = [-9, -8, -7, -1, 1, 7, 8, 9];
+            
+            directions.forEach(dir => {
+                const stonesToFlip = [];
+                let current = index + dir;
+                
+                // 경계 체크
+                while (current >= 0 && current < 64 && Math.abs((current % 8) - ((current - dir) % 8)) <= 1) {
+                    if (newBoard[current] === opponentColor) {
+                        stonesToFlip.push(current);
+                    } else if (newBoard[current] === myColor) {
+                        stonesToFlip.forEach(pos => newBoard[pos] = myColor);
+                        if (stonesToFlip.length > 0) playSound('flip-sound');
+                        break;
+                    } else {
+                        break;
+                    }
+                    current += dir;
+                }
+            });
+
+            // 다음 턴 계산
+            const nextTurnColor = opponentColor;
+            const nextPlayerHasMoves = findValidMoves(newBoard, nextTurnColor).length > 0;
+            const currentPlayerHasMoves = findValidMoves(newBoard, myColor).length > 0;
+            
+            const updates = { board: newBoard, lastMove: index };
+
+            if (nextPlayerHasMoves) {
+                updates.turn = nextTurnColor;
+                updates.passedTurn = false;
+            } else if (currentPlayerHasMoves) {
+                updates.turn = myColor; // 상대방이 둘 곳 없으면 턴 유지
+                updates.passedTurn = true; // 턴이 넘어갔음을 알림
+            } else {
+                updates.gameState = 'gameOver'; // 둘 다 둘 곳 없으면 게임 종료
+            }
+            
+            roomRef.update(updates);
+        }
+
+        function findValidMoves(board, color) {
+            const opponentColor = color === 'black' ? 'white' : 'black';
+            const validMoves = [];
+            const directions = [-9, -8, -7, -1, 1, 7, 8, 9]; // 대각선, 상하, 좌우
+
+            for (let i = 0; i < 64; i++) {
+                if (board[i] !== null) continue; // 빈 칸만 검사
+
+                let isValid = false;
+                for (const dir of directions) {
+                    let path = [];
+                    let current = i + dir;
+                    
+                    // 경계 체크 (줄바꿈 방지)
+                    if (current < 0 || current >= 64 || Math.abs((current % 8) - ((current-dir) % 8)) > 1 ) continue;
+
+                    // 1. 바로 옆이 상대방 돌이어야 함
+                    if (board[current] === opponentColor) {
+                        path.push(current);
+                        current += dir;
+                        // 2. 계속 가서 내 돌을 만날 때까지
+                        while (current >= 0 && current < 64 && Math.abs((current % 8) - ((current-dir) % 8)) <= 1) {
+                            if (board[current] === color) {
+                                isValid = true;
+                                break;
+                            }
+                            if (board[current] === null) break;
+                            path.push(current);
+                            current += dir;
+                        }
+                    }
+                    if (isValid) break;
+                }
+                if (isValid) validMoves.push(i);
+            }
+            return validMoves;
+        }
+
+        function updateHeaderUI() {
+            // ★★★ 핵심: 게임판(board) 데이터가 없으면 함수를 즉시 종료하는 안전장치 추가 ★★★
+            if (!currentRoomData || !currentRoomData.players || !currentRoomData.board) return;
+
+            const { players } = currentRoomData;
+            const playerIds = Object.keys(players);
+            gameHeader.innerHTML = '';
+
+            ['black', 'white'].forEach(color => {
+                const pid = playerIds.find(id => players[id].color === color);
+                if (!pid) return;
+
+                const p = players[pid];
+                const infoEl = document.createElement('div');
+                infoEl.className = 'player-info';
+                if (currentRoomData.turn === color) infoEl.classList.add('my-turn');
+
+                const avatarHTML = p.avatar.startsWith('http') ? `<img src="${p.avatar}" alt="av">` : p.avatar;
+                const stoneCount = currentRoomData.board.filter(c => c === color).length;
+
+                infoEl.innerHTML = `
+                    <div class="avatar">${avatarHTML}</div>
+                    <div class="info-text">
+                        <div class="nickname">${p.nickname}</div>
+                    </div>
+                    <div class="stone-count">${color === 'black' ? '⚫' : '⚪'} ${stoneCount}</div>
+                `;
+                gameHeader.appendChild(infoEl);
+            });
+        }
+        
+        async function showGameOverScreen() {
+            if(roomListener) roomRef.off('value', roomListener);
+            isGameLive = false;
+            
+            const players = currentRoomData.players;
+            const blackCount = currentRoomData.board.filter(c => c === 'black').length;
+            const whiteCount = currentRoomData.board.filter(c => c === 'white').length;
+            
+            let winnerColor = null;
+            if (blackCount > whiteCount) winnerColor = 'black';
+            else if (whiteCount > blackCount) winnerColor = 'white';
+            
+            const amIWinner = winnerColor === myColor;
+
+            if (isHost) {
+                 for(const pid in players) {
+                    await updatePlayerStats(pid, players[pid].color === winnerColor);
+                 }
+            }
+
+            let message;
+            if (winnerColor) {
+                message = amIWinner ? "🎉 승 리 !" : "😢 패 배...";
+                playSound(amIWinner ? 'win-sound' : 'lose-sound');
+            } else {
+                message = "무승부!";
+            }
+            
+            const scoresHTML = Object.values(players).sort((a,b) => (b.color === 'black' ? -1 : 1)).map(p => {
+                const count = p.color === 'black' ? blackCount : whiteCount;
+                const isWinner = p.color === winnerColor;
+                return `<div class="score-row ${isWinner ? 'winner' : 'loser'}">
+                            <span>${p.avatar} ${p.nickname}</span>
+                            <span>${p.color === 'black' ? '⚫' : '⚪'} ${count}</span>
+                        </div>`;
+            }).join('');
+
+            gameOverOverlay.innerHTML = `
+                <div class="modal-content">
+                    <div class="modal-header"><h2>${message}</h2></div>
+                    <div class="modal-body">
+                        <div id="score-board">${scoresHTML}</div>
+                        <button id="rematch-btn" class="menu-btn primary">다시 하기</button>
+                        <button id="lobby-btn" class="menu-btn secondary">나가기</button>
+                    </div>
+                </div>`;
+            gameOverOverlay.style.display = 'flex';
+            
+            document.getElementById('rematch-btn').addEventListener('click', () => {
+                const btn = document.getElementById('rematch-btn');
+                btn.textContent = '대기중...'; btn.disabled = true;
+                roomRef.child(`players/${myPlayerId}/wantsRematch`).set(true);
+            });
+            document.getElementById('lobby-btn').addEventListener('click', cleanupAndExit);
+            
+            const rematchListener = roomRef.child('players').on('value', snapshot => {
+                if (!snapshot.exists() || currentRoomData?.gameState !== 'gameOver') { roomRef.child('players').off('value', rematchListener); return; }
+                if (Object.values(snapshot.val()).every(p => p.wantsRematch)) {
+                    roomRef.child('players').off('value', rematchListener);
+                    if (isHost) startRematch();
+                }
+            });
+        }
+        
+        function startRematch() {
+            if (!isHost) return;
+            listenToRoomChanges();
+            roomRef.update({ gameState: 'launching', lastMove: null });
+        }
+
+        async function updatePlayerStats(pid, isWinner) {
+            if (pid.startsWith('guest_')) return;
+            try {
+                await playersStatsRef.child(pid).transaction(d => {
+                    if (d) {
+                        if (!d.stats) d.stats = {};
+                        if (!d.stats.reversi) d.stats.reversi = { wins: 0, losses: 0 };
+                        if (isWinner) {
+                            d.stats.reversi.wins = (d.stats.reversi.wins || 0) + 1;
+                            d.exp = (d.exp || 0) + 50;
+                        } else {
+                            d.stats.reversi.losses = (d.stats.reversi.losses || 0) + 1;
+                            d.exp = (d.exp || 0) + 10;
+                        }
+                    } return d;
+                });
+            } catch (e) { console.error("전적 업데이트 실패:", e); }
+        }
+
+        function cleanupAndExit() {
+            isGameLive = false;
+            if (roomRef) {
+                if(roomListener) roomRef.off('value', roomListener);
+                roomRef.onDisconnect().cancel();
+            }
+            roomRef = null;
+            window.location.href = '대기실.html';
+        }
+
+        if (getPlayerInfo()) {
+            const urlParams = new URLSearchParams(window.location.search);
+            const roomId = urlParams.get('roomId');
+            if (roomId) {
+                joinMultiplayerGame(roomId);
+            } else {
+                alert("잘못된 접근입니다. 대기실을 통해 입장해주세요.");
+                window.location.href = '대기실.html';
+            }
+        }
+    });
+    </script>
+</body>
+</html>
