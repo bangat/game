@@ -124,6 +124,7 @@
         }
         @keyframes pulse-valid { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
         
+        /* ▼▼▼ [추가] AI 가이드를 위한 새로운 스타일 ▼▼▼ */
         .board-cell.best-move::after {
             content: '★';
             width: 70%; height: 70%;
@@ -141,6 +142,7 @@
             50% { transform: scale(1.1); box-shadow: 0 0 20px var(--accent-color); }
             100% { transform: scale(0.9); box-shadow: 0 0 5px var(--accent-color); }
         }
+        /* ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲ */
 
         .stone {
             width: 90%; height: 90%;
@@ -299,14 +301,13 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <script>
     document.addEventListener('DOMContentLoaded', () => {
-
         document.addEventListener('contextmenu', event => event.preventDefault());
         document.addEventListener('keydown', event => {
             if (event.key === 'F12' || (event.ctrlKey && event.key === 'u')) {
                 event.preventDefault();
             }
         });
-        
+
         const firebaseConfig = {
             apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw", authDomain: "goodluck-7c14b.firebaseapp.com",
             databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com", projectId: "goodluck-7c14b",
@@ -331,8 +332,9 @@
         let previousPlayerIds = [];
 
         let turnTimerInterval = null;
-        let userHasAiGuide = false;
-
+        // ▼▼▼ [추가] 특정 사용자 ID 지정 ▼▼▼
+        const SPECIAL_USER_ID = "CabWxgXlOReHHVa5z91UXKCeZRv2"; // AI 가이드를 볼 사용자의 ID
+        // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
         let lastChatTimestamp = 0;
         let lastRenderedBoardState = null;
         let lastRenderedHeaderState = null;
@@ -351,15 +353,6 @@
                 window.location.href = 'index.html';
                 return false;
             }
-
-            if (!myPlayerId.startsWith('guest_')) {
-                playersStatsRef.child(myPlayerId + '/role').once('value', snapshot => {
-                    if (snapshot.val() === 'admin') {
-                        userHasAiGuide = true;
-                    }
-                });
-            }
-
             return true;
         }
 
@@ -496,6 +489,7 @@
             }, 1000);
         }
 
+        // ▼▼▼ [추가] 최적의 수를 계산하는 AI 함수 ▼▼▼
         function findBestMove(board, color) {
             const validMoves = findValidMoves(board, color);
             if (validMoves.length === 0) return -1;
@@ -533,7 +527,7 @@
 
             return bestMove;
         }
-
+        // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
         function drawBoard() {
             if (!currentRoomData || !currentRoomData.board) return;
@@ -541,24 +535,28 @@
             const { board, turn, gameState } = currentRoomData;
             const validMoves = (myColor === turn && gameState === 'playing') ? findValidMoves(board, myColor) : [];
             
+            // ▼▼▼ [수정] 특정 유저일 경우, 최적의 수를 계산합니다. ▼▼▼
             let bestMoveIndex = -1;
-            if (userHasAiGuide && myColor === turn && gameState === 'playing') {
+            if (myPlayerId === SPECIAL_USER_ID && myColor === turn && gameState === 'playing') {
                 bestMoveIndex = findBestMove(board, myColor);
             }
+            // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
             for (let index = 0; index < 64; index++) {
                 const cell = board[index];
                 const cellEl = document.createElement('div');
                 cellEl.className = 'board-cell';
 
+                // ▼▼▼ [수정] 최적의 수와 일반 수를 구분하여 클래스를 추가합니다. ▼▼▼
                 if (validMoves.includes(index)) {
                     if (index === bestMoveIndex) {
-                        cellEl.classList.add('best-move'); 
+                        cellEl.classList.add('best-move'); // 최적의 수는 다른 스타일 적용
                     } else {
                         cellEl.classList.add('valid-move');
                     }
                     cellEl.addEventListener('click', () => handleCellClick(index));
                 }
+                // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
                 if (cell) {
                     const stoneEl = document.createElement('div');
