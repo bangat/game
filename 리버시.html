@@ -302,29 +302,77 @@
     <script>
     document.addEventListener('DOMContentLoaded', () => {
                (function() {
-                   document.addEventListener('contextmenu', e => e.preventDefault());
-
-            function blockKeys(e) {
-                if (
-                    e.keyCode === 123 || 
-                    (e.ctrlKey && e.shiftKey && (e.keyCode === 'I'.charCodeAt(0) || e.keyCode === 'J'.charCodeAt(0) || e.keyCode === 'C'.charCodeAt(0))) ||
-                    (e.ctrlKey && e.keyCode === 'U'.charCodeAt(0)) 
-                ) {
-                    e.preventDefault();
+    const devtools = {
+        isOpen: false,
+        orientation: undefined
+    };
+    const threshold = 160;
+    const emitEvent = (isOpen, orientation) => {
+        window.dispatchEvent(new CustomEvent('devtoolschange', {
+            detail: {
+                isOpen,
+                orientation
+            }
+        }));
+    };
+    const main = ({emitEvents = true} = {}) => {
+        const widthThreshold = window.outerWidth - window.innerWidth > threshold;
+        const heightThreshold = window.outerHeight - window.innerHeight > threshold;
+        const orientation = widthThreshold ? 'vertical' : 'horizontal';
+        if (!(heightThreshold && widthThreshold) && ((window.Firebug && window.Firebug.chrome && window.Firebug.chrome.isInitialized) || widthThreshold || heightThreshold)) {
+            if (!devtools.isOpen || devtools.orientation !== orientation) {
+                if (emitEvents) {
+                    emitEvent(true, orientation);
                 }
             }
-            window.addEventListener('keydown', blockKeys);
-
-                setInterval(function () {
-                const before = new Date().getTime();
-                debugger; 
-                const after = new Date().getTime();
-                if (after - before > 100) { 
-              
-                    document.body.innerHTML = 'Developer tools are not allowed.';
+            devtools.isOpen = true;
+            devtools.orientation = orientation;
+        } else {
+            if (devtools.isOpen) {
+                if (emitEvents) {
+                    emitEvent(false, undefined);
                 }
-            }, 1000);
-        })();
+            }
+            devtools.isOpen = false;
+            devtools.orientation = undefined;
+        }
+    };
+    main({emitEvents: false});
+    setInterval(main, 500);
+    window.addEventListener('devtoolschange', event => {
+        if (event.detail.isOpen) {
+            document.body.innerHTML = '<div style="color:white; font-size:2em; text-align:center; padding-top:100px;">Developer tools are not allowed.</div>';
+        }
+    });
+    document.addEventListener('contextmenu', e => e.preventDefault());
+    function blockKeys(e) {
+        if (
+            e.keyCode === 123 ||
+            (e.ctrlKey && e.shiftKey && (e.keyCode === 'I'.charCodeAt(0) || e.keyCode === 'J'.charCodeAt(0) || e.keyCode === 'C'.charCodeAt(0))) ||
+            (e.ctrlKey && e.keyCode === 'U'.charCodeAt(0))
+        ) {
+            e.preventDefault();
+        }
+    }
+    window.addEventListener('keydown', blockKeys);
+    function checkDebugger() {
+        const before = new Date().getTime();
+        debugger;
+        const after = new Date().getTime();
+        if (after - before > 100) {
+            document.body.innerHTML = '<div style="color:white; font-size:2em; text-align:center; padding-top:100px;">Developer tools are not allowed.</div>';
+        }
+    }
+    if (document.readyState === 'complete') {
+        checkDebugger();
+        setInterval(checkDebugger, 1000);
+    } else {
+        window.addEventListener('load', () => {
+            checkDebugger();
+            setInterval(checkDebugger, 1000);
+        });
+    }
+})();
       
 
         const firebaseConfig = {
@@ -351,9 +399,18 @@
         let previousPlayerIds = [];
 
         let turnTimerInterval = null;
-        // ▼▼▼ [추가] 특정 사용자 ID 지정 ▼▼▼
-        const SPECIAL_USER_ID = "CabWxgXlOReHHVa5z91UXKCeZRv2"; // AI 가이드를 볼 사용자의 ID
-        // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+        const SPECIAL_USER_ID = "CabWxgXlOReHHVa5z91UXKCeZRv2"; 
+        const WEIGHT_MAP = [
+            120, -20,  20,   5,   5,  20, -20, 120,
+            -20, -40,  -5,  -5,  -5,  -5, -40, -20,
+             20,  -5,  15,   3,   3,  15,  -5,  20,
+              5,  -5,   3,   3,   3,   3,  -5,   5,
+              5,  -5,   3,   3,   3,   3,  -5,   5,
+             20,  -5,  15,   3,   3,  15,  -5,  20,
+            -20, -40,  -5,  -5,  -5,  -5, -40, -20,
+            120, -20,  20,   5,   5,  20, -20, 120
+        ];
+
         let lastChatTimestamp = 0;
         let lastRenderedBoardState = null;
         let lastRenderedHeaderState = null;
@@ -507,16 +564,13 @@
                 }
             }, 1000);
         }
-
-        // ▼▼▼ [추가] 최적의 수를 계산하는 AI 함수 ▼▼▼
-        function findBestMove(board, color) {
+function findBestMove(board, color) {
             const validMoves = findValidMoves(board, color);
             if (validMoves.length === 0) return -1;
-            if (validMoves.length === 1) return validMoves[0];
 
             let bestMove = -1;
-            let maxFlips = -1;
-            
+            let maxScore = -Infinity; 
+
             const opponentColor = color === 'black' ? 'white' : 'black';
             const directions = [-9, -8, -7, -1, 1, 7, 8, 9];
 
@@ -531,22 +585,22 @@
                         } else if (board[current] === color) {
                             currentFlips += stonesToFlip.length;
                             break;
-                        } else {
-                            break;
-                        }
+                        } else { break; }
                         current += dir;
                     }
                 });
 
-                if (currentFlips > maxFlips) {
-                    maxFlips = currentFlips;
+                const positionScore = WEIGHT_MAP[move];
+                const totalScore = currentFlips + positionScore;
+
+                if (totalScore > maxScore) {
+                    maxScore = totalScore;
                     bestMove = move;
                 }
             });
 
             return bestMove;
         }
-        // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
         function drawBoard() {
             if (!currentRoomData || !currentRoomData.board) return;
@@ -838,6 +892,15 @@
             const bubbleEl = document.createElement('div');
             bubbleEl.className = 'chat-bubble';
             bubbleEl.textContent = message;
+            const escapeHtml = (unsafe) => {
+                return unsafe
+                     .replace(/&/g, "&amp;")
+                     .replace(/</g, "&lt;")
+                     .replace(/>/g, "&gt;")
+                     .replace(/"/g, "&quot;")
+                     .replace(/'/g, "&#039;");
+            };
+            bubbleEl.innerHTML = escapeHtml(message);
             
             bubbleEl.style.top = `${rect.bottom + 5}px`;
 
