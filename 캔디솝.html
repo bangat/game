@@ -362,6 +362,7 @@
         }
         
         // ▼▼▼ [수정] 0점도 저장되도록 로직 개선 ▼▼▼
+        // ▼▼▼ [수정] 전적 데이터가 안정적으로 생성 및 업데이트되도록 트랜잭션 방식으로 변경 ▼▼▼
         async function updatePlayerStats(finalScore, isWin = false) {
             if (!myPlayerId || myPlayerId.startsWith('guest_')) {
                 console.log("게스트 유저이거나 PlayerID가 없어 저장을 건너뜁니다.");
@@ -369,33 +370,45 @@
             }
 
             const gameId = 'candysoap';
-            const userStatsRef = usersRef.child(`${myPlayerId}/stats/${gameId}`);
-            const userExpRef = usersRef.child(`${myPlayerId}/exp`);
+            const playerStatRef = usersRef.child(myPlayerId);
 
             try {
-                const snapshot = await userStatsRef.once('value');
-                const stats = snapshot.val() || {};
-                const currentHighScore = stats.highscore || 0;
-                
-                const updates = {};
-                
-                // 첫 플레이(undefined)거나, 새로운 최고 점수일 경우 기록
-                if (stats.highscore === undefined || finalScore > currentHighScore) {
-                    updates[`/users/${myPlayerId}/stats/${gameId}/highscore`] = finalScore;
-                }
+                await playerStatRef.transaction(currentData => {
+                    if (currentData) {
+                        // stats 객체가 없으면 생성
+                        if (!currentData.stats) {
+                            currentData.stats = {};
+                        }
+                        // candysoap 객체가 없으면 생성
+                        if (!currentData.stats[gameId]) {
+                            currentData.stats[gameId] = { highscore: 0, wins: 0, losses: 0 };
+                        }
 
-                if (gameMode !== 'solo') {
-                    // 실제 멀티플레이 승패 로직은 여기에 추가
-                }
-                
-                if (Object.keys(updates).length > 0) {
-                    await database.ref().update(updates);
-                }
+                        const gameStats = currentData.stats[gameId];
 
-                const expToAdd = Math.floor(finalScore / 10) + (isWin ? 25 : 0);
-                if(expToAdd > 0) {
-                    await userExpRef.set(firebase.database.ServerValue.increment(expToAdd));
-                }
+                        // 최고 점수 업데이트
+                        if (finalScore > (gameStats.highscore || 0)) {
+                            gameStats.highscore = finalScore;
+                        }
+
+                        // 솔로 플레이이므로 '플레이 횟수' 개념으로 losses를 1 증가
+                        gameStats.losses = (gameStats.losses || 0) + 1;
+                        
+                        // 멀티플레이 모드일 경우 승패 처리 (현재는 미구현)
+                        if (gameMode !== 'solo') {
+                            if(isWin) {
+                                gameStats.wins = (gameStats.wins || 0) + 1;
+                            }
+                        }
+
+                        // 경험치 추가
+                        const expToAdd = Math.floor(finalScore / 10) + (isWin ? 25 : 0);
+                        if (expToAdd > 0) {
+                            currentData.exp = (currentData.exp || 0) + expToAdd;
+                        }
+                    }
+                    return currentData;
+                });
             } catch (error) {
                 console.error("캔디솝 전적 업데이트 실패:", error);
             }
