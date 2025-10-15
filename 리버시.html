@@ -196,18 +196,27 @@
     box-shadow: 0 2px 8px rgba(0,0,0,0.3);
 }
         .chat-bubble {
-            position: absolute; background-color: white; color: black;
-            padding: 8px 12px; border-radius: 15px; max-width: 150px;
-            font-size: 0.9em; word-break: break-all; opacity: 0;
-            transition: opacity 0.5s ease; pointer-events: none; z-index: 100;
-            top: 100%;
-            left: 50%;
-            transform: translateX(-50%);
-            margin-top: 5px;
+            position: absolute;
+            background-color: white; color: black;
+            padding: 8px 12px; border-radius: 15px;
+            
+            /* ▼▼▼ [수정] 줄바꿈을 위한 스타일 ▼▼▼ */
+            max-width: 180px;         /* 말풍선의 최대 가로 너비 (조절 가능) */
+            word-wrap: break-word;    /* 긴 단어도 강제로 줄바꿈 */
+            white-space: normal;      /* 텍스트가 자동으로 줄바꿈 되도록 변경 */
+            /* ▲▲▲ 수정 끝 ▲▲▲ */
+
+            font-size: 0.9em;
+            opacity: 0;
+            transition: opacity 0.5s ease, transform 0.5s ease;
+            transform: translateY(10px);
+            pointer-events: none;
             box-shadow: 0 2px 5px rgba(0,0,0,0.2);
         }
-        .chat-bubble.show { opacity: 1; }
-         /* ▲▲▲▲▲ 스타일 추가 종료 ▲▲▲▲▲ */
+        .chat-bubble.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
 
 /* ▼▼▼▼▼ 2단계: 채팅 모달 CSS 스타일 추가 ▼▼▼▼▼ */
         #chat-modal-content {
@@ -228,10 +237,32 @@
             outline: none;
             border-color: var(--accent-color);
         }
+        /* ▼▼▼▼▼ 말풍선 좌/우 위치 조정을 위한 스타일 ▼▼▼▼▼ */
+        .player-left .chat-bubble {
+            left: 0; /* 왼쪽 끝에 맞춤 */
+            transform: translateX(0); /* 중앙 정렬용 transform 제거 */
+        }
+        .player-right .chat-bubble {
+            left: auto; /* 기존 left 속성 무효화 */
+            right: 0;   /* 오른쪽 끝에 맞춤 */
+            transform: translateX(0); /* 중앙 정렬용 transform 제거 */
+        }
+
+        /* ▼▼▼▼▼ 2-B: 말풍선 컨테이너 스타일 추가 ▼▼▼▼▼ */
+        #chat-bubbles-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 150;
+            pointer-events: none;
+        }
 
     </style>
 </head>
 <body>
+    <div id="chat-bubbles-container"></div>
     <div id="game-wrapper" style="display: none;">
         <div id="game-header"></div>
         <div id="game-container"><div id="game-board"></div></div>
@@ -555,6 +586,7 @@
                 infoEl.className = 'player-info';
                 infoEl.dataset.playerId = p.id;
                 if (turn === p.color) infoEl.classList.add('my-turn');
+                infoEl.classList.add(playerInfos.indexOf(p) === 0 ? 'player-left' : 'player-right'); // 이 줄 추가
                 infoEl.innerHTML = `
                     <div class="profile-box">
                         <div class="avatar">${avatarHTML}</div>
@@ -676,21 +708,58 @@
             } catch (e) { console.error("전적 업데이트 실패:", pid, e); }
         }
 
-        // ▼▼▼▼▼ [기능 추가] 신규 함수들 ▼▼▼▼▼
+       // ▼▼▼▼▼ [버그 수정] 채팅 말풍선이 반대쪽에 표시되는 문제 해결 ▼▼▼▼▼
         function showChatBubble(senderId, message) {
-            const playerInfoEl = document.querySelector(`.player-info[data-player-id="${senderId}"]`);
+            // [수정] 1. ID를 기반으로 플레이어 데이터를 찾아 색상을 확인합니다.
+            const senderData = currentRoomData.players[senderId];
+            if (!senderData || !senderData.color) return;
+            const senderColor = senderData.color;
+
+            // [수정] 2. 색상에 따라 화면상 위치(왼쪽/오른쪽)가 정해진 클래스 이름을 찾습니다.
+            // 게임 규칙상 흑돌(black)이 항상 왼쪽(.player-left)에 표시됩니다.
+            const targetClass = senderColor === 'black' ? '.player-left' : '.player-right';
+            
+            // [수정] 3. 데이터 속성 대신, 이 클래스 이름을 사용해 정확한 프로필 요소를 찾습니다.
+            const playerInfoEl = document.querySelector(`.player-info${targetClass}`);
             if (!playerInfoEl) return;
-            const bubbleId = `chat-bubble-${senderId}`;
-            let bubbleEl = document.getElementById(bubbleId);
-            if (!bubbleEl) {
-                bubbleEl = document.createElement('div');
-                bubbleEl.className = 'chat-bubble';
-                bubbleEl.id = bubbleId;
-                playerInfoEl.appendChild(bubbleEl);
-            }
+
+            // --- 아래부터는 기존 코드와 동일합니다 ---
+
+            // 말풍선이 들어갈 전용 컨테이너를 찾습니다.
+            const bubblesContainer = document.getElementById('chat-bubbles-container');
+            
+            // 프로필의 화면상 실제 위치를 계산합니다.
+            const rect = playerInfoEl.getBoundingClientRect();
+
+            // 새 말풍선 요소를 만듭니다.
+            const bubbleEl = document.createElement('div');
+            bubbleEl.className = 'chat-bubble';
             bubbleEl.textContent = message;
-            bubbleEl.classList.add('show');
-            setTimeout(() => { bubbleEl.classList.remove('show'); }, 3000);
+            
+            // 계산된 위치에 말풍선을 배치합니다.
+            bubbleEl.style.top = `${rect.bottom + 5}px`; // 프로필 하단 + 5px 간격
+            if (senderColor === 'black') { // isLeftPlayer 대신 senderColor로 직접 확인
+                bubbleEl.style.left = `${rect.left}px`; // 왼쪽 플레이어는 왼쪽에 맞춤
+            } else {
+                // 오른쪽 플레이어는 오른쪽에 맞추기 위해 너비를 계산
+                bubbleEl.style.right = `${window.innerWidth - rect.right}px`;
+            }
+
+            // 화면에 표시
+            bubblesContainer.appendChild(bubbleEl);
+            setTimeout(() => {
+                bubbleEl.classList.add('show');
+            }, 10);
+
+            // 3초 후에 말풍선을 완전히 제거합니다.
+            setTimeout(() => {
+                bubbleEl.classList.remove('show');
+                setTimeout(() => {
+                    if (bubbleEl.parentElement) {
+                        bubbleEl.parentElement.removeChild(bubbleEl);
+                    }
+                }, 500); // 사라지는 애니메이션 후 삭제
+            }, 3000); 
         }
 
         function manageTurnTimer() {
