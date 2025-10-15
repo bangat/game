@@ -124,6 +124,24 @@
         }
         @keyframes pulse-valid { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
         
+        .board-cell.best-move::after {
+            content: '★';
+            width: 70%; height: 70%;
+            display: flex; justify-content: center; align-items: center;
+            font-size: 1.5em;
+            color: white;
+            background-color: var(--accent-color);
+            border-radius: 50%;
+            cursor: pointer;
+            animation: pulse-best 1.2s infinite;
+            text-shadow: 0 0 5px black;
+        }
+        @keyframes pulse-best {
+            0% { transform: scale(0.9); box-shadow: 0 0 5px var(--accent-color); }
+            50% { transform: scale(1.1); box-shadow: 0 0 20px var(--accent-color); }
+            100% { transform: scale(0.9); box-shadow: 0 0 5px var(--accent-color); }
+        }
+
         .stone {
             width: 90%; height: 90%;
             border-radius: 50%;
@@ -191,7 +209,6 @@
             box-shadow: 0 2px 8px rgba(0,0,0,0.3);
         }
 
-        /* ▼▼▼ [최종 수정] 채팅 줄바꿈 + 위치 버그 해결을 위한 최종 스타일 ▼▼▼ */
         .chat-bubble {
             position: absolute;
             background-color: white; color: black;
@@ -282,6 +299,14 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <script>
     document.addEventListener('DOMContentLoaded', () => {
+
+        document.addEventListener('contextmenu', event => event.preventDefault());
+        document.addEventListener('keydown', event => {
+            if (event.key === 'F12' || (event.ctrlKey && event.key === 'u')) {
+                event.preventDefault();
+            }
+        });
+        
         const firebaseConfig = {
             apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw", authDomain: "goodluck-7c14b.firebaseapp.com",
             databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com", projectId: "goodluck-7c14b",
@@ -306,6 +331,8 @@
         let previousPlayerIds = [];
 
         let turnTimerInterval = null;
+        let userHasAiGuide = false;
+
         let lastChatTimestamp = 0;
         let lastRenderedBoardState = null;
         let lastRenderedHeaderState = null;
@@ -324,6 +351,15 @@
                 window.location.href = 'index.html';
                 return false;
             }
+
+            if (!myPlayerId.startsWith('guest_')) {
+                playersStatsRef.child(myPlayerId + '/role').once('value', snapshot => {
+                    if (snapshot.val() === 'admin') {
+                        userHasAiGuide = true;
+                    }
+                });
+            }
+
             return true;
         }
 
@@ -460,19 +496,70 @@
             }, 1000);
         }
 
+        function findBestMove(board, color) {
+            const validMoves = findValidMoves(board, color);
+            if (validMoves.length === 0) return -1;
+            if (validMoves.length === 1) return validMoves[0];
+
+            let bestMove = -1;
+            let maxFlips = -1;
+            
+            const opponentColor = color === 'black' ? 'white' : 'black';
+            const directions = [-9, -8, -7, -1, 1, 7, 8, 9];
+
+            validMoves.forEach(move => {
+                let currentFlips = 0;
+                directions.forEach(dir => {
+                    const stonesToFlip = [];
+                    let current = move + dir;
+                    while (current >= 0 && current < 64 && Math.abs((current % 8) - ((current - dir) % 8)) <= 1) {
+                        if (board[current] === opponentColor) {
+                            stonesToFlip.push(current);
+                        } else if (board[current] === color) {
+                            currentFlips += stonesToFlip.length;
+                            break;
+                        } else {
+                            break;
+                        }
+                        current += dir;
+                    }
+                });
+
+                if (currentFlips > maxFlips) {
+                    maxFlips = currentFlips;
+                    bestMove = move;
+                }
+            });
+
+            return bestMove;
+        }
+
+
         function drawBoard() {
             if (!currentRoomData || !currentRoomData.board) return;
             gameBoard.innerHTML = '';
             const { board, turn, gameState } = currentRoomData;
             const validMoves = (myColor === turn && gameState === 'playing') ? findValidMoves(board, myColor) : [];
+            
+            let bestMoveIndex = -1;
+            if (userHasAiGuide && myColor === turn && gameState === 'playing') {
+                bestMoveIndex = findBestMove(board, myColor);
+            }
+
             for (let index = 0; index < 64; index++) {
                 const cell = board[index];
                 const cellEl = document.createElement('div');
                 cellEl.className = 'board-cell';
+
                 if (validMoves.includes(index)) {
-                    cellEl.classList.add('valid-move');
+                    if (index === bestMoveIndex) {
+                        cellEl.classList.add('best-move'); 
+                    } else {
+                        cellEl.classList.add('valid-move');
+                    }
                     cellEl.addEventListener('click', () => handleCellClick(index));
                 }
+
                 if (cell) {
                     const stoneEl = document.createElement('div');
                     stoneEl.className = 'stone';
@@ -562,11 +649,9 @@
             gameHeader.innerHTML = '';
             let playerInfos = playerIds.map(pid => ({ ...players[pid], id: pid }));
             
-            // ▼▼▼ [수정] 돌 색상이 아닌 '나'를 기준으로 정렬하여 항상 왼쪽에 표시 ▼▼▼
-            if (players[playerIds[0]].color) { // 게임 시작 후 (색상이 정해진 후)
+            if (players[playerIds[0]].color) {
                  playerInfos.sort((a,b) => (a.id === myPlayerId ? -1 : 1));
             }
-            // ▲▲▲ 수정 끝 ▲▲▲
 
             playerInfos.forEach((p, index) => {
                 const stoneCount = board ? Object.values(board).filter(c => c === p.color).length : 2;
@@ -726,13 +811,8 @@
         }
 
         function showChatBubble(senderId, message) {
-            // [최종 수정] 보낸 사람이 '나'인지 '상대방'인지 명확하게 확인합니다.
             const isMyMessage = senderId === myPlayerId;
-            
-            // [최종 수정] '나'의 메시지는 왼쪽(.player-left), '상대방'의 메시지는 오른쪽(.player-right)으로 위치를 지정합니다.
-            // 이것이 프로필 표시 로직과 동일한 기준입니다.
             const targetClass = isMyMessage ? '.player-left' : '.player-right';
-            
             const playerInfoEl = document.querySelector(`.player-info${targetClass}`);
             if (!playerInfoEl) return;
 
@@ -744,11 +824,10 @@
             
             bubbleEl.style.top = `${rect.bottom + 5}px`;
 
-            // [최종 수정] 말풍선 정렬 기준 역시 '나'와 '상대방'으로 변경합니다.
             if (isMyMessage) {
-                bubbleEl.style.left = `${rect.left}px`; // 내 메시지는 왼쪽 정렬
+                bubbleEl.style.left = `${rect.left}px`;
             } else {
-                bubbleEl.style.right = `${window.innerWidth - rect.right}px`; // 상대 메시지는 오른쪽 정렬
+                bubbleEl.style.right = `${window.innerWidth - rect.right}px`;
             }
 
             bubblesContainer.appendChild(bubbleEl);
