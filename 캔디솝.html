@@ -59,7 +59,7 @@
         .hand-area .hand-image {
             width: 80%; max-width: 250px; position: relative;
         }
-        
+
         .item-emoji {
             position: absolute;
             font-size: 5em;
@@ -70,7 +70,7 @@
         }
 
         #left-hand-area .hand-image { transform: scaleX(-1); }
-        
+
         #feedback-overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             pointer-events: none; opacity: 0; transition: opacity 0.3s;
@@ -80,7 +80,7 @@
         @keyframes shake {
             0%, 100% { transform: translateX(0); } 25% { transform: translateX(-10px); } 75% { transform: translateX(10px); }
         }
-        
+
         #timer-bar-container { width: 100%; height: 10px; background-color: #ddd; }
         #timer-bar { width: 100%; height: 100%; background-color: var(--accent-color); transition: width 0.1s linear; }
 
@@ -136,11 +136,11 @@
 
         <div id="timer-bar-container"><div id="timer-bar"></div></div>
     </div>
-    
+
     <div id="info-overlay" class="overlay">
         <div id="countdown-text">3</div>
     </div>
-    
+
     <div id="game-over-overlay" class="overlay" style="display: none;">
         <div class="modal-content">
             <h2 id="game-over-title">게임 종료!</h2>
@@ -154,6 +154,7 @@
     </div>
 
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <script>
     document.addEventListener('DOMContentLoaded', () => {
@@ -165,6 +166,7 @@
         };
         firebase.initializeApp(firebaseConfig);
         const database = firebase.database();
+        const auth = firebase.auth();
         const usersRef = database.ref('users');
         const gameRoomsRef = database.ref('memoryGameRooms');
 
@@ -185,51 +187,56 @@
         const finalScoreDisplay = document.getElementById('final-score');
         const retryBtn = document.getElementById('retry-btn');
         const exitBtn = document.getElementById('exit-btn');
-        
+
         const candyEmoji = '🍬';
         const soapEmoji = '🧼';
-        
+
         let myPlayerId, roomRef, gameMode;
         let score = 0, combo = 0, lives = 3, maxCombo = 0, roundTimer;
         let currentQuestion = { left: '', right: '', instruction: '', answer: '' };
         let canInteract = false;
 
-                function getPlayerId() {
-            const id = localStorage.getItem('myPlayerId');
-            if (!id) {
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                myPlayerId = user.uid;
+                initialize();
+            } else if (sessionStorage.getItem('isGuest') === 'true') {
+                myPlayerId = localStorage.getItem('myPlayerId');
+                initialize();
+            } else {
                 alert("플레이어 정보가 없습니다. 메인 메뉴로 돌아갑니다.");
                 window.location.href = 'index.html';
-                return null;
             }
-            return id;
-        }
+        });
 
         function initialize() {
-            myPlayerId = getPlayerId();
-            if (!myPlayerId) return; // Player ID가 없으면 실행 중단
+            if (!myPlayerId) {
+                alert("플레이어 ID를 가져올 수 없습니다. 메인 메뉴로 돌아갑니다.");
+                window.location.href = 'index.html';
+                return;
+            }
 
             const urlParams = new URLSearchParams(window.location.search);
             const roomId = urlParams.get('roomId');
-            
+
             if (roomId) {
                 roomRef = gameRoomsRef.child(roomId);
-                // 같이하기에서 들어왔지만, 모드 선택이 없으면 솔로 플레이로 간주
                 gameMode = urlParams.get('mode') || 'solo';
             } else {
-                gameMode = 'solo'; // 직접 파일 실행 시 솔로 플레이
+                gameMode = 'solo';
             }
-            
+
             startCountdown();
-            
+
             leftHandArea.addEventListener('click', () => handleInput('left'));
             rightHandArea.addEventListener('click', () => handleInput('right'));
             exitBtn.addEventListener('click', () => {
+                sessionStorage.setItem('returnFromGame', 'true');
                 if(roomRef) window.location.href = '대기실.html';
                 else window.location.href = 'index.html';
             });
             retryBtn.addEventListener('click', handleRetry);
         }
-
 
         function startCountdown() {
             infoOverlay.style.display = 'flex';
@@ -260,29 +267,29 @@
         function nextRound() {
             canInteract = false;
             const shouldSwap = (combo > 0 && combo % 5 === 0);
-            
+
             currentQuestion.instruction = Math.random() < 0.5 ? '사탕 먹어!' : '비누 냄새 맡아!';
             let correctItem = currentQuestion.instruction.includes('사탕') ? 'candy' : 'soap';
-            
+
             if (shouldSwap) {
                 const prevAnswerHand = currentQuestion.answer;
                 currentQuestion.answer = (prevAnswerHand === 'left') ? 'right' : 'left';
             } else {
                 currentQuestion.answer = Math.random() < 0.5 ? 'left' : 'right';
             }
-            
+
             currentQuestion[currentQuestion.answer] = correctItem;
             const otherHand = (currentQuestion.answer === 'left') ? 'right' : 'left';
             currentQuestion[otherHand] = (correctItem === 'candy') ? 'soap' : 'candy';
-            
+
             instructionText.textContent = currentQuestion.instruction;
             leftItem.textContent = (currentQuestion.left === 'candy') ? candyEmoji : soapEmoji;
             rightItem.textContent = (currentQuestion.right === 'candy') ? candyEmoji : soapEmoji;
-            
+
             let timerWidth = 100;
             const timeLimit = Math.max(800, 2000 - (combo * 50));
             const intervalTime = 20;
-            
+
             canInteract = true;
             roundTimer = setInterval(() => {
                 timerWidth -= (100 / (timeLimit / intervalTime));
@@ -301,7 +308,7 @@
 
             let isCorrect = (choice === currentQuestion.answer);
             if (choice === 'timeout') isCorrect = false;
-            
+
             if (isCorrect) {
                 score += 100 + (combo * 10);
                 combo++;
@@ -312,11 +319,11 @@
                 combo = 0;
                 showFeedback('wrong');
             }
-            
+
             updateUI();
-            
+
             if (lives <= 0) {
-                endGame(); // endGame 함수가 async이므로 setTimeout 제거
+                endGame();
             } else {
                 setTimeout(nextRound, 300);
             }
@@ -337,45 +344,36 @@
             livesDisplay.textContent = lives;
         }
 
-        // ▼▼▼ [수정] 점수 저장이 완료된 후 팝업이 뜨도록 async/await 적용 ▼▼▼
         async function endGame() {
             canInteract = false;
             clearInterval(roundTimer);
-            
-            // ▼▼▼ [수정] 버튼을 먼저 비활성화하고 '저장 중...' 메시지 표시 ▼▼▼
+
             retryBtn.disabled = true;
             exitBtn.disabled = true;
             retryBtn.textContent = '저장 중...';
-            
+
             gameOverOverlay.style.display = 'flex';
             finalScoreDisplay.textContent = score;
-            
-            // 점수 저장이 끝날 때까지 여기서 기다립니다.
+
             await updatePlayerStats(score); 
 
-            // 저장이 완료된 후에 버튼을 다시 활성화합니다.
             retryBtn.disabled = false;
             exitBtn.disabled = false;
             retryBtn.textContent = '다시 하기';
         }
 
-        // ▼▼▼ [수정] '다시 하기' 버튼 로직 수정 ▼▼▼
         function handleRetry() {
-            // 멀티플레이 모드는 아직 미구현이므로 alert 처리
             if (gameMode !== 'solo') {
                 retryBtn.textContent = '상대방 기다리는 중...';
                 retryBtn.disabled = true;
                 alert('멀티플레이 다시하기는 아직 구현되지 않았습니다.');
                 window.location.href = '대기실.html';
             } else {
-                // 솔로 모드에서는 페이지 새로고침 없이 게임 재시작
                 gameOverOverlay.style.display = 'none';
                 startCountdown();
             }
         }
-        
-        // ▼▼▼ [수정] 0점도 저장되도록 로직 개선 ▼▼▼
-        // ▼▼▼ [수정] 전적 데이터가 안정적으로 생성 및 업데이트되도록 트랜잭션 방식으로 변경 ▼▼▼
+
         async function updatePlayerStats(finalScore, isWin = false) {
             if (!myPlayerId || myPlayerId.startsWith('guest_')) {
                 console.log("게스트 유저이거나 PlayerID가 없어 저장을 건너뜁니다.");
@@ -388,33 +386,27 @@
             try {
                 await playerStatRef.transaction(currentData => {
                     if (currentData) {
-                        // stats 객체가 없으면 생성
                         if (!currentData.stats) {
                             currentData.stats = {};
                         }
-                        // candysoap 객체가 없으면 생성
                         if (!currentData.stats[gameId]) {
                             currentData.stats[gameId] = { highscore: 0, wins: 0, losses: 0 };
                         }
 
                         const gameStats = currentData.stats[gameId];
 
-                        // 최고 점수 업데이트
                         if (finalScore > (gameStats.highscore || 0)) {
                             gameStats.highscore = finalScore;
                         }
 
-                        // 솔로 플레이이므로 '플레이 횟수' 개념으로 losses를 1 증가
                         gameStats.losses = (gameStats.losses || 0) + 1;
-                        
-                        // 멀티플레이 모드일 경우 승패 처리 (현재는 미구현)
+
                         if (gameMode !== 'solo') {
                             if(isWin) {
                                 gameStats.wins = (gameStats.wins || 0) + 1;
                             }
                         }
 
-                        // 경험치 추가
                         const expToAdd = Math.floor(finalScore / 10) + (isWin ? 25 : 0);
                         if (expToAdd > 0) {
                             currentData.exp = (currentData.exp || 0) + expToAdd;
@@ -426,8 +418,6 @@
                 console.error("캔디솝 전적 업데이트 실패:", error);
             }
         }
-
-        initialize();
     });
     </script>
 </body>
