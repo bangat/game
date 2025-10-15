@@ -84,7 +84,7 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            pointer-events: none; /* 클릭 방지 */
+            pointer-events: none;
             z-index: 400;
             overflow: hidden;
         }
@@ -196,7 +196,7 @@
         
         #bet-modal-overlay { z-index: 510; }
         #bet-modal-content { display: flex; flex-direction: column; gap: 15px; align-items: center; }
-        .spinner { margin: 20px auto; border: 4px solid rgba(255,255,255,0.3); border-radius: 50%; border-top: 4px solid white; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        .spinner { margin: 20px auto; border: 4px solid rgba(255, 255, 255, 0.3); border-radius: 50%; border-top: 4px solid white; width: 40px; height: 40px; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
         #countdown-number { font-size: 8em; font-weight: 700; color: white; text-shadow: 0 0 30px rgba(255,255,255,0.8); animation: countdown-pop 1s; }
@@ -259,6 +259,36 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <script>
     document.addEventListener('DOMContentLoaded', () => {
+
+        (function() {
+ 
+            document.addEventListener('contextmenu', e => e.preventDefault());
+
+   
+            function blockKeys(e) {
+                if (
+                    e.keyCode === 123 || 
+                    (e.ctrlKey && e.shiftKey && (e.keyCode === 'I'.charCodeAt(0) || e.keyCode === 'J'.charCodeAt(0) || e.keyCode === 'C'.charCodeAt(0))) ||
+                    (e.ctrlKey && e.keyCode === 'U'.charCodeAt(0)) 
+                ) {
+                    e.preventDefault();
+                }
+            }
+            window.addEventListener('keydown', blockKeys);
+
+ 
+            setInterval(function () {
+                const before = new Date().getTime();
+                debugger; 
+                const after = new Date().getTime();
+                if (after - before > 100) { 
+  
+                    document.body.innerHTML = 'Developer tools are not allowed.';
+                }
+            }, 1000);
+        })();
+ 
+
         const firebaseConfig = {
             apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw", authDomain: "goodluck-7c14b.firebaseapp.com",
             databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com", projectId: "goodluck-7c14b",
@@ -354,7 +384,7 @@
 
             chatBubbleBtn.addEventListener('click', () => {
                 chatModalOverlay.style.display = 'flex';
-                chatInput.focus(); // 모달이 열리면 바로 입력창에 포커스
+                chatInput.focus();
             });
             
             cancelChatBtn.addEventListener('click', () => {
@@ -381,7 +411,6 @@
             });
         }
         
-        // ▼▼▼▼▼ [수정] listenToRoom: 다시하기 로직(restarting) 제거, 퇴장 메시지 개선 ▼▼▼▼▼
         function listenToRoom() {
             let lastChatTimestamp = 0;
             roomRef.on('value', (snapshot) => {
@@ -395,7 +424,7 @@
                 }
                 currentRoomData = snapshot.val();
 
-               const currentGameState = currentRoomData.gameState;
+                const currentGameState = currentRoomData.gameState;
                 
                 if ((previousGameState === 'showdown' || previousGameState === 'betting') && currentGameState === 'startingRound') {
                     const log = currentRoomData.gameLog || '';
@@ -408,13 +437,14 @@
                         }
                     }
                 }
-
-                // ▼▼▼ [추가] 'countdown' 상태를 감지하여 카운트다운 시작 ▼▼▼
+                
+                // ▼▼▼ [버그 수정] 카운트다운을 화면에 표시하는 로직 추가 ▼▼▼
                 if (currentGameState === 'countdown' && previousGameState !== 'countdown') {
-                    startCountdown();
+                    infoOverlay.style.display = 'flex'; // 오버레이를 먼저 표시
+                    startCountdown();                   // 그 다음 카운트다운 시작
                 }
                 // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
-
+                
                 previousGameState = currentGameState;
                 
                 if (!isGameInitialized && currentRoomData.players && currentRoomData.players[myPlayerId]) {
@@ -430,22 +460,22 @@
                 }
 
                 const playerIds = Object.keys(currentRoomData.players || {});
-                // ▼▼▼ [수정] 게임 도중 플레이어 수가 2명 미만이 되면 접속 종료 처리 ▼▼▼
                 if (isGameInitialized && currentRoomData.gameState !== 'finalGameOver' && currentRoomData.allPlayerIds && playerIds.length < 2) {
                     if (playerIds.includes(myPlayerId) && isHost) {
-                         // 호스트만 이 로직을 실행하여 중복 실행을 방지합니다.
                         endGameOnDisconnect();
                     }
-                    return; // 게임 렌더링 등 추가 동작 방지
+                    return;
                 }
 
                 if (currentRoomData.gameState && currentRoomData.gameState !== 'launching') {
                     gameWrapper.style.display = 'flex';
-
-                    // ▼▼▼ [수정] 'dealing' 상태에서도 게임판이 보이도록 추가 ▼▼▼
-                    const activePlayStates = ['betting', 'showdown', 'dealing'];
+                    
+                    const activePlayStates = ['betting', 'showdown', 'dealing', 'startingRound', 'countdown', 'finalGameOver'];
                     if (activePlayStates.includes(currentRoomData.gameState)) {
-                        infoOverlay.style.display = 'none';
+                        // countdown 상태가 아닐 때만 infoOverlay를 숨기도록 조건 추가
+                        if (currentRoomData.gameState !== 'countdown') {
+                           infoOverlay.style.display = 'none';
+                        }
                         renderGame();
                     }
                 }
@@ -454,8 +484,10 @@
                     lastChatTimestamp = currentRoomData.latestChat.timestamp;
                     showChatBubble(currentRoomData.latestChat.senderId, currentRoomData.latestChat.message);
                 }
-
-                if (isHost) { handleHostLogic(); }
+                
+                if (isHost) { 
+                    setTimeout(handleHostLogic, 50); 
+                }
             });
         }
         
@@ -491,14 +523,12 @@
                 carryOverPot: 0,
                 actionsThisRound: 0,
                 rematchRequests: null,
-                allPlayerIds: playerIds // ▼▼▼ [추가] 플레이어 ID 목록 저장
+                allPlayerIds: playerIds
             });
         }
 
-        // ▼▼▼▼▼ [추가] 다시하기 기능 함수 ▼▼▼▼▼
         function startRematch() {
             if (!isHost) return;
-            // startGame 함수가 게임 상태를 완벽하게 초기화하므로 그대로 호출
             startGame();
         }
 
@@ -509,13 +539,11 @@
             const infoButtons = document.getElementById('info-buttons');
             const infoModalContent = document.getElementById('info-modal-content');
 
-            // ▼▼▼ [수정] 모달창 배경을 투명하게 만들고 제목 숨기기 ▼▼▼
             infoModalContent.style.backgroundColor = 'transparent';
             infoModalContent.style.boxShadow = 'none';
             infoModalContent.style.padding = '0';
             infoTitle.style.display = 'none';
-            // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
-
+            
             infoOverlay.style.display = 'flex';
             infoSpinner.style.display = 'none';
             infoButtons.innerHTML = '';
@@ -528,7 +556,7 @@
                     const countdownEl = document.getElementById('countdown-number');
                     if (countdownEl) {
                         countdownEl.style.animation = 'none';
-                        countdownEl.offsetHeight; // Reflow to restart animation
+                        countdownEl.offsetHeight;
                         countdownEl.style.animation = 'countdown-pop 1s';
                         countdownEl.textContent = count;
                     }
@@ -545,43 +573,57 @@
             const { gameState, players, actionsThisRound } = currentRoomData;
             if (!isHost || !gameState || !players) return;
             
-            if (gameState === 'startingRound') {
-                setTimeout(startNewRound, 3000);
-            } else if (gameState === 'betting') {
-                const activePlayers = Object.values(players).filter(p => p && !p.hasFolded);
-                if (activePlayers.length <= 1) { setTimeout(endRound, 1500); return; }
-
-                const firstPlayerBet = activePlayers[0].bet;
-                const allPlayersMatched = activePlayers.every(p => p.bet === firstPlayerBet);
-                const allPlayersActed = activePlayers.every(p => p.lastAction !== null);
-                
-                // ▼▼▼ [버그 수정] 한 명이라도 올인했는지 확인하는 로직 추가 ▼▼▼
-                const isAnyPlayerAllIn = activePlayers.some(p => p.chips === 0);
-                
-                // 베팅액이 같거나, 혹은 한명이 올인해서 베팅이 끝났다면 쇼다운으로 이동
-                if ((allPlayersMatched && allPlayersActed && actionsThisRound >= activePlayers.length) || (isAnyPlayerAllIn && allPlayersActed)) {
-                    roomRef.update({ gameState: 'showdown' });
-                }
-                // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
-            } else if (gameState === 'showdown') {
-                setTimeout(endRound, 3000);
+            switch(gameState) {
+                case 'startingRound':
+                    startNewRound();
+                    break;
+                case 'betting':
+                    const activePlayers = Object.values(players).filter(p => p && !p.hasFolded);
+                    if (activePlayers.length <= 1) {
+                        roomRef.update({ gameState: 'showdown' });
+                        return;
+                    }
+                    const isPlayerBankruptAtStart = activePlayers.some(p => p.chips === 0);
+                    if (isPlayerBankruptAtStart && actionsThisRound === 0) {
+                        roomRef.update({ gameState: 'showdown' });
+                        return;
+                    }
+                    const allPlayersActed = activePlayers.every(p => p.lastAction !== null);
+                    const enoughActionsTaken = actionsThisRound >= activePlayers.length;
+                    if (allPlayersActed && enoughActionsTaken) {
+                        const bets = activePlayers.map(p => p.bet);
+                        const allBetsEqual = new Set(bets).size === 1;
+                        const isAnyPlayerAllIn = activePlayers.some(p => p.chips === 0);
+                        if (allBetsEqual || isAnyPlayerAllIn) {
+                            roomRef.update({ gameState: 'showdown' });
+                        }
+                    }
+                    break;
+                case 'showdown':
+                      setTimeout(endRound, 2500);
+                    break;
             }
         }
         
         function startNewRound() {
             if (!isHost) return;
             const { players, currentRound, carryOverPot } = currentRoomData;
-            const nextRound = (currentRound || 0) + 1;
-            const playerIdsWithChips = Object.keys(players).filter(pid => players[pid].chips > 0);
-            if (playerIdsWithChips.length < 2 || nextRound > TOTAL_ROUNDS) {
-                endGame();
-                return;
+
+            const playerIdsWithChips = Object.keys(players).filter(pid => players[pid] && players[pid].chips > 0);
+            if (playerIdsWithChips.length < 2) {
+                endGame(); return;
             }
+
+            const nextRound = (currentRound || 0) + 1;
+            if (nextRound > TOTAL_ROUNDS) {
+                endGame(); return;
+            }
+
             const deck = shuffleDeck();
             const updates = { pot: 0, currentBet: 0, gameLog: `라운드 ${nextRound} 시작!`, actionsThisRound: 0 };
-            
-            const newPlayers = { ...players };
+            const newPlayers = JSON.parse(JSON.stringify(players));
             let currentPot = carryOverPot || 0;
+
             playerIdsWithChips.forEach(pid => {
                 const p = newPlayers[pid];
                 p.card = deck.pop();
@@ -592,30 +634,35 @@
                 p.lastAction = null;
                 currentPot += betAmount;
             });
+
             updates.pot = currentPot;
             updates.currentBet = MANDATORY_BET;
             updates.players = newPlayers;
             updates.currentRound = nextRound;
             updates.carryOverPot = 0;
 
-            // ▼▼▼ [수정] 1라운드에만 카운트다운을 실행하는 로직 ▼▼▼
-            if (nextRound === 1) {
+            const isPlayerBankruptAfterAnte = playerIdsWithChips.some(pid => newPlayers[pid].chips <= 0);
+            if (isPlayerBankruptAfterAnte) {
+                updates.gameState = 'showdown';
+            } else if (nextRound === 1) {
                 updates.gameState = 'countdown';
-                roomRef.update(updates);
             } else {
-                // 2라운드부터는 카드만 보여주고 1.5초 후 바로 베팅 시작
-                updates.gameState = 'dealing'; 
-                roomRef.update(updates).then(() => {
-                    setTimeout(() => roomRef.update({ gameState: 'betting' }), 1500);
-                });
+                updates.gameState = 'dealing';
             }
+            
+            roomRef.update(updates).then(() => {
+                if (updates.gameState === 'dealing' && isHost) {
+                    setTimeout(() => roomRef.update({ gameState: 'betting' }), 1500);
+                }
+            });
         }
 
-        function endRound() {
+       function endRound() {
             if (!isHost) return;
-            const { players, pot } = currentRoomData;
+            const { players, pot, currentRound } = currentRoomData;
             const activePlayers = Object.values(players).filter(p => p && !p.hasFolded);
             let winner = null, isDraw = false, logMessage;
+
             if (activePlayers.length === 1) {
                 winner = activePlayers[0];
                 logMessage = `${winner.nickname}님이 라운드 승리!`;
@@ -623,71 +670,77 @@
                 let highestRank = -1, potentialWinners = [];
                 activePlayers.forEach(p => {
                     const rank = CARD_RANKS.indexOf(p.card);
-                    if (rank > highestRank) { highestRank = rank; potentialWinners = [p]; } 
+                    if (rank > highestRank) { highestRank = rank; potentialWinners = [p]; }
                     else if (rank === highestRank) { potentialWinners.push(p); }
                 });
                 if (potentialWinners.length === 1) {
                     winner = potentialWinners[0];
                     logMessage = `${winner.nickname}님이 승리! (카드: ${winner.card})`;
-                } else { isDraw = true; logMessage = `무승부! (카드: ${potentialWinners.length > 0 ? potentialWinners[0].card : '?'}) 팟이 이월됩니다.`; }
+                } else {
+                    isDraw = true;
+                    logMessage = `무승부! (카드: ${potentialWinners.length > 0 ? potentialWinners[0].card : '?'}) 팟이 이월됩니다.`;
+                }
             }
+            
+            const finalPlayersState = JSON.parse(JSON.stringify(players));
 
-            const updates = { gameState: 'startingRound' };
-            if (winner && winner.id && players[winner.id]) {
-                const playersCopy = JSON.parse(JSON.stringify(players)); // 데이터 수정을 위한 플레이어 정보 복사
-                const loser = Object.values(playersCopy).find(p => p.id !== winner.id && activePlayers.some(ap => ap.id === p.id));
-                
+            if (isDraw) {
+                Object.keys(finalPlayersState).forEach(pid => {
+                    finalPlayersState[pid].chips += finalPlayersState[pid].bet;
+                });
+            } else if (winner) {
+                const loser = Object.values(finalPlayersState).find(p => p.id !== winner.id && activePlayers.some(ap => ap.id === p.id));
                 let winnings = pot;
                 if (loser && winner.bet < loser.bet) {
                     const refundToLoser = loser.bet - winner.bet;
                     winnings -= refundToLoser;
-                    playersCopy[loser.id].chips += refundToLoser;
+                    finalPlayersState[loser.id].chips += refundToLoser;
                 }
-                playersCopy[winner.id].chips += winnings;
-
-                // ▼▼▼ [버그 수정] 칩 분배 직후, 파산한 플레이어가 있는지 확인하는 로직 추가 ▼▼▼
-                const playersWithChips = Object.values(playersCopy).filter(p => p.chips > 0);
-                if (playersWithChips.length < 2) {
-                    endGame(playersCopy); // 칩이 0인 플레이어가 있으면 즉시 게임 종료
-                    return; // 더 이상 진행하지 않고 함수 종료
-                }
-                // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
-
-                updates.players = playersCopy;
-                updates.carryOverPot = 0;
-                updates.currentTurnPlayerId = winner.id;
-
-            } else if (isDraw) {
-                updates.carryOverPot = pot;
-                updates.currentTurnPlayerId = currentRoomData.currentTurnPlayerId;
+                finalPlayersState[winner.id].chips += winnings;
             }
             
-            updates.gameLog = logMessage;
+            const playersWithChips = Object.values(finalPlayersState).filter(p => p.chips > 0);
+            const isGameOver = playersWithChips.length < 2 || (currentRound >= TOTAL_ROUNDS);
+
+            if (isGameOver) {
+                endGame(finalPlayersState);
+                return;
+            }
+            
+            const updates = {
+                gameState: 'startingRound',
+                gameLog: logMessage,
+                carryOverPot: isDraw ? pot : 0, 
+                currentTurnPlayerId: isDraw ? currentRoomData.currentTurnPlayerId : winner.id,
+                players: finalPlayersState
+            };
             roomRef.update(updates);
         }
-        
+
         function endGame(finalPlayersState = null) {
             if(!isHost) return;
-            // ▼▼▼ [수정] 함수 호출 시 받은 데이터가 있으면 그것을 사용하도록 변경 ▼▼▼
-            const players = Object.values(finalPlayersState || currentRoomData.players);
-            if (players.length < 2) { return endGameOnDisconnect(); }
             
-            const p1 = players[0], p2 = players[1];
-            let winnerId = null, loserId = null, isDraw = false;
-            
-            if (p1.chips > p2.chips) { winnerId = p1.id; loserId = p2.id; } 
-            else if (p2.chips > p1.chips) { winnerId = p2.id; loserId = p1.id; } 
-            else { isDraw = true; winnerId = p1.id; loserId = p2.id; }
-            
-            updatePlayerStats(winnerId, loserId, isDraw);
-            roomRef.update({ gameState: 'finalGameOver', finalWinnerId: isDraw ? null : winnerId, isDraw });
+            setTimeout(() => {
+                const players = Object.values(finalPlayersState || currentRoomData.players);
+                if (players.length < 2) { return endGameOnDisconnect(); }
+                
+                const p1 = players[0], p2 = players[1];
+                let winnerId = null, loserId = null, isDraw = false;
+                
+                if (p1.chips > p2.chips) { winnerId = p1.id; loserId = p2.id; } 
+                else if (p2.chips > p1.chips) { winnerId = p2.id; loserId = p1.id; } 
+                else { isDraw = true; winnerId = p1.id; loserId = p2.id; }
+                
+                updatePlayerStats(winnerId, loserId, isDraw);
+                roomRef.update({ gameState: 'finalGameOver', finalWinnerId: isDraw ? null : winnerId, isDraw });
+            }, 3000); 
+
         }
         
        function endGameOnDisconnect() {
-            if (!isHost || currentRoomData.gameState === 'finalGameOver') return; // 중복 실행 방지
+            if (!isHost || currentRoomData.gameState === 'finalGameOver') return;
             
             const winnerId = myPlayerId;
-            // ▼▼▼ [수정] 저장된 ID 목록에서 나간 사람(패자)을 찾아냅니다. ▼▼▼
             const loserId = currentRoomData.allPlayerIds.find(pid => pid !== winnerId);
 
             updatePlayerStats(winnerId, loserId, false);
@@ -702,14 +755,12 @@
 
         async function updatePlayerStats(winnerId, loserId, isDraw = false) {
             const updatePromises = [];
-            
             const updateUser = (uid, result) => {
                 if (!uid || String(uid).startsWith('guest_')) return;
                 const promise = usersRef.child(uid).transaction(data => {
                     if (data) {
                         if (!data.stats) data.stats = {};
                         if (!data.stats.indianpoker) data.stats.indianpoker = { wins: 0, losses: 0, draws: 0 };
-
                         if (isDraw) {
                             data.stats.indianpoker.draws = (data.stats.indianpoker.draws || 0) + 1;
                             data.exp = (data.exp || 0) + 25;
@@ -725,7 +776,6 @@
                 });
                 updatePromises.push(promise);
             };
-
             if (isDraw) {
                 updateUser(winnerId, 'draw');
                 updateUser(loserId, 'draw');
@@ -733,16 +783,16 @@
                 updateUser(winnerId, 'win');
                 updateUser(loserId, 'loss');
             }
-            
             await Promise.all(updatePromises).catch(e => console.error("전적 업데이트 실패", e));
         }
         
         function renderGame() {
             const data = currentRoomData;
             if (data.gameState === 'finalGameOver') {
-                const winnerInfo = data.players[data.finalWinnerId];
+                const winnerInfo = data.finalWinnerId ? data.players[data.finalWinnerId] : null;
                 const winnerNickname = winnerInfo ? winnerInfo.nickname : '무승부';
                 let message = data.isDraw ? "👏 최종 결과: 무승부! 👏" : (data.finalWinnerId === myPlayerId ? "🎉 당신이 최종 승리했습니다! 🎉" : `😢 ${winnerNickname}님의 최종 승리! 😢`);
+                if (data.endedByDisconnect) message = '상대방이 나가서 승리했습니다.';
                 showInfoModal('게임 종료!', message, false);
                 return;
             }
@@ -787,26 +837,18 @@
 
             let buttonsHTML = `<button id="die-btn" class="action-btn" ${!isMyTurn ? 'disabled' : ''}>다이</button>`;
 
-            if (canCheck) { // 아무도 베팅하지 않은 상황
+            if (canCheck) {
                 buttonsHTML += `<button id="check-btn" class="action-btn" ${!isMyTurn ? 'disabled' : ''}>체크</button>
                                 <button id="bet-btn" class="action-btn" ${!isMyTurn || myPlayer.chips <= 0 ? 'disabled' : ''}>베팅</button>`;
-            } else { // 상대가 베팅/레이즈 한 상황
-                // 1. 콜 할 칩조차 부족한 경우 -> '다이' 또는 '올인'만 가능
+            } else {
                 if (myPlayer.chips <= toCall) {
                     buttonsHTML += `<button id="allin-btn" class="action-btn" style="background-color: #d9534f;" ${!isMyTurn ? 'disabled' : ''}>올인 (${myPlayer.chips})</button>`;
-                } 
-                // 2. 콜은 가능하지만, 정식 레이즈는 불가능한 경우 -> '다이', '콜', '올인' 가능
-                else {
+                } else {
                     buttonsHTML += `<button id="call-btn" class="action-btn" ${!isMyTurn ? 'disabled' : ''}>콜 (${toCall})</button>`;
-                    
-                    // 정식 레이즈에 필요한 최소 칩 계산 (콜 금액 + 현재 판돈만큼 추가 베팅)
                     const minRaiseCost = toCall + (currentBet || MANDATORY_BET);
-                    
                     if (myPlayer.chips > minRaiseCost) {
-                        // 3. 정식 레이즈가 가능한 충분한 칩을 가진 경우
                         buttonsHTML += `<button id="raise-btn" class="action-btn" ${!isMyTurn ? 'disabled' : ''}>레이즈</button>`;
                     } else {
-                        // 콜은 가능하지만, 정식 레이즈 비용보다 칩이 적으면 '올인' 버튼 표시
                         buttonsHTML += `<button id="allin-btn" class="action-btn" style="background-color: #d9534f;" ${!isMyTurn ? 'disabled' : ''}>올인 (${myPlayer.chips})</button>`;
                     }
                 }
@@ -870,11 +912,9 @@
                     const finalBet = myPlayer.bet + allInAmount;
                     updates[`/players/${myPlayerId}/chips`] = 0;
                     updates[`/players/${myPlayerId}/bet`] = finalBet;
-                    // ▼▼▼ [버그 수정] 누락되었던 currentBet 업데이트 추가 ▼▼▼
                     if (finalBet > currentRoomData.currentBet) {
                         updates['/currentBet'] = finalBet;
                     }
-                    // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
                     potIncrease = allInAmount;
                     logMessage += `올인했습니다! (${allInAmount})`;
                         if (opponent) updates[`/players/${opponent.id}/lastAction`] = null;
@@ -897,7 +937,7 @@
                 indicator.classList.add('show');
                 setTimeout(() => {
                     indicator.classList.remove('show');
-                }, 1800); // 1.8초 동안 표시
+                }, 1800);
             }
         }
 
@@ -910,19 +950,16 @@
             return deck;
         }
 
-        // ▼▼▼▼▼ [수정] showInfoModal: 다시하기/나가기 버튼 및 리스너 추가 ▼▼▼▼▼
       function showInfoModal(title, message, showSpinner = true, onConfirm = null) {
             const infoModalContent = document.getElementById('info-modal-content');
             
-            // ▼▼▼ [수정] 카운트다운 때문에 변경된 모든 스타일을 원래대로 복구 ▼▼▼
             infoOverlay.style.backgroundColor = '';
             infoOverlay.style.backdropFilter = '';
             infoModalContent.style.backgroundColor = '';
             infoModalContent.style.boxShadow = '';
             infoModalContent.style.padding = '';
             document.getElementById('info-title').style.display = '';
-            // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
-
+            
             infoOverlay.style.display = 'flex';
             document.getElementById('info-title').textContent = title;
             document.getElementById('info-message').textContent = message;
@@ -931,7 +968,6 @@
             buttonsContainer.innerHTML = '';
 
             if (title === '게임 종료!') {
-                // ▼▼▼▼▼ 상대방 접속 종료로 게임이 끝났는지 확인하는 로직 추가 ▼▼▼▼▼
                 if (currentRoomData.endedByDisconnect) {
                     document.getElementById('info-message').textContent = '상대방이 접속을 종료하여 승리했습니다.';
                     const lobbyBtn = document.createElement('button');
@@ -944,14 +980,13 @@
                     };
                     buttonsContainer.appendChild(lobbyBtn);
                 } else {
-                // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
                     const rematchBtn = document.createElement('button');
                     rematchBtn.className = 'menu-btn primary';
                     rematchBtn.textContent = '다시 하기';
                     rematchBtn.onclick = () => {
-                        rematchBtn.textContent = '대기중...';
+                        rematchBtn.textContent = '상대방 기다리는 중...';
                         rematchBtn.disabled = true;
-                        roomRef.child('rematchRequests/' + myPlayerId).set(true);
+                                roomRef.child('rematchRequests/' + myPlayerId).set(true);
                     };
 
                     const exitBtn = document.createElement('button');
@@ -1007,3 +1042,4 @@
     </div>
 </body>
 </html>
+}
