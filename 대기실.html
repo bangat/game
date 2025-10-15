@@ -407,6 +407,16 @@
             clickSound.play().catch(e => console.log("Sound play failed:", e));
         };
  
+        function playSound(id) {
+            const sound = document.getElementById(id);
+            if (sound) {
+                sound.currentTime = 0;
+                // play()가 실패해도 오류가 나지 않도록 .catch()를 추가합니다.
+                sound.play().catch(error => {
+                    console.warn("사운드 자동재생이 차단되었습니다:", error);
+                });
+            }
+        }
 
         const firebaseConfig = {
             apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw", authDomain: "goodluck-7c14b.firebaseapp.com",
@@ -658,17 +668,11 @@ const availableGames = [
         function listenToRoomChanges() {
             lobbyView.classList.add('hidden');
             let previousPlayers = null;
+            let isFirstRun = true;
 
-             roomRef.once('value', snapshot => {
-                if (!snapshot.exists()) return;
-                currentRoomData = snapshot.val();
-                previousPlayers = currentRoomData.players || {}; 
-                updateInGameLobbyUI();
-                setupChat();
-            });
-            
             roomRef.on('value', snapshot => {
                 if (!snapshot.exists()) {
+                    if (roomRef) roomRef.off();
                     showInfoModal("방이 해체되었습니다", "방장이 게임을 떠나 대기실로 이동합니다.", () => {
                         cleanupOldRoomState();
                         waitingOverlay.style.display = 'none';
@@ -677,43 +681,56 @@ const availableGames = [
                     });
                     return;
                 }
-                currentRoomData = snapshot.val();
                 
-                const currentPlayers = currentRoomData.players || {};
-                const currentPlayerIds = Object.keys(currentPlayers);
-                
-                if (previousPlayers !== null) {
+                const latestRoomData = snapshot.val();
+                const currentPlayers = latestRoomData.players || {};
+
+                // --- [핵심 수정] 플레이어 목록에 '실제 변경'이 있을 때만 입장/퇴장 감지 ---
+                // previousPlayers가 null이 아니고, JSON 문자열로 비교했을 때 다를 경우에만 실행
+                if (previousPlayers !== null && JSON.stringify(previousPlayers) !== JSON.stringify(currentPlayers)) {
+                    const currentPlayerIds = Object.keys(currentPlayers);
                     const previousPlayerIds = Object.keys(previousPlayers);
 
+                    // 새로 입장한 플레이어
                     const newPlayerIds = currentPlayerIds.filter(id => !previousPlayerIds.includes(id));
                     newPlayerIds.forEach(id => {
                         const nickname = currentPlayers[id]?.nickname;
                         if (nickname) {
                             addSystemMessage(`🔔 ${nickname}님이 입장했습니다.`);
                             triggerVibration();
+                             playSound('enter-sound'); // 사운드 기능은 일단 주석 처리 (필요시 해제)
                         }
                     });
 
+                    // 퇴장한 플레이어
                     const leftPlayerIds = previousPlayerIds.filter(id => !currentPlayerIds.includes(id));
                     leftPlayerIds.forEach(id => {
                         const nickname = previousPlayers[id]?.nickname; 
                         if (nickname) {
                             addSystemMessage(`🔔 ${nickname}님이 퇴장했습니다.`);
                             triggerVibration();
+                             playSound('leave-sound'); // 사운드 기능은 일단 주석 처리 (필요시 해제)
                         }
                     });
                 }
-                previousPlayers = currentPlayers; 
                 
-                if (currentRoomData.gameState === 'waiting') {
+                // --- 상태 업데이트 및 UI 렌더링 (항상 실행) ---
+                previousPlayers = currentPlayers; 
+                currentRoomData = latestRoomData; 
+
+                if (isFirstRun) {
+                    updateInGameLobbyUI();
+                    setupChat(); 
+                    isFirstRun = false;
+                } else {
                     updateLobbyPlayersAndGame();
                 }
 
-                if (currentRoomData.gameState === 'launching' && currentRoomData.launchUrl) {
+                if (latestRoomData.gameState === 'launching' && latestRoomData.launchUrl) {
                     if (isHost) roomRef.onDisconnect().cancel();
                     else roomRef.child('players/' + myPlayerId).onDisconnect().cancel();
                     roomRef.off();
-                    window.location.href = currentRoomData.launchUrl;
+                    window.location.href = latestRoomData.launchUrl;
                 }
             });
         }
