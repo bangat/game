@@ -219,6 +219,14 @@
         /* PC/태블릿 반응형 스타일 (화면이 768px보다 클 때) */
         
         #player-list-vertical-wrapper { display: none; }
+
+                .system-message {
+            text-align: center;
+            font-size: 0.85em;
+            font-weight: 700;
+            color: #e5a743; /* 노란색 계열 */
+            margin: 10px 0;
+        }
         
     </style>
 </head>
@@ -285,6 +293,24 @@
     </div>
 
     <div id="game-select-modal" class="overlay" style="display: none; background-color: rgba(0,0,0,0.8);">
+      <div id="game-mode-modal" class="overlay" style="display: none; background-color: rgba(0,0,0,0.8);">
+        <div class="modal-content">
+            <div class="modal-header"><h2>어떤 모드로 할까요?</h2></div>
+            <div class="modal-body" style="padding: 25px; display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                <button id="mode-turn-btn" class="game-select-btn" style="background-color: #4A8DFF20; color: #4A8DFF;">
+                    <span class="icon">🔄</span>
+                    <span>턴제 대결</span>
+                </button>
+                <button id="mode-survival-btn" class="game-select-btn" style="background-color: #F7636320; color: #F76363;">
+                    <span class="icon">🔥</span>
+                    <span>서바이벌</span>
+                </button>
+            </div>
+            <div class="lobby-modal-footer" style="padding: 15px 25px 25px;">
+                <button id="cancel-mode-select-btn" class="menu-btn secondary" style="margin:0;">취소</button>
+            </div>
+        </div>
+    </div>
         <div class="modal-content">
             <div class="modal-header"><h2>어떤 게임을 할까요?</h2></div>
             <div class="modal-body" id="game-select-options"></div>
@@ -399,6 +425,15 @@
                 myAvatar = localStorage.getItem('userAvatar');
 
                      initializeLobby();
+
+              document.addEventListener("visibilitychange", () => {
+                    if (document.visibilityState === 'visible') {
+                        firebase.database().goOnline();
+                    } else {
+                        firebase.database().goOffline();
+                    }
+                });
+
                 backToIndexBtn.addEventListener('click', () => { playClickSound(); window.location.href = 'index.html'; });
                 document.getElementById('profile-close-btn').addEventListener('click', () => {
                     playClickSound();
@@ -413,6 +448,15 @@
                 myAvatar = localStorage.getItem('userAvatar');
 
                 initializeLobby();
+
+                document.addEventListener("visibilitychange", () => {
+                    if (document.visibilityState === 'visible') {
+                        firebase.database().goOnline();
+                    } else {
+                        firebase.database().goOffline();
+                    }
+                });
+
                 backToIndexBtn.addEventListener('click', () => { playClickSound(); window.location.href = 'index.html'; });
                 document.getElementById('profile-close-btn').addEventListener('click', () => {
                     playClickSound();
@@ -446,7 +490,8 @@ const availableGames = [
         { id: 'maze', name: '미로찾기', icon: '🚀', color: '#34495e', file: '미로찾기멀티.html' },
         { id: 'alkkagi', name: '알까기', icon: '⚪', color: '#8d6e63', file: '알까기.html' },
         { id: 'reversi', name: '리버시', icon: '⚫', color: '#00897B', file: '리버시.html' },
-        { id: 'fker', name: '인디언포커', icon: '🃏', color: '#00897B', file: '인디언포커.html' }
+        { id: 'fker', name: '인디언포커', icon: '🃏', color: '#C9372C', file: '인디언포커.html' },
+        { id: 'candysoap', name: '캔디솝', icon: '🍬', color: '#FF69B4', file: '캔디솝.html' } 
     ];
 
         let myPlayerId, myNickname, myAvatar, roomRef, currentRoomData, isHost = false;
@@ -478,7 +523,7 @@ const availableGames = [
             stopLobbyListener();
             roomListContainer.innerHTML = `<div class="spinner"></div>`;
             const query = gameRoomsRef.orderByChild('createdAt').limitToLast(20);
-lobbyListener = query.on('value', snapshot => {
+            lobbyListener = query.on('value', snapshot => {
                 roomListContainer.innerHTML = '';
                 let roomCount = 0; 
 
@@ -486,7 +531,6 @@ lobbyListener = query.on('value', snapshot => {
                     snapshot.forEach(childSnapshot => {
                         const room = childSnapshot.val();
                         const roomKey = childSnapshot.key;
-
         
                         if (!room || !room.players || Object.keys(room.players).length === 0) {
                             console.log(`유령 방(${roomKey})을 발견하여 자동으로 삭제합니다.`);
@@ -496,8 +540,15 @@ lobbyListener = query.on('value', snapshot => {
                         
                         roomCount++; 
                         const playerCount = Object.keys(room.players).length;
+                        
+                        let maxPlayers = 4; // 기본 최대 4명
+                        if (room.selectedGame === 'alkkagi' || room.selectedGame === 'reversi' || room.selectedGame === 'fker') {
+                            maxPlayers = 2; // 2인 전용 게임
+                        }
+                       
+
                         const isPlaying = room.gameState === 'playing' || room.gameState === 'launching';
-                        const isFull = playerCount >= 4;
+                        const isFull = playerCount >= maxPlayers;
                         const game = room.selectedGame ? availableGames.find(g => g.id === room.selectedGame) : null;
                         const gameInfo = game ? `${game.icon} ${game.name}` : `<span style="color:#999">선택중...</span>`;
                         const statusText = isPlaying ? '게임중' : '대기중';
@@ -511,7 +562,7 @@ lobbyListener = query.on('value', snapshot => {
                                 <div class="room-detail-line game"><span class="detail-label">게임</span><span class="detail-value">${gameInfo}</span></div>
                                 <div class="room-detail-line status-players">
                                     <div class="status-wrapper"><span class="detail-label">상태</span><span class="detail-value room-status ${statusClass}">[ ${statusText} ]</span></div>
-                                    <div class="players-wrapper"><span class="detail-label">인원</span><span class="detail-value">${playerCount} / 4</span></div>
+                                    <div class="players-wrapper"><span class="detail-label">인원</span><span class="detail-value">${playerCount} / ${maxPlayers}</span></div>
                                 </div>
                             </div>
                             <button class="menu-btn join-btn primary" data-room-id="${childSnapshot.key}" ${isFull || isPlaying ? 'disabled' : ''}>참가하기</button>
@@ -519,12 +570,10 @@ lobbyListener = query.on('value', snapshot => {
                         roomListContainer.prepend(roomItem);
                     });
                 }
-
     
                 if (roomCount === 0) {
                     roomListContainer.innerHTML = `<p style="text-align:center; color:#888; padding-top: 40px;">현재 참여 가능한 방이 없습니다.<br>새로운 방을 만들어보세요!</p>`;
                 } else {
-        
                     document.querySelectorAll('.join-btn').forEach(btn => btn.addEventListener('click', e => { playClickSound(); joinRoom(e.target.dataset.roomId); }));
                 }
             });
@@ -566,16 +615,18 @@ lobbyListener = query.on('value', snapshot => {
             roomRef = gameRoomsRef.child(roomId);
 
             roomRef.transaction(currentData => {
-              
                 if (currentData === null) {
                     return null; 
                 }
+                
+                let maxPlayers = 4;
+                if (currentData.selectedGame === 'alkkagi' || currentData.selectedGame === 'reversi' || currentData.selectedGame === 'fker') {
+                    maxPlayers = 2;
+                }
 
-        
-                if (currentData.gameState !== 'waiting' || (currentData.players && Object.keys(currentData.players).length >= 4)) {
+                if (currentData.gameState !== 'waiting' || (currentData.players && Object.keys(currentData.players).length >= maxPlayers)) {
                     return; 
                 }
-                
         
                 if (!currentData.players) {
                     currentData.players = {}; 
@@ -590,11 +641,9 @@ lobbyListener = query.on('value', snapshot => {
                     showInfoModal("입장 실패", "데이터베이스 오류가 발생했습니다.");
                     startLobbyListener();
                 } else if (committed) {
-    
                     roomRef.child('players/' + myPlayerId).onDisconnect().remove();
                     listenToRoomChanges();
                 } else {
-             
                     const roomData = snapshot.val();
                     if (roomData === null) {
                          showInfoModal("입장 실패", "방이 사라졌습니다. 다른 방을 선택해주세요.");
@@ -608,12 +657,14 @@ lobbyListener = query.on('value', snapshot => {
 
         function listenToRoomChanges() {
             lobbyView.classList.add('hidden');
+            let previousPlayers = null;
 
              roomRef.once('value', snapshot => {
-                if (!snapshot.exists()) return; 
+                if (!snapshot.exists()) return;
                 currentRoomData = snapshot.val();
-                updateInGameLobbyUI(); // 전체 UI 렌더링
-                setupChat(); 
+                previousPlayers = currentRoomData.players || {}; 
+                updateInGameLobbyUI();
+                setupChat();
             });
             
             roomRef.on('value', snapshot => {
@@ -627,6 +678,32 @@ lobbyListener = query.on('value', snapshot => {
                     return;
                 }
                 currentRoomData = snapshot.val();
+                
+                const currentPlayers = currentRoomData.players || {};
+                const currentPlayerIds = Object.keys(currentPlayers);
+                
+                if (previousPlayers !== null) {
+                    const previousPlayerIds = Object.keys(previousPlayers);
+
+                    const newPlayerIds = currentPlayerIds.filter(id => !previousPlayerIds.includes(id));
+                    newPlayerIds.forEach(id => {
+                        const nickname = currentPlayers[id]?.nickname;
+                        if (nickname) {
+                            addSystemMessage(`🔔 ${nickname}님이 입장했습니다.`);
+                            triggerVibration();
+                        }
+                    });
+
+                    const leftPlayerIds = previousPlayerIds.filter(id => !currentPlayerIds.includes(id));
+                    leftPlayerIds.forEach(id => {
+                        const nickname = previousPlayers[id]?.nickname; 
+                        if (nickname) {
+                            addSystemMessage(`🔔 ${nickname}님이 퇴장했습니다.`);
+                            triggerVibration();
+                        }
+                    });
+                }
+                previousPlayers = currentPlayers; 
                 
                 if (currentRoomData.gameState === 'waiting') {
                     updateLobbyPlayersAndGame();
@@ -673,9 +750,16 @@ lobbyListener = query.on('value', snapshot => {
                 playerListVerticalHTML += `<div class="player-item ${p.isHost ? 'is-host' : ''}" ${clickAttribute}>${avatarHTML} <span class="nickname">${p.nickname} ${pid === myPlayerId ? ' (나)' : ''}</span></div>`;
             });
 
-            const canStart = playerEntries.length >= 2 && selectedGame;
-            const startGameBtnHTML = isHost ? `<button id="start-game-btn" class="menu-btn primary" ${!canStart ? 'disabled' : ''}>시작</button>` : '';
+            let canStart = false;
+            if (selectedGame === 'candysoap') {
+                canStart = playerEntries.length >= 1; // 캔디솝은 1명부터 시작 가능
+            } else if (selectedGame === 'reversi' || selectedGame === 'fker') {
+                canStart = playerEntries.length === 2; // 리버시/인디언포커는 2명만 가능
+            } else {
+                canStart = playerEntries.length >= 2 && selectedGame; // 그 외 게임은 2명 이상
+            }
 
+            const startGameBtnHTML = isHost ? `<button id="start-game-btn" class="menu-btn primary" ${!canStart ? 'disabled' : ''}>시작</button>` : '';
             waitingOverlay.innerHTML = `
                 <div class="modal-content in-game-lobby">
                     <div class="modal-header">
@@ -790,10 +874,36 @@ lobbyListener = query.on('value', snapshot => {
             });
 
                       const startGameBtn = document.getElementById('start-game-btn');
-            if(startGameBtn){
-                const canStart = playerEntries.length >= 2 && selectedGame;
+            if (startGameBtn) {
+              
+                let canStart = false;
+                if (selectedGame === 'candysoap') {
+                    canStart = playerEntries.length >= 1; // 캔디솝은 1명부터 시작 가능
+                } else if (selectedGame === 'reversi' || selectedGame === 'fker') {
+                    canStart = playerEntries.length === 2; // 리버시/인디언포커는 2명만 가능
+                } else {
+                    canStart = playerEntries.length >= 2 && selectedGame; 
+                }
                 startGameBtn.disabled = !canStart;
             }
+        }
+
+                function triggerVibration() {
+            if ('vibrate' in navigator) {
+                navigator.vibrate(200); // 100ms 동안 진동
+            }
+        }
+
+        function addSystemMessage(message) {
+            const chatDisplay = document.getElementById('chat-container');
+            if (!chatDisplay) return;
+
+            const msgElement = document.createElement('div');
+            msgElement.className = 'system-message';
+            msgElement.textContent = message;
+            
+            chatDisplay.appendChild(msgElement);
+            chatDisplay.scrollTop = chatDisplay.scrollHeight;
         }
 
         function setupChat() {
@@ -863,17 +973,37 @@ emojiPopover.querySelectorAll('button').forEach(emojiBtn => {
 
         
 function startGame() {
-            if (!isHost || !currentRoomData) return;
-            const game = availableGames.find(g => g.id === currentRoomData.selectedGame);
-            if (game) {
-                if (game.id === 'reversi' && Object.keys(currentRoomData.players).length !== 2) {
-                    alert('리버시 게임은 2명일 때만 시작할 수 있습니다.');
-                    return;
-                }
-                const launchUrl = `${game.file}?roomId=${roomRef.key}`;
-                roomRef.update({ gameState: 'launching', launchUrl: launchUrl });
-            }
-        }
+    if (!isHost || !currentRoomData) return;
+    const game = availableGames.find(g => g.id === currentRoomData.selectedGame);
+    if (!game) return;
+
+    const playerCount = Object.keys(currentRoomData.players).length;
+
+    if (game.id === 'candysoap' && playerCount >= 2) {
+        const modeModal = document.getElementById('game-mode-modal');
+        modeModal.style.display = 'flex';
+
+        const launchGameWithMode = (mode) => {
+            modeModal.style.display = 'none';
+                    const launchUrl = `${game.file}?roomId=${roomRef.key}&mode=${mode}`;
+            roomRef.update({ gameState: 'launching', launchUrl: launchUrl });
+        };
+
+        document.getElementById('mode-turn-btn').onclick = () => launchGameWithMode('turn');
+        document.getElementById('mode-survival-btn').onclick = () => launchGameWithMode('survival');
+        document.getElementById('cancel-mode-select-btn').onclick = () => modeModal.style.display = 'none';
+
+        return; 
+    }
+
+    if ((game.id === 'reversi' || game.id === 'fker') && playerCount !== 2) {
+        alert(`${game.name} 게임은 2명일 때만 시작할 수 있습니다.`);
+        return;
+    }
+
+    const launchUrl = `${game.file}?roomId=${roomRef.key}`;
+    roomRef.update({ gameState: 'launching', launchUrl: launchUrl });
+}
 
 
                 
