@@ -296,15 +296,43 @@
     
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+
     <script>
     document.addEventListener('DOMContentLoaded', () => {
-        // ▼▼▼▼▼ 효과음 코드 추가 시작 ▼▼▼▼▼
+           (function() {
+        
+            document.addEventListener('contextmenu', e => e.preventDefault());
+
+            function blockKeys(e) {
+                if (
+                    e.keyCode === 123 ||
+                    (e.ctrlKey && e.shiftKey && (e.keyCode === 'I'.charCodeAt(0) || e.keyCode === 'J'.charCodeAt(0) || e.keyCode === 'C'.charCodeAt(0))) ||
+                    (e.ctrlKey && e.keyCode === 'U'.charCodeAt(0))
+                ) {
+                    e.preventDefault();
+                }
+            }
+            window.addEventListener('keydown', blockKeys);
+
+            setInterval(function () {
+                const before = new Date().getTime();
+                debugger; 
+                const after = new Date().getTime();
+                if (after - before > 100) { 
+                              document.body.innerHTML = 'Developer tools are not allowed.';
+                }
+            }, 1000);
+        })();
+
+
+
         const clickSound = document.getElementById('click-sound');
         const playClickSound = () => {
             clickSound.currentTime = 0;
             clickSound.play().catch(e => console.log("Sound play failed:", e));
         };
-        // ▲▲▲▲▲ 효과음 코드 추가 종료 ▲▲▲▲▲
+ 
 
         const firebaseConfig = {
             apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw", authDomain: "goodluck-7c14b.firebaseapp.com",
@@ -314,6 +342,44 @@
         };
         firebase.initializeApp(firebaseConfig);
         const database = firebase.database();
+        const auth = firebase.auth();
+
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                myPlayerId = user.uid;
+                myNickname = localStorage.getItem('userNickname');
+                myAvatar = localStorage.getItem('userAvatar');
+
+                     initializeLobby();
+                backToIndexBtn.addEventListener('click', () => { playClickSound(); window.location.href = 'index.html'; });
+                document.getElementById('profile-close-btn').addEventListener('click', () => {
+                    playClickSound();
+                    document.getElementById('profile-modal').style.display = 'none';
+                });
+                createRoomBtn.addEventListener('click', () => { playClickSound(); createNewPublicRoom(); });
+
+            } else if (sessionStorage.getItem('isGuest') === 'true') {
+               
+                myPlayerId = localStorage.getItem('myPlayerId');
+                myNickname = localStorage.getItem('userNickname');
+                myAvatar = localStorage.getItem('userAvatar');
+
+                initializeLobby();
+                backToIndexBtn.addEventListener('click', () => { playClickSound(); window.location.href = 'index.html'; });
+                document.getElementById('profile-close-btn').addEventListener('click', () => {
+                    playClickSound();
+                    document.getElementById('profile-modal').style.display = 'none';
+                });
+                createRoomBtn.addEventListener('click', () => { playClickSound(); createNewPublicRoom(); });
+
+            } else {
+    
+                alert("로그인 정보가 없습니다. 메인 화면으로 돌아갑니다.");
+                window.location.href = 'index.html';
+            }
+        });
+    
+
         const gameRoomsRef = database.ref('memoryGameRooms');
         
         const lobbyView = document.getElementById('lobby-view'),
@@ -338,17 +404,7 @@ const availableGames = [
         let myPlayerId, myNickname, myAvatar, roomRef, currentRoomData, isHost = false;
         let lobbyListener = null; 
 
-        function getPlayerId() {
-            let id = localStorage.getItem('myPlayerId');
-            if (!id) { 
-                alert("로그인 정보가 없습니다. 메인 메뉴로 돌아갑니다.");
-                window.location.href = 'index.html';
-                return null;
-            }
-            myNickname = localStorage.getItem('userNickname');
-            myAvatar = localStorage.getItem('userAvatar');
-            return id;
-        }
+       
 
         function showInfoModal(title, message, onConfirm) {
             infoTitle.textContent = title;
@@ -363,7 +419,7 @@ const availableGames = [
 
         function cleanupOldRoomState() {
             if (roomRef) {
-                roomRef.child('chat').off(); // 채팅 리스너 명시적 제거
+                roomRef.child('chat').off(); 
                 roomRef.off(); 
                 roomRef.onDisconnect().cancel(); 
             }
@@ -376,22 +432,21 @@ const availableGames = [
             const query = gameRoomsRef.orderByChild('createdAt').limitToLast(20);
 lobbyListener = query.on('value', snapshot => {
                 roomListContainer.innerHTML = '';
-                let roomCount = 0; // 방 개수를 세는 변수
+                let roomCount = 0; 
 
                 if (snapshot.exists()) {
                     snapshot.forEach(childSnapshot => {
                         const room = childSnapshot.val();
                         const roomKey = childSnapshot.key;
 
-                        // ★★★ 핵심 수정: 유령방 자동 삭제 로직 ★★★
-                        // 1. 플레이어가 없거나, 2. 방 정보가 비정상적인 경우
+        
                         if (!room || !room.players || Object.keys(room.players).length === 0) {
                             console.log(`유령 방(${roomKey})을 발견하여 자동으로 삭제합니다.`);
-                            gameRoomsRef.child(roomKey).remove(); // 해당 방을 DB에서 삭제
-                            return; // 다음 방으로 넘어감
+                            gameRoomsRef.child(roomKey).remove(); 
+                            return; 
                         }
                         
-                        roomCount++; // 유효한 방 개수 증가
+                        roomCount++; 
                         const playerCount = Object.keys(room.players).length;
                         const isPlaying = room.gameState === 'playing' || room.gameState === 'launching';
                         const isFull = playerCount >= 4;
@@ -417,12 +472,11 @@ lobbyListener = query.on('value', snapshot => {
                     });
                 }
 
-                // ★★★ 핵심 수정 ★★★
-                // 방이 하나도 없을 경우, 안내 메시지를 표시하고 자동 생성을 하지 않음
+    
                 if (roomCount === 0) {
                     roomListContainer.innerHTML = `<p style="text-align:center; color:#888; padding-top: 40px;">현재 참여 가능한 방이 없습니다.<br>새로운 방을 만들어보세요!</p>`;
                 } else {
-                    // 방이 있을 때만 참가 버튼에 이벤트 리스너를 추가
+        
                     document.querySelectorAll('.join-btn').forEach(btn => btn.addEventListener('click', e => { playClickSound(); joinRoom(e.target.dataset.roomId); }));
                 }
             });
@@ -464,23 +518,23 @@ lobbyListener = query.on('value', snapshot => {
             roomRef = gameRoomsRef.child(roomId);
 
             roomRef.transaction(currentData => {
-                // Case 1: 입장하려는 방이 더 이상 존재하지 않으면, 아무것도 하지 않고 트랜잭션을 종료합니다.
+              
                 if (currentData === null) {
                     return null; 
                 }
 
-                // Case 2: 방이 꽉 찼거나, 게임이 이미 시작되었다면 트랜잭션을 중단합니다.
+        
                 if (currentData.gameState !== 'waiting' || (currentData.players && Object.keys(currentData.players).length >= 4)) {
-                    return; // undefined를 반환하여 중단
+                    return; 
                 }
                 
-                // Case 3: 모든 조건을 통과했으므로, 플레이어를 방에 추가합니다.
+        
                 if (!currentData.players) {
-                    currentData.players = {}; // 만약을 대비한 안전장치
+                    currentData.players = {}; 
                 }
                 currentData.players[myPlayerId] = { nickname: myNickname, avatar: myAvatar, score: 0, isHost: false };
                 
-                return currentData; // 변경된 데이터를 반환하여 DB에 저장
+                return currentData; 
             }, 
             (error, committed, snapshot) => {
                 if (error) {
@@ -488,11 +542,11 @@ lobbyListener = query.on('value', snapshot => {
                     showInfoModal("입장 실패", "데이터베이스 오류가 발생했습니다.");
                     startLobbyListener();
                 } else if (committed) {
-                    // 성공적으로 입장한 경우
+    
                     roomRef.child('players/' + myPlayerId).onDisconnect().remove();
                     listenToRoomChanges();
                 } else {
-                    // 트랜잭션이 중단된 경우 (방이 없거나, 꽉 찼거나, 시작됨)
+             
                     const roomData = snapshot.val();
                     if (roomData === null) {
                          showInfoModal("입장 실패", "방이 사라졌습니다. 다른 방을 선택해주세요.");
@@ -507,15 +561,13 @@ lobbyListener = query.on('value', snapshot => {
         function listenToRoomChanges() {
             lobbyView.classList.add('hidden');
 
-            // --- 1. 최초 한 번만 전체 UI를 그립니다. ---
              roomRef.once('value', snapshot => {
-                if (!snapshot.exists()) return; // 방이 없으면 중단
+                if (!snapshot.exists()) return; 
                 currentRoomData = snapshot.val();
                 updateInGameLobbyUI(); // 전체 UI 렌더링
-                setupChat(); // 채팅 리스너 설정 (인자 제거)
+                setupChat(); 
             });
             
-            // --- 2. 방의 상태가 바뀔 때만 감지하는 리스너 ---
             roomRef.on('value', snapshot => {
                 if (!snapshot.exists()) {
                     showInfoModal("방이 해체되었습니다", "방장이 게임을 떠나 대기실로 이동합니다.", () => {
@@ -528,12 +580,10 @@ lobbyListener = query.on('value', snapshot => {
                 }
                 currentRoomData = snapshot.val();
                 
-                // 플레이어나 게임 선택이 변경될 때만 UI를 업데이트합니다. (채팅은 무시)
                 if (currentRoomData.gameState === 'waiting') {
                     updateLobbyPlayersAndGame();
                 }
 
-                // 게임 시작 로직은 그대로 유지
                 if (currentRoomData.gameState === 'launching' && currentRoomData.launchUrl) {
                     if (isHost) roomRef.onDisconnect().cancel();
                     else roomRef.child('players/' + myPlayerId).onDisconnect().cancel();
@@ -547,7 +597,6 @@ lobbyListener = query.on('value', snapshot => {
             const { players, selectedGame, roomName } = currentRoomData;
             const playerEntries = Object.entries(players);
 
-            // --- 1. 게임 정보 부제목 생성 ---
             let gameSubtitleHTML = `<div class="game-subtitle">`;
             if (selectedGame) {
                 const game = availableGames.find(g => g.id === selectedGame);
@@ -557,7 +606,6 @@ lobbyListener = query.on('value', snapshot => {
             }
             gameSubtitleHTML += `</div>`;
 
-            // --- 2. 모바일용 가로 플레이어 목록 생성 ---
             let playerListHorizontalHTML = '';
             playerEntries.forEach(([pid, p]) => {
                 const avatarHTML = p.avatar.startsWith('http') ? `<img src="${p.avatar}" alt="av">` : p.avatar;
@@ -569,7 +617,7 @@ lobbyListener = query.on('value', snapshot => {
                     </div>`;
             });
 
-            // --- 3. PC용 세로 플레이어 목록 생성 ---
+
             let playerListVerticalHTML = '';
             playerEntries.forEach(([pid, p]) => {
                 let avatarHTML = p.avatar.startsWith('http') ? `<img src="${p.avatar}" class="player-avatar-img">` : `<span class="player-avatar-emoji">${p.avatar}</span>`;
@@ -598,11 +646,8 @@ lobbyListener = query.on('value', snapshot => {
                     <div id="chat-controls">
                         <button id="emoji-toggle-btn">😀</button>
  <div id="emoji-popover">
-
     <button>👍</button><button>😂</button><button>😮</button><button>👋</button>
-
     <button>😏</button><button>👌</button><button>😭</button><button>🤗</button>
-
     <button>💖</button><button>😡</button><button>🤔</button><button>😱</button></div>
                         <input type="text" id="chat-input" placeholder="메시지 입력.." maxlength="50" autocomplete="off" autocorrect="off">
                         <button id="send-chat-btn">➤</button>
@@ -620,7 +665,6 @@ lobbyListener = query.on('value', snapshot => {
             const emojiToggleBtn = document.getElementById('emoji-toggle-btn');
             const emojiPopover = document.getElementById('emoji-popover');
             
-            // 메시지 전송 함수 (setupChat에서 가져옴)
             const sendMessage = (messageContent) => {
                 if (!messageContent.trim() || !roomRef) return;
                 const messageData = {
@@ -633,7 +677,6 @@ lobbyListener = query.on('value', snapshot => {
                 chatInput.value = '';
             };
 
-            // 이벤트 리스너를 새로 할당 (중복 방지)
             sendBtn.onclick = () => { playClickSound(); sendMessage(chatInput.value); };
             chatInput.onkeypress = (e) => { if (e.key === 'Enter') { e.preventDefault(); sendMessage(chatInput.value); }};
             emojiToggleBtn.onclick = (e) => { playClickSound(); e.stopPropagation(); emojiPopover.classList.toggle('active'); };
@@ -666,7 +709,6 @@ lobbyListener = query.on('value', snapshot => {
             const { players, selectedGame } = currentRoomData;
             const playerEntries = Object.entries(players);
 
-            // --- 게임 정보 부제목 업데이트 ---
             const gameSubtitle = document.querySelector('.in-game-lobby .game-subtitle');
             if (gameSubtitle) {
                 if (selectedGame) {
@@ -677,7 +719,6 @@ lobbyListener = query.on('value', snapshot => {
                 }
             }
             
-            // --- 모바일/PC 플레이어 목록 업데이트 ---
             let playerListHorizontalHTML = '';
             playerEntries.forEach(([pid, p]) => {
                 const avatarHTML = p.avatar.startsWith('http') ? `<img src="${p.avatar}" alt="av">` : p.avatar;
@@ -696,13 +737,11 @@ lobbyListener = query.on('value', snapshot => {
             const verticalWrapper = document.getElementById('player-list-vertical-wrapper');
             if(verticalWrapper) verticalWrapper.innerHTML = playerListVerticalHTML;
 
-            // 클릭 이벤트 다시 연결
             document.querySelectorAll('.player-slot-compact[data-player-id], .player-item[data-player-id]').forEach(item => {
                 item.addEventListener('click', () => { playClickSound(); showPlayerProfileModal(item.dataset.playerId); });
             });
 
-            // --- 시작 버튼 활성화 상태 업데이트 ---
-            const startGameBtn = document.getElementById('start-game-btn');
+                      const startGameBtn = document.getElementById('start-game-btn');
             if(startGameBtn){
                 const canStart = playerEntries.length >= 2 && selectedGame;
                 startGameBtn.disabled = !canStart;
@@ -716,7 +755,6 @@ const sendBtn = document.getElementById('send-chat-btn');
 const emojiToggleBtn = document.getElementById('emoji-toggle-btn');
 const emojiPopover = document.getElementById('emoji-popover');
 
-// 메시지 전송 함수 (setupChat에서 가져옴)
 const sendMessage = (messageContent) => {
     if (!messageContent.trim() || !roomRef) return;
     const messageData = {
@@ -727,10 +765,9 @@ const sendMessage = (messageContent) => {
     };
     roomRef.child('chat').push(messageData);
     chatInput.value = '';
-    chatInput.focus(); // ★★★ 이 줄을 추가하여 키보드를 유지합니다. ★★★
+    chatInput.focus(); 
 };
 
-// 이벤트 리스너를 새로 할당 (중복 방지)
 sendBtn.onclick = () => { playClickSound(); sendMessage(chatInput.value); };
 chatInput.onkeypress = (e) => { if (e.key === 'Enter') { e.preventDefault(); sendMessage(chatInput.value); }};
 emojiToggleBtn.onclick = (e) => { playClickSound(); e.stopPropagation(); emojiPopover.classList.toggle('active'); };
@@ -742,7 +779,7 @@ emojiPopover.querySelectorAll('button').forEach(emojiBtn => {
             const chatRef = roomRef.child('chat').limitToLast(50);
             chatRef.on('child_added', snapshot => {
                 const msg = snapshot.val();
-                // ★★★ 핵심: currentRoomData에서 최신 플레이어 정보를 가져옵니다 ★★★
+        
                 const senderInfo = currentRoomData.players[msg.senderId];
                 if (!chatDisplay || !senderInfo) return; 
 
@@ -761,8 +798,15 @@ emojiPopover.querySelectorAll('button').forEach(emojiBtn => {
                         <div class="content"></div>
                     </div>`;
 
-                // XSS 방지를 위해 메시지 내용은 textContent로 설정합니다.
-                msgElement.querySelector('.content').textContent = msg.content;
+                const escapeHtml = (unsafe) => {
+                    return unsafe
+                         .replace(/&/g, "&amp;")
+                         .replace(/</g, "&lt;")
+                         .replace(/>/g, "&gt;")
+                         .replace(/"/g, "&quot;")
+                         .replace(/'/g, "&#039;");
+                };
+                msgElement.querySelector('.content').innerHTML = escapeHtml(msg.content);
                 
                 chatDisplay.appendChild(msgElement);
                 chatDisplay.scrollTop = chatDisplay.scrollHeight;
@@ -831,15 +875,13 @@ function startGame() {
         function initializeLobby() {
             gameRoomsRef.orderByChild('hostId').equalTo(myPlayerId).once('value', snapshot => {
                 if (snapshot.exists()) {
-                    // ★★★ 수정된 부분 ★★★
-                    // 기존 방에 참가하는 대신, 깨끗하게 삭제하고 로비를 시작합니다.
-                    const existingRoomId = Object.keys(snapshot.val())[0];
+                      const existingRoomId = Object.keys(snapshot.val())[0];
                     console.log(`기존 유령 방(${existingRoomId})을 삭제하고 새로 시작합니다.`);
                     gameRoomsRef.child(existingRoomId).remove().then(() => {
                         startLobbyListener();
                     });
                 } else {
-                    // 유령 방이 없으면 바로 로비를 시작합니다.
+                
                     startLobbyListener();
                 }
             });
@@ -867,18 +909,7 @@ function startGame() {
             profileModal.querySelector('#profile-winrate').textContent = winRate;
         }
 
-        myPlayerId = getPlayerId();
-        if (myPlayerId) {
-           initializeLobby();
-            backToIndexBtn.addEventListener('click', () => { playClickSound(); window.location.href = 'index.html'; });
-
-            document.getElementById('profile-close-btn').addEventListener('click', () => {
-                playClickSound();
-                document.getElementById('profile-modal').style.display = 'none';
-            });
-
-            createRoomBtn.addEventListener('click', () => { playClickSound(); createNewPublicRoom(); });
-        }
+       
     });
     </script>
 </body>
