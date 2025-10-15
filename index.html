@@ -1054,8 +1054,8 @@
             rankingList.innerHTML = `<div class="spinner"></div>`;
 
             let query;
-            let orderByField = 'exp'; // 기본 정렬 기준은 경험치
-            let scoreField = 'score'; // 기본 점수 필드
+            let orderByField = 'exp';
+            let scoreField = 'score'; // 이 변수는 최종 점수를 담는 용도로만 사용됩니다.
 
             if (type === 'total') {
                 orderByField = 'exp';
@@ -1085,32 +1085,38 @@
                 let users = [];
                 snapshot.forEach(child => {
                     const userData = child.val();
-                    if(userData.nickname.includes('게스트')) return;
+                    if(userData.nickname && userData.nickname.includes('게스트')) return;
 
-                    let score = 0;
+                    // ▼▼▼ [핵심 수정] 0점도 랭킹에 포함시키는 로직 ▼▼▼
+                    let score;
                     if (type === 'total') {
                         score = userData.exp || 0;
+                        // 통합 랭킹은 경험치가 0보다 클 때만 목록에 추가
+                        if (score > 0) {
+                           users.push({ ...userData, score, uid: child.key });
+                        }
                     } else if (type === 'game' && gameId) {
-                        score = userData.stats?.[gameId]?.[scoreField] || 0;
+                        // 게임별 랭킹은 해당 게임의 전적(stats) 객체가 존재하면 0점이라도 포함
+                        if (userData.stats && userData.stats[gameId]) {
+                            score = userData.stats[gameId][scoreField] || 0;
+                            users.push({ ...userData, score, uid: child.key });
+                        }
                     }
-
-                    if (score > 0) {
-                        users.push({ ...userData, score, uid: child.key });
-                    }
+                    // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
                 });
-             if (users.length === 0) {
+                
+                if (users.length === 0) {
                     rankingList.innerHTML = '<p style="text-align:center; color:#888; padding: 20px;">아직 랭킹 데이터가 없습니다.</p>';
                     return;
                 }
-
+                
                 users.sort((a, b) => b.score - a.score);
-
                 rankingList.innerHTML = '';
+                
                 users.slice(0, 100).forEach((user, index) => {
                     const rank = index + 1;
                     const isMe = user.uid === auth.currentUser?.uid;
                     const avatarHTML = user.avatar.startsWith('http') ? `<img src="${user.avatar}" alt="av">` : user.avatar;
-                    
                     const stats = user.stats || {};
                     const gameStats = stats[gameId] || { wins: 0, losses: 0 };
                     
@@ -1125,7 +1131,6 @@
                     let displayHtml = '';
 
                     if (type === 'total') {
-                        // 통합 랭킹: 프로필, 레벨, 전체 전적, 승률 표시
                         let displayLevel = user.level || 1;
                         let displayExp = user.exp || 0;
                         let expForNextLevel = displayLevel * 100 + (displayLevel - 1) * 50;
@@ -1134,7 +1139,6 @@
                             displayLevel++;
                             expForNextLevel = displayLevel * 100 + (displayLevel - 1) * 50;
                         }
-
                         displayHtml = `
                             <div class="rank-col-1">
                                 <span class="rank">${rank}</span>
@@ -1150,7 +1154,6 @@
                             </div>
                         `;
                     } else if (gameId === 'candysoap') {
-                        // 캔디솝: 프로필, 점수, 전적 표시
                         displayHtml = `
                             <div class="rank-col-1">
                                 <span class="rank">${rank}</span>
@@ -1163,7 +1166,6 @@
                             </div>
                         `;
                     } else {
-                        // 리버시, 인디언포커 등: 프로필, 전적, 승률 표시
                         displayHtml = `
                             <div class="rank-col-1">
                                 <span class="rank">${rank}</span>
@@ -1178,20 +1180,18 @@
                     }
 
                     let rankClass = '';
-                    if (rank === 1) rankClass = 'gold';
-                    else if (rank === 2) rankClass = 'silver';
-                    else if (rank === 3) rankClass = 'bronze';
-
+                    if (rank === 1) rankClass = 'gold'; else if (rank === 2) rankClass = 'silver'; else if (rank === 3) rankClass = 'bronze';
+                    
                     const item = document.createElement('div');
                     item.className = `rank-item ${isMe ? 'is-me' : ''}`;
                     item.innerHTML = displayHtml;
                     item.querySelector('.rank').classList.add(rankClass);
                     rankingList.appendChild(item);
                 });
-
+                
             } catch (error) {
                 console.error("랭킹 데이터 로딩 실패:", error);
-                rankingList.innerHTML = '<p style="text-align:center; color:red; padding: 20px;">랭킹을 불러오는 데 실패했습니다.</p>';
+                rankingList.innerHTML = '<p style="text-align:center; color:red; padding: 20px;">랭킹을 불러오는 데 실패했습니다. Firebase 규칙(.indexOn)을 확인해주세요.</p>';
             }
         }
 
