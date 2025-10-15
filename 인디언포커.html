@@ -76,6 +76,36 @@
             50% { box-shadow: 0 0 25px var(--accent-color); }
             100% { box-shadow: 0 0 10px var(--accent-color); }
         }
+
+        #result-indicator-container {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            pointer-events: none; /* 클릭 방지 */
+            z-index: 400;
+            overflow: hidden;
+        }
+       .result-indicator {
+            position: absolute;
+            font-size: 6em;
+            font-weight: 700;
+            opacity: 0;
+            transform: scale(0.5);
+            transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            -webkit-text-stroke: 2px black;
+            text-shadow: 0 0 15px rgba(0,0,0,0.7);
+        }
+        .result-indicator.show {
+            opacity: 1;
+            transform: scale(1);
+        }
+        #win-indicator { color: var(--accent-color); }
+        #lose-indicator { color: var(--fold-color); }
+        #draw-indicator { color: var(--chip-blue); }
+
         .folded { filter: grayscale(1); opacity: 0.6; }
 
         .player-details .avatar {
@@ -168,6 +198,9 @@
         #bet-modal-content { display: flex; flex-direction: column; gap: 15px; align-items: center; }
         .spinner { margin: 20px auto; border: 4px solid rgba(255,255,255,0.3); border-radius: 50%; border-top: 4px solid white; width: 40px; height: 40px; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        #countdown-number { font-size: 8em; font-weight: 700; color: white; text-shadow: 0 0 30px rgba(255,255,255,0.8); animation: countdown-pop 1s; }
+        @keyframes countdown-pop { from { transform: scale(0.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
     </style>
 </head>
 <body>
@@ -175,6 +208,11 @@
         <header id="game-header">
              <div id="opponent-zone"></div>
         </header>
+        <div id="result-indicator-container">
+            <div id="win-indicator" class="result-indicator">WIN</div>
+            <div id="lose-indicator" class="result-indicator">LOSE</div>
+            <div id="draw-indicator" class="result-indicator">DRAW</div>
+        </div>
         <main id="game-main">
             <div id="opponent-card-container"></div>
             <div id="pot-container">
@@ -247,12 +285,13 @@
         let myPlayerId, myNickname, myAvatar, roomId, roomRef, isHost = false;
         let currentRoomData = null;
         let isGameInitialized = false;
+        let previousGameState = null;
         let rematchListener = null;
 
         const CARD_RANKS = ['2','3','4','5','6','7','8','9','10','A'];
-        const TOTAL_ROUNDS = 5;
-        const STARTING_CHIPS = 100;
-        const MANDATORY_BET = 5;
+        const TOTAL_ROUNDS = 10;
+        const STARTING_CHIPS = 250;
+        const MANDATORY_BET = 10;
         const MY_CHIP_IMG_URL = 'https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdna%2FcKGrWm%2FbtsQ8tqCtxA%2FAAAAAAAAAAAAAAAAAAAAAMtqUdB8mZJXZHveQot57uccUtjwWFoLvJmhSt5G14z7%2Fimg.png%3Fcredential%3DyqXZFxpELC7KVnFOS48ylbz2pIh7yKj8%26expires%3D1761922799%26allow_ip%3D%26allow_referer%3D%26signature%3Duq5eoVhwlmFc5SppQwmMS9ZtyVQ%253D';
         const OPPONENT_CHIP_IMG_URL = 'https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdna%2FbdOp5p%2FbtsQ60CtTJD%2FAAAAAAAAAAAAAAAAAAAAAMw3nG5fGg0FCyfcQNHjXg6jthvvh1QJp2gUFleg_ybo%2Fimg.png%3Fcredential%3DyqXZFxpELC7KVnFOS48ylbz2pIh7yKj8%26expires%3D1761922799%26allow_ip%3D%26allow_referer%3D%26signature%3DhThuOEgms%252Foxtq38zHgu4R1aLA0%253D';
         
@@ -298,23 +337,46 @@
             actionControls.addEventListener('click', (event) => {
                 const button = event.target.closest('.action-btn');
                 if (!button || button.disabled) return;
-                switch (button.id) {
+               switch (button.id) {
                     case 'die-btn': handleFold(); break;
                     case 'check-btn': handleCheck(); break;
                     case 'call-btn': handleCall(); break;
                     case 'bet-btn': openBetModal(); break;
                     case 'raise-btn': handleRaise(); break;
+                    case 'allin-btn': handleAllIn(); break;
                 }
             });
 
+            const chatModalOverlay = document.getElementById('chat-modal-overlay');
+            const chatInput = document.getElementById('chat-input');
+            const sendChatBtn = document.getElementById('send-chat-btn');
+            const cancelChatBtn = document.getElementById('cancel-chat-btn');
+
             chatBubbleBtn.addEventListener('click', () => {
-                const message = prompt('채팅 메시지를 입력하세요 (최대 20자)');
-                if (message && message.trim() !== '') {
+                chatModalOverlay.style.display = 'flex';
+                chatInput.focus(); // 모달이 열리면 바로 입력창에 포커스
+            });
+            
+            cancelChatBtn.addEventListener('click', () => {
+                chatModalOverlay.style.display = 'none';
+            });
+
+            sendChatBtn.addEventListener('click', () => {
+                const message = chatInput.value.trim();
+                if (message !== '') {
                     roomRef.child('latestChat').set({
                         senderId: myPlayerId,
                         message: message.substring(0, 20),
                         timestamp: firebase.database.ServerValue.TIMESTAMP
                     });
+                    chatInput.value = '';
+                    chatModalOverlay.style.display = 'none';
+                }
+            });
+            
+            chatInput.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter') {
+                    sendChatBtn.click();
                 }
             });
         }
@@ -332,6 +394,28 @@
                     return;
                 }
                 currentRoomData = snapshot.val();
+
+               const currentGameState = currentRoomData.gameState;
+                
+                if ((previousGameState === 'showdown' || previousGameState === 'betting') && currentGameState === 'startingRound') {
+                    const log = currentRoomData.gameLog || '';
+                    if (log.includes('무승부')) {
+                        showRoundResultAnimation('draw');
+                    } else if (log.includes('승리')) {
+                        const winnerId = currentRoomData.currentTurnPlayerId;
+                        if (winnerId) {
+                            showRoundResultAnimation(winnerId === myPlayerId ? 'win' : 'lose');
+                        }
+                    }
+                }
+
+                // ▼▼▼ [추가] 'countdown' 상태를 감지하여 카운트다운 시작 ▼▼▼
+                if (currentGameState === 'countdown' && previousGameState !== 'countdown') {
+                    startCountdown();
+                }
+                // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
+                previousGameState = currentGameState;
                 
                 if (!isGameInitialized && currentRoomData.players && currentRoomData.players[myPlayerId]) {
                     isHost = currentRoomData.hostId === myPlayerId;
@@ -346,19 +430,24 @@
                 }
 
                 const playerIds = Object.keys(currentRoomData.players || {});
-                if (isGameInitialized && currentRoomData.gameState !== 'finalGameOver' && playerIds.length < 2) {
+                // ▼▼▼ [수정] 게임 도중 플레이어 수가 2명 미만이 되면 접속 종료 처리 ▼▼▼
+                if (isGameInitialized && currentRoomData.gameState !== 'finalGameOver' && currentRoomData.allPlayerIds && playerIds.length < 2) {
                     if (playerIds.includes(myPlayerId) && isHost) {
+                         // 호스트만 이 로직을 실행하여 중복 실행을 방지합니다.
                         endGameOnDisconnect();
                     }
-                    return;
+                    return; // 게임 렌더링 등 추가 동작 방지
                 }
 
                 if (currentRoomData.gameState && currentRoomData.gameState !== 'launching') {
                     gameWrapper.style.display = 'flex';
-                    if (currentRoomData.gameState !== 'finalGameOver') {
+
+                    // ▼▼▼ [수정] 'dealing' 상태에서도 게임판이 보이도록 추가 ▼▼▼
+                    const activePlayStates = ['betting', 'showdown', 'dealing'];
+                    if (activePlayStates.includes(currentRoomData.gameState)) {
                         infoOverlay.style.display = 'none';
+                        renderGame();
                     }
-                    renderGame();
                 }
 
                 if (currentRoomData.latestChat && currentRoomData.latestChat.timestamp > lastChatTimestamp) {
@@ -401,7 +490,8 @@
                 currentRound: 0, 
                 carryOverPot: 0,
                 actionsThisRound: 0,
-                rematchRequests: null
+                rematchRequests: null,
+                allPlayerIds: playerIds // ▼▼▼ [추가] 플레이어 ID 목록 저장
             });
         }
 
@@ -410,6 +500,45 @@
             if (!isHost) return;
             // startGame 함수가 게임 상태를 완벽하게 초기화하므로 그대로 호출
             startGame();
+        }
+
+        function startCountdown() {
+            const infoTitle = document.getElementById('info-title');
+            const infoMessage = document.getElementById('info-message');
+            const infoSpinner = document.getElementById('info-spinner');
+            const infoButtons = document.getElementById('info-buttons');
+            const infoModalContent = document.getElementById('info-modal-content');
+
+            // ▼▼▼ [수정] 모달창 배경을 투명하게 만들고 제목 숨기기 ▼▼▼
+            infoModalContent.style.backgroundColor = 'transparent';
+            infoModalContent.style.boxShadow = 'none';
+            infoModalContent.style.padding = '0';
+            infoTitle.style.display = 'none';
+            // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
+            infoOverlay.style.display = 'flex';
+            infoSpinner.style.display = 'none';
+            infoButtons.innerHTML = '';
+            infoMessage.innerHTML = '<div id="countdown-number">3</div>';
+            
+            let count = 3;
+            const countdownInterval = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    const countdownEl = document.getElementById('countdown-number');
+                    if (countdownEl) {
+                        countdownEl.style.animation = 'none';
+                        countdownEl.offsetHeight; // Reflow to restart animation
+                        countdownEl.style.animation = 'countdown-pop 1s';
+                        countdownEl.textContent = count;
+                    }
+                } else {
+                    clearInterval(countdownInterval);
+                    if (isHost) {
+                        roomRef.update({ gameState: 'betting' });
+                    }
+                }
+            }, 1000);
         }
         
         function handleHostLogic() {
@@ -421,12 +550,19 @@
             } else if (gameState === 'betting') {
                 const activePlayers = Object.values(players).filter(p => p && !p.hasFolded);
                 if (activePlayers.length <= 1) { setTimeout(endRound, 1500); return; }
+
                 const firstPlayerBet = activePlayers[0].bet;
                 const allPlayersMatched = activePlayers.every(p => p.bet === firstPlayerBet);
                 const allPlayersActed = activePlayers.every(p => p.lastAction !== null);
-                if (allPlayersMatched && allPlayersActed && actionsThisRound >= activePlayers.length) {
+                
+                // ▼▼▼ [버그 수정] 한 명이라도 올인했는지 확인하는 로직 추가 ▼▼▼
+                const isAnyPlayerAllIn = activePlayers.some(p => p.chips === 0);
+                
+                // 베팅액이 같거나, 혹은 한명이 올인해서 베팅이 끝났다면 쇼다운으로 이동
+                if ((allPlayersMatched && allPlayersActed && actionsThisRound >= activePlayers.length) || (isAnyPlayerAllIn && allPlayersActed)) {
                     roomRef.update({ gameState: 'showdown' });
                 }
+                // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
             } else if (gameState === 'showdown') {
                 setTimeout(endRound, 3000);
             }
@@ -442,7 +578,8 @@
                 return;
             }
             const deck = shuffleDeck();
-            const updates = { pot: 0, currentBet: 0, gameLog: `라운드 ${nextRound} 시작!`, gameState: 'dealing', actionsThisRound: 0 };
+            const updates = { pot: 0, currentBet: 0, gameLog: `라운드 ${nextRound} 시작!`, actionsThisRound: 0 };
+            
             const newPlayers = { ...players };
             let currentPot = carryOverPot || 0;
             playerIdsWithChips.forEach(pid => {
@@ -460,7 +597,18 @@
             updates.players = newPlayers;
             updates.currentRound = nextRound;
             updates.carryOverPot = 0;
-            roomRef.update(updates).then(() => { setTimeout(() => roomRef.update({ gameState: 'betting' }), 1500); });
+
+            // ▼▼▼ [수정] 1라운드에만 카운트다운을 실행하는 로직 ▼▼▼
+            if (nextRound === 1) {
+                updates.gameState = 'countdown';
+                roomRef.update(updates);
+            } else {
+                // 2라운드부터는 카드만 보여주고 1.5초 후 바로 베팅 시작
+                updates.gameState = 'dealing'; 
+                roomRef.update(updates).then(() => {
+                    setTimeout(() => roomRef.update({ gameState: 'betting' }), 1500);
+                });
+            }
         }
 
         function endRound() {
@@ -483,47 +631,67 @@
                     logMessage = `${winner.nickname}님이 승리! (카드: ${winner.card})`;
                 } else { isDraw = true; logMessage = `무승부! (카드: ${potentialWinners.length > 0 ? potentialWinners[0].card : '?'}) 팟이 이월됩니다.`; }
             }
+
             const updates = { gameState: 'startingRound' };
             if (winner && winner.id && players[winner.id]) {
-                const updatedPlayers = { ...players };
-                updatedPlayers[winner.id].chips += pot;
-                updates.players = updatedPlayers;
+                const playersCopy = JSON.parse(JSON.stringify(players)); // 데이터 수정을 위한 플레이어 정보 복사
+                const loser = Object.values(playersCopy).find(p => p.id !== winner.id && activePlayers.some(ap => ap.id === p.id));
+                
+                let winnings = pot;
+                if (loser && winner.bet < loser.bet) {
+                    const refundToLoser = loser.bet - winner.bet;
+                    winnings -= refundToLoser;
+                    playersCopy[loser.id].chips += refundToLoser;
+                }
+                playersCopy[winner.id].chips += winnings;
+
+                // ▼▼▼ [버그 수정] 칩 분배 직후, 파산한 플레이어가 있는지 확인하는 로직 추가 ▼▼▼
+                const playersWithChips = Object.values(playersCopy).filter(p => p.chips > 0);
+                if (playersWithChips.length < 2) {
+                    endGame(playersCopy); // 칩이 0인 플레이어가 있으면 즉시 게임 종료
+                    return; // 더 이상 진행하지 않고 함수 종료
+                }
+                // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
+                updates.players = playersCopy;
                 updates.carryOverPot = 0;
                 updates.currentTurnPlayerId = winner.id;
+
             } else if (isDraw) {
                 updates.carryOverPot = pot;
                 updates.currentTurnPlayerId = currentRoomData.currentTurnPlayerId;
-            } else if(winner) {
-                console.error("Winner object or ID is invalid:", winner);
-                updates.carryOverPot = pot; 
             }
+            
             updates.gameLog = logMessage;
             roomRef.update(updates);
         }
         
-        function endGame() {
+        function endGame(finalPlayersState = null) {
             if(!isHost) return;
-            const players = Object.values(currentRoomData.players);
+            // ▼▼▼ [수정] 함수 호출 시 받은 데이터가 있으면 그것을 사용하도록 변경 ▼▼▼
+            const players = Object.values(finalPlayersState || currentRoomData.players);
             if (players.length < 2) { return endGameOnDisconnect(); }
+            
             const p1 = players[0], p2 = players[1];
             let winnerId = null, loserId = null, isDraw = false;
+            
             if (p1.chips > p2.chips) { winnerId = p1.id; loserId = p2.id; } 
             else if (p2.chips > p1.chips) { winnerId = p2.id; loserId = p1.id; } 
             else { isDraw = true; winnerId = p1.id; loserId = p2.id; }
-            updateFinalStats(winnerId, loserId, isDraw);
+            
+            updatePlayerStats(winnerId, loserId, isDraw);
             roomRef.update({ gameState: 'finalGameOver', finalWinnerId: isDraw ? null : winnerId, isDraw });
         }
         
        function endGameOnDisconnect() {
-            if (!isHost) return;
-            const playerIds = Object.keys(currentRoomData.players || {});
-            const winnerId = playerIds.find(pid => pid === myPlayerId);
-            if (!winnerId) return;
-
-            const loser = Object.values(currentRoomData.players).find(p => p.id !== winnerId);
-            updateFinalStats(winnerId, loser ? loser.id : null, false);
+            if (!isHost || currentRoomData.gameState === 'finalGameOver') return; // 중복 실행 방지
             
-            // ▼▼▼▼▼ 접속 종료로 게임이 끝났다는 표시(endedByDisconnect: true) 추가 ▼▼▼▼▼
+            const winnerId = myPlayerId;
+            // ▼▼▼ [수정] 저장된 ID 목록에서 나간 사람(패자)을 찾아냅니다. ▼▼▼
+            const loserId = currentRoomData.allPlayerIds.find(pid => pid !== winnerId);
+
+            updatePlayerStats(winnerId, loserId, false);
+            
             roomRef.update({ 
                 gameState: 'finalGameOver', 
                 finalWinnerId: winnerId, 
@@ -532,14 +700,41 @@
             });
         }
 
-        async function updateFinalStats(winnerId, loserId, isDraw) {
+        async function updatePlayerStats(winnerId, loserId, isDraw = false) {
+            const updatePromises = [];
+            
+            const updateUser = (uid, result) => {
+                if (!uid || String(uid).startsWith('guest_')) return;
+                const promise = usersRef.child(uid).transaction(data => {
+                    if (data) {
+                        if (!data.stats) data.stats = {};
+                        if (!data.stats.indianpoker) data.stats.indianpoker = { wins: 0, losses: 0, draws: 0 };
+
+                        if (isDraw) {
+                            data.stats.indianpoker.draws = (data.stats.indianpoker.draws || 0) + 1;
+                            data.exp = (data.exp || 0) + 25;
+                        } else if (result === 'win') {
+                            data.stats.indianpoker.wins = (data.stats.indianpoker.wins || 0) + 1;
+                            data.exp = (data.exp || 0) + 50;
+                        } else if (result === 'loss') {
+                            data.stats.indianpoker.losses = (data.stats.indianpoker.losses || 0) + 1;
+                            data.exp = (data.exp || 0) + 10;
+                        }
+                    }
+                    return data;
+                });
+                updatePromises.push(promise);
+            };
+
             if (isDraw) {
-                const pids = [winnerId, loserId].filter(Boolean);
-                for (const pid of pids) await usersRef.child(pid + '/exp').set(firebase.database.ServerValue.increment(25));
+                updateUser(winnerId, 'draw');
+                updateUser(loserId, 'draw');
             } else {
-                if (winnerId) await usersRef.child(winnerId + '/exp').set(firebase.database.ServerValue.increment(50));
-                if (loserId) await usersRef.child(loserId + '/exp').set(firebase.database.ServerValue.increment(10));
+                updateUser(winnerId, 'win');
+                updateUser(loserId, 'loss');
             }
+            
+            await Promise.all(updatePromises).catch(e => console.error("전적 업데이트 실패", e));
         }
         
         function renderGame() {
@@ -589,13 +784,32 @@
             const isMyTurn = gameState === 'betting' && currentTurnPlayerId === myPlayerId;
             const toCall = (currentBet || 0) - myPlayer.bet;
             const canCheck = toCall <= 0;
+
             let buttonsHTML = `<button id="die-btn" class="action-btn" ${!isMyTurn ? 'disabled' : ''}>다이</button>`;
-            if (canCheck) {
+
+            if (canCheck) { // 아무도 베팅하지 않은 상황
                 buttonsHTML += `<button id="check-btn" class="action-btn" ${!isMyTurn ? 'disabled' : ''}>체크</button>
-                                <button id="bet-btn" class="action-btn" ${!isMyTurn ? 'disabled' : ''}>베팅</button>`;
-            } else {
-                buttonsHTML += `<button id="call-btn" class="action-btn" ${!isMyTurn || myPlayer.chips < toCall ? 'disabled' : ''}>콜 (${toCall})</button>
-                                <button id="raise-btn" class="action-btn" ${!isMyTurn || myPlayer.chips < (toCall + currentBet) ? 'disabled' : ''}>레이즈</button>`;
+                                <button id="bet-btn" class="action-btn" ${!isMyTurn || myPlayer.chips <= 0 ? 'disabled' : ''}>베팅</button>`;
+            } else { // 상대가 베팅/레이즈 한 상황
+                // 1. 콜 할 칩조차 부족한 경우 -> '다이' 또는 '올인'만 가능
+                if (myPlayer.chips <= toCall) {
+                    buttonsHTML += `<button id="allin-btn" class="action-btn" style="background-color: #d9534f;" ${!isMyTurn ? 'disabled' : ''}>올인 (${myPlayer.chips})</button>`;
+                } 
+                // 2. 콜은 가능하지만, 정식 레이즈는 불가능한 경우 -> '다이', '콜', '올인' 가능
+                else {
+                    buttonsHTML += `<button id="call-btn" class="action-btn" ${!isMyTurn ? 'disabled' : ''}>콜 (${toCall})</button>`;
+                    
+                    // 정식 레이즈에 필요한 최소 칩 계산 (콜 금액 + 현재 판돈만큼 추가 베팅)
+                    const minRaiseCost = toCall + (currentBet || MANDATORY_BET);
+                    
+                    if (myPlayer.chips > minRaiseCost) {
+                        // 3. 정식 레이즈가 가능한 충분한 칩을 가진 경우
+                        buttonsHTML += `<button id="raise-btn" class="action-btn" ${!isMyTurn ? 'disabled' : ''}>레이즈</button>`;
+                    } else {
+                        // 콜은 가능하지만, 정식 레이즈 비용보다 칩이 적으면 '올인' 버튼 표시
+                        buttonsHTML += `<button id="allin-btn" class="action-btn" style="background-color: #d9534f;" ${!isMyTurn ? 'disabled' : ''}>올인 (${myPlayer.chips})</button>`;
+                    }
+                }
             }
             actionControls.innerHTML = buttonsHTML;
         }
@@ -604,6 +818,7 @@
         function handleCheck() { performAction('check'); }
         function handleCall() { performAction('call'); }
         function handleRaise() { performAction('raise'); }
+        function handleAllIn() { performAction('all-in'); }
         function openBetModal() { betModalOverlay.style.display = 'flex'; }
         function performBet(amount) { betModalOverlay.style.display = 'none'; performAction('bet', amount); }
 
@@ -649,11 +864,41 @@
                     potIncrease = raiseAmount;
                     logMessage += `레이즈했습니다. (총 ${newTotalBet})`;
                     if (opponent) updates[`/players/${opponent.id}/lastAction`] = null; break;
+                case 'all-in':
+                    speak('올인'); playSound('bet-sound');
+                    const allInAmount = myPlayer.chips;
+                    const finalBet = myPlayer.bet + allInAmount;
+                    updates[`/players/${myPlayerId}/chips`] = 0;
+                    updates[`/players/${myPlayerId}/bet`] = finalBet;
+                    // ▼▼▼ [버그 수정] 누락되었던 currentBet 업데이트 추가 ▼▼▼
+                    if (finalBet > currentRoomData.currentBet) {
+                        updates['/currentBet'] = finalBet;
+                    }
+                    // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+                    potIncrease = allInAmount;
+                    logMessage += `올인했습니다! (${allInAmount})`;
+                        if (opponent) updates[`/players/${opponent.id}/lastAction`] = null;
+                    break;
             }
             updates['/pot'] = currentRoomData.pot + potIncrease;
             updates['/gameLog'] = logMessage;
             if (opponent) { updates['/currentTurnPlayerId'] = opponent.id; }
             roomRef.update(updates);
+        }
+
+        function showRoundResultAnimation(result) {
+            let indicator;
+            if (result === 'win') indicator = document.getElementById('win-indicator');
+            else if (result === 'lose') indicator = document.getElementById('lose-indicator');
+            else if (result === 'draw') indicator = document.getElementById('draw-indicator');
+            else return;
+
+            if (indicator) {
+                indicator.classList.add('show');
+                setTimeout(() => {
+                    indicator.classList.remove('show');
+                }, 1800); // 1.8초 동안 표시
+            }
         }
 
         function shuffleDeck() {
@@ -667,6 +912,17 @@
 
         // ▼▼▼▼▼ [수정] showInfoModal: 다시하기/나가기 버튼 및 리스너 추가 ▼▼▼▼▼
       function showInfoModal(title, message, showSpinner = true, onConfirm = null) {
+            const infoModalContent = document.getElementById('info-modal-content');
+            
+            // ▼▼▼ [수정] 카운트다운 때문에 변경된 모든 스타일을 원래대로 복구 ▼▼▼
+            infoOverlay.style.backgroundColor = '';
+            infoOverlay.style.backdropFilter = '';
+            infoModalContent.style.backgroundColor = '';
+            infoModalContent.style.boxShadow = '';
+            infoModalContent.style.padding = '';
+            document.getElementById('info-title').style.display = '';
+            // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
             infoOverlay.style.display = 'flex';
             document.getElementById('info-title').textContent = title;
             document.getElementById('info-message').textContent = message;
@@ -738,5 +994,16 @@
         initialize();
     });
     </script>
+
+    <div id="chat-modal-overlay" class="overlay" style="display: none;">
+        <div id="chat-modal-content" class="modal-content" style="padding: 20px;">
+            <h2 style="margin-bottom: 20px;">채팅 메시지</h2>
+            <input type="text" id="chat-input" placeholder="메시지를 입력하세요 (최대 20자)" maxlength="20" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #555; background-color: #333; color: white; font-size: 1em;">
+            <div style="display: flex; gap: 10px; margin-top: 20px; width: 100%;">
+                <button id="send-chat-btn" class="menu-btn primary" style="flex: 2;">전송</button>
+                <button id="cancel-chat-btn" class="menu-btn" style="flex: 1; background-color:#777;">취소</button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
