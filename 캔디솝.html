@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>캔디솝 챌린지</title>
+    <link href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff" as="font" type="font/woff" crossorigin>
+    <style>
+        @font-face {
+            font-family: 'GmarketSans';
+            src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff') format('woff');
+            font-weight: 500;
+        }
+        @font-face {
+            font-family: 'GmarketSans';
+            src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansBold.woff') format('woff');
+            font-weight: 700;
+        }
+
+        :root {
+            --bg-color: #F8F0E5; --primary-color: #FF69B4; --accent-color: #89CFF0;
+            --text-dark: #3A3A3A; --correct-color: #28a745; --wrong-color: #dc3545;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%; height: 100%; overflow: hidden;
+            font-family: 'GmarketSans', sans-serif; background-color: var(--bg-color);
+            color: var(--text-dark); -webkit-user-select: none; user-select: none; touch-action: manipulation;
+        }
+
+        #game-wrapper {
+            width: 100%; height: 100%; display: flex; flex-direction: column; opacity: 0; transition: opacity 0.5s;
+        }
+
+        #header {
+            padding: 15px; text-align: center; display: flex; justify-content: space-around;
+        }
+        .stat-box { font-size: 1.5em; font-weight: 700; }
+        #combo-display { color: var(--primary-color); }
+
+        #game-area {
+            flex-grow: 1; position: relative; display: flex; flex-direction: column; justify-content: center; align-items: center;
+        }
+        #instruction-text {
+            font-size: 2.8em; font-weight: 700; padding: 20px;
+            background-color: rgba(255,255,255,0.7); border-radius: 20px;
+            margin-bottom: 30px; z-index: 10;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+
+        #hands-container {
+            display: flex; width: 100%; height: 50%;
+        }
+        .hand-area {
+            width: 50%; height: 100%; display: flex; justify-content: center; align-items: center;
+            transition: background-color 0.2s;
+        }
+        .hand-area .hand-image {
+            width: 80%; max-width: 250px; position: relative;
+        }
+        
+        .item-emoji {
+            position: absolute;
+            font-size: 5em;
+            transform: translate(-50%, -100%);
+            left: 50%; top: 50%;
+            z-index: 5;
+            text-shadow: 2px 2px 5px rgba(0,0,0,0.2);
+        }
+
+        #left-hand-area .hand-image { transform: scaleX(-1); }
+        
+        #feedback-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; opacity: 0; transition: opacity 0.3s;
+        }
+        #feedback-overlay.correct { background-color: rgba(40, 167, 69, 0.3); opacity: 1; }
+        #feedback-overlay.wrong { background-color: rgba(220, 53, 69, 0.3); opacity: 1; animation: shake 0.3s; }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); } 25% { transform: translateX(-10px); } 75% { transform: translateX(10px); }
+        }
+        
+        #timer-bar-container { width: 100%; height: 10px; background-color: #ddd; }
+        #timer-bar { width: 100%; height: 100%; background-color: var(--accent-color); transition: width 0.1s linear; }
+
+        .overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 100; text-align: center; background-color: rgba(0,0,0,0.7);
+        }
+        .modal-content {
+            background: #fff; padding: 30px; border-radius: 20px;
+            width: 90%; max-width: 350px; box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+        .modal-content h2 { font-size: 2em; margin-bottom: 20px; }
+        #final-score { font-size: 3em; color: var(--primary-color); font-weight: 700; }
+        .modal-buttons { margin-top: 30px; display: flex; flex-direction: column; gap: 15px; }
+        .menu-btn { padding: 15px; font-size: 1.2em; font-weight: 700; border-radius: 12px; border: none; cursor: pointer; }
+        .menu-btn.primary { background-color: var(--primary-color); color: white; }
+        .menu-btn.secondary { background-color: #eee; color: var(--text-dark); }
+        .menu-btn:disabled { background-color: #ccc; cursor: not-allowed; }
+
+        #countdown-text { font-size: 10em; color: white; font-weight: 700; animation: countdown-pop 1s; }
+        @keyframes countdown-pop {
+            from { transform: scale(0.5); opacity: 0; } to { transform: scale(1); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div id="game-wrapper">
+        <div id="header">
+            <div class="stat-box">점수: <span id="score-display">0</span></div>
+            <div class="stat-box">콤보: <span id="combo-display">0</span></div>
+            <div class="stat-box">❤️ <span id="lives-display">3</span></div>
+        </div>
+
+        <div id="game-area">
+            <div id="instruction-text"></div>
+            <div id="hands-container">
+                <div id="left-hand-area" class="hand-area">
+                    <div class="hand-image">
+                        <svg viewBox="0 0 512 512" style="width:100%; fill:#ffdeb2;"><path d="M192 128C192 92.65 220.7 64 256 64C291.3 64 320 92.65 320 128V384C320 401.7 305.7 416 288 416H224C206.3 416 192 401.7 192 384V128zM32 224C32 188.7 60.65 160 96 160C131.3 160 160 188.7 160 224V384C160 401.7 145.7 416 128 416H96C78.33 416 64 401.7 64 384V224zM352 224V384C352 401.7 366.3 416 384 416H416C433.7 416 448 401.7 448 384V224C448 188.7 420.7 160 384 160C348.7 160 320 188.7 320 224H352zM448 128C448 110.3 462.3 96 480 96C497.7 96 512 110.3 512 128V384C512 457.7 457.7 512 384 512H128C52.25 512 0 457.7 0 384V128C0 110.3 14.33 96 32 96C49.67 96 64 110.3 64 128V384C64 422.1 93.88 448 128 448H384C422.1 448 448 422.1 448 384V128z"/></svg>
+                        <span id="left-item" class="item-emoji"></span>
+                    </div>
+                </div>
+                <div id="right-hand-area" class="hand-area">
+                    <div class="hand-image">
+                        <svg viewBox="0 0 512 512" style="width:100%; fill:#ffdeb2;"><path d="M192 128C192 92.65 220.7 64 256 64C291.3 64 320 92.65 320 128V384C320 401.7 305.7 416 288 416H224C206.3 416 192 401.7 192 384V128zM32 224C32 188.7 60.65 160 96 160C131.3 160 160 188.7 160 224V384C160 401.7 145.7 416 128 416H96C78.33 416 64 401.7 64 384V224zM352 224V384C352 401.7 366.3 416 384 416H416C433.7 416 448 401.7 448 384V224C448 188.7 420.7 160 384 160C348.7 160 320 188.7 320 224H352zM448 128C448 110.3 462.3 96 480 96C497.7 96 512 110.3 512 128V384C512 457.7 457.7 512 384 512H128C52.25 512 0 457.7 0 384V128C0 110.3 14.33 96 32 96C49.67 96 64 110.3 64 128V384C64 422.1 93.88 448 128 448H384C422.1 448 448 422.1 448 384V128z"/></svg>
+                        <span id="right-item" class="item-emoji"></span>
+                    </div>
+                </div>
+            </div>
+            <div id="feedback-overlay"></div>
+        </div>
+
+        <div id="timer-bar-container"><div id="timer-bar"></div></div>
+    </div>
+    
+    <div id="info-overlay" class="overlay">
+        <div id="countdown-text">3</div>
+    </div>
+    
+    <div id="game-over-overlay" class="overlay" style="display: none;">
+        <div class="modal-content">
+            <h2 id="game-over-title">게임 종료!</h2>
+            <p style="font-size: 1.2em;">최종 점수</p>
+            <p id="final-score">0</p>
+            <div class="modal-buttons">
+                <button id="retry-btn" class="menu-btn primary">다시 하기</button>
+                <button id="exit-btn" class="menu-btn secondary">나가기</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const firebaseConfig = {
+            apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw", authDomain: "goodluck-7c14b.firebaseapp.com",
+            databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com", projectId: "goodluck-7c14b",
+            storageBucket: "goodluck-7c14b.firebasestorage.app", messagingSenderId: "858281658455",
+            appId: "1:858281658455:web:9131280a459be983933b12"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+        const usersRef = database.ref('users');
+        const gameRoomsRef = database.ref('memoryGameRooms');
+
+        const gameWrapper = document.getElementById('game-wrapper');
+        const scoreDisplay = document.getElementById('score-display');
+        const comboDisplay = document.getElementById('combo-display');
+        const livesDisplay = document.getElementById('lives-display');
+        const instructionText = document.getElementById('instruction-text');
+        const leftHandArea = document.getElementById('left-hand-area');
+        const rightHandArea = document.getElementById('right-hand-area');
+        let leftItem = document.getElementById('left-item');
+        let rightItem = document.getElementById('right-item');
+        const feedbackOverlay = document.getElementById('feedback-overlay');
+        const timerBar = document.getElementById('timer-bar');
+        const infoOverlay = document.getElementById('info-overlay');
+        const countdownText = document.getElementById('countdown-text');
+        const gameOverOverlay = document.getElementById('game-over-overlay');
+        const finalScoreDisplay = document.getElementById('final-score');
+        const retryBtn = document.getElementById('retry-btn');
+        const exitBtn = document.getElementById('exit-btn');
+        
+        const candyEmoji = '🍬';
+        const soapEmoji = '🧼';
+        
+        let myPlayerId, roomRef, gameMode;
+        let score = 0, combo = 0, lives = 3, maxCombo = 0, roundTimer;
+        let currentQuestion = { left: '', right: '', instruction: '', answer: '' };
+        let canInteract = false;
+
+        function initialize() {
+            myPlayerId = localStorage.getItem('myPlayerId');
+            const urlParams = new URLSearchParams(window.location.search);
+            const roomId = urlParams.get('roomId');
+            
+            if (roomId) {
+                roomRef = gameRoomsRef.child(roomId);
+                // 같이하기에서 들어왔지만, 모드 선택이 없으면 솔로 플레이로 간주
+                gameMode = urlParams.get('mode') || 'solo';
+            } else {
+                gameMode = 'solo'; // 직접 파일 실행 시 솔로 플레이
+            }
+            
+            startCountdown();
+            
+            leftHandArea.addEventListener('click', () => handleInput('left'));
+            rightHandArea.addEventListener('click', () => handleInput('right'));
+            exitBtn.addEventListener('click', () => {
+                if(roomRef) window.location.href = '대기실.html';
+                else window.location.href = 'index.html';
+            });
+            retryBtn.addEventListener('click', handleRetry);
+        }
+
+        function startCountdown() {
+            infoOverlay.style.display = 'flex';
+            let count = 3;
+            countdownText.textContent = count;
+            const interval = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    countdownText.style.animation = 'none';
+                    countdownText.offsetHeight;
+                    countdownText.style.animation = 'countdown-pop 1s';
+                    countdownText.textContent = count;
+                } else {
+                    clearInterval(interval);
+                    infoOverlay.style.display = 'none';
+                    gameWrapper.style.opacity = '1';
+                    startGame();
+                }
+            }, 1000);
+        }
+
+        function startGame() {
+            score = 0; combo = 0; lives = 3; maxCombo = 0;
+            updateUI();
+            nextRound();
+        }
+
+        function nextRound() {
+            canInteract = false;
+            const shouldSwap = (combo > 0 && combo % 5 === 0);
+            
+            currentQuestion.instruction = Math.random() < 0.5 ? '사탕 먹어!' : '비누 냄새 맡아!';
+            let correctItem = currentQuestion.instruction.includes('사탕') ? 'candy' : 'soap';
+            
+            if (shouldSwap) {
+                const prevAnswerHand = currentQuestion.answer;
+                currentQuestion.answer = (prevAnswerHand === 'left') ? 'right' : 'left';
+            } else {
+                currentQuestion.answer = Math.random() < 0.5 ? 'left' : 'right';
+            }
+            
+            currentQuestion[currentQuestion.answer] = correctItem;
+            const otherHand = (currentQuestion.answer === 'left') ? 'right' : 'left';
+            currentQuestion[otherHand] = (correctItem === 'candy') ? 'soap' : 'candy';
+            
+            instructionText.textContent = currentQuestion.instruction;
+            leftItem.textContent = (currentQuestion.left === 'candy') ? candyEmoji : soapEmoji;
+            rightItem.textContent = (currentQuestion.right === 'candy') ? candyEmoji : soapEmoji;
+            
+            let timerWidth = 100;
+            const timeLimit = Math.max(800, 2000 - (combo * 50));
+            const intervalTime = 20;
+            
+            canInteract = true;
+            roundTimer = setInterval(() => {
+                timerWidth -= (100 / (timeLimit / intervalTime));
+                timerBar.style.width = `${timerWidth}%`;
+                if (timerWidth <= 0) {
+                    handleInput('timeout');
+                }
+            }, intervalTime);
+        }
+
+        function handleInput(choice) {
+            if (!canInteract) return;
+            canInteract = false;
+            clearInterval(roundTimer);
+            timerBar.style.width = '100%';
+
+            let isCorrect = (choice === currentQuestion.answer);
+            if (choice === 'timeout') isCorrect = false;
+            
+            if (isCorrect) {
+                score += 100 + (combo * 10);
+                combo++;
+                maxCombo = Math.max(maxCombo, combo);
+                showFeedback('correct');
+            } else {
+                lives--;
+                combo = 0;
+                showFeedback('wrong');
+            }
+            
+            updateUI();
+            
+            if (lives <= 0) {
+                endGame(); // endGame 함수가 async이므로 setTimeout 제거
+            } else {
+                setTimeout(nextRound, 300);
+            }
+        }
+
+        function showFeedback(type) {
+            feedbackOverlay.className = 'feedback-overlay';
+            feedbackOverlay.offsetHeight;
+            feedbackOverlay.classList.add(type);
+            setTimeout(() => {
+                feedbackOverlay.classList.remove(type);
+            }, 300);
+        }
+
+        function updateUI() {
+            scoreDisplay.textContent = score;
+            comboDisplay.textContent = combo;
+            livesDisplay.textContent = lives;
+        }
+
+        // ▼▼▼ [수정] 점수 저장이 완료된 후 팝업이 뜨도록 async/await 적용 ▼▼▼
+        async function endGame() {
+            canInteract = false;
+            clearInterval(roundTimer);
+            
+            // 점수 저장이 끝날 때까지 여기서 기다립니다.
+            await updatePlayerStats(score); 
+
+            // 저장이 완료된 후에 게임오버 화면을 표시합니다.
+            gameOverOverlay.style.display = 'flex';
+            finalScoreDisplay.textContent = score;
+        }
+
+        // ▼▼▼ [수정] '다시 하기' 버튼 로직 수정 ▼▼▼
+        function handleRetry() {
+            // 멀티플레이 모드는 아직 미구현이므로 alert 처리
+            if (gameMode !== 'solo') {
+                retryBtn.textContent = '상대방 기다리는 중...';
+                retryBtn.disabled = true;
+                alert('멀티플레이 다시하기는 아직 구현되지 않았습니다.');
+                window.location.href = '대기실.html';
+            } else {
+                // 솔로 모드에서는 페이지 새로고침 없이 게임 재시작
+                gameOverOverlay.style.display = 'none';
+                startCountdown();
+            }
+        }
+        
+        // ▼▼▼ [수정] 0점도 저장되도록 로직 개선 ▼▼▼
+        async function updatePlayerStats(finalScore, isWin = false) {
+            if (!myPlayerId || myPlayerId.startsWith('guest_')) {
+                console.log("게스트 유저이거나 PlayerID가 없어 저장을 건너뜁니다.");
+                return;
+            }
+
+            const gameId = 'candysoap';
+            const userStatsRef = usersRef.child(`${myPlayerId}/stats/${gameId}`);
+            const userExpRef = usersRef.child(`${myPlayerId}/exp`);
+
+            try {
+                const snapshot = await userStatsRef.once('value');
+                const stats = snapshot.val() || {};
+                const currentHighScore = stats.highscore || 0;
+                
+                const updates = {};
+                
+                // 첫 플레이(undefined)거나, 새로운 최고 점수일 경우 기록
+                if (stats.highscore === undefined || finalScore > currentHighScore) {
+                    updates[`/users/${myPlayerId}/stats/${gameId}/highscore`] = finalScore;
+                }
+
+                if (gameMode !== 'solo') {
+                    // 실제 멀티플레이 승패 로직은 여기에 추가
+                }
+                
+                if (Object.keys(updates).length > 0) {
+                    await database.ref().update(updates);
+                }
+
+                const expToAdd = Math.floor(finalScore / 10) + (isWin ? 25 : 0);
+                if(expToAdd > 0) {
+                    await userExpRef.set(firebase.database.ServerValue.increment(expToAdd));
+                }
+            } catch (error) {
+                console.error("캔디솝 전적 업데이트 실패:", error);
+            }
+        }
+
+        initialize();
+    });
+    </script>
+</body>
+</html>

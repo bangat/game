@@ -393,51 +393,52 @@
         }
 
 
-        #ranking-list {
+       #ranking-list {
             flex-grow: 1;
             overflow-y: auto;
-            padding: 10px;
+            padding: 0 10px 10px 10px; /* 위쪽 패딩 제거 */
         }
         .rank-item {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 10px;
-            border-radius: 12px;
-            transition: background-color 0.2s;
-        }
-        .rank-item:not(:last-child) {
+            padding: 12px 5px;
             border-bottom: 1px solid #f0f3f4;
+        }
+        .rank-item:last-child {
+            border-bottom: none;
         }
         .rank-item.is-me {
             background-color: #FFFBEB;
-            border: 1px solid var(--accent-color);
+            border-radius: 12px;
+            border-bottom: none;
+            margin: 5px 0;
+            padding: 12px;
         }
         .rank-col-1, .rank-col-2 {
             display: flex;
             align-items: center;
             gap: 12px;
-            min-width: 0; /* 자식 요소가 부모 너비에 맞게 줄어들도록 설정 */
+            min-width: 0;
         }
-        .rank-item .nickname {
+        .rank-item .rank {
+            font-size: 1.1em;
             font-weight: 700;
-            font-size: 1em;
-            color: #343a40;
-            /* ▼▼▼ [추가] 긴 닉네임이 화면을 밀지 않도록 처리 ▼▼▼ */
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            width: 30px;
+            text-align: center;
+            color: #8a9cb1;
         }
         .rank-item .rank.gold { color: #d4af37; }
         .rank-item .rank.silver { color: #aaa9ad; }
         .rank-item .rank.bronze { color: #b08d57; }
         .rank-item .avatar {
-            width: 36px;
-            height: 36px;
-            font-size: 1.6em;
+            width: 38px;
+            height: 38px;
+            font-size: 1.7em;
             display: flex;
             justify-content: center;
             align-items: center;
+            flex-shrink: 0;
         }
         .rank-item .avatar img {
             width: 100%;
@@ -445,21 +446,44 @@
             object-fit: contain;
             border-radius: 50%;
         }
+        .nickname-level {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 2px;
+            min-width: 0;
+        }
         .rank-item .nickname {
             font-weight: 700;
             font-size: 1em;
             color: #343a40;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .level {
+            font-size: 0.8em;
+            font-weight: 700;
+            color: #8a9cb1;
         }
         .rank-col-2 {
             font-size: 0.9em;
             font-weight: 700;
             text-align: right;
+            gap: 8px;
+            flex-shrink: 0;
         }
-        .rank-col-2 .exp {
-            color: var(--success-color);
+        .rank-col-2 .exp, .rank-col-2 .highscore {
+            color: var(--primary-color);
+            font-size: 1.05em;
         }
         .rank-col-2 .record {
+            color: #566573;
+        }
+        .rank-col-2 .win-rate {
             color: #8a9cb1;
+            min-width: 55px;
+            text-align: right;
         }
 
       /* ▼▼▼▼▼ [수정] 새 레이아웃을 위한 스타일 ▼▼▼▼▼ */
@@ -970,10 +994,12 @@
             }
         }
 
-        const availableGamesForRanking = [
-            { id: 'alkkagi', name: '알까기' }, { id: 'reversi', name: '리버시' },
-            { id: 'indianpoker', name: '인디언포커' }, { id: 'memoryGame', name: '메모리' },
-            { id: 'mazeGame', name: '미로찾기' },  { id: 'candy', name: '캔디솝' }
+ const availableGamesForRanking = [
+            { id: 'alkkagi', name: '알까기' },
+            { id: 'reversi', name: '리버시' },
+            { id: 'indianpoker', name: '인디언포커' },
+            { id: 'memoryGame', name: '메모리' }, // 전적이 있으므로 주석 해제
+            { id: 'candysoap', name: '캔디솝' }   // 버그를 해결했으므로 그대로 둠
         ];
 
         function setupRankingTabs() {
@@ -1028,14 +1054,26 @@
             rankingList.innerHTML = `<div class="spinner"></div>`;
 
             let query;
+            let orderByField = 'exp'; // 기본 정렬 기준은 경험치
+            let scoreField = 'score'; // 기본 점수 필드
+
             if (type === 'total') {
-                query = playersRef.orderByChild('exp').limitToLast(100);
+                orderByField = 'exp';
+                scoreField = 'exp';
             } else if (type === 'game' && gameId) {
-                query = playersRef.orderByChild(`stats/${gameId}/wins`).limitToLast(100);
+                if (gameId === 'candysoap') {
+                    orderByField = `stats/${gameId}/highscore`;
+                    scoreField = 'highscore';
+                } else { // 그 외 게임은 승수 기준
+                    orderByField = `stats/${gameId}/wins`;
+                    scoreField = 'wins';
+                }
             } else {
                 rankingList.innerHTML = '<p>게임을 선택해주세요.</p>';
                 return;
             }
+
+            query = playersRef.orderByChild(orderByField).limitToLast(100);
 
             try {
                 const snapshot = await query.once('value');
@@ -1053,13 +1091,17 @@
                     if (type === 'total') {
                         score = userData.exp || 0;
                     } else if (type === 'game' && gameId) {
-                        score = userData.stats?.[gameId]?.wins || 0;
+                        score = userData.stats?.[gameId]?.[scoreField] || 0;
                     }
 
                     if (score > 0) {
                         users.push({ ...userData, score, uid: child.key });
                     }
                 });
+             if (users.length === 0) {
+                    rankingList.innerHTML = '<p style="text-align:center; color:#888; padding: 20px;">아직 랭킹 데이터가 없습니다.</p>';
+                    return;
+                }
 
                 users.sort((a, b) => b.score - a.score);
 
@@ -1069,29 +1111,81 @@
                     const isMe = user.uid === auth.currentUser?.uid;
                     const avatarHTML = user.avatar.startsWith('http') ? `<img src="${user.avatar}" alt="av">` : user.avatar;
                     
-                    // 전체 전적 계산
                     const stats = user.stats || {};
+                    const gameStats = stats[gameId] || { wins: 0, losses: 0 };
+                    
                     const totalWins = Object.values(stats).reduce((sum, game) => sum + (game.wins || 0), 0);
                     const totalLosses = Object.values(stats).reduce((sum, game) => sum + (game.losses || 0), 0);
+                    const totalGames = totalWins + totalLosses;
+                    const totalWinRate = totalGames > 0 ? ((totalWins / totalGames) * 100).toFixed(1) + '%' : '-';
+
+                    const gameTotalGames = (gameStats.wins || 0) + (gameStats.losses || 0);
+                    const gameWinRate = gameTotalGames > 0 ? (((gameStats.wins || 0) / gameTotalGames) * 100).toFixed(1) + '%' : '-';
+
+                    let displayHtml = '';
+
+                    if (type === 'total') {
+                        // 통합 랭킹: 프로필, 레벨, 전체 전적, 승률 표시
+                        let displayLevel = user.level || 1;
+                        let displayExp = user.exp || 0;
+                        let expForNextLevel = displayLevel * 100 + (displayLevel - 1) * 50;
+                        while (displayExp >= expForNextLevel) {
+                            displayExp -= expForNextLevel;
+                            displayLevel++;
+                            expForNextLevel = displayLevel * 100 + (displayLevel - 1) * 50;
+                        }
+
+                        displayHtml = `
+                            <div class="rank-col-1">
+                                <span class="rank">${rank}</span>
+                                <span class="avatar">${avatarHTML}</span>
+                                <div class="nickname-level">
+                                    <span class="nickname">${user.nickname}</span>
+                                    <span class="level">Lv. ${displayLevel}</span>
+                                </div>
+                            </div>
+                            <div class="rank-col-2">
+                                <span class="record">${totalWins}승 ${totalLosses}패</span>
+                                <span class="win-rate">(${totalWinRate})</span>
+                            </div>
+                        `;
+                    } else if (gameId === 'candysoap') {
+                        // 캔디솝: 프로필, 점수, 전적 표시
+                        displayHtml = `
+                            <div class="rank-col-1">
+                                <span class="rank">${rank}</span>
+                                <span class="avatar">${avatarHTML}</span>
+                                <span class="nickname">${user.nickname}</span>
+                            </div>
+                            <div class="rank-col-2">
+                                <span class="highscore">${user.score.toLocaleString()}점</span>
+                                <span class="record">${gameStats.wins || 0}승 ${gameStats.losses || 0}패</span>
+                            </div>
+                        `;
+                    } else {
+                        // 리버시, 인디언포커 등: 프로필, 전적, 승률 표시
+                        displayHtml = `
+                            <div class="rank-col-1">
+                                <span class="rank">${rank}</span>
+                                <span class="avatar">${avatarHTML}</span>
+                                <span class="nickname">${user.nickname}</span>
+                            </div>
+                            <div class="rank-col-2">
+                                <span class="record">${gameStats.wins || 0}승 ${gameStats.losses || 0}패</span>
+                                <span class="win-rate">(${gameWinRate})</span>
+                            </div>
+                        `;
+                    }
 
                     let rankClass = '';
                     if (rank === 1) rankClass = 'gold';
                     else if (rank === 2) rankClass = 'silver';
                     else if (rank === 3) rankClass = 'bronze';
-                    
+
                     const item = document.createElement('div');
                     item.className = `rank-item ${isMe ? 'is-me' : ''}`;
-                    item.innerHTML = `
-                        <div class="rank-col-1">
-                            <span class="rank ${rankClass}">${rank}</span>
-                            <span class="avatar">${avatarHTML}</span>
-                            <span class="nickname">${user.nickname}</span>
-                        </div>
-                        <div class="rank-col-2">
-                            <span class="exp">EXP ${user.exp || 0}</span>
-                            <span class="record">${totalWins}승 ${totalLosses}패</span>
-                        </div>
-                    `;
+                    item.innerHTML = displayHtml;
+                    item.querySelector('.rank').classList.add(rankClass);
                     rankingList.appendChild(item);
                 });
 
@@ -1246,7 +1340,8 @@
             { id: 'maze', name: '미로찾기', icon: '🚀', color: 'var(--maze-game-color)', file: '미로찾기.html' },
             { id: 'word', name: '낱말게임', icon: '🎨', color: 'var(--word-game-color)', file: '낱말게임.html' },
             { id: 'tower', name: '타워디펜스', icon: '🏰', color: 'var(--defense-game-color)', file: '타워디펜스.html' },
-            { id: 'alkkagi', name: '알까기', icon: '⚪', color: '#8d6e63', file: '알까기.html' }
+            { id: 'alkkagi', name: '알까기', icon: '⚪', color: '#8d6e63', file: '알까기.html' }, 
+            { id: 'candysoap', name: '캔디솝', icon: '🍬', color: '#FF69B4', file: '캔디솝.html' }
         ];
 
         function showSingleGameSelectModal() {
