@@ -300,6 +300,7 @@
             storageBucket: "goodluck-7c14b.firebasestorage.app",
             messagingSenderId: "858281658455",
             appId: "1:858281658455:web:9131280a459be983933b12"
+            
         };
         firebase.initializeApp(firebaseConfig);
         const database = firebase.database();
@@ -336,6 +337,7 @@
         let isFirstTurn = true;
         let movementCheckTimeout = null;
 let isGameLive = false; // 게임이 활성화되었는지 확인하는 변수
+let aiDifficulty = 'beginner';
 
         const FRICTION = 0.985;
         const RESTITUTION = 0.9;
@@ -399,17 +401,27 @@ let isGameLive = false; // 게임이 활성화되었는지 확인하는 변수
         }
 
         function showPlacementModal() {
-            const modal = document.getElementById('placement-modal');
-            const options = modal.querySelectorAll('.style-option');
-            const waitingText = document.getElementById('placement-waiting-text');
-            modal.style.display = 'flex';
+            const placementModal = document.getElementById('placement-modal');
+            const difficultyModal = document.getElementById('difficulty-modal');
+            const placementOptions = placementModal.querySelectorAll('.style-option');
+            
+            placementModal.style.display = 'flex';
             
             if (gameMode === 'single') {
-                options.forEach(opt => {
+                placementOptions.forEach(opt => {
                     opt.addEventListener('click', () => {
                         const selectedStyle = opt.dataset.style;
-                        modal.style.display = 'none';
-                        setupSinglePlayerGame(selectedStyle);
+                        placementModal.style.display = 'none';
+                        
+                        // 난이도 모달 표시
+                        difficultyModal.style.display = 'flex';
+                        difficultyModal.querySelectorAll('.menu-btn').forEach(btn => {
+                            btn.onclick = () => { // 기존 리스너 중복 방지를 위해 onclick 사용
+                                aiDifficulty = btn.dataset.difficulty;
+                                difficultyModal.style.display = 'none';
+                                setupSinglePlayerGame(selectedStyle);
+                            };
+                        });
                     });
                 });
                 return;
@@ -701,39 +713,112 @@ let isGameLive = false; // 게임이 활성화되었는지 확인하는 변수
             }
         }
         
-        function aiMove() {
+       function aiMove() {
             if (isGameOver || !canShoot) return;
-            
+
             const aiStones = stones.filter(s => s.color === opponentColor && s.active);
             const targetStones = stones.filter(s => s.color === myColor && s.active);
-            
-            if (aiStones.length === 0 || targetStones.length === 0) return;
 
+            if (aiStones.length === 0 || targetStones.length === 0) return;
             canShoot = false;
-            
+
             setTimeout(() => {
                 if (isGameOver) return;
-                
-                const shooter = aiStones[Math.floor(Math.random() * aiStones.length)];
-                const target = targetStones[Math.floor(Math.random() * targetStones.length)];
-                
-                const dx = target.x - shooter.x;
-                const dy = target.y - shooter.y;
-                const angle = Math.atan2(dy, dx);
-                
-                const randomOffset = (Math.random() - 0.5) * 0.5;
-                const finalAngle = angle + randomOffset;
-                
-                const aiPower = 4 + Math.random() * 3;
-                const force = {
-                    x: Math.cos(finalAngle) * aiPower,
-                    y: Math.sin(finalAngle) * aiPower
-                };
 
-                shooter.vx += force.x / shooter.mass;
-                shooter.vy += force.y / shooter.mass;
-                hasShotThisTurn = true;
-            }, 500);
+                let bestShot = null;
+
+                // 난이도별 로직 분기
+                switch (aiDifficulty) {
+                    case 'beginner':
+                        // 초보자: 무작위 돌을 골라 상대를 조준하지만, 정확도가 약간 떨어짐
+                        const randomShooter_b = aiStones[Math.floor(Math.random() * aiStones.length)];
+                        const randomTarget_b = targetStones[Math.floor(Math.random() * targetStones.length)];
+                        
+                        const angle_b = Math.atan2(randomTarget_b.y - randomShooter_b.y, randomTarget_b.x - randomShooter_b.x);
+                        const finalAngle_b = angle_b + (Math.random() - 0.5) * 0.4; // 약 23도 내의 오차
+                        const power_b = 6 + Math.random() * 4;
+                        
+                        bestShot = { shooter: randomShooter_b, angle: finalAngle_b, power: power_b };
+                        break;
+
+                    case 'intermediate':
+                        // 중급자 (기존 숙련자 로직): 모든 경우의 수를 계산하여 가장 가장자리에 가까운 적을 공격
+                        let maxScore_i = -Infinity;
+
+                        aiStones.forEach(shooter => {
+                            targetStones.forEach(target => {
+                                const targetEdgeDists = [target.x, boardWidth - target.x, target.y, boardHeight - target.y];
+                                const targetMinEdgeDist = Math.min(...targetEdgeDists);
+                                let score = (boardWidth - targetMinEdgeDist) * 2; // 가장자리 보너스
+
+                                const shooterEdgeDists = [shooter.x, boardWidth - shooter.x, shooter.y, boardHeight - shooter.y];
+                                score -= Math.min(...shooterEdgeDists) * 0.5;
+
+                                if (score > maxScore_i) {
+                                    maxScore_i = score;
+                                    const distToTarget = Math.sqrt((target.x - shooter.x)**2 + (target.y - shooter.y)**2);
+                                    const angle_i = Math.atan2(target.y - shooter.y, target.x - shooter.x);
+                                    const power_i = 8 + (distToTarget / boardWidth) * 8;
+                                    bestShot = { shooter, angle: angle_i, power: power_i };
+                                }
+                            });
+                        });
+                        break;
+
+                    case 'expert':
+                        // 숙련자 (개선된 로직): 공격 각도와 공격 후 내 돌의 안전까지 고려
+                        let maxScore_e = -Infinity;
+
+                        aiStones.forEach(shooter => {
+                            targetStones.forEach(target => {
+                                let shotScore = 0;
+
+                                // 1. 타겟의 취약성: 가장자리에 가까울수록 높은 점수
+                                const targetEdgeDists = [target.x, boardWidth - target.x, target.y, boardHeight - target.y];
+                                const targetMinEdgeDist = Math.min(...targetEdgeDists);
+                                shotScore += (boardWidth - targetMinEdgeDist) * 2.5;
+
+                                // 2. 공격 각도 효율성: 타겟을 가장 가까운 가장자리로 밀어내는 각도일수록 높은 점수
+                                let bestEdgePoint = {x: target.x, y: 0}; // 기본값: 위쪽 가장자리
+                                if (targetMinEdgeDist === targetEdgeDists[0]) bestEdgePoint = {x: 0, y: target.y}; // 왼쪽
+                                else if (targetMinEdgeDist === targetEdgeDists[1]) bestEdgePoint = {x: boardWidth, y: target.y}; // 오른쪽
+                                else if (targetMinEdgeDist === targetEdgeDists[3]) bestEdgePoint = {x: target.x, y: boardHeight}; // 아래쪽
+
+                                const shotVector = { x: target.x - shooter.x, y: target.y - shooter.y };
+                                const edgeVector = { x: bestEdgePoint.x - target.x, y: bestEdgePoint.y - target.y };
+                                const dotProduct = (shotVector.x * edgeVector.x + shotVector.y * edgeVector.y) / 
+                                                   (Math.hypot(shotVector.x, shotVector.y) * Math.hypot(edgeVector.x, edgeVector.y));
+                                shotScore += (dotProduct > 0.7 ? dotProduct * 150 : -500); // 각도가 좋으면 큰 보너스, 나쁘면 큰 페널티
+
+                                // 3. 공격 후 내 돌(슈터)의 안전성: 중앙에 가까이 남을수록 높은 점수
+                                const predictedShooterX = target.x + (shotVector.x * 0.2);
+                                const predictedShooterY = target.y + (shotVector.y * 0.2);
+                                const distFromCenter = Math.hypot(predictedShooterX - boardWidth / 2, predictedShooterY - boardHeight / 2);
+                                shotScore -= distFromCenter * 0.8; // 중앙에서 멀어질수록 감점
+
+                                if (shotScore > maxScore_e) {
+                                    maxScore_e = shotScore;
+                                    const distToTarget = Math.hypot(shotVector.x, shotVector.y);
+                                    const power_e = 8 + (distToTarget / boardWidth) * 10 + (targetMinEdgeDist / boardHeight) * 5;
+                                    bestShot = { shooter, angle: Math.atan2(shotVector.y, shotVector.x), power: Math.min(power_e, 20) };
+                                }
+                            });
+                        });
+                        break;
+                }
+
+                if (bestShot) {
+                    const { shooter, angle, power } = bestShot;
+                    const force = {
+                        x: Math.cos(angle) * power,
+                        y: Math.sin(angle) * power
+                    };
+                    shooter.vx += force.x / shooter.mass;
+                    shooter.vy += force.y / shooter.mass;
+                    hasShotThisTurn = true;
+                }
+
+            }, 500); // AI가 생각하는 시간
         }
 
         function checkTurn() {
@@ -1312,6 +1397,19 @@ roomRef.child('rematchRequests').on('value', snapshot => {
     </div>
 </div>
             <p id="placement-waiting-text" style="margin-top: 20px; font-size: 1.em; color: var(--accent-color); display: none;">상대방이 배치 스타일을 선택 중입니다...</p>
+        </div>
+    </div>
+</div>
+
+<div id="difficulty-modal" class="overlay" style="display: none;">
+    <div class="modal-content" style="background: #5a4a42; max-width: 420px;">
+        <div style="padding: 25px;">
+            <h2 style="font-size: 1.8em; margin-bottom: 25px;">AI 난이도 선택</h2>
+            <div id="difficulty-options-container" class="modal-buttons">
+                <button class="menu-btn secondary" data-difficulty="beginner">😊 초보자</button>
+                <button class="menu-btn primary" data-difficulty="intermediate">😎 중급자</button>
+                <button class="menu-btn secondary" data-difficulty="expert" style="background-color: #d32f2f; color: white;">🔥 숙련자</button>
+            </div>
         </div>
     </div>
 </div>
