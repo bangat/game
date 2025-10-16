@@ -446,32 +446,33 @@ function getPlayerId() {
     }
 
     async function updatePlayerStats(playerId, isWinner) {
-        if (playerId.startsWith('guest_')) return; // 게스트는 전적 업데이트 안함
-        const playerStatRef = playersRef.child(playerId);
-        try {
-            await playerStatRef.transaction(currentData => {
-                if (currentData) {
-                    if (!currentData.stats) currentData.stats = {};
-                    if (!currentData.stats.memoryGame) currentData.stats.memoryGame = { wins: 0, losses: 0 };
-                    if (isWinner) {
-                        currentData.stats.memoryGame.wins = (currentData.stats.memoryGame.wins || 0) + 1;
-                        currentData.exp = (currentData.exp || 0) + 50;
-                    } else {
-                        currentData.stats.memoryGame.losses = (currentData.stats.memoryGame.losses || 0) + 1;
-                        currentData.exp = (currentData.exp || 0) + 10;
+            if (!playerId || playerId.startsWith('guest_')) return;
+
+            const playerStatRef = playersRef.child(playerId);
+            const gameId = 'memoryGame';
+            const expToAdd = isWinner ? 50 : 10;
+
+            try {
+                await playerStatRef.transaction(currentData => {
+                    if (currentData) {
+                        if (!currentData.stats) currentData.stats = {};
+                        if (!currentData.stats[gameId]) {
+                            currentData.stats[gameId] = { wins: 0, losses: 0 };
+                        }
+
+                        if (isWinner) {
+                            currentData.stats[gameId].wins = (currentData.stats[gameId].wins || 0) + 1;
+                        } else {
+                            currentData.stats[gameId].losses = (currentData.stats[gameId].losses || 0) + 1;
+                        }
+                        currentData.exp = (currentData.exp || 0) + expToAdd;
                     }
-                    let level = currentData.level || 1;
-                    let expForNextLevel = level * 100;
-                    while (currentData.exp >= expForNextLevel) {
-                        level++;
-                        currentData.exp -= expForNextLevel;
-                        expForNextLevel = level * 100;
-                    }
-                    currentData.level = level;
-                } return currentData;
-            });
-        } catch (error) { console.error("전적 업데이트 실패:", error); }
-    }
+                    return currentData;
+                });
+            } catch (error) {
+                console.error("메모리게임 전적 업데이트 실패:", error);
+            }
+        }
     
     let singlePlayerFlipped = [], singlePlayerMatched = 0;
     

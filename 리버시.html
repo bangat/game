@@ -861,24 +861,35 @@ function findBestMove(board, color) {
 
         async function updatePlayerStats(pid, isWinner, isDraw = false) {
             if (!pid || pid.startsWith('guest_')) return;
+            
+            const playerStatRef = playersStatsRef.child(pid);
+            const gameId = 'reversi';
+            let expToAdd = 10;
+            if (isDraw) expToAdd = 25;
+            if (isWinner) expToAdd = 50;
+
             try {
-                await playersStatsRef.child(pid).transaction(d => {
-                    if (d) {
-                        if (!d.stats) d.stats = {};
-                        if (!d.stats.reversi) d.stats.reversi = { wins: 0, losses: 0, draws: 0 };
-                        if (isDraw) {
-                            d.stats.reversi.draws = (d.stats.reversi.draws || 0) + 1;
-                            d.exp = (d.exp || 0) + 25;
-                        } else if (isWinner) {
-                            d.stats.reversi.wins = (d.stats.reversi.wins || 0) + 1;
-                            d.exp = (d.exp || 0) + 50;
-                        } else {
-                            d.stats.reversi.losses = (d.stats.reversi.losses || 0) + 1;
-                            d.exp = (d.exp || 0) + 10;
+                await playerStatRef.transaction(currentData => {
+                    if (currentData) {
+                        if (!currentData.stats) currentData.stats = {};
+                        if (!currentData.stats[gameId]) {
+                            currentData.stats[gameId] = { wins: 0, losses: 0, draws: 0 };
                         }
-                    } return d;
+
+                        if (isDraw) {
+                            currentData.stats[gameId].draws = (currentData.stats[gameId].draws || 0) + 1;
+                        } else if (isWinner) {
+                            currentData.stats[gameId].wins = (currentData.stats[gameId].wins || 0) + 1;
+                        } else {
+                            currentData.stats[gameId].losses = (currentData.stats[gameId].losses || 0) + 1;
+                        }
+                        currentData.exp = (currentData.exp || 0) + expToAdd;
+                    }
+                    return currentData;
                 });
-            } catch (e) { console.error("전적 업데이트 실패:", pid, e); }
+            } catch (e) {
+                console.error("리버시 전적 업데이트 실패:", pid, e);
+            }
         }
 
         function showChatBubble(senderId, message) {

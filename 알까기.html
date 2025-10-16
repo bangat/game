@@ -1244,32 +1244,33 @@ rematchBtn.addEventListener('click', () => {
             });
         }
 
-        function updatePlayerStats(won) {
+        async function updatePlayerStats(isWin) {
             if (!myPlayerId || myPlayerId.startsWith('guest_')) return;
 
-            playersStatsRef.child(myPlayerId).once('value', snapshot => {
-                if (!snapshot.exists()) return;
-                const userData = snapshot.val();
-                const stats = userData.stats || {};
-                
-                if (!stats.alkkagi) {
-                    stats.alkkagi = { wins: 0, losses: 0 };
-                }
+            const playerStatRef = playersStatsRef.child(myPlayerId);
+            const gameId = 'alkkagi';
+            const expToAdd = isWin ? 50 : 10;
 
-                if (won) {
-                    stats.alkkagi.wins = (stats.alkkagi.wins || 0) + 1;
-                    playersStatsRef.child(myPlayerId).update({ 
-                        stats: stats,
-                        exp: (userData.exp || 0) + 50
-                    });
-                } else {
-                    stats.alkkagi.losses = (stats.alkkagi.losses || 0) + 1;
-                    playersStatsRef.child(myPlayerId).update({ 
-                        stats: stats,
-                        exp: (userData.exp || 0) + 10
-                    });
-                }
-            });
+            try {
+                await playerStatRef.transaction(currentData => {
+                    if (currentData) {
+                        if (!currentData.stats) currentData.stats = {};
+                        if (!currentData.stats[gameId]) {
+                            currentData.stats[gameId] = { wins: 0, losses: 0 };
+                        }
+
+                        if (isWin) {
+                            currentData.stats[gameId].wins = (currentData.stats[gameId].wins || 0) + 1;
+                        } else {
+                            currentData.stats[gameId].losses = (currentData.stats[gameId].losses || 0) + 1;
+                        }
+                        currentData.exp = (currentData.exp || 0) + expToAdd;
+                    }
+                    return currentData;
+                });
+            } catch (error) {
+                console.error("알까기 전적 업데이트 실패:", error);
+            }
         }
 
         initialize();
