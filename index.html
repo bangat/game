@@ -1115,27 +1115,36 @@
                     return;
                 }
 
-                let users = [];
+               let users = [];
                 snapshot.forEach(child => {
                     const userData = child.val();
                     if(userData.nickname && userData.nickname.includes('게스트')) return;
 
-                    // ▼▼▼ [핵심 수정] 0점도 랭킹에 포함시키는 로직 ▼▼▼
-                    let score;
+                    // ▼▼▼ [수정] 전적이 있는 유저만 랭킹에 포함시키는 로직 ▼▼▼
                     if (type === 'total') {
-                        score = userData.exp || 0;
-                        // 통합 랭킹은 경험치가 0보다 클 때만 목록에 추가
+                        const score = userData.exp || 0;
                         if (score > 0) {
                            users.push({ ...userData, score, uid: child.key });
                         }
                     } else if (type === 'game' && gameId) {
-                        // 게임별 랭킹은 해당 게임의 전적(stats) 객체가 존재하면 0점이라도 포함
                         if (userData.stats && userData.stats[gameId]) {
-                            score = userData.stats[gameId][scoreField] || 0;
-                            users.push({ ...userData, score, uid: child.key });
+                            // 캔디솝은 최고점수, 나머지는 승수 기준
+                            if (gameId === 'candysoap') {
+                                const highscore = userData.stats[gameId].highscore || 0;
+                                if (highscore > 0) {
+                                    users.push({ ...userData, score: highscore, uid: child.key });
+                                }
+                            } else {
+                                const wins = userData.stats[gameId].wins || 0;
+                                const losses = userData.stats[gameId].losses || 0;
+                                // 승수와 패수를 합쳐 0보다 클 때만 (한 번이라도 플레이했을 때만) 랭킹에 추가
+                                if ((wins + losses) > 0) {
+                                    users.push({ ...userData, score: wins, uid: child.key });
+                                }
+                            }
                         }
                     }
-                    // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+                    // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
                 });
                 
                 if (users.length === 0) {
