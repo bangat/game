@@ -399,7 +399,7 @@
         let previousPlayerIds = [];
 
         let turnTimerInterval = null;
-        const SPECIAL_USER_ID = "CabWxgXlOReHHVa5z91UXKCeZRv2"; 
+        const SPECIAL_USER_ID = "6LSUyYe5gQVZOQiMBsOCJOSBfWf2"; 
         const WEIGHT_MAP = [
             120, -20,  20,   5,   5,  20, -20, 120,
             -20, -40,  -5,  -5,  -5,  -5, -40, -20,
@@ -749,58 +749,56 @@ function findBestMove(board, color) {
             });
         }
         
-        async function showGameOverScreen() {
+       async function showGameOverScreen() {
             const { players, board, winReason } = currentRoomData;
             let winnerColor, message;
 
-            if (winReason === 'timeout') {
-                const winner = players[currentRoomData.winnerId];
-                const loser = Object.values(players).find(p => p.id !== currentRoomData.winnerId);
-                winnerColor = winner.color;
-                message = `${loser.nickname} 시간 초과!`;
-                if (isHost && !currentRoomData.gameOver) {
+            // --- ★★★ 핵심 수정: 방장이 모든 플레이어의 전적을 책임지고 업데이트 ★★★ ---
+            if (isHost && !currentRoomData.gameOver) {
+                if (winReason === 'timeout') {
+                    // 시간 초과 시
+                    const winner = players[currentRoomData.winnerId];
+                    const loser = Object.values(players).find(p => p.id !== currentRoomData.winnerId);
                     await updatePlayerStats(winner.id, true, false);
                     await updatePlayerStats(loser.id, false, false);
-                    roomRef.child('gameOver').set(true);
+                } else {
+                    // 일반 종료 시
+                    const blackCount = Object.values(board).filter(c => c === 'black').length;
+                    const whiteCount = Object.values(board).filter(c => c === 'white').length;
+                    
+                    if (blackCount === whiteCount) { // 무승부
+                        for (const pid in players) { await updatePlayerStats(pid, false, true); }
+                    } else { // 승패
+                        const winningColor = blackCount > whiteCount ? 'black' : 'white';
+                        for (const pid in players) { await updatePlayerStats(pid, players[pid].color === winningColor, false); }
+                    }
                 }
+                roomRef.child('gameOver').set(true); // 모든 업데이트 후 상태 변경
+            }
+            // --- ★★★ 수정 종료 ★★★ ---
+
+            // 아래는 화면 표시 로직이므로 기존과 거의 동일합니다.
+            if (winReason === 'timeout') {
+                const winner = players[currentRoomData.winnerId];
+                winnerColor = winner.color;
             } else {
                 const blackCount = Object.values(board).filter(c => c === 'black').length;
                 const whiteCount = Object.values(board).filter(c => c === 'white').length;
                 if (blackCount > whiteCount) winnerColor = 'black';
                 else if (whiteCount > blackCount) winnerColor = 'white';
-                if (isHost && !currentRoomData.gameOver) {
-                    for(const pid in players) {
-                       await updatePlayerStats(pid, players[pid].color === winnerColor, winnerColor === null);
-                    }
-                    roomRef.child('gameOver').set(true);
-                }
-                const amIWinner = winnerColor === myColor;
-                message = winnerColor ? (amIWinner ? "🎉 승 리 !" : "😢 패 배...") : "무승부!";
             }
             
             const amITheWinnerFinal = winnerColor === myColor;
+            message = winnerColor ? (amITheWinnerFinal ? "🎉 승 리 !" : "😢 패 배...") : "무승부!";
             playSound(winnerColor ? (amITheWinnerFinal ? 'win-sound' : 'loss-sound') : 'loss-sound');
 
             const scoresHTML = Object.values(players).sort((a,b) => (a.color === 'black' ? -1 : 1)).map(p => {
                 const count = Object.values(board).filter(c => c === p.color).length;
-                const avatarHTML = p.avatar.startsWith('http') 
-                    ? `<img src="${p.avatar}" alt="avatar">` 
-                    : p.avatar;
-                return `<div class="score-row ${p.color === winnerColor ? 'winner' : 'loser'}">
-                            <span class="score-avatar">${avatarHTML} ${p.nickname}</span>
-                            <span>${p.color === 'black' ? '⚫' : '⚪'} ${count}</span>
-                        </div>`;
+                const avatarHTML = p.avatar.startsWith('http') ? `<img src="${p.avatar}" alt="avatar">` : p.avatar;
+                return `<div class="score-row ${p.color === winnerColor ? 'winner' : 'loser'}"><span class="score-avatar">${avatarHTML} ${p.nickname}</span><span>${p.color === 'black' ? '⚫' : '⚪'} ${count}</span></div>`;
             }).join('');
 
-            gameOverOverlay.innerHTML = `
-                <div class="modal-content">
-                    <div class="modal-header"><h2>${message}</h2></div>
-                    <div class="modal-body">
-                        <div id="score-board">${scoresHTML}</div>
-                        <button id="rematch-btn" class="menu-btn primary">다시 하기</button>
-                        <button id="lobby-btn" class="menu-btn secondary">나가기</button>
-                    </div>
-                </div>`;
+            gameOverOverlay.innerHTML = `<div class="modal-content"><div class="modal-header"><h2>${message}</h2></div><div class="modal-body"><div id="score-board">${scoresHTML}</div><button id="rematch-btn" class="menu-btn primary">다시 하기</button><button id="lobby-btn" class="menu-btn secondary">나가기</button></div></div>`;
             gameOverOverlay.style.display = 'flex';
             
             const rematchBtn = document.getElementById('rematch-btn');
@@ -813,8 +811,7 @@ function findBestMove(board, color) {
             
             const rematchListener = roomRef.child('rematchRequests').on('value', snapshot => {
                 if (!snapshot.exists() || !currentRoomData.players) return;
-                const playerCount = Object.keys(currentRoomData.players).length;
-                if (snapshot.numChildren() === playerCount) {
+                if (snapshot.numChildren() === Object.keys(currentRoomData.players).length) {
                     roomRef.child('rematchRequests').off('value', rematchListener);
                     if (isHost) startRematch();
                 }

@@ -1097,29 +1097,23 @@ let isGameLive = false; // 게임이 활성화되었는지 확인하는 변수
 
             // players 리스너를 함수 외부에서 정의하여 명확하게 참조할 수 있도록 합니다.
 const onPlayerChange = function(snapshot) {
-    if (!snapshot.exists()) {
-        return;
-    }
-    const playerCount = Object.keys(snapshot.val()).length;
+            if (!snapshot.exists() || !isGameLive || isGameOver) {
+                return;
+            }
+            
+            const players = snapshot.val();
+            const playerCount = Object.keys(players).length;
 
-    if (playerCount < 2) {
-        // 이 리스너의 목적은 상대방이 나간 것을 감지하는 것이므로, isGameOver 상태를 여기서 확인하지 않습니다.
-        // isGameLive 상태에 따라 다른 처리를 합니다.
-        if (isGameLive) {
-            // Case 1: 게임이 진행 중이었을 때 -> 승리 처리
-            if (isGameOver) return; // 이미 다른 이유로 게임이 끝났으면 무시
-            isGameOver = true;
-            roomRef.child('players').off('value', onPlayerChange); // 이름으로 리스너 제거
-            alert('상대방이 나가서 승리했습니다! 확인을 누르면 대기실로 이동합니다.');
-            window.location.href = '대기실.html';
-        } else {
-            // Case 2: 게임 시작 전(준비 단계)이었을 때 -> 게임 무효 처리
-            roomRef.child('players').off('value', onPlayerChange); // 이름으로 리스너 제거
-            alert('상대방이 방을 나갔습니다. 대기실로 이동합니다.');
-            window.location.href = '대기실.html';
-        }
-    }
-};
+            // 게임이 시작된 후 플레이어가 2명 미만이 되면 (누군가 나갔을 때)
+            if (playerCount < 2) {
+                // 리스너를 즉시 제거하여 중복 실행을 방지합니다.
+                roomRef.child('players').off('value', onPlayerChange);
+                
+                // myColor를 기준으로 승리 처리합니다.
+                // showGameOver 함수가 isGameOver 플래그를 설정하고, 전적을 기록합니다.
+                showGameOver(myColor); 
+            }
+        };
 
 // listenToMultiplayerEvents 함수 안에서는 이 함수를 등록만 합니다.
 roomRef.child('players').on('value', onPlayerChange);
@@ -1194,6 +1188,7 @@ roomRef.child('rematchRequests').on('value', snapshot => {
             `;
         }
 
+      // 기존 showGameOver 함수 전체를 삭제하고 아래 코드로 교체해주세요.
         function showGameOver(winner) {
             if (isGameOver) return;
             isGameOver = true;
@@ -1202,13 +1197,24 @@ roomRef.child('rematchRequests').on('value', snapshot => {
             const resultText = iWon ? '🎉 승리!' : '😢 패배...';
             playSound(iWon ? 'win-sound' : 'loss-sound');
 
+            // --- ★★★ 핵심 수정: 방장이 모든 플레이어의 전적을 책임지고 업데이트 ★★★ ---
             if (gameMode === 'multi' && roomRef && isHost) {
+                const playerIds = Object.keys(currentRoomData.players);
+                // 모든 플레이어에 대해 전적 업데이트 함수를 호출합니다.
+                playerIds.forEach(pid => {
+                    const player = currentRoomData.players[pid];
+                    const didPlayerWin = (player.color === winner);
+                    updatePlayerStats(pid, didPlayerWin); // 각 플레이어 ID와 승리 여부 전달
+                });
+                
+                // 모든 전적 업데이트 후 게임 종료 상태를 기록합니다.
                 roomRef.update({ gameOver: { winner: winner, timestamp: Date.now() } });
+            } 
+            // 싱글 플레이 모드에서는 자신의 전적만 업데이트합니다.
+            else if (gameMode === 'single') {
+                 updatePlayerStats(myPlayerId, iWon);
             }
-
-            if (gameMode === 'single' || (gameMode === 'multi' && !myPlayerId.startsWith('guest_'))) {
-                updatePlayerStats(iWon);
-            }
+            // --- ★★★ 수정 종료 ★★★ ---
 
             gameOverOverlay.innerHTML = `
                 <div class="modal-content">
@@ -1223,35 +1229,29 @@ roomRef.child('rematchRequests').on('value', snapshot => {
             gameOverOverlay.style.display = 'flex';
 
             const rematchBtn = document.getElementById('rematch-btn');
-rematchBtn.addEventListener('click', () => {
-    // 멀티플레이 모드일 때만 재시작 요청 로직을 사용합니다.
-    if (gameMode === 'multi' && roomRef) {
-        rematchBtn.disabled = true;
-        rematchBtn.textContent = '상대방 기다리는 중...';
-        // Firebase에 재시작을 요청했음을 기록합니다.
-        roomRef.child('rematchRequests').child(myPlayerId).set(true);
-    } else {
-        // 싱글 플레이 모드에서는 즉시 재시작합니다.
-        location.reload();
-    }
-});
-            document.getElementById('to-lobby-btn').addEventListener('click', () => {
-                window.location.href = '대기실.html';
+            rematchBtn.addEventListener('click', () => {
+                if (gameMode === 'multi' && roomRef) {
+                    rematchBtn.disabled = true;
+                    rematchBtn.textContent = '상대방 기다리는 중...';
+                    roomRef.child('rematchRequests').child(myPlayerId).set(true);
+                } else {
+                    location.reload();
+                }
             });
-            document.getElementById('to-main-btn').addEventListener('click', () => {
-                sessionStorage.setItem('returnFromGame', 'true');
-                window.location.href = 'index.html';
-            });
+            document.getElementById('to-lobby-btn').addEventListener('click', () => { window.location.href = '대기실.html'; });
+            document.getElementById('to-main-btn').addEventListener('click', () => { sessionStorage.setItem('returnFromGame', 'true'); window.location.href = 'index.html'; });
         }
 
-        async function updatePlayerStats(isWin) {
-            if (!myPlayerId || myPlayerId.startsWith('guest_')) return;
+        async function updatePlayerStats(playerId, isWin) {
+            // 게스트 유저는 전적을 기록하지 않습니다.
+            if (!playerId || playerId.startsWith('guest_')) return;
 
-            const playerStatRef = playersStatsRef.child(myPlayerId);
+            const playerStatRef = playersStatsRef.child(playerId);
             const gameId = 'alkkagi';
             const expToAdd = isWin ? 50 : 10;
 
             try {
+                // '캔디솝'과 동일한 안전한 트랜잭션 방식으로 업데이트합니다.
                 await playerStatRef.transaction(currentData => {
                     if (currentData) {
                         if (!currentData.stats) currentData.stats = {};
@@ -1264,12 +1264,13 @@ rematchBtn.addEventListener('click', () => {
                         } else {
                             currentData.stats[gameId].losses = (currentData.stats[gameId].losses || 0) + 1;
                         }
+                        
                         currentData.exp = (currentData.exp || 0) + expToAdd;
                     }
                     return currentData;
                 });
             } catch (error) {
-                console.error("알까기 전적 업데이트 실패:", error);
+                console.error(`알까기 전적 업데이트 실패 (Player ID: ${playerId}):`, error);
             }
         }
 
@@ -1296,7 +1297,7 @@ rematchBtn.addEventListener('click', () => {
             <div class="preview-stone white" style="top: 20%; left: 70%;"></div>
             <div class="preview-stone white" style="top: 20%; left: 90%;"></div>
         </div>
-        <h4>기본 배치</h4>
+        <h4>기본배치</h4>
     </div>
 
     <div class="style-option" data-style="style2">
@@ -1307,7 +1308,7 @@ rematchBtn.addEventListener('click', () => {
             <div class="preview-stone white" style="top: 35%; left: 35%;"></div>
             <div class="preview-stone white" style="top: 35%; left: 65%;"></div>
         </div>
-        <h4>수비형 배치</h4>
+        <h4>수비형배치</h4>
     </div>
 </div>
             <p id="placement-waiting-text" style="margin-top: 20px; font-size: 1.em; color: var(--accent-color); display: none;">상대방이 배치 스타일을 선택 중입니다...</p>
