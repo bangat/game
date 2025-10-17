@@ -204,6 +204,21 @@
             storageBucket: "goodluck-7c14b.firebasestorage.app", messagingSenderId: "858281658455",
             appId: "1:858281658455:web:9131280a459be983933b12"
         };
+
+                document.addEventListener('contextmenu', event => event.preventDefault());
+        document.addEventListener('keydown', event => {
+            if (event.key === 'F12' ||
+                (event.ctrlKey && event.shiftKey && ['I', 'J', 'C'].includes(event.key.toUpperCase())) ||
+                (event.ctrlKey && event.key.toUpperCase() === 'U')) {
+                event.preventDefault();
+            }
+        });
+
+        setInterval(() => {
+            try {
+                debugger;
+            } catch (e) {}
+        }, 1000);
         firebase.initializeApp(firebaseConfig);
         const database = firebase.database();
         const auth = firebase.auth();
@@ -514,49 +529,46 @@
         }
 
         async function updatePlayerStats(finalScore, isWin = false) {
-            if (!myPlayerId || myPlayerId.startsWith('guest_')) {
-                console.log("게스트 유저이거나 PlayerID가 없어 저장을 건너뜁니다.");
-                return;
+    if (!myPlayerId || myPlayerId.startsWith('guest_')) {
+        console.log("게스트 유저이거나 PlayerID가 없어 저장을 건너뜁니다.");
+        return;
+    }
+
+    const gameId = 'candysoap';
+    const playerStatRef = usersRef.child(myPlayerId);
+
+    try {
+        await playerStatRef.transaction(currentData => {
+            if (currentData) {
+                if (!currentData.stats) {
+                    currentData.stats = {};
+                }
+                if (!currentData.stats[gameId]) {
+                    // 초기화 시 losses 대신 plays 사용
+                    currentData.stats[gameId] = { highscore: 0, plays: 0 };
+                }
+
+                const gameStats = currentData.stats[gameId];
+
+                if (finalScore > (gameStats.highscore || 0)) {
+                    gameStats.highscore = finalScore;
+                }
+
+                // '패배' 대신 '플레이 횟수'를 1 증가시킴
+                gameStats.plays = (gameStats.plays || 0) + 1;
+
+                // 경험치는 점수 200점당 1씩, 최대 50까지만 획득하도록 제한
+                const expToAdd = Math.min(50, Math.floor(finalScore / 200));
+                if (expToAdd > 0) {
+                    currentData.exp = (currentData.exp || 0) + expToAdd;
+                }
             }
-
-            const gameId = 'candysoap';
-            const playerStatRef = usersRef.child(myPlayerId);
-
-            try {
-                await playerStatRef.transaction(currentData => {
-                    if (currentData) {
-                        if (!currentData.stats) {
-                            currentData.stats = {};
-                        }
-                        if (!currentData.stats[gameId]) {
-                            currentData.stats[gameId] = { highscore: 0, wins: 0, losses: 0 };
-                        }
-
-                        const gameStats = currentData.stats[gameId];
-
-                        if (finalScore > (gameStats.highscore || 0)) {
-                            gameStats.highscore = finalScore;
-                        }
-
-                        if (gameMode !== 'solo') {
-                            if(isWin) {
-                                gameStats.wins = (gameStats.wins || 0) + 1;
-                            } else {
-                                gameStats.losses = (gameStats.losses || 0) + 1;
-                            }
-                        }
-
-                        const expToAdd = Math.floor(finalScore / 10) + (isWin ? 25 : 0);
-                        if (expToAdd > 0) {
-                            currentData.exp = (currentData.exp || 0) + expToAdd;
-                        }
-                    }
-                    return currentData;
-                });
-            } catch (error) {
-                console.error("캔디솝 전적 업데이트 실패:", error);
-            }
-        }
+            return currentData;
+        });
+    } catch (error) {
+        console.error("캔디솝 전적 업데이트 실패:", error);
+    }
+}
     });
     </script>
 </body>

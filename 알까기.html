@@ -63,7 +63,7 @@
 
         #game-wrapper {
             width: 100%; height: 100%;
-            display: none; flex-direction: column;
+            display: flex; flex-direction: column;
         }
         #game-header {
             flex-shrink: 0; display: flex;
@@ -265,12 +265,6 @@
     </style>
 </head>
 <body>
-    <div id="start-menu" class="view">
-        <h1 class="main-title">알까기</h1>
-        <button id="single-player-btn" class="menu-btn secondary">혼자 하기 (vs AI)</button>
-        <button id="multiplayer-btn" class="menu-btn primary">같이 하기</button>
-        <button id="back-to-index-btn" class="menu-btn secondary">메인으로</button>
-    </div>
 
     <div id="game-wrapper" class="view">
         <div id="game-header"></div>
@@ -289,6 +283,7 @@
 
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
     <script>
     document.addEventListener('DOMContentLoaded', () => {
     
@@ -300,13 +295,28 @@
             storageBucket: "goodluck-7c14b.firebasestorage.app",
             messagingSenderId: "858281658455",
             appId: "1:858281658455:web:9131280a459be983933b12"
-            
         };
+
+                document.addEventListener('contextmenu', event => event.preventDefault());
+        document.addEventListener('keydown', event => {
+            if (event.key === 'F12' ||
+                (event.ctrlKey && event.shiftKey && ['I', 'J', 'C'].includes(event.key.toUpperCase())) ||
+                (event.ctrlKey && event.key.toUpperCase() === 'U')) {
+                event.preventDefault();
+            }
+        });
+
+        setInterval(() => {
+            try {
+                debugger;
+            } catch (e) {}
+        }, 1000);
+        
         firebase.initializeApp(firebaseConfig);
         const database = firebase.database();
+        const auth = firebase.auth();
         const playersStatsRef = database.ref('users');
 
-        const startMenu = document.getElementById('start-menu');
         const gameWrapper = document.getElementById('game-wrapper');
         const gameContainer = document.getElementById('game-container');
         const gameBoard = document.getElementById('game-board');
@@ -336,8 +346,9 @@
         let hasShotThisTurn = false;
         let isFirstTurn = true;
         let movementCheckTimeout = null;
-let isGameLive = false; // 게임이 활성화되었는지 확인하는 변수
-let aiDifficulty = 'beginner';
+		let isGameLive = false; // 게임이 활성화되었는지 확인하는 변수
+        let aiDifficulty = 'medium'; // AI 난이도 (easy, medium, hard)
+        let selectedPlacementStyle = null; // 선택한 배치 스타일 저장
 
         const FRICTION = 0.985;
         const RESTITUTION = 0.9;
@@ -366,24 +377,23 @@ let aiDifficulty = 'beginner';
 
             const urlParams = new URLSearchParams(window.location.search);
             const roomId = urlParams.get('roomId');
-            
+            const mode = urlParams.get('mode');
+
             if (roomId) {
-                startMenu.style.display = 'none';
+                // 멀티플레이 또는 AI방으로 진입
                 joinMultiplayerGame(roomId);
+            } else if (mode === 'solo') {
+                // 대기실에서 '혼자 하기'로 진입 (현재는 사용되지 않음)
+                startCountdown('single');
             } else {
-                document.getElementById('single-player-btn').addEventListener('click', () => startCountdown('single'));
-                document.getElementById('multiplayer-btn').addEventListener('click', () => { 
-                    window.location.href = '대기실.html'; 
-                });
-                document.getElementById('back-to-index-btn').addEventListener('click', () => { 
-                    window.location.href = 'index.html'; 
-                });
+                // 잘못된 접근 시 대기실로 이동
+                alert("잘못된 접근입니다. 대기실로 이동합니다.");
+                window.location.href = '대기실.html';
             }
         }
 
         function startCountdown(mode) {
             gameMode = mode;
-            startMenu.style.display = 'none';
             waitingOverlay.innerHTML = `<div id="countdown-number">3</div>`;
             waitingOverlay.style.display = 'flex';
             let count = 3;
@@ -395,107 +405,134 @@ let aiDifficulty = 'beginner';
                     clearInterval(interval);
                     playSound('game-start-sound');
                     waitingOverlay.style.display = 'none';
-                    showPlacementModal();
+
+                    // ✨ 게임 모드에 따라 시작 로직을 분리합니다.
+                    if (gameMode === 'single') {
+                        // '혼자 하기'는 카운트다운이 끝난 후 게임판과 돌을 생성합니다.
+                        setupSinglePlayerGame(selectedPlacementStyle);
+                    } else { // 'multi'
+                        // '같이 하기'는 이미 돌이 배치되어 있으므로 게임 상태만 활성화합니다.
+                        isGameLive = true;
+                        currentTurnColor = 'white';
+                        isMyTurn = (currentTurnColor === myColor);
+                        canShoot = true;
+                        updateHeaderUI();
+                    }
+                    // 두 모드 모두 턴 확인이 필요합니다.
+                    checkTurn();
                 }
             }, 1000);
         }
 
         function showPlacementModal() {
-            const placementModal = document.getElementById('placement-modal');
-            const difficultyModal = document.getElementById('difficulty-modal');
-            const placementOptions = placementModal.querySelectorAll('.style-option');
-            
-            placementModal.style.display = 'flex';
-            
-            if (gameMode === 'single') {
-                placementOptions.forEach(opt => {
-                    opt.addEventListener('click', () => {
-                        const selectedStyle = opt.dataset.style;
-                        placementModal.style.display = 'none';
-                        
-                        // 난이도 모달 표시
-                        difficultyModal.style.display = 'flex';
-                        difficultyModal.querySelectorAll('.menu-btn').forEach(btn => {
-                            btn.onclick = () => { // 기존 리스너 중복 방지를 위해 onclick 사용
-                                aiDifficulty = btn.dataset.difficulty;
-                                difficultyModal.style.display = 'none';
-                                setupSinglePlayerGame(selectedStyle);
-                            };
-                        });
-                    });
-                });
-                return;
-            }
+            const modal = document.getElementById('placement-modal');
+            modal.style.display = 'flex';
+            const waitingText = document.getElementById('placement-waiting-text');
+            waitingText.style.display = 'none'; // 대기 텍스트 초기화
 
-            if (isHost) {
-                roomRef.child('placementChoices').set(null);
-            }
-            
+            const options = modal.querySelectorAll('.style-option');
             options.forEach(opt => {
-                opt.addEventListener('click', function onStyleClick() {
-                    const selectedStyle = this.dataset.style;
-                    options.forEach(o => o.classList.remove('selected'));
-                    this.classList.add('selected');
-                    options.forEach(o => o.style.pointerEvents = 'none');
-                    waitingText.textContent = '상대방의 선택을 기다리는 중...';
-                    waitingText.style.display = 'block';
-                    roomRef.child('placementChoices').child(myPlayerId).set(selectedStyle);
+                opt.style.pointerEvents = 'auto'; // 선택 가능하도록 초기화
+                const newOpt = opt.cloneNode(true);
+                opt.parentNode.replaceChild(newOpt, opt);
+                
+                newOpt.addEventListener('click', () => {
+                    selectedPlacementStyle = newOpt.dataset.style;
+                    
+                    if (gameMode === 'single') {
+                        modal.style.display = 'none';
+                        showAIDifficultyModal();
+                    } else {
+                        // ✨ 같이하기: 모달을 닫지 않고 대기 상태로 만듭니다.
+                        options.forEach(o => o.classList.remove('selected'));
+                        newOpt.classList.add('selected');
+                        // 모든 버튼을 비활성화하고 대기 텍스트를 표시합니다.
+                        modal.querySelectorAll('.style-option').forEach(o => o.style.pointerEvents = 'none');
+                        waitingText.style.display = 'block';
+                        roomRef.child('placementChoices').child(myPlayerId).set(selectedPlacementStyle);
+                    }
                 });
             });
 
-   roomRef.child('placementChoices').on('value', function onBothChosen(snapshot) {
-    if (!snapshot.exists() || !currentRoomData || !currentRoomData.players) return;
-
-    const choices = snapshot.val();
-    const playerCount = Object.keys(currentRoomData.players).length;
-                
-                if (Object.keys(choices).length === playerCount) {
-                    roomRef.child('placementChoices').off('value', onBothChosen);
-                    const hostChoice = choices[currentRoomData.hostId];
-                    const guestId = Object.keys(currentRoomData.players).find(id => id !== currentRoomData.hostId);
-                    const guestChoice = choices[guestId];
-                    
-                    modal.style.display = 'none';
-                    setupMultiplayerGame(hostChoice, guestChoice);
+            if (gameMode === 'multi') {
+                if (isHost) {
+                    roomRef.child('placementChoices').set(null); 
                 }
+                
+                roomRef.child('placementChoices').on('value', function onBothChosen(snapshot) {
+                    if (!snapshot.exists() || !currentRoomData || !currentRoomData.players) return;
+
+                    const choices = snapshot.val();
+                    const playerCount = Object.keys(currentRoomData.players).filter(id => id !== 'ai_player').length;
+                    
+                    if (Object.keys(choices).length === playerCount) {
+                        roomRef.child('placementChoices').off('value', onBothChosen);
+                        
+                        // ✨ 양쪽 모두 선택했을 때 비로소 모달을 닫습니다.
+                        modal.style.display = 'none';
+                        
+                        const hostChoice = choices[currentRoomData.hostId];
+                        const guestId = Object.keys(currentRoomData.players).find(id => id !== currentRoomData.hostId && id !== 'ai_player');
+                        const guestChoice = choices[guestId];
+                        setupMultiplayerGame(hostChoice, guestChoice);
+                        
+                        startCountdown('multi');
+                    }
+                });
+            }
+        }
+
+        // 새로운 함수: AI 난이도 선택 모달 표시
+        function showAIDifficultyModal() {
+            const modal = document.getElementById('ai-difficulty-modal');
+            modal.style.display = 'flex';
+
+            const difficultyButtons = modal.querySelectorAll('.menu-btn');
+            difficultyButtons.forEach(btn => {
+                btn.onclick = () => {
+                    aiDifficulty = btn.dataset.difficulty;
+                    modal.style.display = 'none';
+                    // 난이도 선택이 끝나면 카운트다운을 시작합니다.
+                    startCountdown('single');
+                };
             });
         }
         
      function placeStones(whiteStyle, blackStyle) {
-    const stoneSize = boardWidth / 14;
-    stones = [];
-    gameBoard.querySelectorAll('.stone').forEach(el => el.remove());
+		const stoneSize = boardWidth / 14;
+		stones = [];
+		gameBoard.querySelectorAll('.stone').forEach(el => el.remove());
 
-    // --- 흰색 돌 배치 (5개) ---
-    if (whiteStyle === 'style1') {
-        for (let i = 0; i < 5; i++) {
-            const x = boardWidth * 0.5 + (i - 2) * stoneSize * 2.2; // 2.0에서 2.2로 간격 확대
-            createStone(x, boardHeight * 0.15, stoneSize, 'white', `white${i}`);
-        }
-    } else if (whiteStyle === 'style2') { // 그려주신 3-2 배치
-        for (let i = 0; i < 3; i++) {
-            createStone(boardWidth * 0.5 + (i - 1) * stoneSize * 3.5, boardHeight * 0.1, stoneSize, 'white', `white${i}`); // 2.2에서 3.5로 대폭 확대
-        }
-        for (let i = 0; i < 2; i++) {
-            createStone(boardWidth * 0.5 + (i - 0.5) * stoneSize * 2.0, boardHeight * 0.25, stoneSize, 'white', `white${i + 3}`); // 2.8에서 2.0으로 좁혀 안쪽으로 배치
-        }
-    }
+		// --- 흰색 돌 배치 (5개) ---
+		if (whiteStyle === 'style1') {
+			for (let i = 0; i < 5; i++) {
+				const x = boardWidth * 0.5 + (i - 2) * stoneSize * 2.2; // 2.0에서 2.2로 간격 확대
+				createStone(x, boardHeight * 0.15, stoneSize, 'white', `white${i}`);
+			}
+		} else if (whiteStyle === 'style2') { // 그려주신 3-2 배치
+			for (let i = 0; i < 3; i++) {
+				createStone(boardWidth * 0.5 + (i - 1) * stoneSize * 3.5, boardHeight * 0.1, stoneSize, 'white', `white${i}`); // 2.2에서 3.5로 대폭 확대
+			}
+			for (let i = 0; i < 2; i++) {
+				createStone(boardWidth * 0.5 + (i - 0.5) * stoneSize * 2.0, boardHeight * 0.25, stoneSize, 'white', `white${i + 3}`); // 2.8에서 2.0으로 좁혀 안쪽으로 배치
+			}
+		}
 
-    // --- 검은색 돌 배치 (5개) ---
-    if (blackStyle === 'style1') {
-        for (let i = 0; i < 5; i++) {
-            const x = boardWidth * 0.5 + (i - 2) * stoneSize * 2.2; // 2.0에서 2.2로 간격 확대
-            createStone(x, boardHeight * 0.85, stoneSize, 'black', `black${i}`);
-        }
-    } else if (blackStyle === 'style2') { // 그려주신 3-2 배치
-        for (let i = 0; i < 3; i++) {
-            createStone(boardWidth * 0.5 + (i - 1) * stoneSize * 3.5, boardHeight * 0.9, stoneSize, 'black', `black${i}`); // 2.2에서 3.5로 대폭 확대
-        }
-        for (let i = 0; i < 2; i++) {
-            createStone(boardWidth * 0.5 + (i - 0.5) * stoneSize * 2.0, boardHeight * 0.75, stoneSize, 'black', `black${i + 3}`); // 2.8에서 2.0으로 좁혀 안쪽으로 배치
-        }
-    }
-}
+		// --- 검은색 돌 배치 (5개) ---
+		if (blackStyle === 'style1') {
+			for (let i = 0; i < 5; i++) {
+				const x = boardWidth * 0.5 + (i - 2) * stoneSize * 2.2; // 2.0에서 2.2로 간격 확대
+				createStone(x, boardHeight * 0.85, stoneSize, 'black', `black${i}`);
+			}
+		} else if (blackStyle === 'style2') { // 그려주신 3-2 배치
+			for (let i = 0; i < 3; i++) {
+				createStone(boardWidth * 0.5 + (i - 1) * stoneSize * 3.5, boardHeight * 0.9, stoneSize, 'black', `black${i}`); // 2.2에서 3.5로 대폭 확대
+			}
+			for (let i = 0; i < 2; i++) {
+				createStone(boardWidth * 0.5 + (i - 0.5) * stoneSize * 2.0, boardHeight * 0.75, stoneSize, 'black', `black${i + 3}`); // 2.8에서 2.0으로 좁혀 안쪽으로 배치
+			}
+		}
+	}
 
         function setupGame() {
             isGameOver = false;
@@ -635,44 +672,44 @@ let aiDifficulty = 'beginner';
         }
         
        function gameLoop() {
-    if (isGameOver) return;
+			if (isGameOver) return;
 
-    if (gameMode === 'single' || (gameMode === 'multi' && isHost)) {
-        // 방장은 물리엔진을 직접 실행
-        updatePhysics();
-    } else if (gameMode === 'multi' && !isHost) {
-        // 게스트는 방장의 목표 위치를 향해 부드럽게 이동(보간)
-        stones.forEach(stone => {
-            if (stone.active) {
-                const smoothingFactor = 0.2; // 클수록 빠르게 따라잡음 (0.1 ~ 0.5 추천)
-                stone.x += (stone.targetX - stone.x) * smoothingFactor;
-                stone.y += (stone.targetY - stone.y) * smoothingFactor;
-            }
-        });
-    }
+			if (gameMode === 'single' || (gameMode === 'multi' && isHost)) {
+				// 방장은 물리엔진을 직접 실행
+				updatePhysics();
+			} else if (gameMode === 'multi' && !isHost) {
+				// 게스트는 방장의 목표 위치를 향해 부드럽게 이동(보간)
+				stones.forEach(stone => {
+					if (stone.active) {
+						const smoothingFactor = 0.2; // 클수록 빠르게 따라잡음 (0.1 ~ 0.5 추천)
+						stone.x += (stone.targetX - stone.x) * smoothingFactor;
+						stone.y += (stone.targetY - stone.y) * smoothingFactor;
+					}
+				});
+			}
 
-    stones.forEach(stone => {
-        if (stone.active) {
-            const x = stone.x - stone.radius;
-            const y = stone.y - stone.radius;
-            let transformValue = `translate(${x}px, ${y}px)`;
+			stones.forEach(stone => {
+				if (stone.active) {
+					const x = stone.x - stone.radius;
+					const y = stone.y - stone.radius;
+					let transformValue = `translate(${x}px, ${y}px)`;
 
-            if (selectedStone && stone.id === selectedStone.id) {
-                transformValue += ' scale(1.15)';
-            }
-            stone.element.style.transform = transformValue;
+					if (selectedStone && stone.id === selectedStone.id) {
+						transformValue += ' scale(1.15)';
+					}
+					stone.element.style.transform = transformValue;
 
-            // 탈락 판정은 방장만 하도록 수정했었음
-            if (gameMode === 'single' || isHost) {
-                if (isOutOfBoard(stone)) {
-                    removeStone(stone);
-                }
-            }
-        }
-    });
+					// 탈락 판정은 방장만 하도록 수정했었음
+					if (gameMode === 'single' || isHost) {
+						if (isOutOfBoard(stone)) {
+							removeStone(stone);
+						}
+					}
+				}
+			});
 
-    requestAnimationFrame(gameLoop);
-}
+			requestAnimationFrame(gameLoop);
+		}
 
         function isOutOfBoard(stone) {
             return stone.x < 0 || stone.x > boardWidth || 
@@ -715,109 +752,88 @@ let aiDifficulty = 'beginner';
         
        function aiMove() {
             if (isGameOver || !canShoot) return;
-
+            
             const aiStones = stones.filter(s => s.color === opponentColor && s.active);
             const targetStones = stones.filter(s => s.color === myColor && s.active);
-
+            
             if (aiStones.length === 0 || targetStones.length === 0) return;
-            canShoot = false;
 
+            canShoot = false;
+            
             setTimeout(() => {
                 if (isGameOver) return;
+                
+                let shooter, target;
+                let randomOffset, aiPower;
 
-                let bestShot = null;
+                // --- AI 난이도별 로직 분기 ---
+                if (aiDifficulty === 'hard') {
+                    // [고수 AI]: 가장자리에 가장 가까운 상대 돌을 최우선으로 노립니다.
+                    let bestTarget = null;
+                    let minDistanceToEdge = Infinity;
 
-                // 난이도별 로직 분기
-                switch (aiDifficulty) {
-                    case 'beginner':
-                        // 초보자: 무작위 돌을 골라 상대를 조준하지만, 정확도가 약간 떨어짐
-                        const randomShooter_b = aiStones[Math.floor(Math.random() * aiStones.length)];
-                        const randomTarget_b = targetStones[Math.floor(Math.random() * targetStones.length)];
+                    targetStones.forEach(t => {
+                        const distLeft = t.x;
+                        const distRight = boardWidth - t.x;
+                        const distTop = t.y;
+                        const distBottom = boardHeight - t.y;
+                        const currentMin = Math.min(distLeft, distRight, distTop, distBottom);
                         
-                        const angle_b = Math.atan2(randomTarget_b.y - randomShooter_b.y, randomTarget_b.x - randomShooter_b.x);
-                        const finalAngle_b = angle_b + (Math.random() - 0.5) * 0.4; // 약 23도 내의 오차
-                        const power_b = 6 + Math.random() * 4;
-                        
-                        bestShot = { shooter: randomShooter_b, angle: finalAngle_b, power: power_b };
-                        break;
+                        if (currentMin < minDistanceToEdge) {
+                            minDistanceToEdge = currentMin;
+                            bestTarget = t;
+                        }
+                    });
+                    target = bestTarget || targetStones[0]; // 만약 계산 실패 시 첫 번째 돌을 타겟으로
 
-                    case 'intermediate':
-                        // 중급자 (기존 숙련자 로직): 모든 경우의 수를 계산하여 가장 가장자리에 가까운 적을 공격
-                        let maxScore_i = -Infinity;
+                    // 타겟을 치기 가장 좋은 내 돌을 선택합니다 (가장 가까운 돌).
+                    let bestShooter = null;
+                    let minDistanceToTarget = Infinity;
+                    aiStones.forEach(s => {
+                        const dx = target.x - s.x;
+                        const dy = target.y - s.y;
+                        const dist = Math.sqrt(dx*dx + dy*dy);
+                        if (dist < minDistanceToTarget) {
+                            minDistanceToTarget = dist;
+                            bestShooter = s;
+                        }
+                    });
+                    shooter = bestShooter || aiStones[0];
 
-                        aiStones.forEach(shooter => {
-                            targetStones.forEach(target => {
-                                const targetEdgeDists = [target.x, boardWidth - target.x, target.y, boardHeight - target.y];
-                                const targetMinEdgeDist = Math.min(...targetEdgeDists);
-                                let score = (boardWidth - targetMinEdgeDist) * 2; // 가장자리 보너스
+                    // 정확도와 파워를 대폭 상향합니다.
+                    randomOffset = (Math.random() - 0.5) * 0.04; // 거의 완벽한 조준
+                    aiPower = 10 + Math.random() * 8;         // 파워 10 ~ 18 (사람의 강한 샷과 유사)
 
-                                const shooterEdgeDists = [shooter.x, boardWidth - shooter.x, shooter.y, boardHeight - shooter.y];
-                                score -= Math.min(...shooterEdgeDists) * 0.5;
+                } else {
+                    // [초보 & 중수 AI]: 기존처럼 랜덤으로 돌을 선택합니다.
+                    shooter = aiStones[Math.floor(Math.random() * aiStones.length)];
+                    target = targetStones[Math.floor(Math.random() * targetStones.length)];
 
-                                if (score > maxScore_i) {
-                                    maxScore_i = score;
-                                    const distToTarget = Math.sqrt((target.x - shooter.x)**2 + (target.y - shooter.y)**2);
-                                    const angle_i = Math.atan2(target.y - shooter.y, target.x - shooter.x);
-                                    const power_i = 8 + (distToTarget / boardWidth) * 8;
-                                    bestShot = { shooter, angle: angle_i, power: power_i };
-                                }
-                            });
-                        });
-                        break;
-
-                    case 'expert':
-                        // 숙련자 (개선된 로직): 공격 각도와 공격 후 내 돌의 안전까지 고려
-                        let maxScore_e = -Infinity;
-
-                        aiStones.forEach(shooter => {
-                            targetStones.forEach(target => {
-                                let shotScore = 0;
-
-                                // 1. 타겟의 취약성: 가장자리에 가까울수록 높은 점수
-                                const targetEdgeDists = [target.x, boardWidth - target.x, target.y, boardHeight - target.y];
-                                const targetMinEdgeDist = Math.min(...targetEdgeDists);
-                                shotScore += (boardWidth - targetMinEdgeDist) * 2.5;
-
-                                // 2. 공격 각도 효율성: 타겟을 가장 가까운 가장자리로 밀어내는 각도일수록 높은 점수
-                                let bestEdgePoint = {x: target.x, y: 0}; // 기본값: 위쪽 가장자리
-                                if (targetMinEdgeDist === targetEdgeDists[0]) bestEdgePoint = {x: 0, y: target.y}; // 왼쪽
-                                else if (targetMinEdgeDist === targetEdgeDists[1]) bestEdgePoint = {x: boardWidth, y: target.y}; // 오른쪽
-                                else if (targetMinEdgeDist === targetEdgeDists[3]) bestEdgePoint = {x: target.x, y: boardHeight}; // 아래쪽
-
-                                const shotVector = { x: target.x - shooter.x, y: target.y - shooter.y };
-                                const edgeVector = { x: bestEdgePoint.x - target.x, y: bestEdgePoint.y - target.y };
-                                const dotProduct = (shotVector.x * edgeVector.x + shotVector.y * edgeVector.y) / 
-                                                   (Math.hypot(shotVector.x, shotVector.y) * Math.hypot(edgeVector.x, edgeVector.y));
-                                shotScore += (dotProduct > 0.7 ? dotProduct * 150 : -500); // 각도가 좋으면 큰 보너스, 나쁘면 큰 페널티
-
-                                // 3. 공격 후 내 돌(슈터)의 안전성: 중앙에 가까이 남을수록 높은 점수
-                                const predictedShooterX = target.x + (shotVector.x * 0.2);
-                                const predictedShooterY = target.y + (shotVector.y * 0.2);
-                                const distFromCenter = Math.hypot(predictedShooterX - boardWidth / 2, predictedShooterY - boardHeight / 2);
-                                shotScore -= distFromCenter * 0.8; // 중앙에서 멀어질수록 감점
-
-                                if (shotScore > maxScore_e) {
-                                    maxScore_e = shotScore;
-                                    const distToTarget = Math.hypot(shotVector.x, shotVector.y);
-                                    const power_e = 8 + (distToTarget / boardWidth) * 10 + (targetMinEdgeDist / boardHeight) * 5;
-                                    bestShot = { shooter, angle: Math.atan2(shotVector.y, shotVector.x), power: Math.min(power_e, 20) };
-                                }
-                            });
-                        });
-                        break;
+                    if (aiDifficulty === 'easy') {
+                        // [초보]: 부정확하지만 가끔 강한 샷
+                        randomOffset = (Math.random() - 0.5) * 0.7; 
+                        aiPower = 4 + Math.random() * 5;         // 파워 4 ~ 9
+                    } else { // medium
+                        // [중수]: 좀 더 정확하고 강한 샷
+                        randomOffset = (Math.random() - 0.5) * 0.25; 
+                        aiPower = 7 + Math.random() * 5;          // 파워 7 ~ 12
+                    }
                 }
+                
+                const dx = target.x - shooter.x;
+                const dy = target.y - shooter.y;
+                const angle = Math.atan2(dy, dx);
+                
+                const finalAngle = angle + randomOffset;
+                
+                const force = {
+                    x: Math.cos(finalAngle) * aiPower,
+                    y: Math.sin(finalAngle) * aiPower
+                };
 
-                if (bestShot) {
-                    const { shooter, angle, power } = bestShot;
-                    const force = {
-                        x: Math.cos(angle) * power,
-                        y: Math.sin(angle) * power
-                    };
-                    shooter.vx += force.x / shooter.mass;
-                    shooter.vy += force.y / shooter.mass;
-                    hasShotThisTurn = true;
-                }
-
+                shooter.vx += force.x / shooter.mass;
+                shooter.vy += force.y / shooter.mass;
+                hasShotThisTurn = true;
             }, 500); // AI가 생각하는 시간
         }
 
@@ -1051,57 +1067,56 @@ let aiDifficulty = 'beginner';
             };
         }
 
-        function joinMultiplayerGame(roomId) {
-    waitingOverlay.innerHTML = `<div class="modal-content"><div class="modal-body"><p style="margin-bottom: 20px; font-size: 1.3em;">게임에 참가하는 중...</p><div class="spinner"></div></div></div>`;
-    waitingOverlay.style.display = 'flex';
+      function joinMultiplayerGame(roomId) {
+            waitingOverlay.innerHTML = `<div class="modal-content"><div class="modal-body"><p style="margin-bottom: 20px; font-size: 1.3em;">게임에 참가하는 중...</p><div class="spinner"></div></div></div>`;
+            waitingOverlay.style.display = 'flex';
 
-    const gameRoomsRef = database.ref('memoryGameRooms');
-    roomRef = gameRoomsRef.child(roomId);
+            roomRef = database.ref('rooms').child(roomId);
+            
+            roomRef.once('value', snapshot => {
+                if (!snapshot.exists()) {
+                    alert('게임 방을 찾을 수 없습니다.');
+                    window.location.href = '대기실.html';
+                    return;
+                }
 
-    // 1. 먼저 내 정보를 방에 등록하여 나의 존재를 알립니다.
-    const myPlayerData = {
-        nickname: myNickname,
-        avatar: myAvatar
-    };
-    roomRef.child('players/' + myPlayerId).set(myPlayerData).then(() => {
-        // 2. 내 정보 등록이 완료된 후, 방 전체 정보를 한 번만 가져옵니다.
-        roomRef.once('value', snapshot => {
-            if (!snapshot.exists()) {
-                alert('게임 방을 찾을 수 없습니다.');
-                window.location.href = '대기실.html';
-                return;
-            }
+                currentRoomData = snapshot.val();
+                
+                if (!currentRoomData.players || !currentRoomData.players[myPlayerId]) {
+                    alert('참가자 명단에 없습니다. 대기실로 이동합니다.');
+                    window.location.href = '대기실.html';
+                    return;
+                }
 
-            const roomData = snapshot.val();
-            currentRoomData = roomData;
+                // --- 로직 간소화 ---
+                const playerIds = Object.keys(currentRoomData.players);
+                const hasAI = playerIds.includes('ai_player');
+                
+                gameMode = hasAI ? 'single' : 'multi';
+                isHost = currentRoomData.hostId === myPlayerId;
+                myColor = isHost ? 'white' : 'black';
+                opponentColor = isHost ? 'black' : 'white';
 
-            // onDisconnect는 내 정보 등록 후에 설정해야 안전합니다.
-            roomRef.child('players/' + myPlayerId).onDisconnect().remove();
+                // 플레이어 정보 설정
+                const hostData = currentRoomData.players[currentRoomData.hostId];
+                const guestId = playerIds.find(id => id !== currentRoomData.hostId && id !== 'ai_player');
+                const guestData = guestId ? currentRoomData.players[guestId] : (hasAI ? currentRoomData.players['ai_player'] : null);
+                
+                player1Info = { nickname: hostData.nickname, avatar: hostData.avatar };
+                player2Info = guestData ? { nickname: guestData.nickname, avatar: guestData.avatar } : { nickname: '상대방', avatar: '❓' };
+                
+                // onDisconnect 설정
+                if(isHost) {
+                    roomRef.onDisconnect().remove();
+                } else {
+                    roomRef.child('players/' + myPlayerId).onDisconnect().remove();
+                }
 
-            const players = Object.keys(roomData.players);
-            isHost = (roomData.hostId === myPlayerId);
-            myColor = isHost ? 'white' : 'black';
-            opponentColor = isHost ? 'black' : 'white';
-
-            const opponentId = players.find(id => id !== myPlayerId);
-            if(opponentId) {
-                const opponentData = roomData.players[opponentId];
-                player1Info = isHost ? { nickname: myNickname, avatar: myAvatar } : { nickname: opponentData.nickname, avatar: opponentData.avatar };
-                player2Info = isHost ? { nickname: opponentData.nickname, avatar: opponentData.avatar } : { nickname: myNickname, avatar: myAvatar };
-            } else {
-                 player1Info = { nickname: myNickname, avatar: myAvatar };
-                 player2Info = { nickname: '대기중...', avatar: '❓' };
-            }
-
-            if (isHost) {
-                roomRef.update({ currentTurn: 'white', gameState: 'waiting' });
-            }
-
-            listenToMultiplayerEvents();
-            startCountdown('multi');
-        });
-    });
-}
+                listenToMultiplayerEvents();
+                waitingOverlay.style.display = 'none';
+                showPlacementModal();
+            });
+        }
 
         function listenToMultiplayerEvents() {
             roomRef.on('value', snapshot => {
@@ -1109,20 +1124,20 @@ let aiDifficulty = 'beginner';
             });
 
             roomRef.child('gameStateSync').on('value', snapshot => {
-    if (isHost || !snapshot.exists() || !stones.length) return;
-    const serverState = snapshot.val();
-    serverState.forEach(s_data => {
-        const stone = stones.find(s => s.id === s_data.id);
-        if (stone && stone.active) {
-            // 위치를 직접 바꾸는 대신, 목표 위치(target)를 갱신합니다.
-            stone.targetX = s_data.x_norm * boardWidth;
-            stone.targetY = s_data.y_norm * boardHeight;
-            // 속도는 여전히 직접 동기화합니다.
-            stone.vx = s_data.vx;
-            stone.vy = s_data.vy;
-        }
-    });
-});
+				if (isHost || !snapshot.exists() || !stones.length) return;
+				const serverState = snapshot.val();
+				serverState.forEach(s_data => {
+					const stone = stones.find(s => s.id === s_data.id);
+					if (stone && stone.active) {
+						// 위치를 직접 바꾸는 대신, 목표 위치(target)를 갱신합니다.
+						stone.targetX = s_data.x_norm * boardWidth;
+						stone.targetY = s_data.y_norm * boardHeight;
+						// 속도는 여전히 직접 동기화합니다.
+						stone.vx = s_data.vx;
+						stone.vy = s_data.vy;
+					}
+				});
+			});
             /*
             roomRef.child('stoneState').on('value', snapshot => {
                 if (!snapshot.exists() || isHost || !stones.length) return;
@@ -1181,63 +1196,69 @@ let aiDifficulty = 'beginner';
             });
 
             // players 리스너를 함수 외부에서 정의하여 명확하게 참조할 수 있도록 합니다.
-const onPlayerChange = function(snapshot) {
-            if (!snapshot.exists() || !isGameLive || isGameOver) {
-                return;
-            }
-            
-            const players = snapshot.val();
-            const playerCount = Object.keys(players).length;
+			const onPlayerChange = function(snapshot) {
+				if (!snapshot.exists()) {
+					return;
+				}
+				const playerCount = Object.keys(snapshot.val()).length;
 
-            // 게임이 시작된 후 플레이어가 2명 미만이 되면 (누군가 나갔을 때)
-            if (playerCount < 2) {
-                // 리스너를 즉시 제거하여 중복 실행을 방지합니다.
-                roomRef.child('players').off('value', onPlayerChange);
-                
-                // myColor를 기준으로 승리 처리합니다.
-                // showGameOver 함수가 isGameOver 플래그를 설정하고, 전적을 기록합니다.
-                showGameOver(myColor); 
-            }
-        };
+				if (playerCount < 2) {
+					// 이 리스너의 목적은 상대방이 나간 것을 감지하는 것이므로, isGameOver 상태를 여기서 확인하지 않습니다.
+					// isGameLive 상태에 따라 다른 처리를 합니다.
+					if (isGameLive) {
+						// Case 1: 게임이 진행 중이었을 때 -> 승리 처리
+						if (isGameOver) return; // 이미 다른 이유로 게임이 끝났으면 무시
+						isGameOver = true;
+						roomRef.child('players').off('value', onPlayerChange); // 이름으로 리스너 제거
+						alert('상대방이 나가서 승리했습니다! 확인을 누르면 대기실로 이동합니다.');
+						window.location.href = '대기실.html';
+					} else {
+						// Case 2: 게임 시작 전(준비 단계)이었을 때 -> 게임 무효 처리
+						roomRef.child('players').off('value', onPlayerChange); // 이름으로 리스너 제거
+						alert('상대방이 방을 나갔습니다. 대기실로 이동합니다.');
+						window.location.href = '대기실.html';
+					}
+				}
+			};
 
-// listenToMultiplayerEvents 함수 안에서는 이 함수를 등록만 합니다.
-roomRef.child('players').on('value', onPlayerChange);
+			// listenToMultiplayerEvents 함수 안에서는 이 함수를 등록만 합니다.
+			roomRef.child('players').on('value', onPlayerChange);
 
             // [추가] '다시하기' 요청을 감지하는 리스너
-roomRef.child('rematchRequests').on('value', snapshot => {
-    if (!snapshot.exists() || !currentRoomData || !currentRoomData.players) return;
+			roomRef.child('rematchRequests').on('value', snapshot => {
+				if (!snapshot.exists() || !currentRoomData || !currentRoomData.players) return;
 
-    const requests = snapshot.val();
-    const requestCount = Object.keys(requests).length;
-    const playerCount = Object.keys(currentRoomData.players).length;
+				const requests = snapshot.val();
+				const requestCount = Object.keys(requests).length;
+				const playerCount = Object.keys(currentRoomData.players).length;
 
-    // 모든 플레이어가 재시작을 요청했다면
-    if (requestCount === playerCount) {
-        // 방장(Host)만 게임 재시작을 처리합니다.
-        if (isHost) {
-            // 게임 상태를 초기화하고 재시작 신호를 보냅니다.
-            roomRef.update({
-                gameState: 'restarting',
-                rematchRequests: null, // 요청 기록 삭제
-                gameOver: null,        // 게임오버 상태 삭제
-                lastMove: null,
-                removedStones: null,
-                stoneState: null,
-                currentTurn: 'white',
-                placementChoices: null // 돌 배치 선택 기록 삭제
-            });
-        }
-    }
-});
+				// 모든 플레이어가 재시작을 요청했다면
+				if (requestCount === playerCount) {
+					// 방장(Host)만 게임 재시작을 처리합니다.
+					if (isHost) {
+						// 게임 상태를 초기화하고 재시작 신호를 보냅니다.
+						roomRef.update({
+							gameState: 'restarting',
+							rematchRequests: null, // 요청 기록 삭제
+							gameOver: null,        // 게임오버 상태 삭제
+							lastMove: null,
+							removedStones: null,
+							stoneState: null,
+							currentTurn: 'white',
+							placementChoices: null // 돌 배치 선택 기록 삭제
+						});
+					}
+				}
+			});
 
-      roomRef.child('gameState').on('value', snapshot => {
-    if (snapshot.val() === 'restarting') {
-        // 재시작 신호를 받으면 0.5초 후 새로고침하여 게임을 다시 시작합니다.
-        setTimeout(() => {
-            location.reload();
-        }, 500);
-    }
-});
+		  roomRef.child('gameState').on('value', snapshot => {
+			if (snapshot.val() === 'restarting') {
+				// 재시작 신호를 받으면 0.5초 후 새로고침하여 게임을 다시 시작합니다.
+				setTimeout(() => {
+					location.reload();
+				}, 500);
+			}
+		});
 
 
         }
@@ -1273,7 +1294,6 @@ roomRef.child('rematchRequests').on('value', snapshot => {
             `;
         }
 
-      // 기존 showGameOver 함수 전체를 삭제하고 아래 코드로 교체해주세요.
         function showGameOver(winner) {
             if (isGameOver) return;
             isGameOver = true;
@@ -1282,24 +1302,13 @@ roomRef.child('rematchRequests').on('value', snapshot => {
             const resultText = iWon ? '🎉 승리!' : '😢 패배...';
             playSound(iWon ? 'win-sound' : 'loss-sound');
 
-            // --- ★★★ 핵심 수정: 방장이 모든 플레이어의 전적을 책임지고 업데이트 ★★★ ---
             if (gameMode === 'multi' && roomRef && isHost) {
-                const playerIds = Object.keys(currentRoomData.players);
-                // 모든 플레이어에 대해 전적 업데이트 함수를 호출합니다.
-                playerIds.forEach(pid => {
-                    const player = currentRoomData.players[pid];
-                    const didPlayerWin = (player.color === winner);
-                    updatePlayerStats(pid, didPlayerWin); // 각 플레이어 ID와 승리 여부 전달
-                });
-                
-                // 모든 전적 업데이트 후 게임 종료 상태를 기록합니다.
                 roomRef.update({ gameOver: { winner: winner, timestamp: Date.now() } });
-            } 
-            // 싱글 플레이 모드에서는 자신의 전적만 업데이트합니다.
-            else if (gameMode === 'single') {
-                 updatePlayerStats(myPlayerId, iWon);
             }
-            // --- ★★★ 수정 종료 ★★★ ---
+
+            if (gameMode === 'single' || (gameMode === 'multi' && !myPlayerId.startsWith('guest_'))) {
+                updatePlayerStats(iWon);
+            }
 
             gameOverOverlay.innerHTML = `
                 <div class="modal-content">
@@ -1307,58 +1316,79 @@ roomRef.child('rematchRequests').on('value', snapshot => {
                     <div class="modal-buttons">
                         <button id="rematch-btn" class="menu-btn primary">다시 하기</button>
                         <button id="to-lobby-btn" class="menu-btn secondary">대기실로</button>
-                        <button id="to-main-btn" class="menu-btn secondary">메인으로</button>
                     </div>
                 </div>
             `;
             gameOverOverlay.style.display = 'flex';
 
             const rematchBtn = document.getElementById('rematch-btn');
-            rematchBtn.addEventListener('click', () => {
-                if (gameMode === 'multi' && roomRef) {
-                    rematchBtn.disabled = true;
-                    rematchBtn.textContent = '상대방 기다리는 중...';
-                    roomRef.child('rematchRequests').child(myPlayerId).set(true);
-                } else {
-                    location.reload();
-                }
+			rematchBtn.addEventListener('click', () => {
+				// 멀티플레이 모드일 때만 재시작 요청 로직을 사용합니다.
+				if (gameMode === 'multi' && roomRef) {
+					rematchBtn.disabled = true;
+					rematchBtn.textContent = '상대방 기다리는 중...';
+					// Firebase에 재시작을 요청했음을 기록합니다.
+					roomRef.child('rematchRequests').child(myPlayerId).set(true);
+				} else {
+					// 싱글 플레이 모드에서는 즉시 재시작합니다.
+					location.reload();
+				}
+			});
+            document.getElementById('to-lobby-btn').addEventListener('click', () => {
+                window.location.href = '대기실.html';
             });
-            document.getElementById('to-lobby-btn').addEventListener('click', () => { window.location.href = '대기실.html'; });
-            document.getElementById('to-main-btn').addEventListener('click', () => { sessionStorage.setItem('returnFromGame', 'true'); window.location.href = 'index.html'; });
+            document.getElementById('to-main-btn').addEventListener('click', () => {
+                sessionStorage.setItem('returnFromGame', 'true');
+                window.location.href = 'index.html';
+            });
         }
 
-        async function updatePlayerStats(playerId, isWin) {
-            // 게스트 유저는 전적을 기록하지 않습니다.
-            if (!playerId || playerId.startsWith('guest_')) return;
+        function updatePlayerStats(won) {
+            if (!myPlayerId || myPlayerId.startsWith('guest_')) return;
 
-            const playerStatRef = playersStatsRef.child(playerId);
-            const gameId = 'alkkagi';
-            const expToAdd = isWin ? 50 : 10;
+            const userRef = playersStatsRef.child(myPlayerId);
 
-            try {
-                // '캔디솝'과 동일한 안전한 트랜잭션 방식으로 업데이트합니다.
-                await playerStatRef.transaction(currentData => {
-                    if (currentData) {
-                        if (!currentData.stats) currentData.stats = {};
-                        if (!currentData.stats[gameId]) {
-                            currentData.stats[gameId] = { wins: 0, losses: 0 };
-                        }
+            userRef.transaction(userData => {
+                if (userData) {
+                    // --- ✨ 안정성 강화: 필수 데이터가 없으면 기본값으로 채워줍니다 ---
+                    if (!userData.profile) { userData.profile = {}; }
+                    const profile = userData.profile;
+                    profile.level = profile.level || 1;
+                    profile.createdAt = profile.createdAt || firebase.database.ServerValue.TIMESTAMP;
+                    profile.exp = profile.exp || 0;
+                    profile.points = profile.points || 0;
+                    
+                    let expGained = 0;
+                    let pointsGained = 0;
 
-                        if (isWin) {
-                            currentData.stats[gameId].wins = (currentData.stats[gameId].wins || 0) + 1;
-                        } else {
-                            currentData.stats[gameId].losses = (currentData.stats[gameId].losses || 0) + 1;
-                        }
-                        
-                        currentData.exp = (currentData.exp || 0) + expToAdd;
+                    if (gameMode === 'single') {
+                        expGained = won ? 60 : 10;
+                        pointsGained = won ? 100 : 20;
+                    } else { // 'multi'
+                        expGained = won ? 120 : 30;
+                        pointsGained = won ? 200 : 100;
                     }
-                    return currentData;
-                });
-            } catch (error) {
-                console.error(`알까기 전적 업데이트 실패 (Player ID: ${playerId}):`, error);
-            }
-        }
 
+                    profile.exp += expGained;
+                    profile.points += pointsGained;
+
+                    // --- gameStats 경로 처리 ---
+                    if (!userData.gameStats) { userData.gameStats = {}; }
+                    if (!userData.gameStats.alkkagi) {
+                        userData.gameStats.alkkagi = { wins: 0, losses: 0, plays: 0 };
+                    }
+                    
+                    const alkkagiStats = userData.gameStats.alkkagi;
+                    if (won) {
+                        alkkagiStats.wins = (alkkagiStats.wins || 0) + 1;
+                    } else {
+                        alkkagiStats.losses = (alkkagiStats.losses || 0) + 1;
+                    }
+                    alkkagiStats.plays = (alkkagiStats.plays || 0) + 1;
+                }
+                return userData;
+            });
+        }
         initialize();
     });
     </script>
@@ -1368,6 +1398,19 @@ roomRef.child('rematchRequests').on('value', snapshot => {
 <audio id="success-sound" src="https://blog.kakaocdn.net/dna/crLSSK/dJMb8Y4jJZ6/AAAAAAAAAAAAAAAAAAAAAHSoWfFNw21Plu9ufn_jnmod1cp9rUDWubdEaHmSdsC0/%EC%95%8C%EA%B9%8C%EA%B8%B0%EC%84%B1%EA%B3%B5.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=mkf47bHt8yFioqWm6JBr8yiLKr0%3D&attach=1&knm=tfile.mp3" preload="auto"></audio>
 <audio id="win-sound" src="https://blog.kakaocdn.net/dna/kC4is/dJMb8WZJowA/AAAAAAAAAAAAAAAAAAAAAIQeZhVDJf0ZGAWyyMr_hsc6TMe3BFUVXd0FNTl5VDcY/%EA%B2%8C%EC%9E%84%EC%8A%B9%EB%A6%AC.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=qZKwGj5NQeAFNrOvCPAMXc6aX9I%3D&attach=1&knm=tfile.mp3" preload="auto"></audio>
 <audio id="loss-sound" src="https://blog.kakaocdn.net/dna/Zqr4u/dJMb9V0NWlD/AAAAAAAAAAAAAAAAAAAAANQFEr99iVFS25T5ZW3Q2dixeZXsbUzh7OWB40uYQMu9/%EC%95%8C%EA%B9%8C%EA%B8%B0%ED%8C%A8%EB%B0%B0.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=2xNnbSadPzs2ZZi1BssfyCye8jI%3D&attach=1&knm=tfile.mp3" preload="auto"></audio>
+
+<div id="ai-difficulty-modal" class="overlay" style="display: none;">
+    <div class="modal-content" style="background: #4a5a6a; max-width: 380px;">
+        <div style="padding: 25px;">
+            <h2 style="font-size: 1.8em; margin-bottom: 25px;">AI 난이도선택</h2>
+            <div class="modal-buttons">
+                <button class="menu-btn primary" data-difficulty="easy" style="background-color: #4CAF50;">초보</button>
+                <button class="menu-btn primary" data-difficulty="medium" style="background-color: #FFC107; color: #333;">중수</button>
+                <button class="menu-btn primary" data-difficulty="hard" style="background-color: #F44336;">고수</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <div id="placement-modal" class="overlay" style="display: none;">
     <div class="modal-content" style="background: #5a4a42; max-width: 420px;">
@@ -1382,7 +1425,7 @@ roomRef.child('rematchRequests').on('value', snapshot => {
             <div class="preview-stone white" style="top: 20%; left: 70%;"></div>
             <div class="preview-stone white" style="top: 20%; left: 90%;"></div>
         </div>
-        <h4>기본배치</h4>
+        <h4>기본 배치</h4>
     </div>
 
     <div class="style-option" data-style="style2">
@@ -1393,23 +1436,10 @@ roomRef.child('rematchRequests').on('value', snapshot => {
             <div class="preview-stone white" style="top: 35%; left: 35%;"></div>
             <div class="preview-stone white" style="top: 35%; left: 65%;"></div>
         </div>
-        <h4>수비형배치</h4>
+        <h4>수비형 배치</h4>
     </div>
 </div>
             <p id="placement-waiting-text" style="margin-top: 20px; font-size: 1.em; color: var(--accent-color); display: none;">상대방이 배치 스타일을 선택 중입니다...</p>
-        </div>
-    </div>
-</div>
-
-<div id="difficulty-modal" class="overlay" style="display: none;">
-    <div class="modal-content" style="background: #5a4a42; max-width: 420px;">
-        <div style="padding: 25px;">
-            <h2 style="font-size: 1.8em; margin-bottom: 25px;">AI 난이도 선택</h2>
-            <div id="difficulty-options-container" class="modal-buttons">
-                <button class="menu-btn secondary" data-difficulty="beginner">😊 초보자</button>
-                <button class="menu-btn primary" data-difficulty="intermediate">😎 중급자</button>
-                <button class="menu-btn secondary" data-difficulty="expert" style="background-color: #d32f2f; color: white;">🔥 숙련자</button>
-            </div>
         </div>
     </div>
 </div>

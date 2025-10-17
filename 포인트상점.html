@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>포인트 상점</title>
+    <link href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff" as="font" type="font/woff" crossorigin>
+    <style>
+        :root {
+            --bg-color: #F3F7FD; --primary-color: #4A8DFF; --accent-color: #FFC84A;
+            --text-color-dark: #333D4B; --text-color-light: #ffffff;
+            --panel-bg: #ffffff;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%; height: 100%; overflow: hidden; font-family: 'GmarketSans', sans-serif;
+            background-color: var(--bg-color); display: flex; flex-direction: column;
+        }
+        .header {
+            background-color: var(--primary-color); color: var(--text-color-light); padding: 15px; text-align: center; position: relative;
+        }
+        .header h1 { font-size: 1.5em; }
+        .back-btn { position: absolute; left: 15px; top: 50%; transform: translateY(-50%); font-size: 1.5em; color: white; text-decoration: none; }
+        .my-points-display { position: absolute; right: 15px; top: 50%; transform: translateY(-50%); font-weight: 700; background-color: rgba(255,255,255,0.2); padding: 5px 10px; border-radius: 15px; }
+        .shop-container { flex-grow: 1; overflow-y: auto; padding: 20px; }
+        .item-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 20px; }
+        .avatar-item {
+            background-color: var(--panel-bg); border-radius: 12px; padding: 15px; text-align: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.08); border: 2px solid transparent; cursor: pointer;
+        }
+        .avatar-item.selected { border-color: var(--accent-color); }
+        .avatar-item.owned { background-color: #e8f5e9; }
+        .avatar-preview { font-size: 3.5em; margin-bottom: 10px; }
+        .avatar-preview img { width: 64px; height: 64px; object-fit: contain; }
+        .avatar-price { font-weight: 700; color: var(--primary-color); }
+        .avatar-item.owned .avatar-price { color: #28a745; }
+        .action-footer { padding: 15px; background-color: var(--panel-bg); box-shadow: 0 -2px 10px rgba(0,0,0,0.1); }
+        .menu-btn { width: 100%; padding: 15px; font-size: 1.2em; font-weight: 700; border-radius: 12px; border: none; cursor: pointer; background-color: var(--primary-color); color: var(--text-color-light); }
+        .menu-btn:disabled { background-color: #ccc; cursor: not-allowed; }
+        .spinner { margin: 20px auto; border: 4px solid rgba(0, 0, 0, 0.1); border-radius: 50%; border-top: 4px solid var(--primary-color); width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <a href="대기실.html" class="back-btn">‹</a>
+        <h1>아바타 상점</h1>
+        <div id="my-points-display">💰 0 P</div>
+    </div>
+    <div class="shop-container">
+        <div id="item-grid" class="item-grid"><div class="spinner"></div></div>
+    </div>
+    <div class="action-footer">
+        <button id="purchase-btn" class="menu-btn" disabled>아이템을 선택하세요</button>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const firebaseConfig = {
+            apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
+            authDomain: "goodluck-7c14b.firebaseapp.com",
+            databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com",
+            projectId: "goodluck-7c14b",
+            storageBucket: "goodluck-7c14b.appspot.com",
+            messagingSenderId: "858281658455",
+            appId: "1:858281658455:web:9131280a459be983933b12"
+        };
+
+                document.addEventListener('contextmenu', event => event.preventDefault());
+        document.addEventListener('keydown', event => {
+            if (event.key === 'F12' ||
+                (event.ctrlKey && event.shiftKey && ['I', 'J', 'C'].includes(event.key.toUpperCase())) ||
+                (event.ctrlKey && event.key.toUpperCase() === 'U')) {
+                event.preventDefault();
+            }
+        });
+
+        setInterval(() => {
+            try {
+                debugger;
+            } catch (e) {}
+        }, 1000);
+        
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+        const auth = firebase.auth();
+        const usersRef = db.ref('users');
+
+        const itemGrid = document.getElementById('item-grid');
+        const purchaseBtn = document.getElementById('purchase-btn');
+        const myPointsDisplay = document.getElementById('my-points-display');
+        
+        let currentUser, currentUserData;
+        let selectedItem = null;
+
+        const avatarShopItems = [
+            { id: 'avatar_1', emoji: '🧑‍🚀', price: 100 }, { id: 'avatar_2', emoji: '🦸', price: 100 },
+            { id: 'avatar_3', emoji: '👨‍🎤', price: 100 }, { id: 'avatar_4', emoji: '🧑‍💻', price: 100 },
+            { id: 'avatar_5', emoji: '👩‍🎨', price: 200 }, { id: 'avatar_6', emoji: '🧑‍🚒', price: 200 },
+            { id: 'avatar_7', emoji: '👮', price: 200 }, { id: 'avatar_8', emoji: '🕵️', price: 200 },
+            { id: 'avatar_9', emoji: '🤴', price: 500 }, { id: 'avatar_10', emoji: '🧛', price: 500 },
+            { id: 'avatar_11', emoji: '🧟', price: 500 }, { id: 'avatar_12', emoji: '🧞', price: 500 },
+            { id: 'avatar_13', emoji: '🤡', price: 1000 }, { id: 'avatar_14', emoji: '👽', price: 1000 },
+            { id: 'avatar_15', emoji: '🤖', price: 1000 }, { id: 'avatar_16', emoji: '🦁', price: 1000 },
+        ];
+
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                currentUser = user;
+                usersRef.child(currentUser.uid).on('value', snapshot => {
+                    if (snapshot.exists()) {
+                        currentUserData = snapshot.val();
+                        myPointsDisplay.textContent = `💰 ${currentUserData.profile.points || 0} P`;
+                        renderShopItems();
+                    }
+                });
+            } else {
+                window.location.href = 'index.html';
+            }
+        });
+
+        function renderShopItems() {
+            itemGrid.innerHTML = '';
+            const ownedAvatars = currentUserData.profile.ownedAvatars || {};
+            const currentAvatar = currentUserData.profile.avatar;
+            
+            avatarShopItems.forEach(item => {
+                const itemEl = document.createElement('div');
+                itemEl.className = 'avatar-item';
+                const isOwned = !!ownedAvatars[item.id];
+                 if (isOwned) itemEl.classList.add('owned');
+                
+                const isEmoji = !item.emoji.startsWith('http');
+                const avatarContent = isEmoji ? item.emoji : `<img src="${item.emoji}" alt="avatar">`;
+
+                if ((isEmoji && currentAvatar === item.emoji) || (!isEmoji && currentAvatar === item.emoji)) {
+                    itemEl.classList.add('selected');
+                }
+                
+                itemEl.innerHTML = `
+                    <div class="avatar-preview">${avatarContent}</div>
+                    <div class="avatar-price">${isOwned ? '보유중' : `${item.price} P`}</div>
+                `;
+                
+                itemEl.addEventListener('click', () => {
+                    document.querySelectorAll('.avatar-item.selected').forEach(el => el.classList.remove('selected'));
+                    itemEl.classList.add('selected');
+                    selectedItem = item;
+                    updatePurchaseButton();
+                });
+                itemGrid.appendChild(itemEl);
+            });
+        }
+        
+        function updatePurchaseButton() {
+            if (!selectedItem) { purchaseBtn.disabled = true; purchaseBtn.textContent = '아이템을 선택하세요'; return; }
+            
+            const isOwned = currentUserData.profile.ownedAvatars && currentUserData.profile.ownedAvatars[selectedItem.id];
+            
+            if(isOwned) {
+                purchaseBtn.disabled = currentUserData.profile.avatar === selectedItem.emoji;
+                purchaseBtn.textContent = purchaseBtn.disabled ? '현재 아바타' : '이 아바타로 변경';
+            } else {
+                purchaseBtn.disabled = (currentUserData.profile.points || 0) < selectedItem.price;
+                purchaseBtn.textContent = purchaseBtn.disabled ? '포인트 부족' : `${selectedItem.price} P 에 구매`;
+            }
+        }
+
+        purchaseBtn.addEventListener('click', () => {
+            if (!selectedItem || purchaseBtn.disabled) return;
+
+            const isOwned = currentUserData.profile.ownedAvatars && currentUserData.profile.ownedAvatars[selectedItem.id];
+
+            if (isOwned) {
+                usersRef.child(currentUser.uid).child('profile/avatar').set(selectedItem.emoji)
+                    .then(() => alert('아바타가 변경되었습니다.'));
+            } else {
+                const newPoints = (currentUserData.profile.points || 0) - selectedItem.price;
+                const updates = {};
+                updates[`users/${currentUser.uid}/profile/points`] = newPoints;
+                updates[`users/${currentUser.uid}/profile/avatar`] = selectedItem.emoji;
+                updates[`users/${currentUser.uid}/profile/ownedAvatars/${selectedItem.id}`] = true;
+
+                db.ref().update(updates)
+                  .then(() => alert('아바타를 구매하고 적용했습니다!'))
+                  .catch(error => alert('구매 중 오류가 발생했습니다: ' + error.message));
+            }
+        });
+    });
+    </script>
+</body>
+</html>
+

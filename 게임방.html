@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>게임 준비</title>
+    <link href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff" as="font" type="font/woff" crossorigin>
+    <style>
+        :root {
+            --bg-color: #F3F7FD; --primary-color: #4A8DFF; --accent-color: #FFC84A;
+            --text-color-dark: #333D4B; --text-color-light: #ffffff;
+            --danger-color: #F76363; --success-color: #30D394;
+            --panel-bg: #ffffff; --panel-border: #E5E8EB;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%; height: 100%; overflow: hidden; font-family: 'GmarketSans', sans-serif;
+            background-color: var(--bg-color); color: var(--text-color-dark);
+            -webkit-user-select: none; user-select: none; touch-action: manipulation;
+        }
+        .menu-btn {
+            width: 100%; padding: 15px; font-size: 1.2em; font-weight: 700; letter-spacing: 1px;
+            font-family: 'GmarketSans', sans-serif; border-radius: 12px; border: none; cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: all 0.15s ease-out;
+        }
+        .menu-btn:active { transform: scale(0.97); }
+        .menu-btn.primary { background-color: var(--primary-color); color: var(--text-color-light); }
+        .menu-btn.secondary { background-color: #E9EEF2; color: var(--text-color-dark); }
+        .menu-btn:disabled { background-color: #ccc !important; color: #888 !important; cursor: not-allowed; }
+
+        .game-lobby-container { display: flex; flex-direction: column; width: 100%; height: 100%; max-width: 500px; margin: 0 auto; background-color: var(--panel-bg); }
+        .game-lobby-header { padding: 15px; text-align: center; border-bottom: 1px solid var(--panel-border); background-color: var(--primary-color); color: white; flex-shrink: 0; }
+        .game-lobby-header h1 { font-size: 1.6em; margin: 0; }
+        .game-lobby-header p { font-size: 0.9em; opacity: 0.8; margin: 5px 0 0; }
+        
+        .game-lobby-main { flex-grow: 1; display: flex; flex-direction: column; min-height: 0; }
+        #player-list-wrapper { padding: 15px; border-bottom: 1px solid var(--panel-border); background-color: #f8f9fa; flex-shrink: 0; }
+        #player-list-horizontal { display: flex; overflow-x: auto; gap: 15px; padding-bottom: 10px; }
+        #player-list-horizontal::-webkit-scrollbar { height: 5px; }
+        #player-list-horizontal::-webkit-scrollbar-thumb { background: #ccc; border-radius: 5px; }
+        .player-slot-compact { flex-shrink: 0; width: 80px; text-align: center; }
+        .player-slot-compact .avatar { width: 60px; height: 60px; margin: 0 auto 8px; background-color: #e9ecef; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 2em; position: relative; border: 3px solid transparent; }
+        .player-slot-compact .avatar img { width: 100%; height: 100%; object-fit: contain; border-radius: 50%; }
+.player-slot-compact.is-host .avatar { border-color: var(--accent-color); }
+
+        /* ✨ 방장 닉네임에 빛나는 효과를 주는 새 규칙 */
+        .player-slot-compact.is-host .nickname {
+            color: var(--accent-color);
+            text-shadow: 0 0 8px rgba(255, 200, 74, 0.7);
+        }
+        
+        .player-slot-compact .nickname { 
+            font-size: 0.9em; 
+            font-weight: 700; 
+            white-space: nowrap; 
+            overflow: hidden; 
+            text-overflow: ellipsis;
+        }
+        #chat-container { flex-grow: 1; display: flex; flex-direction: column; padding: 10px; overflow-y: auto; }
+        .chat-message { display: flex; margin-bottom: 12px; max-width: 85%; align-self: flex-start; }
+        .chat-message.my-message { align-self: flex-end; }
+        .chat-message .sender-avatar { width: 36px; height: 36px; border-radius: 50%; font-size: 1.6em; display: flex; justify-content: center; align-items: center; flex-shrink: 0; margin-right: 10px; background-color: #e9ecef; }
+        .chat-message .sender-avatar img { width: 100%; height: 100%; object-fit: contain; border-radius: 50%; }
+        .chat-message.my-message .sender-avatar { display: none; }
+        .chat-message .msg-body { display: flex; flex-direction: column; }
+        .chat-message .sender { font-weight: 700; font-size: 0.9em; color: #555; margin-bottom: 4px; }
+        .chat-message.my-message .sender { display: none; }
+        .chat-message .content { padding: 10px 14px; border-radius: 18px; background-color: #e9ecef; display: inline-block; word-break: break-word; text-align: left; }
+        .chat-message.my-message .content { background-color: var(--primary-color); color: white; border-top-right-radius: 4px; }
+        .chat-message:not(.my-message) .content { border-top-left-radius: 4px; }
+        .system-message { text-align: center; font-size: 0.85em; font-weight: 700; color: #8a6d3b; margin: 10px 0; background-color: #fcf8e3; padding: 5px; border-radius: 8px; }
+
+        .game-lobby-footer { padding: 15px; border-top: 1px solid var(--panel-border); display: flex; flex-direction: column; gap: 10px; flex-shrink: 0; }
+        #chat-controls { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; position: relative;}
+        #chat-input { flex-grow: 1; border: 1px solid #ccc; background-color: #fff; border-radius: 20px; padding: 10px 15px; font-size: 1em; font-family: 'GmarketSans', sans-serif; }
+        #send-chat-btn { padding: 10px; font-size: 1.2em; border-radius: 50%; border: none; background-color: var(--primary-color); color: white; cursor: pointer; width: 44px; height: 44px; display:flex; justify-content:center; align-items:center; flex-shrink: 0; }
+        #emoji-toggle-btn { font-size: 1.6em; background: none; border: none; cursor: pointer; padding: 5px; color: #555; }
+        #emoji-popover {
+            display: none; position: absolute; bottom: calc(100% + 5px); left: 5px;
+            background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15); padding: 10px; grid-template-columns: repeat(4, 1fr);
+            gap: 10px; z-index: 10;
+        }
+        #emoji-popover.active { display: grid; }
+        #emoji-popover button { background: none; border: none; font-size: 1.8em; cursor: pointer; padding: 5px; }
+        
+        .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; background-color: rgba(0,0,0,0.6); z-index: 1000; }
+        .spinner { border: 5px solid #f3f3f3; border-top: 5px solid var(--primary-color); border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <audio id="enter-sound" src="https://blog.kakaocdn.net/dna/dEAY2/dJMb88H2R2G/AAAAAAAAAAAAAAAAAAAAAPg0_H0XgRz8g-U-2Qk-5K2uWlT2sFpA-Vz_86X37x-o/%EC%9E%85%EC%9E%A5%EC%82%AC%EC%9A%B4%EB%93%9C.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=8yD70E4Y6rV3d9W5D%252B19eYd%252BYcM%253D&attach=1&knm=tfile.mp3" preload="auto"></audio>
+    <audio id="leave-sound" src="https://blog.kakaocdn.net/dna/brwD6P/dJMb856J6l3/AAAAAAAAAAAAAAAAAAAAAI1QcI8lW7rA0zH8m8M7p7y7dE0g0-z04sXUqN_S7-kO/%ED%87%B4%EC%9E%A5%EC%82%AC%EC%9A%B4%EB%93%9C.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=8yA7x4n75s5G6j%252B11uA%252BF5hXj8A%253D&attach=1&knm=tfile.mp3" preload="auto"></audio>
+
+    <div class="game-lobby-container">
+        <div class="game-lobby-header">
+            <h1 id="room-name-header"></h1>
+            <p id="game-type-header"></p>
+        </div>
+        <div class="game-lobby-main">
+            <div id="player-list-wrapper">
+                <div id="player-list-horizontal"></div>
+            </div>
+            <div id="chat-container"></div>
+        </div>
+        <div class="game-lobby-footer">
+            <div id="chat-controls">
+                <button id="emoji-toggle-btn">😀</button>
+                <div id="emoji-popover">
+                    <button>👍</button><button>😂</button><button>😮</button><button>👋</button>
+                    <button>😏</button><button>👌</button><button>😭</button><button>🤗</button>
+                </div>
+                <input type="text" id="chat-input" placeholder="메시지를 입력하세요..." maxlength="50">
+                <button id="send-chat-btn">➤</button>
+            </div>
+            <button id="start-game-btn" class="menu-btn primary" disabled>게임 시작</button>
+            <button id="leave-room-btn" class="menu-btn secondary">대기실로 나가기</button>
+        </div>
+    </div>
+    
+    <div id="loading-overlay" class="overlay">
+        <div class="spinner"></div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script>
+
+function escapeHTML(str) {
+        if (typeof str !== 'string') return '';
+        const map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        };
+        return str.replace(/[&<>"']/g, m => map[m]);
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const firebaseConfig = {
+            apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
+            authDomain: "goodluck-7c14b.firebaseapp.com",
+            databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com",
+            projectId: "goodluck-7c14b",
+            storageBucket: "goodluck-7c14b.appspot.com",
+            messagingSenderId: "858281658455",
+            appId: "1:858281658455:web:9131280a459be983933b12"
+        };
+
+                document.addEventListener('contextmenu', event => event.preventDefault());
+        document.addEventListener('keydown', event => {
+            if (event.key === 'F12' ||
+                (event.ctrlKey && event.shiftKey && ['I', 'J', 'C'].includes(event.key.toUpperCase())) ||
+                (event.ctrlKey && event.key.toUpperCase() === 'U')) {
+                event.preventDefault();
+            }
+        });
+
+        setInterval(() => {
+            try {
+                debugger;
+            } catch (e) {}
+        }, 1000);
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+        const auth = firebase.auth();
+        const roomsRef = db.ref('rooms');
+        const usersRef = db.ref('users');
+
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const chatContainer = document.getElementById('chat-container');
+        const chatInput = document.getElementById('chat-input');
+        const sendChatBtn = document.getElementById('send-chat-btn');
+        const startGameBtn = document.getElementById('start-game-btn');
+        const leaveRoomBtn = document.getElementById('leave-room-btn');
+        const emojiToggleBtn = document.getElementById('emoji-toggle-btn');
+        const emojiPopover = document.getElementById('emoji-popover');
+
+        let currentUser, myNickname, myAvatar, roomRef, currentRoomData, isHost;
+        let previousPlayerNicks = {};
+
+        const availableGames = [
+            { id: 'alkkagi', name: '알까기', icon: '⚪', file: '알까기.html', maxPlayers: 2 },
+            { id: 'memoryGame', name: '메모리', icon: '🧠', file: '메모리게임.html', maxPlayers: 4 },
+            { id: 'reversi', name: '리버시', icon: '⚫', file: '리버시.html', maxPlayers: 2 },
+            { id: 'indianpoker', name: '인디언포커', icon: '🃏', file: '인디언포커.html', maxPlayers: 2 },
+            { id: 'candysoap', name: '캔디솝', icon: '🍬', file: '캔디솝.html', isSolo: true },
+        ];
+        
+        const playSound = (id) => {
+            const sound = document.getElementById(id);
+            if(sound) { sound.currentTime = 0; sound.play().catch(e => {}); }
+        };
+
+        const vibrate = () => { if ('vibrate' in navigator) navigator.vibrate(500); };
+
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                currentUser = user;
+                myNickname = localStorage.getItem('userNickname');
+                myAvatar = localStorage.getItem('userAvatar');
+                if (!myNickname) { auth.signOut(); return; }
+                initializeRoom();
+            } else {
+                window.location.href = 'index.html';
+            }
+        });
+
+        function initializeRoom() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const roomId = urlParams.get('roomId');
+            if (!roomId) {
+                alert("잘못된 접근입니다.");
+                window.location.href = '대기실.html';
+                return;
+            }
+            roomRef = roomsRef.child(roomId);
+
+            roomRef.once('value', snapshot => {
+                if (!snapshot.exists()) {
+                    alert("방을 찾을 수 없습니다.");
+                    window.location.href = '대기실.html';
+                    return;
+                }
+
+                const roomData = snapshot.val();
+                const game = availableGames.find(g => g.id === roomData.gameType);
+                const playerCount = roomData.players ? Object.keys(roomData.players).length : 0;
+                const isPlayerAlreadyIn = roomData.players && roomData.players[currentUser.uid];
+
+                if (!isPlayerAlreadyIn && game && playerCount >= game.maxPlayers) {
+                    alert("방이 가득 찼습니다.");
+                    window.location.href = '대기실.html';
+                    return;
+                }
+                
+                const myPlayerData = {
+                    nickname: myNickname,
+                    avatar: myAvatar,
+                    isHost: roomData.hostId === currentUser.uid
+                };
+
+                roomRef.child('players/' + currentUser.uid).set(myPlayerData).then(() => {
+                    listenToRoomChanges();
+                }).catch(error => {
+                    console.error("Error joining room:", error);
+                    alert("방 입장에 실패했습니다.");
+                    window.location.href = '대기실.html';
+                });
+            });
+        }
+
+        function listenToRoomChanges() {
+            roomRef.on('value', snapshot => {
+                if (!snapshot.exists()) { 
+                    alert("방이 사라졌습니다."); 
+                    cleanupAndExit(); 
+                    return; 
+                }
+                const oldRoomData = currentRoomData;
+                currentRoomData = snapshot.val();
+                
+                if (currentRoomData.status === 'playing') {
+                    const game = availableGames.find(g => g.id === currentRoomData.gameType);
+                    if (game) {
+                        // 중요: 게임 시작을 위해 정상적으로 나가는 것이므로,
+                        // 페이지 이탈 시 방이 삭제되는 onDisconnect 이벤트를 취소합니다.
+                        if (isHost) {
+                            roomRef.onDisconnect().cancel();
+                        } else {
+                            roomRef.child('players/' + currentUser.uid).onDisconnect().cancel();
+                        }
+
+                        if(roomRef) roomRef.off(); 
+                        window.location.href = `${game.file}?roomId=${snapshot.key}`; 
+                    }
+                    return;
+                }
+
+                if (!currentRoomData.players || !currentRoomData.players[currentUser.uid]) {
+                    alert("방에서 퇴장되었습니다.");
+                    cleanupAndExit();
+                    return;
+                }
+
+                isHost = currentRoomData.hostId === currentUser.uid;
+                if (isHost) {
+                    roomRef.onDisconnect().remove();
+                } else {
+                    roomRef.child('players/' + currentUser.uid).onDisconnect().remove();
+                }
+                
+                updateUI();
+                handlePlayerChanges(oldRoomData ? oldRoomData.players : {});
+                loadingOverlay.style.display = 'none';
+            });
+
+            roomRef.child('chat').on('child_added', snapshot => renderChatMessage(snapshot.val()));
+        }
+        
+        function handlePlayerChanges(oldPlayers) {
+            const currentPlayers = currentRoomData.players || {};
+            const oldPlayerIds = Object.keys(oldPlayers);
+            const currentPlayerIds = Object.keys(currentPlayers);
+
+            const joined = currentPlayerIds.filter(id => !oldPlayerIds.includes(id));
+            const left = oldPlayerIds.filter(id => !currentPlayerIds.includes(id));
+            
+            joined.forEach(id => {
+                if (id !== currentUser.uid) {
+                    addSystemMessage(`${currentPlayers[id].nickname}님이 입장했습니다.`);
+                    playSound('enter-sound');
+                    vibrate();
+                }
+            });
+
+            left.forEach(id => {
+                const leftPlayerNickname = oldPlayers[id]?.nickname;
+                 if (leftPlayerNickname) {
+                    addSystemMessage(`${leftPlayerNickname}님이 퇴장했습니다.`);
+                    playSound('leave-sound');
+                    vibrate();
+                 }
+            });
+        }
+
+        function updateUI() {
+            const game = availableGames.find(g => g.id === currentRoomData.gameType);
+            document.getElementById('room-name-header').textContent = currentRoomData.roomName;
+            document.getElementById('game-type-header').textContent = game ? `${game.icon} ${game.name}` : '';
+
+            const playerList = document.getElementById('player-list-horizontal');
+            playerList.innerHTML = '';
+            
+            const playerIds = Object.keys(currentRoomData.players);
+
+            for (let i = 0; i < (game?.maxPlayers || 0); i++) {
+                const playerId = playerIds[i];
+                const player = playerId ? currentRoomData.players[playerId] : null;
+                const slot = document.createElement('div');
+                slot.className = 'player-slot-compact';
+                if (player) {
+                    if (player.isHost) slot.classList.add('is-host');
+                    const avatarHTML = player.avatar.startsWith('http') ? `<img src="${player.avatar}" alt="avatar">` : player.avatar;
+                    slot.innerHTML = `<div class="avatar">${avatarHTML}</div><div class="nickname">${escapeHTML(player.nickname)}</div>`;
+                } else {
+                    slot.innerHTML = `<div class="avatar"></div><div class="nickname">대기중...</div>`;
+                }
+                playerList.appendChild(slot);
+            }
+
+            if (isHost) {
+                const playerCount = Object.keys(currentRoomData.players).length;
+                const minPlayers = (['alkkagi', 'reversi', 'candysop'].includes(game.id) || game.isSolo) ? 1 : 2;
+                const canStart = game && playerCount >= minPlayers && playerCount <= game.maxPlayers;
+                
+                startGameBtn.disabled = !canStart;
+
+                let startText = `게임 시작 (${playerCount}/${game.maxPlayers})`;
+                if (playerCount < minPlayers) {
+                    startText = `(${minPlayers}명부터 시작 가능)`;
+                } else if (game.id === 'alkkagi' && playerCount === 1) {
+                    startText = "혼자 시작 (vs AI)";
+                }
+                startGameBtn.textContent = startText;
+
+            } else {
+                startGameBtn.disabled = true;
+                startGameBtn.textContent = "방장이 시작하기를 기다리는 중...";
+            }
+        }
+        
+        function renderChatMessage(msg) {
+            if (!msg) return;
+            const msgEl = document.createElement('div');
+            
+            if (msg.isSystem) {
+                msgEl.className = 'system-message';
+                msgEl.textContent = msg.content;
+            } else {
+                const senderInfo = currentRoomData.players[msg.senderId];
+                if (!senderInfo) return;
+                
+                msgEl.className = 'chat-message';
+                if (msg.senderId === currentUser.uid) msgEl.classList.add('my-message');
+                
+                const avatarHTML = senderInfo.avatar.startsWith('http') ? `<img src="${senderInfo.avatar}" alt="avatar">` : senderInfo.avatar;
+                msgEl.innerHTML = `
+                    <div class="sender-avatar">${avatarHTML}</div>
+                    <div class="msg-body">
+                        <div class="sender">${escapeHTML(msg.senderNickname)}</div>
+                        <div class="content">${escapeHTML(msg.content)}</div>
+                    </div>`;
+            }
+            chatContainer.appendChild(msgEl);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+        
+        function addSystemMessage(message) {
+            roomRef.child('chat').push({ isSystem: true, content: message, timestamp: firebase.database.ServerValue.TIMESTAMP });
+        }
+
+        function sendMessage(content) {
+            const message = content.trim();
+            if (message) {
+                roomRef.child('chat').push({
+                    senderId: currentUser.uid,
+                    senderNickname: myNickname,
+                    content: message,
+                    timestamp: firebase.database.ServerValue.TIMESTAMP
+                });
+            }
+        }
+
+        function startGame() {
+            if (!isHost) return;
+            const game = availableGames.find(g => g.id === currentRoomData.gameType);
+            if (!game) return;
+            const updates = { status: 'playing' };
+            
+ if (['alkkagi', 'reversi','candysop'].includes(game.id) && Object.keys(currentRoomData.players).length === 1) {
+                updates[`players/ai_player`] = { nickname: 'AI', avatar: '🤖', isHost: false };
+            }
+
+            if (game.id === 'memoryGame') {
+                updates.cards = generateCards(10);
+                updates.playerOrder = Object.keys(currentRoomData.players).sort(() => Math.random() - 0.5);
+                updates.turn = updates.playerOrder[0];
+                updates.flippedCards = [];
+                Object.keys(currentRoomData.players).forEach(pid => {
+                    updates[`players/${pid}/score`] = 0;
+                });
+            }
+            roomRef.update(updates);
+        }
+        
+        function generateCards(pairCount) {
+            const themes = [['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯'], ['🍔','🍕','🍟','🌭','🍿','🥨','🥯','🥞','🧇','🧀']];
+            const selectedEmojis = themes[Math.floor(Math.random() * themes.length)];
+            const cards = [...selectedEmojis.slice(0, pairCount), ...selectedEmojis.slice(0, pairCount)];
+            cards.sort(() => Math.random() - 0.5); 
+            return cards.map(e => ({ emoji: e, matched: false }));
+        }
+
+        function cleanupAndExit() {
+            if (roomRef && currentUser) {
+                roomRef.child('players/' + currentUser.uid).remove(() => {
+                    if (roomRef) roomRef.off();
+                    window.location.href = '대기실.html';
+                });
+            } else {
+                 if (roomRef) roomRef.off();
+                 window.location.href = '대기실.html';
+            }
+        }
+
+
+        function escapeHTML(str) {
+            if (typeof str !== 'string') return '';
+            return str.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'})[m]);
+        }
+        
+        sendChatBtn.addEventListener('click', () => { sendMessage(chatInput.value); chatInput.value = ''; chatInput.focus(); });
+        chatInput.addEventListener('keypress', e => { if (e.key === 'Enter') { sendMessage(chatInput.value); chatInput.value = ''; e.preventDefault(); }});
+        startGameBtn.addEventListener('click', startGame);
+        leaveRoomBtn.addEventListener('click', cleanupAndExit);
+        emojiToggleBtn.addEventListener('click', e => { e.stopPropagation(); emojiPopover.classList.toggle('active'); });
+        document.addEventListener('click', () => emojiPopover.classList.remove('active'));
+        emojiPopover.addEventListener('click', e => {
+            if(e.target.tagName === 'BUTTON'){
+                sendMessage(e.target.textContent);
+                emojiPopover.classList.remove('active');
+            }
+        });
+    });
+    </script>
+</body>
+</html>
