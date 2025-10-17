@@ -111,7 +111,7 @@
                     <button>👍</button><button>😂</button><button>😮</button><button>👋</button>
                     <button>😏</button><button>👌</button><button>😭</button><button>🤗</button>
                 </div>
-                <input type="text" id="chat-input" placeholder="메시지를 입력하세요..." maxlength="50">
+                <input type="text" id="chat-input" placeholder="메시지를 입력하세요..." maxlength="50" autocomplete="off">
                 <button id="send-chat-btn">➤</button>
             </div>
             <button id="start-game-btn" class="menu-btn primary" disabled>게임 시작</button>
@@ -306,18 +306,19 @@ function escapeHTML(str) {
         function handlePlayerChanges(oldPlayers) {
             const currentPlayers = currentRoomData.players || {};
             const oldPlayerIds = Object.keys(oldPlayers);
-            const currentPlayerIds = Object.keys(currentPlayers);
+        const currentPlayerIds = Object.keys(currentPlayers);
 
-            const joined = currentPlayerIds.filter(id => !oldPlayerIds.includes(id));
-            const left = oldPlayerIds.filter(id => !currentPlayerIds.includes(id));
-            
-            joined.forEach(id => {
-                if (id !== currentUser.uid) {
-                    addSystemMessage(`${currentPlayers[id].nickname}님이 입장했습니다.`);
-                    playSound('enter-sound');
-                    vibrate();
-                }
-            });
+        const joined = currentPlayerIds.filter(id => !oldPlayerIds.includes(id));
+        const left = oldPlayerIds.filter(id => !currentPlayerIds.includes(id));
+
+        joined.forEach(id => {
+            // ▼ '&& oldPlayerIds.length > 0' 조건을 추가합니다.
+            if (id !== currentUser.uid && oldPlayerIds.length > 0) { 
+                addSystemMessage(`${currentPlayers[id].nickname}님이 입장했습니다.`);
+                playSound('enter-sound');
+                vibrate();
+            }
+        });
 
             left.forEach(id => {
                 const leftPlayerNickname = oldPlayers[id]?.nickname;
@@ -418,26 +419,54 @@ function escapeHTML(str) {
         }
 
         function startGame() {
-            if (!isHost) return;
-            const game = availableGames.find(g => g.id === currentRoomData.gameType);
-            if (!game) return;
-            const updates = { status: 'playing' };
-            
- if (['alkkagi', 'reversi','candysop'].includes(game.id) && Object.keys(currentRoomData.players).length === 1) {
-                updates[`players/ai_player`] = { nickname: 'AI', avatar: '🤖', isHost: false };
-            }
+    if (!isHost) return;
+    const game = availableGames.find(g => g.id === currentRoomData.gameType);
+    if (!game) return;
+    const updates = { status: 'playing' };
+    const playerIds = Object.keys(currentRoomData.players); // ✨ 플레이어 ID 미리 가져오기
+    
+    // 1인용 AI 추가 로직
+    if (['alkkagi', 'reversi','candysop'].includes(game.id) && playerIds.length === 1) {
+        updates[`players/ai_player`] = { nickname: 'AI', avatar: '🤖', isHost: false };
+    }
 
-            if (game.id === 'memoryGame') {
-                updates.cards = generateCards(10);
-                updates.playerOrder = Object.keys(currentRoomData.players).sort(() => Math.random() - 0.5);
-                updates.turn = updates.playerOrder[0];
-                updates.flippedCards = [];
-                Object.keys(currentRoomData.players).forEach(pid => {
-                    updates[`players/${pid}/score`] = 0;
-                });
-            }
-            roomRef.update(updates);
+    // 메모리 게임 데이터 생성 로직
+    if (game.id === 'memoryGame') {
+        updates.cards = generateCards(10);
+        updates.playerOrder = playerIds.sort(() => Math.random() - 0.5);
+        updates.turn = updates.playerOrder[0];
+        updates.flippedCards = [];
+        playerIds.forEach(pid => {
+            updates[`players/${pid}/score`] = 0;
+        });
+    }
+
+    // ✨ [리버시 2인용] 게임 시작 시 보드와 턴 정보를 생성합니다.
+    if (game.id === 'reversi' && playerIds.length > 1) {
+        // 플레이어 ID를 랜덤으로 섞어 색상 지정
+        const sortedPlayerIds = [...playerIds].sort(() => Math.random() - 0.5);
+        const playersWithColors = { ...currentRoomData.players };
+        
+        if (playersWithColors[sortedPlayerIds[0]]) {
+            playersWithColors[sortedPlayerIds[0]].color = 'black';
         }
+        if (playersWithColors[sortedPlayerIds[1]]) {
+            playersWithColors[sortedPlayerIds[1]].color = 'white';
+        }
+        
+        const initialBoard = Array(64).fill(null);
+        initialBoard[27] = 'white'; initialBoard[28] = 'black';
+        initialBoard[35] = 'black'; initialBoard[36] = 'white';
+
+        updates.board = initialBoard;
+        updates.turn = 'black';
+        updates.players = playersWithColors; // 색상 정보가 포함된 players 객체로 덮어쓰기
+        updates.passedTurn = false;
+        updates.lastMove = null;
+    }
+
+    roomRef.update(updates);
+}
         
         function generateCards(pairCount) {
             const themes = [['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯'], ['🍔','🍕','🍟','🌭','🍿','🥨','🥯','🥞','🧇','🧀']];
@@ -448,14 +477,25 @@ function escapeHTML(str) {
         }
 
         function cleanupAndExit() {
+            if (roomRef) {
+                roomRef.off(); // ★ 리스너를 가장 먼저 제거하여 불필요한 알림을 방지합니다.
+            }
+
             if (roomRef && currentUser) {
-                roomRef.child('players/' + currentUser.uid).remove(() => {
-                    if (roomRef) roomRef.off();
-                    window.location.href = '대기실.html';
-                });
+                if (isHost) {
+                    // 내가 방장이라면, 방 전체를 삭제하고 페이지를 이동합니다.
+                    roomRef.remove().finally(() => {
+                        window.location.href = '대기실.html';
+                    });
+                } else {
+                    // 내가 게스트라면, 나만 나가고 페이지를 이동합니다.
+                    roomRef.child('players/' + currentUser.uid).remove().finally(() => {
+                        window.location.href = '대기실.html';
+                    });
+                }
             } else {
-                 if (roomRef) roomRef.off();
-                 window.location.href = '대기실.html';
+                // 예외 상황: roomRef나 currentUser가 없을 경우 바로 페이지를 이동합니다.
+                window.location.href = '대기실.html';
             }
         }
 

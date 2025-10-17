@@ -167,7 +167,7 @@
         @keyframes place-anim { from { transform: scale(0.5); } to { transform: scale(1); } }
         
         .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 200; text-align: center; background-color: rgba(0,0,0,0.7); }
-        .spinner { border: 4px solid rgba(255, 255, 255, 0.3); border-radius: 50%; border-top: 4px solid white; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        .spinner { border: 4px solid rgba(255, 255, 255, 0.3); border-radius: 50%; border-top: 4px solid white; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; /* ✨ 중앙 정렬을 위해 추가 */ }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         
         .modal-content { background: #2c3e50; color: white; padding: 0; border-radius: 20px; width: 90%; max-width: 400px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); overflow: hidden; }
@@ -216,6 +216,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+  
     <script>
         function escapeHTML(str) {
             if (typeof str !== 'string') return '';
@@ -257,7 +258,7 @@
             
             let myPlayerId, myNickname, myAvatar, myColor;
             let roomRef, currentRoomData, isHost, gameMode;
-            let isGameLive = false, gameOverFlag = false;
+            let isGameLive = false, gameOverFlag = false, isExiting = false; // ✨ isExiting 플래그 추가
 
             const SPECIAL_USER_ID = "ZzdavJuEjJSVIokf9DK4F89TjN82";
             const WEIGHT_MAP = [
@@ -318,14 +319,21 @@
                             roomRef.child('players/' + myPlayerId).onDisconnect().remove();
                         }
                         
-                        if(isHost) initializeMultiplayerGame();
-                        listenToRoomChanges();
+listenToRoomChanges(); // 1. 리스너(감시) 먼저 시작
+
+                        // ✨ 호스트이면, 기존 보드 상태와 관계없이 무조건 게임을 새로 초기화합니다.
+                        if(isHost) {
+                            initializeMultiplayerGame(); // 2. 게임 초기화 (status: 'ready' 신호 발사)
+                        }
                     }
                 });
             }
 
-            function listenToRoomChanges() {
+          function listenToRoomChanges() {
+                let countdownStarted = false; // 카운트다운 중복 실행 방지 플래그
                 roomRef.on('value', snapshot => {
+                    if (isExiting) return; 
+
                     if (!snapshot.exists()) {
                         if (isGameLive) alert("방장이 나가 방이 사라졌습니다.");
                         cleanupAndExit();
@@ -338,20 +346,42 @@
                         return;
                     }
 
-                    myColor = currentRoomData.players[myPlayerId]?.color;
-                    updateHeaderUI();
-                    drawBoard();
-
-                    if(currentRoomData.status === 'playing') {
-                        isGameLive = true;
-                        infoOverlay.style.display = 'none';
-                    } else if (currentRoomData.status === 'ready') {
-                        infoOverlay.style.display = 'flex';
-                        infoOverlay.innerHTML = `<div id="countdown-number"></div>`;
-                        startCountdown();
-                    } else if (currentRoomData.status === 'gameOver' && !gameOverFlag) {
+                    // ✨ "알까기" 구조로 변경: 'ready' 상태를 제거하고 'board' 생성 여부로 판단
+                    
+                    // 1. 'playing' 상태일 때
+                    if (currentRoomData.status === 'playing') {
+                        
+                        // 1-1. [핵심] 보드가 생성되었고, 카운트다운이 아직 시작 안됐으면
+                        if (currentRoomData.board && !countdownStarted) {
+                            countdownStarted = true; // 카운트다운 시작
+                            myColor = currentRoomData.players[myPlayerId]?.color;
+                            updateHeaderUI();
+                            drawBoard(); // 생성된 보드를 그리기
+                            infoOverlay.style.display = 'flex';
+                            infoOverlay.innerHTML = `<div id="countdown-number"></div>`;
+                            startCountdown();
+                        } 
+                        // 1-2. 보드가 아직 없으면 (방금 입장한 상태)
+                        else if (!currentRoomData.board && !countdownStarted) {
+                            infoOverlay.style.display = 'flex'; // "참가 중" 표시 유지
+                        }
+                        // 1-3. 보드도 있고 카운트다운도 끝났으면 (게임 진행 중)
+                        else if (currentRoomData.board && countdownStarted && isGameLive) {
+                             infoOverlay.style.display = 'none';
+                             myColor = currentRoomData.players[myPlayerId]?.color;
+                             updateHeaderUI();
+                             drawBoard();
+                        }
+                    } 
+                    // 2. 'gameOver' 상태
+                    else if (currentRoomData.status === 'gameOver' && !gameOverFlag) {
                         gameOverFlag = true;
+                        drawBoard();
                         showGameOverScreen();
+                    } 
+                    // 3. 'waiting' 상태 (이론상으론 없지만 안전장치)
+                    else if (currentRoomData.status === 'waiting') {
+                        infoOverlay.style.display = 'flex'; // "참가 중" 표시
                     }
                 });
             }
@@ -359,19 +389,25 @@
             function initializeMultiplayerGame() {
                 const playerIds = Object.keys(currentRoomData.players);
                 playerIds.sort(() => Math.random() - 0.5);
-                const playerUpdates = {};
-                playerUpdates[`${playerIds[0]}/color`] = 'black';
-                playerUpdates[`${playerIds[1]}/color`] = 'white';
+                
+                // 플레이어 객체를 복사하여 색상을 직접 할당합니다.
+                const playersWithColors = { ...currentRoomData.players };
+                if (playersWithColors[playerIds[0]]) {
+                    playersWithColors[playerIds[0]].color = 'black';
+                }
+                if (playersWithColors[playerIds[1]]) {
+                    playersWithColors[playerIds[1]].color = 'white';
+                }
                 
                 const initialBoard = Array(64).fill(null);
                 initialBoard[27] = 'white'; initialBoard[28] = 'black';
                 initialBoard[35] = 'black'; initialBoard[36] = 'white';
 
                 roomRef.update({
-                    status: 'ready',
+   status: 'playing', // ✨ 이 한 줄을 추가해야 합니다
                     board: initialBoard,
                     turn: 'black',
-                    players: { ...currentRoomData.players, ...playerUpdates },
+                    players: playersWithColors, // 수정된 플레이어 객체로 업데이트합니다.
                     passedTurn: false,
                     lastMove: null,
                 });
@@ -393,12 +429,16 @@
                     }
                     if (count <= 0) {
                         clearInterval(interval);
-                        infoOverlay.style.display = 'none';
-                        isGameLive = true;
-                        if (gameMode === 'single') {
+                        
+                       if (gameMode === 'single') {
+                            infoOverlay.style.display = 'none';
+                            isGameLive = true;
                             setupSinglePlayerGame();
                         } else {
-                            roomRef.child('status').set('playing');
+                            // ✨ [수정] 'playing'으로 변경하는 로직 제거!
+                            // 이미 'playing' 상태이므로 오버레이만 숨깁니다.
+                            infoOverlay.style.display = 'none';
+                            isGameLive = true;
                         }
                     }
                 }, 1000);
@@ -735,16 +775,17 @@
                 });
             }
 
-            function cleanupAndExit() {
+           function cleanupAndExit() {
+                isExiting = true; // ✨ [수정 1] 퇴장 플래그를 설정하여 리스너 중복 동작 방지
                 if (roomRef) {
-                    if(isHost) {
+                    if (isHost) {
                         roomRef.remove();
-                    } else {
+                    } else if (gameMode === 'multi') {
                         roomRef.child('players/' + myPlayerId).remove();
                     }
                     roomRef.off();
                 }
-                window.location.href = '대기실.html';
+                window.location.replace('대기실.html'); // ✨ [수정 2] 뒤로가기 방지
             }
             
             initialize();

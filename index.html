@@ -160,7 +160,7 @@
                 debugger;
             } catch (e) {}
         }, 1000);
-        
+
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
         const auth = firebase.auth();
@@ -200,62 +200,46 @@
             { id: 'captain', name: '캡틴', url: 'https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdna%2FOz4VW%2FbtsOs1I42zk%2FAAAAAAAAAAAAAAAAAAAAALLqYVC-TV1nau2QidETnqw9AnU4nv2LQRS1_xBQFkrC%2Fimg.png%3Fcredential%3DyqXZFxpELC7KVnFOS48ylbz2pIh7yKj8%26expires%3D1761922799%26allow_ip%3D%26allow_referer%3D%26signature%3DJnnjHb8msvTXLcQv2ocUGegKr8s%253D' }
         ];
         
-        let authUser = null;
-    let authChecked = false;
+        // 페이지 로딩 시 항상 애니메이션을 먼저 시작합니다.
+        startLoadingAnimation();
 
-    auth.onAuthStateChanged(user => {
-        authUser = user;
-        authChecked = true;
-    });
-
-    function handlePostLoad() {
-        if (authUser) {
-            // 사용자가 로그인 상태일 때
-            usersRef.child(authUser.uid).once('value').then(snapshot => {
-                if (snapshot.exists()) {
-                    const userData = snapshot.val();
-                    localStorage.setItem('myPlayerId', authUser.uid);
-                    localStorage.setItem('userNickname', userData.profile.nickname);
-                    localStorage.setItem('userAvatar', userData.profile.avatar);
-                    window.location.replace('대기실.html');
-                } else {
-                    // DB에 유저 정보가 없으면 로그아웃 처리 후 로그인 창 표시
-                    auth.signOut();
-                    loadingView.style.display = 'none';
-                    authView.style.display = 'flex';
-                }
-            });
-        } else {
-            // 비로그인 상태일 때 로그인 창 표시
-            loadingView.style.display = 'none';
-            authView.style.display = 'flex';
-        }
-    }
-
-    function startLoadingAnimation() {
-        let progress = 0;
-        const interval = setInterval(() => {
-            // 인증 확인 전에는 천천히, 확인 후에는 빠르게 로딩
-            progress += authChecked ? 4 : 1;
-            if (progress > 100) progress = 100;
-
-            if (progressBar) progressBar.style.width = progress + '%';
-            if (progressText) progressText.textContent = progress + '%';
-
-            if (progress === 100) {
-                clearInterval(interval);
-                // 인증 상태 확인이 끝날 때까지 대기
-                const checkAuthReady = setInterval(() => {
-                    if (authChecked) {
-                        clearInterval(checkAuthReady);
-                        setTimeout(handlePostLoad, 300); // 100% 도달 후 0.3초 대기
+        // 인증 상태 변경(로그인, 로그아웃, 회원가입 성공)을 감지하는 리스너
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                // 사용자가 로그인된 상태라면 (자동 로그인 또는 방금 회원가입/로그인 성공)
+                usersRef.child(user.uid).once('value').then(snapshot => {
+                    if (snapshot.exists()) {
+                        const userData = snapshot.val();
+                        // 필요한 정보를 localStorage에 저장하고 대기실로 이동
+                        localStorage.setItem('myPlayerId', user.uid);
+                        localStorage.setItem('userNickname', userData.profile.nickname);
+                        localStorage.setItem('userAvatar', userData.profile.avatar);
+                        window.location.replace('대기실.html');
+                    } else {
+                        // DB에 유저 정보가 없는 비정상적인 경우, 로그아웃 처리
+                        auth.signOut();
                     }
-                }, 50);
+                });
+            } else {
+                // 사용자가 로그아웃된 상태라면, 로딩 화면을 숨기고 로그인 폼을 보여줍니다.
+                loadingView.style.display = 'none';
+                authView.style.display = 'flex';
             }
-        }, 30);
-    }
+        });
 
-    startLoadingAnimation(); // 페이지 시작 시 로딩 애니메이션 실행
+        function startLoadingAnimation() {
+            let progress = 0;
+            const interval = setInterval(() => {
+                // auth.onAuthStateChanged가 완료될 때까지 천천히 로딩
+                progress += auth.currentUser ? 5 : 1;
+                if (progress >= 100) {
+                    clearInterval(interval);
+                    // 100%가 되어도 onAuthStateChanged가 처리할 때까지 대기
+                }
+                progressBar.style.width = Math.min(progress, 100) + '%';
+                progressText.textContent = Math.min(progress, 100) + '%';
+            }, 30);
+        }
 
         function setupCharacterPicker() {
             characterGrid.innerHTML = '';

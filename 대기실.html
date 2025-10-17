@@ -226,9 +226,28 @@
             { id: 'candysoap', name: '캔디솝', icon: '🍬', file: '캔디솝.html', isSolo: true, color: '#FF69B4' },
         ];
 
+        function cleanupMyGhostRooms(myId) {
+            roomsRef.once('value', snapshot => {
+                if (!snapshot.exists()) return;
+
+                snapshot.forEach(child => {
+                    const room = { key: child.key, ...child.val() };
+                    // 방의 주인이 나이고, 상태가 '게임중'이라면 유령방으로 간주하고 삭제합니다.
+                    if (room.hostId === myId && room.status === 'playing') {
+                        roomsRef.child(room.key).remove();
+                        console.log(`유령방 [${room.key}]을(를) 삭제했습니다.`);
+                    }
+                });
+            });
+        }
+
         auth.onAuthStateChanged(user => {
             if (user) {
                 currentUser = user;
+
+                // ✨ 대기실 입장 시, 내 유령방을 먼저 청소합니다.
+                cleanupMyGhostRooms(user.uid);
+
                 usersRef.child(user.uid).on('value', snapshot => {
                     if (snapshot.exists()) {
                         currentUserData = snapshot.val();
@@ -495,4 +514,3 @@
     </script>
 </body>
 </html>
-
