@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>크로싱 나이츠</title>
+    <link href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff" as="font" type="font/woff" crossorigin>
+    <style>
+        :root {
+            --bg-color: #4a4e69; --board-color: #f2e9e4; --border-color: #22223b;
+            --p1-color: #9a8c98; --p2-color: #c9ada7;
+            --accent-color: #FFC84A; --text-color: #ffffff; --move-indicator-color: #2a9d8f;
+            --shadow-color: rgba(0,0,0,0.2);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%; height: 100%; overflow: hidden;
+            font-family: 'GmarketSans', sans-serif; background-color: var(--bg-color); color: var(--text-color);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            -webkit-user-select: none; user-select: none; touch-action: none;
+        }
+        .view { width: 100%; height: 100%; display: flex; flex-direction: column; }
+        .menu-btn {
+            width: 90%; max-width: 320px; padding: 15px; font-size: 1.5em; font-weight: 700;
+            font-family: 'GmarketSans', sans-serif; border-radius: 12px; border: none; cursor: pointer;
+            margin: 10px 0; box-shadow: 0 5px 10px var(--shadow-color);
+            background-color: var(--p1-color); color: white;
+        }
+        .menu-btn.secondary { background-color: #eee; color: #333; }
+
+        #game-wrapper { width: 100%; height: 100%; display: flex; flex-direction: column; }
+        #game-header {
+            flex-shrink: 0; display: flex; justify-content: space-between; align-items: center;
+            padding: 15px 20px; background-color: rgba(0,0,0,0.3); gap: 20px;
+        }
+        .player-info {
+            display: flex; align-items: center; gap: 12px; padding: 10px 15px;
+            border-radius: 12px; transition: all 0.3s ease; background-color: rgba(255,255,255,0.1);
+        }
+        .player-info.my-turn {
+            background-color: var(--accent-color); transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(255, 200, 74, 0.5);
+        }
+        .player-info.my-turn .nickname { color: black; }
+        .player-info .avatar img { width: 40px; height: 40px; object-fit: contain; border-radius: 50%; }
+        .player-info .nickname { font-weight: 700; font-size: 1.1em; }
+        .player-info .piece-emoji { font-size: 1.8em; margin-right: 5px; }
+        
+        #game-container {
+            width: 100%; flex-grow: 1; display: flex; justify-content: center; align-items: center;
+            position: relative; padding: 20px 10px;
+        }
+        #game-canvas { background-color: var(--board-color); border: 6px solid var(--border-color); border-radius: 8px; }
+
+        .overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex;
+            flex-direction: column; justify-content: center; align-items: center;
+            z-index: 200; text-align: center; background-color: rgba(0,0,0,0.8);
+        }
+        .modal-content { background: linear-gradient(135deg, #6d6875 0%, #4a4e69 100%); color: white; padding: 40px; border-radius: 25px; width: 90%; max-width: 380px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
+        #game-over-message { font-size: 2.5em; font-weight: bold; margin-bottom: 25px; }
+        .modal-buttons { display: flex; flex-direction: column; gap: 12px; align-items: center; margin-top: 25px; }
+        #countdown-number {
+            font-size: 8em; font-weight: 700; color: var(--accent-color);
+            animation: countdown-pop 1s ease-in-out infinite;
+        }
+        @keyframes countdown-pop {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.2); opacity: 0.8; }
+        }
+        .spinner { margin: 20px auto; border: 4px solid rgba(255,255,255,0.3); border-radius: 50%; border-top: 4px solid white; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div id="game-wrapper" class="view">
+        <div id="game-header"></div>
+        <div id="game-container">
+            <canvas id="game-canvas"></canvas>
+        </div>
+    </div>
+    
+    <div id="game-over-overlay" class="overlay" style="display: none;"></div>
+    <div id="waiting-overlay" class="overlay" style="display: none;"></div>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const firebaseConfig = {
+            apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
+            authDomain: "goodluck-7c14b.firebaseapp.com",
+            databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com",
+            projectId: "goodluck-7c14b",
+            storageBucket: "goodluck-7c14b.appspot.com",
+            messagingSenderId: "858281658455",
+            appId: "1:858281658455:web:9131280a459be983933b12"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+        const auth = firebase.auth();
+        const playersStatsRef = db.ref('users');
+
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        const gameOverOverlay = document.getElementById('game-over-overlay');
+        const waitingOverlay = document.getElementById('waiting-overlay');
+
+        let myPlayerId, roomRef, isHost, myPlayerNum;
+        let player1Info, player2Info;
+        let isMyTurn = false;
+        let isGameOver = false;
+        
+        let nodes = [], adjacency = {}, boardSize = 0, nodeRadius = 0;
+        
+        const pieceEmojis = ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🐔', '🐧', '🐦', '🐤', '🦋', '🐞', '🐢', '🐍', '🐙', '🦑', '🐡', '🐠', '🐳', '🐊', '🦖', '🦕'];
+        let player1Piece = pieceEmojis[0];
+        let player2Piece = pieceEmojis[1];
+
+        let selectedNodeId = null;
+        let possibleMoves = [];
+        let accentColor, moveIndicatorColor;
+
+        function initialize() {
+            const computedStyle = getComputedStyle(document.documentElement);
+            accentColor = computedStyle.getPropertyValue('--accent-color').trim();
+            moveIndicatorColor = computedStyle.getPropertyValue('--move-indicator-color').trim();
+
+            myPlayerId = localStorage.getItem('myPlayerId');
+            if (!myPlayerId) {
+                alert("Player information not found.");
+                window.location.href = 'index.html';
+                return;
+            }
+            const urlParams = new URLSearchParams(window.location.search);
+            const roomId = urlParams.get('roomId');
+            if (!roomId) {
+                alert("Invalid access.");
+                window.location.href = '대기실.html';
+                return;
+            }
+            joinMultiplayerGame(roomId);
+        }
+
+        function joinMultiplayerGame(roomId) {
+            waitingOverlay.innerHTML = `<div class="spinner"></div><p>참가중...</p>`;
+            waitingOverlay.style.display = 'flex';
+            roomRef = db.ref('rooms').child(roomId);
+
+            roomRef.once('value', snapshot => {
+                if (!snapshot.exists()) {
+                    alert('Room not found.');
+                    window.location.href = '대기실.html';
+                    return;
+                }
+                const roomData = snapshot.val();
+                isHost = roomData.hostId === myPlayerId;
+                myPlayerNum = isHost ? 1 : 2;
+                
+                const hostData = roomData.players[roomData.hostId];
+                const guestId = Object.keys(roomData.players).find(id => id !== roomData.hostId);
+                const guestData = roomData.players[guestId];
+                
+                player1Info = { nickname: hostData.nickname, avatar: hostData.avatar };
+                player2Info = { nickname: guestData.nickname, avatar: guestData.avatar };
+
+                if (isHost) {
+                    roomRef.onDisconnect().remove();
+                } else {
+                    roomRef.child('players/' + myPlayerId).onDisconnect().remove();
+                }
+                
+                startCountdown();
+            });
+        }
+
+        function startCountdown() {
+            waitingOverlay.innerHTML = `<div id="countdown-number">3</div>`;
+            let count = 3;
+            const interval = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    waitingOverlay.innerHTML = `<div id="countdown-number">${count}</div>`;
+                } else {
+                    clearInterval(interval);
+                    waitingOverlay.style.display = 'none';
+                    setupGame();
+                }
+            }, 1000);
+        }
+        
+        function setupGame() {
+            const container = document.getElementById('game-container');
+            boardSize = Math.min(container.clientWidth * 0.95, container.clientHeight * 0.95, 500);
+            canvas.width = boardSize;
+            canvas.height = boardSize;
+            nodeRadius = boardSize / 30;
+
+            if(isHost) {
+                generateRandomMap();
+                placePieces();
+                
+                let p1Emoji = pieceEmojis[Math.floor(Math.random() * pieceEmojis.length)];
+                let p2Emoji;
+                do {
+                    p2Emoji = pieceEmojis[Math.floor(Math.random() * pieceEmojis.length)];
+                } while (p1Emoji === p2Emoji);
+
+                const initialState = {
+                    nodes: nodes,
+                    adjacency: adjacency,
+                    currentTurn: 1,
+                    player1Piece: p1Emoji,
+                    player2Piece: p2Emoji
+                };
+                roomRef.child('gameState').set(initialState);
+            }
+            
+            listenToGameChanges();
+            setupInputHandlers();
+        }
+
+        function listenToGameChanges() {
+            roomRef.child('gameState').on('value', snapshot => {
+                if (!snapshot.exists() || isGameOver) return;
+                const state = snapshot.val();
+                nodes = state.nodes;
+                adjacency = state.adjacency;
+                player1Piece = state.player1Piece;
+                player2Piece = state.player2Piece;
+                
+                const newTurn = state.currentTurn === myPlayerNum;
+                if (isMyTurn !== newTurn) {
+                    deselectPiece();
+                }
+                isMyTurn = newTurn;
+
+                drawBoard();
+                updateHeaderUI();
+                checkWinCondition();
+            });
+
+            roomRef.on('value', snapshot => {
+                if (isGameOver) return;
+                if (!snapshot.exists() || !snapshot.val().players || Object.keys(snapshot.val().players).length < 2) {
+                    alert('Opponent has left. Returning to the lobby.');
+                    isGameOver = true;
+                    if(roomRef) roomRef.off();
+                    window.location.href = '대기실.html';
+                }
+            });
+        }
+        
+        function addNode(x, y, isP1Home = false, isP2Home = false) {
+            const id = nodes.length;
+            nodes.push({ id, x, y, piece: null, isPlayer1Home, isPlayer2Home });
+            adjacency[id] = [];
+            return id;
+        }
+
+        function addEdge(id1, id2) {
+            if (adjacency[id1] && !adjacency[id1].includes(id2)) adjacency[id1].push(id2);
+            if (adjacency[id2] && !adjacency[id2].includes(id1)) adjacency[id2].push(id1);
+        }
+        
+        function generateRandomMap() {
+            const mapGenerators = [generateAlquerqueMap, generateSholoGutiMap, generateXShapeMap, generateTantFantMap];
+            const chosenGenerator = mapGenerators[Math.floor(Math.random() * mapGenerators.length)];
+            nodes = [];
+            adjacency = {};
+            chosenGenerator();
+        }
+
+        function generateAlquerqueMap() {
+            const rows = 5, cols = 5;
+            const padding = boardSize * 0.1;
+            const cellW = (boardSize - 2 * padding) / (cols - 1);
+            const cellH = (boardSize - 2 * padding) / (rows - 1);
+
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    const x = padding + c * cellW;
+                    const y = padding + r * cellH;
+                    const isP1Home = r === 0; // Top row only
+                    const isP2Home = r === rows - 1; // Bottom row only
+                    addNode(x, y, isP1Home, isP2Home);
+                    
+                    const id = r * cols + c;
+                    if (c > 0) addEdge(id, id - 1);
+                    if (r > 0) addEdge(id, id - cols);
+                    if (r > 0 && c > 0) addEdge(id, id - cols - 1);
+                    if (r > 0 && c < cols - 1) addEdge(id, id - cols + 1);
+                }
+            }
+        }
+        
+        function generateSholoGutiMap() {
+            const p = 0.1 * boardSize, w = boardSize - 2 * p, h = boardSize - 2 * p;
+            const nodesPos = [
+                [p + w * 0.5, p + h * 0.1], [p + w * 0.2, p + h * 0.2], [p + w * 0.8, p + h * 0.2],
+                [p + w * 0.5, p + h * 0.3], [p + w * 0.2, p + h * 0.4], [p + w * 0.8, p + h * 0.4],
+                [p + w * 0.5, p + h * 0.9], [p + w * 0.2, p + h * 0.8], [p + w * 0.8, p + h * 0.8],
+                [p + w * 0.5, p + h * 0.7], [p + w * 0.2, p + h * 0.6], [p + w * 0.8, p + h * 0.6],
+                [p + w * 0.5, p + h * 0.5]
+            ];
+            nodesPos.forEach((pos, i) => addNode(pos[0], pos[1], i < 3, i > 8));
+            [ [0,1],[0,2],[1,3],[2,3],[1,4],[2,5],[3,4],[3,5],[4,12],[5,12],
+              [6,7],[6,8],[7,9],[8,9],[7,10],[8,11],[9,10],[9,11],[10,12],[11,12],
+              [3,9],[4,10],[5,11]
+            ].forEach(pair => addEdge(pair[0], pair[1]));
+        }
+
+        function generateXShapeMap() {
+            const p = 0.1 * boardSize, w = boardSize - 2 * p, h = boardSize - 2 * p;
+            addNode(p, p, true); addNode(p + w, p, true); addNode(p, p + h, false, true); addNode(p + w, p + h, false, true);
+            addNode(p + w/2, p + h/2);
+            addNode(p + w/2, p, true); addNode(p, p + h/2); addNode(p + w/2, p + h, false, true); addNode(p + w, p + h/2);
+            [ [0,4],[1,4],[2,4],[3,4],[5,4],[6,4],[7,4],[8,4],[0,5],[5,1],[1,8],[8,3],[3,7],[7,2],[2,6],[6,0]
+            ].forEach(pair => addEdge(pair[0], pair[1]));
+        }
+
+        function generateTantFantMap() {
+            const p = 0.1 * boardSize, w = boardSize - 2 * p, h = boardSize - 2 * p;
+            // Top circle
+            addNode(p + w/2, p + h*0.1, true); addNode(p + w*0.2, p + h*0.25, true);
+            addNode(p + w*0.8, p + h*0.25, true); addNode(p + w/2, p + h*0.4, true);
+            // Bottom square
+            addNode(p, p+h*0.6, false, true); addNode(p+w, p+h*0.6, false, true);
+            addNode(p, p+h, false, true); addNode(p+w, p+h, false, true);
+
+            addEdge(0,1); addEdge(0,2); addEdge(1,3); addEdge(2,3);
+            addEdge(4,5); addEdge(6,7); addEdge(4,6); addEdge(5,7);
+            addEdge(1,4); addEdge(2,5);
+        }
+
+        function placePieces() {
+            nodes.filter(n => n.isPlayer1Home && n.piece === null).forEach(node => node.piece = 1);
+            nodes.filter(n => n.isPlayer2Home && n.piece === null).forEach(node => node.piece = 2);
+        }
+        
+        function drawBoard() {
+            ctx.clearRect(0, 0, boardSize, boardSize);
+            
+            ctx.globalAlpha = 0.2;
+            ctx.fillStyle = "rgba(154, 140, 152, 1)";
+            nodes.filter(n => n.isPlayer1Home).forEach(n => { ctx.beginPath(); ctx.arc(n.x, n.y, nodeRadius * 1.5, 0, 2 * Math.PI); ctx.fill(); });
+            ctx.fillStyle = "rgba(201, 173, 167, 1)";
+            nodes.filter(n => n.isPlayer2Home).forEach(n => { ctx.beginPath(); ctx.arc(n.x, n.y, nodeRadius * 1.5, 0, 2 * Math.PI); ctx.fill(); });
+            ctx.globalAlpha = 1.0;
+
+            ctx.strokeStyle = '#22223b';
+            ctx.lineWidth = 3;
+            for (let i = 0; i < nodes.length; i++) {
+                adjacency[i].forEach(neighborId => {
+                    if (i < neighborId) {
+                        ctx.beginPath();
+                        ctx.moveTo(nodes[i].x, nodes[i].y);
+                        ctx.lineTo(nodes[neighborId].x, nodes[neighborId].y);
+                        ctx.stroke();
+                    }
+                });
+            }
+
+            possibleMoves.forEach(moveId => {
+                const node = nodes[moveId];
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, nodeRadius, 0, 2 * Math.PI);
+                ctx.fillStyle = moveIndicatorColor;
+                ctx.globalAlpha = 0.6;
+                ctx.fill();
+                ctx.globalAlpha = 1.0;
+            });
+
+            ctx.font = `${nodeRadius * 1.5}px GmarketSans`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            nodes.forEach(node => {
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, nodeRadius, 0, 2 * Math.PI);
+                ctx.fillStyle = '#fff';
+                ctx.fill();
+                ctx.strokeStyle = '#22223b';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                if (node.piece === 1) ctx.fillText(player1Piece, node.x, node.y);
+                else if (node.piece === 2) ctx.fillText(player2Piece, node.x, node.y);
+                
+                if(selectedNodeId === node.id) {
+                    ctx.beginPath();
+                    ctx.arc(node.x, node.y, nodeRadius * 1.2, 0, 2 * Math.PI);
+                    ctx.strokeStyle = accentColor;
+                    ctx.lineWidth = 4;
+                    ctx.stroke();
+                }
+            });
+        }
+        
+        function updateHeaderUI() {
+            const header = document.getElementById('game-header');
+            const p1Turn = (isHost && isMyTurn) || (!isHost && !isMyTurn);
+            const p2Turn = (!isHost && isMyTurn) || (isHost && !isMyTurn);
+            const p1Avatar = player1Info.avatar.startsWith('http') ? `<img src="${player1Info.avatar}" alt="p1">` : player1Info.avatar;
+            const p2Avatar = player2Info.avatar.startsWith('http') ? `<img src="${player2Info.avatar}" alt="p2">` : player2Info.avatar;
+            header.innerHTML = `
+                <div class="player-info ${p1Turn ? 'my-turn' : ''}">
+                    <div class="avatar">${p1Avatar}</div> <span class="piece-emoji">${player1Piece}</span> <span class="nickname">${player1Info.nickname}</span>
+                </div>
+                <div class="player-info ${p2Turn ? 'my-turn' : ''}">
+                    <span class="nickname">${player2Info.nickname}</span> <span class="piece-emoji">${player2Piece}</span> <div class="avatar">${p2Avatar}</div>
+                </div>`;
+        }
+        
+        function setupInputHandlers() {
+            canvas.addEventListener('click', e => {
+                if (!isMyTurn || isGameOver) return;
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                const clickedNode = nodes.find(n => Math.hypot(n.x - x, n.y - y) < nodeRadius * 1.2);
+
+                if (!clickedNode) { deselectPiece(); return; }
+
+                if (possibleMoves.includes(clickedNode.id)) {
+                    movePiece(selectedNodeId, clickedNode.id);
+                } else if (clickedNode.piece === myPlayerNum) {
+                    selectPiece(clickedNode);
+                } else {
+                    deselectPiece();
+                }
+            });
+        }
+
+        function selectPiece(node) {
+            selectedNodeId = node.id;
+            possibleMoves = adjacency[selectedNodeId].filter(id => nodes[id].piece === null);
+            drawBoard();
+        }
+
+        function deselectPiece() {
+            selectedNodeId = null;
+            possibleMoves = [];
+            drawBoard();
+        }
+
+        function movePiece(fromId, toId) {
+            const newNodes = JSON.parse(JSON.stringify(nodes));
+            newNodes[toId].piece = newNodes[fromId].piece;
+            newNodes[fromId].piece = null;
+            
+            deselectPiece();
+            
+            const nextTurn = myPlayerNum === 1 ? 2 : 1;
+            roomRef.child('gameState').update({
+                nodes: newNodes,
+                currentTurn: nextTurn
+            });
+        }
+        
+        function checkWinCondition() {
+            if (isGameOver || !nodes.length) return;
+            const p1HomeNodes = nodes.filter(n => n.isPlayer1Home);
+            const p2HomeNodes = nodes.filter(n => n.isPlayer2Home);
+            
+            if (p2HomeNodes.length > 0 && p2HomeNodes.every(n => n.piece === 1)) showGameOver(1);
+            else if (p1HomeNodes.length > 0 && p1HomeNodes.every(n => n.piece === 2)) showGameOver(2);
+        }
+        
+        function showGameOver(winnerNum) {
+            if(isGameOver) return;
+            isGameOver = true;
+            if(roomRef) roomRef.off();
+            
+            const iWon = (winnerNum === myPlayerNum);
+            updatePlayerStats(iWon);
+            const resultText = iWon ? '🎉 승리!' : '😢 패배...';
+
+            gameOverOverlay.innerHTML = `
+                <div class="modal-content">
+                    <h2 id="game-over-message">${resultText}</h2>
+                    <div class="modal-buttons">
+                        <button id="to-lobby-btn" class="menu-btn secondary">대기실로 돌아가기</button>
+                    </div>
+                </div>`;
+            gameOverOverlay.style.display = 'flex';
+            
+            document.getElementById('to-lobby-btn').addEventListener('click', () => {
+                window.location.href = '대기실.html';
+            });
+        }
+
+        function updatePlayerStats(won) {
+            if (!myPlayerId || myPlayerId.startsWith('guest_')) return;
+            const userRef = playersStatsRef.child(myPlayerId);
+            userRef.transaction(userData => {
+                if (userData) {
+                    if (!userData.gameStats) userData.gameStats = {};
+                    if (!userData.gameStats.crossingKnights) {
+                        userData.gameStats.crossingKnights = { wins: 0, losses: 0, plays: 0 };
+                    }
+                    const stats = userData.gameStats.crossingKnights;
+                    stats.wins = (stats.wins || 0) + (won ? 1 : 0);
+                    stats.losses = (stats.losses || 0) + (won ? 0 : 1);
+                    stats.plays = (stats.plays || 0) + 1;
+                    if (!userData.profile) userData.profile = { points: 0 };
+                    userData.profile.points = (userData.profile.points || 0) + (won ? 150 : 50);
+                }
+                return userData;
+            });
+        }
+
+        initialize();
+    });
+    </script>
+</body>
+</html>
+
