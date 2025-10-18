@@ -216,11 +216,10 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
-  
     <script>
         function escapeHTML(str) {
             if (typeof str !== 'string') return '';
-            const map = {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'};
+            const map = {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#03G;'};
             return str.replace(/[&<>"']/g, m => map[m]);
         }
 
@@ -319,20 +318,20 @@
                             roomRef.child('players/' + myPlayerId).onDisconnect().remove();
                         }
                         
-listenToRoomChanges(); // 1. 리스너(감시) 먼저 시작
+                        listenToRoomChanges(); // ✨ 1. 리스너(감시) 먼저 시작
 
-                        // ✨ 호스트이면, 기존 보드 상태와 관계없이 무조건 게임을 새로 초기화합니다.
+                        // ✨ 2. 호스트이면, 게임을 새로 초기화합니다.
                         if(isHost) {
-                            initializeMultiplayerGame(); // 2. 게임 초기화 (status: 'ready' 신호 발사)
+                            initializeMultiplayerGame();
                         }
                     }
                 });
             }
 
-          function listenToRoomChanges() {
+            function listenToRoomChanges() {
                 let countdownStarted = false; // 카운트다운 중복 실행 방지 플래그
                 roomRef.on('value', snapshot => {
-                    if (isExiting) return; 
+                    if (isExiting) return; // ✨ 퇴장 중이면 리스너 무시
 
                     if (!snapshot.exists()) {
                         if (isGameLive) alert("방장이 나가 방이 사라졌습니다.");
@@ -346,42 +345,34 @@ listenToRoomChanges(); // 1. 리스너(감시) 먼저 시작
                         return;
                     }
 
-                    // ✨ "알까기" 구조로 변경: 'ready' 상태를 제거하고 'board' 생성 여부로 판단
+                    // ✨ [새 로직] 'alkkagi'와 동일한 로직으로 변경
                     
-                    // 1. 'playing' 상태일 때
-                    if (currentRoomData.status === 'playing') {
-                        
-                        // 1-1. [핵심] 보드가 생성되었고, 카운트다운이 아직 시작 안됐으면
-                        if (currentRoomData.board && !countdownStarted) {
-                            countdownStarted = true; // 카운트다운 시작
-                            myColor = currentRoomData.players[myPlayerId]?.color;
-                            updateHeaderUI();
-                            drawBoard(); // 생성된 보드를 그리기
-                            infoOverlay.style.display = 'flex';
-                            infoOverlay.innerHTML = `<div id="countdown-number"></div>`;
-                            startCountdown();
-                        } 
-                        // 1-2. 보드가 아직 없으면 (방금 입장한 상태)
-                        else if (!currentRoomData.board && !countdownStarted) {
-                            infoOverlay.style.display = 'flex'; // "참가 중" 표시 유지
-                        }
-                        // 1-3. 보드도 있고 카운트다운도 끝났으면 (게임 진행 중)
-                        else if (currentRoomData.board && countdownStarted && isGameLive) {
-                             infoOverlay.style.display = 'none';
-                             myColor = currentRoomData.players[myPlayerId]?.color;
-                             updateHeaderUI();
-                             drawBoard();
-                        }
+                    // 1. 'playing' 상태이고, board가 생성되었고, 카운트다운이 아직 시작 안됐으면
+                    if (currentRoomData.status === 'playing' && currentRoomData.board && !countdownStarted) {
+                        countdownStarted = true; // 카운트다운 플래그 설정
+                        myColor = currentRoomData.players[myPlayerId]?.color;
+                        updateHeaderUI();
+                        drawBoard(); // 생성된 초기 보드를 그립니다.
+                        infoOverlay.style.display = 'flex'; // 오버레이를 표시합니다.
+                        infoOverlay.innerHTML = `<div id="countdown-number"></div>`;
+                        startCountdown(); // 카운트다운을 시작합니다.
                     } 
-                    // 2. 'gameOver' 상태
+                    // 2. 'playing' 상태이고, board가 있고, 게임이 활성화(isGameLive)되었으면 (게임 진행 중)
+                    else if (currentRoomData.status === 'playing' && currentRoomData.board && isGameLive) {
+                         infoOverlay.style.display = 'none'; // 오버레이 숨김
+                         myColor = currentRoomData.players[myPlayerId]?.color;
+                         updateHeaderUI();
+                         drawBoard(); // 게임 상태가 바뀔 때마다 보드를 다시 그립니다.
+                    }
+                    // 3. 'playing' 상태이지만, board가 아직 없으면 (방금 입장한 게스트)
+                    else if (currentRoomData.status === 'playing' && !currentRoomData.board) {
+                        infoOverlay.style.display = 'flex'; // "참가 중" 오버레이를 계속 표시
+                    } 
+                    // 4. 'gameOver' 상태
                     else if (currentRoomData.status === 'gameOver' && !gameOverFlag) {
                         gameOverFlag = true;
-                        drawBoard();
+                        drawBoard(); // 마지막 보드 상태를 그립니다.
                         showGameOverScreen();
-                    } 
-                    // 3. 'waiting' 상태 (이론상으론 없지만 안전장치)
-                    else if (currentRoomData.status === 'waiting') {
-                        infoOverlay.style.display = 'flex'; // "참가 중" 표시
                     }
                 });
             }
@@ -404,7 +395,7 @@ listenToRoomChanges(); // 1. 리스너(감시) 먼저 시작
                 initialBoard[35] = 'black'; initialBoard[36] = 'white';
 
                 roomRef.update({
-   status: 'playing', // ✨ 이 한 줄을 추가해야 합니다
+                    // ✨ 'status: ready'를 제거합니다. (이미 'playing' 상태)
                     board: initialBoard,
                     turn: 'black',
                     players: playersWithColors, // 수정된 플레이어 객체로 업데이트합니다.
@@ -430,13 +421,13 @@ listenToRoomChanges(); // 1. 리스너(감시) 먼저 시작
                     if (count <= 0) {
                         clearInterval(interval);
                         
-                       if (gameMode === 'single') {
+                        if (gameMode === 'single') {
                             infoOverlay.style.display = 'none';
                             isGameLive = true;
                             setupSinglePlayerGame();
                         } else {
-                            // ✨ [수정] 'playing'으로 변경하는 로직 제거!
-                            // 이미 'playing' 상태이므로 오버레이만 숨깁니다.
+                            // ✨ [수정] 멀티플레이에서는 상태를 변경하지 않고
+                            // 오버레이만 숨기고 게임을 활성화합니다.
                             infoOverlay.style.display = 'none';
                             isGameLive = true;
                         }
@@ -775,17 +766,17 @@ listenToRoomChanges(); // 1. 리스너(감시) 먼저 시작
                 });
             }
 
-           function cleanupAndExit() {
-                isExiting = true; // ✨ [수정 1] 퇴장 플래그를 설정하여 리스너 중복 동작 방지
+            function cleanupAndExit() {
+                isExiting = true; // ✨ 퇴장 플래그를 설정하여 리스너 중복 동작 방지
                 if (roomRef) {
                     if (isHost) {
                         roomRef.remove();
                     } else if (gameMode === 'multi') {
                         roomRef.child('players/' + myPlayerId).remove();
                     }
-                    roomRef.off();
+                    roomRef.off(); // ✨ 모든 리스너를 확실하게 제거
                 }
-                window.location.replace('대기실.html'); // ✨ [수정 2] 뒤로가기 방지
+                window.location.replace('대기실.html'); // ✨ 뒤로가기를 방지
             }
             
             initialize();
