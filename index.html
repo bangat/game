@@ -41,9 +41,15 @@
         .form-container {
             background: white; padding: clamp(1.5rem, 5vw, 2.5rem); border-radius: 1rem;
             box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-            width: 100%; max-width: 400px; text-align: center;
+            width: 100%; /* max-width: 400px; */ text-align: center; /* ✨ 이전 요청대로 max-width 제거 */
             display: flex; flex-direction: column;
-            max-height: 90vh;
+            
+            /* ✨ [수정] 모바일에서 세로 길이를 확보하도록 변경 */
+            height: 100%; 
+            max-height: none;
+            border-radius: 0;
+            box-shadow: none;
+            padding: 20px;
         }
         .form-title { font-size: clamp(1.8rem, 6vw, 2.2rem); font-weight: 700; margin-bottom: 1rem; }
         .form-subtitle { font-size: 1rem; color: #666; margin-bottom: 2rem; }
@@ -73,11 +79,13 @@
 
         #character-grid {
             display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 10px;
+            /* ✨ [수정] 3열로 변경하고 간격 축소 */
+            grid-template-columns: repeat(3, 1fr);
+            gap: 5px;
         }
 
         .char-option {
+            /* ✨ [수정] 간격 축소 */
             aspect-ratio: 1 / 1;
             border-radius: 0.5rem;
             display: flex;
@@ -87,11 +95,13 @@
             border: 3px solid transparent;
             transition: all 0.2s ease-in-out;
             background-color: #f8f9fa;
+            padding: 2px; /* ✨ 패딩 추가 */
         }
 
         .char-option img {
-            width: 80%;
-            height: 80%;
+            /* ✨ [수정] 이미지 크기 살짝 줄임 */
+            width: 90%;
+            height: 90%;
             object-fit: contain;
         }
         
@@ -101,13 +111,33 @@
             box-shadow: 0 0 10px var(--accent-color);
         }
 
+        .char-option.selected {
+            border-color: var(--accent-color);
+            transform: scale(1.05);
+            box-shadow: 0 0 10px var(--accent-color);
+        }
+
+        /* ✨ [신규] 모달창을 위한 필수 CSS 코드 추가 */
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none; /* JS가 이 부분을 'flex'로 바꿉니다 */
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: rgba(0, 0, 0, 0.6);
+            z-index: 1000; /* 다른 모든 요소 위에 있도록 설정 */
+        }
+
     </style>
 </head>
 <body>
     <audio id="click-sound" src="https://blog.kakaocdn.net/dna/dC0WAE/dJMb84DsZw6/AAAAAAAAAAAAAAAAAAAAAC8XpuPuNVEsdp6Ia-d35XR-m3FCZxObUR5uFI1tk2iv/%EB%B2%84%ED%8A%BC%EC%82%AC%EC%9A%B4%EB%93%9C.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=RdbjxdP75HLHSpBIhymVkYpUOA0%3D&attach=1&knm=tfile.mp3" preload="auto"></audio>
     <div id="auth-view" class="view" style="display: none;">
         <div class="form-container">
-            <h1 class="form-title">미니게임천국</h1>
             <p id="form-subtitle" class="form-subtitle">로그인하여 게임을 즐겨보세요.</p>
             <p id="error-message" class="error-message"></p>
             <div id="form-inputs">
@@ -134,6 +164,19 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <div id="error-modal" class="overlay" style="display: none;">
+        <div style="background: white; border-radius: 16px; width: 90%; max-width: 350px; overflow: hidden; box-shadow: 0 5px 15px rgba(0,0,0,0.2);">
+            <div style="padding: 30px 20px 20px; text-align: center;">
+                <h3 style="font-size: 1.4em; margin-bottom: 15px; color: var(--danger-color);">알림</h3>
+                <p id="error-modal-message" style="font-size: 1em; color: #333;">오류 메시지</p>
+            </div>
+            <div style="display: flex; padding: 15px; background-color: #f8f9fa; border-top: 1px solid #eee;">
+                <button id="error-modal-close-btn" class="menu-btn primary" style="width: 100%; margin: 0;">확인</button>
+            </div>
+        </div>
+    </div>
+
     <script>
 
             function escapeHTML(str) {
@@ -156,7 +199,7 @@
      }
  });
  setInterval(() => { try { debugger; } catch (e) {} }, 1000);
- 
+
     document.addEventListener('DOMContentLoaded', () => {
         const firebaseConfig = {
             apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
@@ -187,6 +230,27 @@
         const clickSound = document.getElementById('click-sound');
         const progressBar = document.getElementById('progress-bar');
     const progressText = document.getElementById('progress-text');
+
+    // ✨ [신규] 오류 모달 변수 추가
+        const errorModal = document.getElementById('error-modal');
+        const errorModalMessage = document.getElementById('error-modal-message');
+        const errorModalCloseBtn = document.getElementById('error-modal-close-btn');
+
+        // ✨ [신규] 오류 모달 닫기 버튼 이벤트
+        errorModalCloseBtn.addEventListener('click', () => {
+            clickSound.play();
+            errorModal.style.display = 'none';
+        });
+
+        // ✨ [신규] 오류 모달을 보여주는 헬퍼 함수
+        // ✨ [신규] 오류 모달을 보여주는 헬퍼 함수
+        function showErrorModal(message) {
+            console.log("showErrorModal 호출됨:", message); // 함수 호출 로그
+            errorMessage.textContent = ''; // 상단 텍스트는 지움
+            errorModalMessage.textContent = message;
+            errorModal.style.display = 'flex'; // 모달 표시
+            console.log("모달 display 스타일:", errorModal.style.display); // 스타일 변경 확인 로그
+        }
 
         let isLoginMode = true;
         let selectedAvatar = '';
@@ -303,47 +367,74 @@
             const nickname = nicknameInput.value.trim();
             const password = passwordInput.value;
 
+            // 유효성 검사 (ShowErrorModal 호출)
             if (nickname.length < 2 || nickname.length > 10 || !/^[가-힣0-9]+$/.test(nickname)) {
-                errorMessage.textContent = '닉네임은 한글, 숫자로 2~10자 입니다.'; return;
+                showErrorModal('닉네임은 한글, 숫자로 2~10자 입니다.'); return;
             }
             if (password.length < 6) {
-                errorMessage.textContent = '비밀번호는 6자 이상이어야 합니다.'; return;
+                showErrorModal('비밀번호는 6자 이상이어야 합니다.'); return;
             }
             if (!isLoginMode && !selectedAvatar) {
-                errorMessage.textContent = '대표 캐릭터를 선택해주세요.'; return;
+                showErrorModal('대표 캐릭터를 선택해주세요.'); return;
             }
 
-            setLoading(true);
-            
+            setLoading(true); // 로딩 시작 (버튼 비활성화)
+            errorMessage.textContent = ''; // 기존 텍스트 에러 메시지 초기화
+
             const email = `${nickname}@kidsgame.com`;
 
             if (isLoginMode) {
+                // --- 로그인 시도 ---
                 auth.signInWithEmailAndPassword(email, password)
-                    .catch(error => {
-                        errorMessage.textContent = '닉네임 또는 비밀번호가 일치하지 않습니다.';
-                        setLoading(false);
-                    });
-            } else {
-                auth.createUserWithEmailAndPassword(email, password)
                     .then(userCredential => {
-                        const user = userCredential.user;
-                        const initialProfile = {
-                            nickname: nickname,
-                            avatar: selectedAvatar,
-                            level: 1, 
-                            exp: 0,
-                            points: 1000, // 가입 시 1000 포인트 지급
-                            createdAt: firebase.database.ServerValue.TIMESTAMP,
-                            ownedAvatars: { 'default': true }
-                        };
-                        const initialGameStats = { totalWins: 0, totalLosses: 0 };
-                        return usersRef.child(user.uid).set({ profile: initialProfile, gameStats: initialGameStats });
+                        // 로그인 성공 시 onAuthStateChanged 리스너가 처리하므로 여기서는 별도 처리 X
+                        // setLoading(false) 호출 안 함 (페이지 전환됨)
+                        console.log("로그인 성공");
                     })
                     .catch(error => {
-                        errorMessage.textContent = error.code === 'auth/email-already-in-use'
+                        // --- 로그인 실패 시 ---
+                        console.error("로그인 실패:", error.code, error.message); // 어떤 에러인지 콘솔에 출력
+                        // ✨ [수정] showErrorModal 호출 확인
+                        showErrorModal('닉네임 또는 비밀번호가 일치하지 않습니다.');
+                        setLoading(false); // 로딩 종료 (버튼 활성화)
+                    });
+            } else {
+                // --- 회원가입 시도 ---
+                auth.createUserWithEmailAndPassword(email, password)
+                    .then(userCredential => {
+                        // 신규 사용자 정보 DB에 저장
+                        const userId = userCredential.user.uid;
+                        usersRef.child(userId).set({
+                            profile: {
+                                nickname: nickname,
+                                avatar: selectedAvatar,
+                                level: 1,
+                                exp: 0,
+                                points: 1000,
+                                createdAt: firebase.database.ServerValue.TIMESTAMP
+                            }
+                            // gameStats는 게임 플레이 시 생성됨
+                        })
+                        .then(() => {
+                            // 회원가입 성공 시 onAuthStateChanged 리스너가 처리
+                            // setLoading(false) 호출 안 함 (페이지 전환됨)
+                            console.log("회원가입 및 DB 저장 성공");
+                        })
+                        .catch(dbError => {
+                             console.error("DB 저장 실패:", dbError);
+                             showErrorModal('사용자 정보 저장 중 오류가 발생했습니다.');
+                             setLoading(false); // 로딩 종료
+                        });
+                    })
+                    .catch(error => {
+                        // --- 회원가입 실패 시 ---
+                        console.error("회원가입 실패:", error.code, error.message); // 어떤 에러인지 콘솔에 출력
+                        const msg = error.code === 'auth/email-already-in-use'
                             ? '이미 사용중인 닉네임입니다.'
-                            : '회원가입 중 오류가 발생했습니다.';
-                        setLoading(false);
+                            : '회원가입 중 오류가 발생했습니다: ' + error.message;
+                        // ✨ [수정] showErrorModal 호출 확인
+                        showErrorModal(msg);
+                        setLoading(false); // 로딩 종료
                     });
             }
         }
@@ -351,7 +442,7 @@
         function setLoading(isLoading) {
             actionBtn.disabled = isLoading;
             actionBtn.textContent = isLoading ? '처리중...' : (isLoginMode ? '로그인' : '회원가입');
-            errorMessage.textContent = '';
+            errorMessage.textContent = ''; // (이 줄은 유지해도 괜찮습니다)
         }
     });
     </script>
