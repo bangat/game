@@ -1,81 +1,118 @@
-const CACHE_NAME = 'minigame-heaven-v2'; // ✨ 기존 이름 유지
+/* ===== 1) 스코프-상대 BASE 경로 계산 ===== */
+// 앱이 루트가 아닌 하위 폴더에 배포되어도 경로를 올바르게 계산합니다.
+const SCOPE_URL = new URL(self.registration.scope);
+const BASE_PATH = SCOPE_URL.pathname.endsWith('/')
+  ? SCOPE_URL.pathname
+  : SCOPE_URL.pathname + '/'; // ex) '/minigame/' 또는 '/'
 
-// ✨ [중요] 캐시할 파일 목록
-// index.html 과 다른 HTML 파일에서 사용하는 모든 핵심 리소스를 포함해야 합니다.
-const URLS_TO_CACHE = [
-  '/', // '/' 또는 'index.html'을 가리키는 루트 경로
-  'index.html',
-  '대기실.html',
-  '게임방.html',
+/* ===== 2) 캐시 버전 및 이름 설정 ===== */
+// ✨ 앱을 업데이트할 때마다 이 버전을 변경하세요 (예: v1.0.1)
+const SW_VERSION = 'v1.0.0';
+const CACHE_NAME = `minigame-heaven-${SW_VERSION}`;
 
-  // ✨ [확인!] 이 경로가 manifest.json 과 일치하는지,
-  //           실제 파일이 이 경로에 있는지 꼭! 확인하세요.
-  // (만약 'images/icons/' 폴더에 있다면 경로를 수정해야 합니다)
-  '/icons/icon-192x192.png',
-  '/icons/icon-512x512.png',
+/* ===== 3) 프리캐시 목록 (핵심!) ===== */
+// ✨ [중요] 외부 리소스(사운드, 폰트, Firebase)를 모두 제거합니다.
+// ✨ [중요] manifest.json을 추가하고 아이콘 경로를 확인하세요.
+const PRECACHE_FILES = [
+  `${BASE_PATH}`,             // 루트 경로 (index.html)
+  `${BASE_PATH}index.html`,
+  `${BASE_PATH}대기실.html`,
+  `${BASE_PATH}게임방.html`,
+  `${BASE_PATH}manifest.json`, // PWA 설치에 필수적이므로 캐시합니다.
 
-  // ✨ [필수 추가] index.html에서 사용하는 외부 리소스
-  'https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff',
-  
-  // ✨ [필수 추가] index.html, 대기실.html 등에서 사용하는 사운드
-  'https://blog.kakaocdn.net/dna/dC0WAE/dJMb84DsZw6/AAAAAAAAAAAAAAAAAAAAAC8XpuPuNVEsdp6Ia-d35XR-m3FCZxObUR5uFI1tk2iv/%EB%B2%84%ED%8A%BC%EC%82%AC%EC%9A%B4%EB%93%9C.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=RdbjxdP75HLHSpBIhymVkYpUOA0%D&attach=1&knm=tfile.mp3',
-  'https://blog.kakaocdn.net/dna/dEAY2/dJMb88H2R2G/AAAAAAAAAAAAAAAAAAAAAPg0_H0XgRz8g-U-2Qk-5K2uWlT2sFpA-Vz_86X37x-o/%EC%9E%85%EC%9E%A5%EC%82%AC%EC%9A%B4%EB%93%9C.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=8yD70E4Y6rV3d9W5D%252B19eYd%252BYcM%253D&attach=1&knm=tfile.mp3',
-  'https://blog.kakaocdn.net/dna/brwD6P/dJMb856J6l3/AAAAAAAAAAAAAAAAAAAAAI1QcI8lW7rA0zH8m8M7p7y7dE0g0-z04sXUqN_S7-kO/%ED%87%B4%EC%9E%A5%EC%82%AC%EC%9A%B4%EB%93%9C.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=8yA7x4n75s5G6j%252B11uA%252BF5hXj8A%253D&attach=1&knm=tfile.mp3',
-
-  // ✨ [필수 추가] Firebase 스크립트 (네트워크 불안정 시에도 앱 로딩)
-  'https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js',
-  'https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js',
-  'https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js'
+  // ✨ 이 경로가 실제 파일 위치와 일치하는지 확인하세요.
+  // (예: 만약 'images/icons/' 폴더 안이라면 경로를 수정하세요)
+  `${BASE_PATH}icons/icon-192x192.png`,
+  `${BASE_PATH}icons/icon-512x512.png`
 ];
 
-// 서비스 워커 설치
+/* ===== 4) 서비스 워커 설치 ===== */
 self.addEventListener('install', (event) => {
+  self.skipWaiting(); // 즉시 새 워커로 활성화
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => {
-        console.log('[SW] Cache opened:', CACHE_NAME);
-        // addAll은 하나라도 실패하면 전체가 실패합니다.
-        return cache.addAll(URLS_TO_CACHE); 
+      .then(cache => {
+        console.log('[SW] Precaching app shell:', PRECACHE_FILES);
+        return cache.addAll(PRECACHE_FILES);
       })
       .catch(err => {
-        // ✨ 설치 실패 시, 어떤 파일이 문제인지 확인하기 위함
-        console.error('[SW] cache.addAll FAILED:', err);
-      })
-  );
-  self.skipWaiting(); // ✨ 즉시 활성화되도록 추가
-});
-
-// 요청 가로채기: 캐시 우선 전략 (Cache First)
-self.addEventListener('fetch', (event) => {
-  event.respondWith(
-    caches.match(event.request)
-      .then((response) => {
-        if (response) {
-          return response; // 1. 캐시에 있으면 캐시된 응답 반환
-        }
-        
-        // 2. 캐시에 없으면 네트워크로 요청
-        // (주의: Firebase DB/Auth 실시간 통신 등은 캐시하면 안 되므로
-        //  'Cache First' 전략은 간단하지만, 나중에 'Network First'로 고도화가 필요할 수 있습니다)
-        return fetch(event.request); 
+        console.error('[SW] Precaching FAILED:', err);
       })
   );
 });
 
-// 서비스 워커 활성화: 오래된 캐시 정리 (기존 코드와 동일)
+/* ===== 5) 서비스 워커 활성화 (오래된 캐시 정리) ===== */
 self.addEventListener('activate', (event) => {
-  const cacheWhitelist = [CACHE_NAME]; // 현재 버전의 캐시만 남김
-  event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheWhitelist.indexOf(cacheName) === -1) {
-            console.log('[SW] Deleting old cache:', cacheName);
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    })
-  );
-  return self.clients.claim();
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    // 새 버전과 이름이 다른 모든 캐시를 삭제합니다.
+    await Promise.all(keys.map(key => {
+      if (key !== CACHE_NAME) {
+        console.log('[SW] Deleting old cache:', key);
+        return caches.delete(key);
+      }
+    }));
+    await self.clients.claim(); // 클라이언트를 즉시 제어
+  })());
+});
+
+/* ===== 6) Fetch 이벤트 처리 (네트워크 우선 + SWR) ===== */
+
+// 6-1) 네비게이션 요청 (HTML 페이지 로드) - 네트워크 우선
+async function handleNavigation(request) {
+  try {
+    // 1. 네트워크에서 최신 버전을 가져옵니다.
+    const fresh = await fetch(request, { cache: 'no-store' });
+    return fresh;
+  } catch (e) {
+    // 2. 오프라인/네트워크 실패 시 캐시에서 기본 페이지(앱 셸)를 반환합니다.
+    console.warn('[SW] Navigation failed, serving shell from cache.', e);
+    const cache = await caches.open(CACHE_NAME);
+    return (await cache.match(`${BASE_PATH}index.html`))
+           || (await cache.match(PRECACHE_FILES[0])); // 루트
+  }
+}
+
+// 6-2) 정적 자원 (JS, CSS, 이미지 등) - Stale-While-Revalidate
+async function handleAsset(request) {
+  const cache = await caches.open(CACHE_NAME);
+  const cached = await cache.match(request);
+  
+  // 1. 네트워크로 최신 버전을 요청하는 작업을 시작합니다.
+  const fetchPromise = fetch(request).then(res => {
+    // 2. 응답이 정상이면 캐시를 최신 버전으로 덮어씁니다.
+    if (res && res.ok) {
+      cache.put(request, res.clone());
+    }
+    return res;
+  }).catch(err => {
+    console.warn('[SW] Asset fetch failed:', err);
+    return null; // 네트워크 실패 시 null 반환
+  });
+
+  // 3. 캐시된 버전이 있으면 즉시 반환 (빠른 로딩),
+  //    없으면 네트워크 요청이 끝날 때까지 기다립니다.
+  return cached || (await fetchPromise);
+}
+
+// 6-3) 메인 Fetch 이벤트 리스너
+self.addEventListener('fetch', (event) => {
+  const req = event.request;
+  if (req.method !== 'GET') return;
+
+  const url = new URL(req.url);
+
+  // ✨ [핵심] 외부 리소스(폰트, 사운드, Firebase 등)는 SW가 처리하지 않음
+  if (url.origin !== self.location.origin) {
+    return;
+  }
+
+  // 1. 페이지 이동 요청인 경우
+  if (req.mode === 'navigate') {
+    event.respondWith(handleNavigation(req));
+    return;
+  }
+  
+  // 2. 기타 내부 자원(JS, CSS, 로컬 이미지 등) 요청인 경우
+  event.respondWith(handleAsset(req));
 });
