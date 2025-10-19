@@ -94,7 +94,7 @@
      }
  });
  setInterval(() => { try { debugger; } catch (e) {} }, 1000);
- 
+
         const firebaseConfig = {
             apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
             authDomain: "goodluck-7c14b.firebaseapp.com",
@@ -107,7 +107,7 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
         const auth = firebase.auth();
-
+const usersRef = db.ref('users');
         const canvas = document.getElementById('game-canvas');
         const ctx = canvas.getContext('2d');
         const gameOverOverlay = document.getElementById('game-over-overlay');
@@ -330,17 +330,16 @@
         }
         
         // 변경 코드
-        function generateRandomMap() {
+       function generateRandomMap() {
             nodes = [];
             adjacency = {};
             
             // 맵 생성 함수들을 배열에 모두 담습니다.
             const mapGenerators = [
-                generateXShapeMap,
-                generateTriangleMap,
-                generateDiamondMap,
-                generateAlquerqueMap, // 새로 추가한 5x5 맵
-                generateHourglassMap  // 새로 추가한 모래시계 맵
+generateAlquerqueMap,    // 교착 상태 없음 (유지)
+                generateHourglassMap,    // 교착 상태 없음 (유지)
+                generateLauKataKatiMap,  // ✨ 1.png 맵 (신규 추가)
+                generateChaukaBaraMap    // ✨ 3.png 맵 (신규 추가)
             ];
 
             // 배열에서 랜덤으로 함수 하나를 골라 실행합니다.
@@ -348,27 +347,37 @@
             chosenGenerator();
         }
         
-        function generateXShapeMap() {
-            const p = 0.15 * boardSize;
-            const w = boardSize - 2 * p;
-            const h = boardSize - 2 * p;
+    
+        function generateAlquerqueMap() {
+            const rows = 5, cols = 5;
+            const padding = boardSize * 0.1;
+            const cellW = (boardSize - 2 * padding) / (cols - 1);
+            const cellH = (boardSize - 2 * padding) / (rows - 1);
+
+            // 1. 25개의 노드 생성
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    const x = padding + c * cellW;
+                    const y = padding + r * cellH;
+                    // 위쪽 2줄은 P1 홈, 아래쪽 2줄은 P2 홈으로 설정
+                    const isP1Home = r < 2;
+                    const isP2Home = r > 2;
+                    addNode(x, y, isP1Home, isP2Home);
+                }
+            }
             
-            addNode(p, p, true, false);              // 0
-            addNode(p + w, p, true, false);          // 1
-            addNode(p, p + h, false, true);          // 2
-            addNode(p + w, p + h, false, true);      // 3
-            addNode(p + w/2, p + h/2, false, false); // 4
-            addNode(p + w/2, p, true, false);        // 5
-            addNode(p, p + h/2, false, false);       // 6
-            addNode(p + w/2, p + h, false, true);    // 7
-            addNode(p + w, p + h/2, false, false);   // 8
-
-            [[0,4],[1,4],[2,4],[3,4],[5,4],[6,4],[7,4],[8,4],
-             [0,5],[5,1],[1,8],[8,3],[3,7],[7,2],[2,6],[6,0]
-            ].forEach(([a, b]) => addEdge(a, b));
+            // 2. 모든 노드를 8방향으로 연결
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    const id = r * cols + c;
+                    if (c < cols - 1) addEdge(id, id + 1); // 오른쪽
+                    if (r < rows - 1) addEdge(id, id + cols); // 아래
+                    if (r < rows - 1 && c < cols - 1) addEdge(id, id + cols + 1); // 아래-오른쪽
+                    if (r < rows - 1 && c > 0) addEdge(id, id + cols - 1); // 아래-왼쪽
+                }
+            }
         }
-
-        // (기존 generateDiamondMap 함수 바로 아래에 붙여넣으세요)
+// (기존 generateDiamondMap 함수 바로 아래에 붙여넣으세요)
 
         function generateAlquerqueMap() {
             const rows = 5, cols = 5;
@@ -400,6 +409,110 @@
             }
         }
 
+        // (기존 generateHourglassMap 함수 바로 뒤에 이어서 붙여넣으세요)
+
+        /**
+         * 1.png (가지/피망) 맵 생성 함수
+         * 4 vs 4 게임. 9개 노드.
+         */
+        function generateLauKataKatiMap() {
+            const p = boardSize * 0.15; // Padding
+            const w = boardSize - 2 * p, h = boardSize - 2 * p;
+            
+            // 9개 노드
+            addNode(p + w/2, p,       true, false);  // 0: Top
+            addNode(p,       p + h/2, true, false);  // 1: Mid-Left
+            addNode(p + w,   p + h/2, true, false);  // 2: Mid-Right
+            addNode(p + w/2, p + h,   false, true); // 3: Bottom
+            addNode(p + w/4, p + h/4, true, false);  // 4: Top-Left
+            addNode(p + 3*w/4, p + h/4, false, false); // 5: Top-Right
+            addNode(p + w/4, p + 3*h/4, false, true);  // 6: Bottom-Left
+            addNode(p + 3*w/4, p + 3*h/4, false, true); // 7: Bottom-Right
+            addNode(p + w/2, p + h/2, false, true);  // 8: Center
+            
+            // P1 홈 (4개): 0, 1, 2, 4
+            // P2 홈 (4개): 3, 6, 7, 8
+
+            // 연결
+            [
+                [0,4], [0,5], [4,1], [5,2], [1,8], [2,8], [1,6], [2,7],
+                [8,6], [8,7], [6,3], [7,3]
+            ].forEach(([a, b]) => addEdge(a, b));
+        }
+
+        /**
+         * 3.png (토마토/피망) 맵 생성 함수
+         * 8 vs 8 게임. 16개 노드.
+         */
+        function generateChaukaBaraMap() {
+            const p = boardSize * 0.1; // Padding
+            const w = boardSize - 2 * p, h = boardSize - 2 * p;
+
+            // 16개 노드
+            // P1 홈 (좌측 8개)
+            addNode(p,       p,       true, false); // 0 (Top-Left-Corner)
+            addNode(p + w/3, p,       true, false); // 1
+            addNode(p,       p + h/3, true, false); // 2
+            addNode(p + w/3, p + h/3, true, false); // 3
+            addNode(p,       p + 2*h/3, true, false); // 4
+            addNode(p + w/3, p + 2*h/3, true, false); // 5
+            addNode(p,       p + h,     true, false); // 6 (Bottom-Left-Corner)
+            addNode(p + w/3, p + h,     true, false); // 7
+            
+            // P2 홈 (우측 8개)
+            addNode(p + 2*w/3, p,       false, true); // 8
+            addNode(p + w,     p,       false, true); // 9 (Top-Right-Corner)
+            addNode(p + 2*w/3, p + h/3, false, true); // 10
+            addNode(p + w,     p + h/3, false, true); // 11
+            addNode(p + 2*w/3, p + 2*h/3, false, true); // 12
+            addNode(p + w,     p + 2*h/3, false, true); // 13
+            addNode(p + 2*w/3, p + h,     false, true); // 14
+            addNode(p + w,     p + h,     false, true); // 15 (Bottom-Right-Corner)
+
+            // 연결
+            const connections = [
+                // 좌측 사각형
+                [0,1], [0,2], [1,3], [2,3], [2,4], [3,5], [4,5], [4,6], [5,7], [6,7],
+                // 우측 사각형
+                [8,9], [8,10], [9,11], [10,11], [10,12], [11,13], [12,13], [12,14], [13,15], [14,15],
+                // 중앙 연결
+                [1,8], [3,10], [5,12], [7,14],
+                // 대각선 연결
+                [0,3], [1,2], [2,5], [3,4], [4,7], [5,6],
+                [8,11], [9,10], [10,13], [11,12], [12,15], [13,14]
+            ];
+            connections.forEach(([a, b]) => addEdge(a, b));
+        }
+
+
+        function generateHourglassMap() {
+            const p = boardSize * 0.15; // Padding
+            const w = boardSize - 2 * p, h = boardSize - 2 * p;
+
+            // 9개의 노드 위치를 직접 지정
+            addNode(p + w/2, p,       true, false);  // 0: Top
+            addNode(p,       p + h/4, true, false);  // 1: Top-Left
+            addNode(p + w,   p + h/4, true, false);  // 2: Top-Right
+            addNode(p,       p + h/2, false, false); // 3: Mid-Left
+            addNode(p + w/2, p + h/2, false, false); // 4: Center
+            addNode(p + w,   p + h/2, false, false); // 5: Mid-Right
+            addNode(p,       p + 3*h/4, false, true); // 6: Bottom-Left
+            addNode(p + w,   p + 3*h/4, false, true); // 7: Bottom-Right
+            addNode(p + w,   p + h,     false, true); // 8: Bottom
+            addNode(p,       p + h,     false, true); // 9: Bottom-Left 2
+            addNode(p + w/2, p + h,     false, true); // 10: Bottom 2
+
+            // 노드 연결
+            [
+                [0,1], [0,2], [1,3], [1,4], [2,4], [2,5],
+                [3,4], [4,5], [3,6], [4,6], [4,7], [5,7],
+                [6,9], [6,10], [7,10], [8,10], [9,10]
+            ].forEach(([a, b]) => addEdge(a, b));
+             // 직접 연결 추가
+            addEdge(8, 9);
+        }
+
+
         function generateHourglassMap() {
             const p = boardSize * 0.15; // Padding
             const w = boardSize - 2 * p, h = boardSize - 2 * p;
@@ -427,47 +540,7 @@
             addEdge(8, 9);
         }
         
-        function generateTriangleMap() {
-            const p = 0.15 * boardSize;
-            const w = boardSize - 2 * p;
-            const h = boardSize - 2 * p;
-            
-            addNode(p + w/2, p, true, false);        // 0: 위 꼭지점
-            addNode(p + w/4, p + h/3, true, false);  // 1
-            addNode(p + 3*w/4, p + h/3, true, false);// 2
-            addNode(p, p + 2*h/3, false, false);     // 3
-            addNode(p + w/2, p + 2*h/3, false, false);// 4
-            addNode(p + w, p + 2*h/3, false, false); // 5
-            addNode(p + w/4, p + h, false, true);    // 6
-            addNode(p + w/2, p + h, false, true);    // 7
-            addNode(p + 3*w/4, p + h, false, true);  // 8
-
-            [[0,1],[0,2],[1,2],[1,3],[1,4],[2,4],[2,5],
-             [3,4],[4,5],[3,6],[4,6],[4,7],[5,7],[5,8],
-             [6,7],[7,8]
-            ].forEach(([a, b]) => addEdge(a, b));
-        }
         
-        function generateDiamondMap() {
-            const p = 0.15 * boardSize;
-            const w = boardSize - 2 * p;
-            const h = boardSize - 2 * p;
-            
-            addNode(p + w/2, p, true, false);        // 0: 위
-            addNode(p + w/4, p + h/4, true, false);  // 1
-            addNode(p + 3*w/4, p + h/4, true, false);// 2
-            addNode(p, p + h/2, false, false);       // 3
-            addNode(p + w/2, p + h/2, false, false); // 4: 중앙
-            addNode(p + w, p + h/2, false, false);   // 5
-            addNode(p + w/4, p + 3*h/4, false, true);// 6
-            addNode(p + 3*w/4, p + 3*h/4, false, true);// 7
-            addNode(p + w/2, p + h, false, true);    // 8: 아래
-
-            [[0,1],[0,2],[1,3],[1,4],[2,4],[2,5],
-             [3,4],[4,5],[3,6],[4,6],[4,7],[5,7],
-             [6,8],[7,8]
-            ].forEach(([a, b]) => addEdge(a, b));
-        }
 
         function placePieces() {
             nodes.forEach(node => {
@@ -668,7 +741,16 @@
             isGameOver = true;
             if(roomRef) roomRef.off();
             
-            const resultText = (winnerNum === myPlayerNum) ? '🎉 승리!' : '😢 패배...';
+            let result = 'loss';
+            let resultText = '😢 패배...';
+
+            if (winnerNum === myPlayerNum) {
+                result = 'win';
+                resultText = '🎉 승리!';
+            }
+            
+            // ✨ [수정] 전적 업데이트 함수 호출
+            updateMyStats(result);
 
             gameOverOverlay.innerHTML = `
                 <div class="modal-content">
@@ -678,6 +760,56 @@
             gameOverOverlay.style.display = 'flex';
             
             if(isHost) roomRef.remove();
+        }
+
+        // ✨ 이 함수 전체를 showGameOver 함수 뒤에 붙여넣으세요.
+        async function updateMyStats(result) {
+            if (!myPlayerId || String(myPlayerId).startsWith('guest_')) {
+                console.log('Guest user or no ID, skipping stats update.');
+                return;
+            }
+
+            const uid = myPlayerId;
+            const gameId = 'crossingKnights'; // ✨ 게임 ID
+            
+            try {
+                const transactionResult = await usersRef.child(uid).transaction(data => {
+                    if (data) {
+                        if (!data.profile) data.profile = {};
+                        const profile = data.profile;
+                        profile.level = profile.level || 1;
+                        profile.createdAt = profile.createdAt || firebase.database.ServerValue.TIMESTAMP;
+                        profile.exp = profile.exp || 0;
+                        profile.points = profile.points || 0;
+                        
+                        if (!data.gameStats) data.gameStats = {};
+                        if (!data.gameStats[gameId]) {
+                            data.gameStats[gameId] = { wins: 0, losses: 0, plays: 0 };
+                        }
+                        
+                        data.gameStats[gameId].plays = (data.gameStats[gameId].plays || 0) + 1;
+                        
+                        if (result === 'win') {
+                            data.gameStats[gameId].wins = (data.gameStats[gameId].wins || 0) + 1;
+                            profile.exp += 50;
+                            profile.points += 100;
+                        } else if (result === 'loss') {
+                            data.gameStats[gameId].losses = (data.gameStats[gameId].losses || 0) + 1;
+                            profile.exp += 10;
+                            profile.points += 30;
+                        }
+                    }
+                    return data;
+                });
+
+                if (transactionResult.committed) {
+                    console.log(`[${gameId}] Stats update success!`);
+                } else {
+                    console.log(`[${gameId}] Stats update transaction aborted.`);
+                }
+            } catch (error) {
+                console.error(`[${gameId}] Stats update failed:`, error);
+            }
         }
     });
     </script>
