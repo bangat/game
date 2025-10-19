@@ -4,30 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>크로싱 나이츠</title>
-    <link href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff" as="font" type="font/woff" crossorigin>
     <style>
         :root {
             --bg-color: #4a4e69; --board-color: #f2e9e4; --border-color: #22223b;
             --p1-color: #9a8c98; --p2-color: #c9ada7;
             --accent-color: #FFC84A; --text-color: #ffffff; --move-indicator-color: #2a9d8f;
-            --shadow-color: rgba(0,0,0,0.2);
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         html, body {
             width: 100%; height: 100%; overflow: hidden;
-            font-family: 'GmarketSans', sans-serif; background-color: var(--bg-color); color: var(--text-color);
+            font-family: sans-serif; background-color: var(--bg-color); color: var(--text-color);
             display: flex; flex-direction: column; justify-content: center; align-items: center;
             -webkit-user-select: none; user-select: none; touch-action: none;
         }
-        .view { width: 100%; height: 100%; display: flex; flex-direction: column; }
-        .menu-btn {
-            width: 90%; max-width: 320px; padding: 15px; font-size: 1.5em; font-weight: 700;
-            font-family: 'GmarketSans', sans-serif; border-radius: 12px; border: none; cursor: pointer;
-            margin: 10px 0; box-shadow: 0 5px 10px var(--shadow-color);
-            background-color: var(--p1-color); color: white;
-        }
-        .menu-btn.secondary { background-color: #eee; color: #333; }
-
         #game-wrapper { width: 100%; height: 100%; display: flex; flex-direction: column; }
         #game-header {
             flex-shrink: 0; display: flex; justify-content: space-between; align-items: center;
@@ -58,22 +47,19 @@
             z-index: 200; text-align: center; background-color: rgba(0,0,0,0.8);
         }
         .modal-content { background: linear-gradient(135deg, #6d6875 0%, #4a4e69 100%); color: white; padding: 40px; border-radius: 25px; width: 90%; max-width: 380px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
-        #game-over-message { font-size: 2.5em; font-weight: bold; margin-bottom: 25px; }
-        .modal-buttons { display: flex; flex-direction: column; gap: 12px; align-items: center; margin-top: 25px; }
-        #countdown-number {
-            font-size: 8em; font-weight: 700; color: var(--accent-color);
-            animation: countdown-pop 1s ease-in-out infinite;
+        .menu-btn {
+            width: 90%; max-width: 320px; padding: 15px; font-size: 1.5em; font-weight: 700;
+            border-radius: 12px; border: none; cursor: pointer; margin: 10px 0;
+            background-color: var(--p1-color); color: white;
         }
-        @keyframes countdown-pop {
-            0%, 100% { transform: scale(1); opacity: 1; }
-            50% { transform: scale(1.2); opacity: 0.8; }
-        }
+        #countdown-number { font-size: 8em; font-weight: 700; color: var(--accent-color); animation: pulse 1s ease-in-out infinite; }
+        @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.2); } }
         .spinner { margin: 20px auto; border: 4px solid rgba(255,255,255,0.3); border-radius: 50%; border-top: 4px solid white; width: 40px; height: 40px; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
-    <div id="game-wrapper" class="view">
+    <div id="game-wrapper">
         <div id="game-header"></div>
         <div id="game-container">
             <canvas id="game-canvas"></canvas>
@@ -100,43 +86,46 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
         const auth = firebase.auth();
-        const playersStatsRef = db.ref('users');
 
         const canvas = document.getElementById('game-canvas');
         const ctx = canvas.getContext('2d');
         const gameOverOverlay = document.getElementById('game-over-overlay');
         const waitingOverlay = document.getElementById('waiting-overlay');
+        const gameHeader = document.getElementById('game-header');
 
         let myPlayerId, roomRef, isHost, myPlayerNum;
         let player1Info, player2Info;
         let isMyTurn = false;
         let isGameOver = false;
         
-        let nodes = [], adjacency = {}, boardSize = 0, nodeRadius = 0;
+        // ✅ adjacency는 무조건 객체로 통일
+        let nodes = [];
+        let adjacency = {};
+        let boardSize = 0;
+        let nodeRadius = 0;
         
-        const pieceEmojis = ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🐔', '🐧', '🐦', '🐤', '🦋', '🐞', '🐢', '🐍', '🐙', '🦑', '🐡', '🐠', '🐳', '🐊', '🦖', '🦕'];
-        let player1Piece = pieceEmojis[0];
-        let player2Piece = pieceEmojis[1];
+        const pieceEmojis = ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐯', '🦁'];
+        let player1Piece = '🐶';
+        let player2Piece = '🐱';
 
         let selectedNodeId = null;
         let possibleMoves = [];
-        let accentColor, moveIndicatorColor;
 
-        function initialize() {
-            const computedStyle = getComputedStyle(document.documentElement);
-            accentColor = computedStyle.getPropertyValue('--accent-color').trim();
-            moveIndicatorColor = computedStyle.getPropertyValue('--move-indicator-color').trim();
-
-            myPlayerId = localStorage.getItem('myPlayerId');
-            if (!myPlayerId) {
-                alert("Player information not found.");
+        auth.onAuthStateChanged(user => {
+            if (!user) {
+                alert('로그인이 필요합니다.');
                 window.location.href = 'index.html';
                 return;
             }
+            myPlayerId = user.uid;
+            initializeGame();
+        });
+
+        function initializeGame() {
             const urlParams = new URLSearchParams(window.location.search);
             const roomId = urlParams.get('roomId');
             if (!roomId) {
-                alert("Invalid access.");
+                alert("잘못된 접근입니다.");
                 window.location.href = '대기실.html';
                 return;
             }
@@ -150,29 +139,58 @@
 
             roomRef.once('value', snapshot => {
                 if (!snapshot.exists()) {
-                    alert('Room not found.');
+                    alert('방을 찾을 수 없습니다.');
                     window.location.href = '대기실.html';
                     return;
                 }
                 const roomData = snapshot.val();
-                isHost = roomData.hostId === myPlayerId;
-                myPlayerNum = isHost ? 1 : 2;
                 
-                const hostData = roomData.players[roomData.hostId];
-                const guestId = Object.keys(roomData.players).find(id => id !== roomData.hostId);
-                const guestData = roomData.players[guestId];
-                
-                player1Info = { nickname: hostData.nickname, avatar: hostData.avatar };
-                player2Info = { nickname: guestData.nickname, avatar: guestData.avatar };
-
-                if (isHost) {
-                    roomRef.onDisconnect().remove();
-                } else {
-                    roomRef.child('players/' + myPlayerId).onDisconnect().remove();
+                if(!roomData.players || Object.keys(roomData.players).length < 2) {
+                    if (roomData.hostId !== myPlayerId) {
+                        alert('상대방이 아직 입장하지 않았습니다.');
+                        window.location.href = '대기실.html';
+                        return;
+                    } else {
+                        waitingOverlay.innerHTML = `<div class="spinner"></div><p>상대를 기다리는 중...</p>`;
+                        waitingOverlay.style.display = 'flex';
+                        
+                        // ✅ 방장은 여기서 대기하며, 게스트가 들어오면 자동으로 게임 시작
+                        roomRef.child('players').on('value', checkPlayers);
+                        return;
+                    }
                 }
-                
-                startCountdown();
+
+                startGame(roomData);
             });
+        }
+
+        function checkPlayers(snapshot) {
+            if (!snapshot.exists()) return;
+            const players = snapshot.val();
+            if (Object.keys(players).length >= 2) {
+                roomRef.child('players').off('value', checkPlayers);
+                roomRef.once('value', s => startGame(s.val()));
+            }
+        }
+
+        function startGame(roomData) {
+            isHost = roomData.hostId === myPlayerId;
+            myPlayerNum = isHost ? 1 : 2;
+            
+            const hostData = roomData.players[roomData.hostId];
+            const guestId = Object.keys(roomData.players).find(id => id !== roomData.hostId);
+            const guestData = roomData.players[guestId];
+            
+            player1Info = { nickname: hostData.nickname, avatar: hostData.avatar };
+            player2Info = { nickname: guestData.nickname, avatar: guestData.avatar };
+
+            if (isHost) {
+                roomRef.onDisconnect().remove();
+            } else {
+                roomRef.child('players/' + myPlayerId).onDisconnect().remove();
+            }
+            
+            startCountdown();
         }
 
         function startCountdown() {
@@ -201,18 +219,17 @@
                 generateRandomMap();
                 placePieces();
                 
-                let p1Emoji = pieceEmojis[Math.floor(Math.random() * pieceEmojis.length)];
-                let p2Emoji;
+                player1Piece = pieceEmojis[Math.floor(Math.random() * pieceEmojis.length)];
                 do {
-                    p2Emoji = pieceEmojis[Math.floor(Math.random() * pieceEmojis.length)];
-                } while (p1Emoji === p2Emoji);
+                    player2Piece = pieceEmojis[Math.floor(Math.random() * pieceEmojis.length)];
+                } while (player1Piece === player2Piece);
 
                 const initialState = {
                     nodes: nodes,
                     adjacency: adjacency,
                     currentTurn: 1,
-                    player1Piece: p1Emoji,
-                    player2Piece: p2Emoji
+                    player1Piece: player1Piece,
+                    player2Piece: player2Piece
                 };
                 roomRef.child('gameState').set(initialState);
             }
@@ -224,36 +241,68 @@
         function listenToGameChanges() {
             roomRef.child('gameState').on('value', snapshot => {
                 if (!snapshot.exists() || isGameOver) return;
+                
                 const state = snapshot.val();
-                nodes = state.nodes;
-                adjacency = state.adjacency;
+                if (typeof state === 'string') {
+                    if (state === 'restarting') {
+                        alert("상대방이 게임을 나갔습니다.");
+                        location.reload();
+                    }
+                    return;
+                }
+
+                if (!state || !state.nodes || !state.adjacency) return;
+
+                // ✅ nodes 복원 (인덱스 보존)
+                if (Array.isArray(state.nodes)) {
+                    nodes = state.nodes;
+                } else {
+                    // Firebase가 객체로 반환한 경우, 인덱스를 키로 사용
+                    const maxId = Math.max(...Object.keys(state.nodes).map(k => parseInt(k)));
+                    nodes = new Array(maxId + 1);
+                    Object.keys(state.nodes).forEach(key => {
+                        nodes[parseInt(key)] = state.nodes[key];
+                    });
+                }
+
+                console.log('📦 복원된 nodes:', nodes);
+                console.log('🔗 복원된 adjacency:', adjacency);
+
+                // ✅ adjacency 복원 (인덱스 보존)
+                adjacency = {};
+                if (Array.isArray(state.adjacency)) {
+                    state.adjacency.forEach((neighbors, index) => {
+                        if (neighbors !== null && neighbors !== undefined) {
+                            adjacency[index] = Array.isArray(neighbors) ? neighbors : Object.values(neighbors || {});
+                        }
+                    });
+                } else {
+                    Object.keys(state.adjacency).forEach(nodeId => {
+                        const neighbors = state.adjacency[nodeId];
+                        adjacency[nodeId] = Array.isArray(neighbors) ? neighbors : Object.values(neighbors || {});
+                    });
+                }
+
+                console.log('✅ 게임 상태 업데이트:', { nodes: nodes.length, adjacency: Object.keys(adjacency).length });
+
+                isMyTurn = state.currentTurn === myPlayerNum;
                 player1Piece = state.player1Piece;
                 player2Piece = state.player2Piece;
                 
-                // ✨ 턴 변경 시 선택 초기화 (중요)
-                const newTurn = state.currentTurn === myPlayerNum;
-                if (isMyTurn !== newTurn) {
-                    deselectPiece(); // 턴이 바뀌면 선택을 취소합니다.
-                }
-                isMyTurn = newTurn;
-
-                drawBoard();
+                deselectPiece();
                 updateHeaderUI();
                 checkWinCondition();
             });
 
-            roomRef.on('value', snapshot => {
-                if (isGameOver) return;
-                if (!snapshot.exists() || !snapshot.val().players || Object.keys(snapshot.val().players).length < 2) {
-                    alert('Opponent has left. Returning to the lobby.');
-                    isGameOver = true;
-                    if(roomRef) roomRef.off();
-                    window.location.href = '대기실.html';
+            roomRef.child('players').on('value', snapshot => {
+                if (isGameOver || !snapshot.exists()) return;
+                const players = snapshot.val();
+                if (Object.keys(players).length < 2 && !isHost) {
+                    roomRef.child('gameState').set('restarting');
                 }
             });
         }
 
-        // --- 맵 생성 로직 ---
         function addNode(x, y, isP1Home, isP2Home) {
             const id = nodes.length;
             nodes.push({ id, x, y, piece: null, isPlayer1Home: isP1Home, isPlayer2Home: isP2Home });
@@ -262,20 +311,17 @@
         }
 
         function addEdge(id1, id2) {
-            if (adjacency[id1] && !adjacency[id1].includes(id2)) adjacency[id1].push(id2);
-            if (adjacency[id2] && !adjacency[id2].includes(id1)) adjacency[id2].push(id1);
+            if (!adjacency[id1].includes(id2)) adjacency[id1].push(id2);
+            if (!adjacency[id2].includes(id1)) adjacency[id2].push(id1);
         }
         
         function generateRandomMap() {
-            // ✨ 맵 다양성 추가 (3가지 맵)
-            const mapGenerators = [generateAlquerqueMap, generateSholoGutiMap, generateXShapeMap];
-            const chosenGenerator = mapGenerators[Math.floor(Math.random() * mapGenerators.length)];
             nodes = [];
             adjacency = {};
-            chosenGenerator();
+            generateAlquerqueMap();
         }
-
-        function generateAlquerqueMap() { // 5x5 Grid with diagonals
+        
+        function generateAlquerqueMap() {
             const rows = 5, cols = 5;
             const padding = boardSize * 0.1;
             const cellW = (boardSize - 2 * padding) / (cols - 1);
@@ -285,90 +331,105 @@
                 for (let c = 0; c < cols; c++) {
                     const x = padding + c * cellW;
                     const y = padding + r * cellH;
-                    const isP1Home = r < 2;
-                    const isP2Home = r > 2;
-                    addNode(x, y, isP1Home, isP2Home);
-                    
+                    addNode(x, y, r < 2, r > 2);
+                }
+            }
+            
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
                     const id = r * cols + c;
-                    if (c > 0) addEdge(id, id - 1); // Left
-                    if (r > 0) addEdge(id, id - cols); // Top
-                    if (r > 0 && c > 0) addEdge(id, id - cols - 1); // Top-Left
-                    if (r > 0 && c < cols - 1) addEdge(id, id - cols + 1); // Top-Right
+                    if (c < cols - 1) addEdge(id, id + 1);
+                    if (r < rows - 1) addEdge(id, id + cols);
+                    if (r < rows - 1 && c < cols - 1) addEdge(id, id + cols + 1);
+                    if (r < rows - 1 && c > 0) addEdge(id, id + cols - 1);
                 }
             }
         }
-        
-        function generateSholoGutiMap() {
-            const p = 0.1 * boardSize;
-            const w = boardSize - 2 * p, h = boardSize - 2 * p;
-            
-            const nodesPos = [
-                [p + w * 0.5, p + h * 0.1], [p + w * 0.2, p + h * 0.2], [p + w * 0.8, p + h * 0.2],
-                [p + w * 0.5, p + h * 0.3], [p + w * 0.2, p + h * 0.4], [p + w * 0.8, p + h * 0.4],
-                [p + w * 0.5, p + h * 0.9], [p + w * 0.2, p + h * 0.8], [p + w * 0.8, p + h * 0.8],
-                [p + w * 0.5, p + h * 0.7], [p + w * 0.2, p + h * 0.6], [p + w * 0.8, p + h * 0.6],
-                [p + w * 0.5, p + h * 0.5]
-            ];
-
-            nodesPos.forEach((pos, i) => {
-                const isP1Home = i < 6;
-                const isP2Home = i >= 6 && i < 12;
-                addNode(pos[0], pos[1], isP1Home, isP2Home);
-            });
-            
-            [ [0,1],[0,2],[1,3],[2,3],[1,4],[2,5],[3,4],[3,5],[4,12],[5,12],
-              [6,7],[6,8],[7,9],[8,9],[7,10],[8,11],[9,10],[9,11],[10,12],[11,12],
-              [3,9],[4,10],[5,11]
-            ].forEach(pair => addEdge(pair[0], pair[1]));
-        }
-
-        // ✨ X자 맵 생성 함수 추가
-        function generateXShapeMap() {
-            const p = 0.1 * boardSize; // padding
-            const w = boardSize - 2 * p;
-            const h = boardSize - 2 * p;
-            
-            // 코너
-            addNode(p, p, true, false);     // 0 (P1)
-            addNode(p + w, p, true, false); // 1 (P1)
-            addNode(p, p + h, false, true); // 2 (P2)
-            addNode(p + w, p + h, false, true); // 3 (P2)
-            // 센터
-            addNode(p + w/2, p + h/2, false, false); // 4
-            // 엣지 중간
-            addNode(p + w/2, p, true, false); // 5 (P1)
-            addNode(p, p + h/2, false, false); // 6
-            addNode(p + w/2, p + h, false, true); // 7 (P2)
-            addNode(p + w, p + h/2, false, false); // 8
-
-            // 대각선
-            addEdge(0, 4); addEdge(1, 4); addEdge(2, 4); addEdge(3, 4);
-            // 십자선
-            addEdge(5, 4); addEdge(6, 4); addEdge(7, 4); addEdge(8, 4);
-            // 바깥선
-            addEdge(0, 5); addEdge(5, 1); addEdge(1, 8); addEdge(8, 3);
-            addEdge(3, 7); addEdge(7, 2); addEdge(2, 6); addEdge(6, 0);
-        }
 
         function placePieces() {
-            nodes.filter(n => n.isPlayer1Home && n.piece === null).forEach(node => node.piece = 1);
-            nodes.filter(n => n.isPlayer2Home && n.piece === null).forEach(node => node.piece = 2);
+            nodes.filter(n => n.isPlayer1Home).forEach(node => node.piece = 1);
+            nodes.filter(n => n.isPlayer2Home).forEach(node => node.piece = 2);
         }
         
+        function updateHeaderUI() {
+            if (!player1Info || !player2Info) return;
+
+            const p1Turn = (myPlayerNum === 1 && isMyTurn) || (myPlayerNum === 2 && !isMyTurn);
+            const p2Turn = !p1Turn;
+
+            const p1Avatar = player1Info.avatar.startsWith('http') ? `<img src="${player1Info.avatar}">` : player1Info.avatar;
+            const p2Avatar = player2Info.avatar.startsWith('http') ? `<img src="${player2Info.avatar}">` : player2Info.avatar;
+            
+            gameHeader.innerHTML = `
+                <div class="player-info ${p1Turn ? 'my-turn' : ''}">
+                    <div class="avatar">${p1Avatar}</div>
+                    <span class="piece-emoji">${player1Piece}</span>
+                    <span class="nickname">${player1Info.nickname}</span>
+                </div>
+                <div class="player-info ${p2Turn ? 'my-turn' : ''}">
+                    <span class="nickname">${player2Info.nickname}</span>
+                    <span class="piece-emoji">${player2Piece}</span>
+                    <div class="avatar">${p2Avatar}</div>
+                </div>
+            `;
+        }
+        
+        function setupInputHandlers() {
+            canvas.addEventListener('click', e => {
+                if (!isMyTurn || isGameOver) return;
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+
+                const clickedNode = nodes.find(n => Math.hypot(n.x - x, n.y - y) < nodeRadius * 1.2);
+
+                if (!clickedNode) {
+                    deselectPiece();
+                    return;
+                }
+
+                if (selectedNodeId !== null) {
+                    if (possibleMoves.includes(clickedNode.id)) {
+                        movePiece(selectedNodeId, clickedNode.id);
+                    } else if (clickedNode.piece === myPlayerNum) {
+                        selectPiece(clickedNode);
+                    } else {
+                        deselectPiece();
+                    }
+                } else {
+                    if (clickedNode.piece === myPlayerNum) {
+                        selectPiece(clickedNode);
+                    }
+                }
+            });
+        }
+
         function drawBoard() {
+            if (!nodes.length) return;
             ctx.clearRect(0, 0, boardSize, boardSize);
             
+            // 홈 영역 배경
             ctx.globalAlpha = 0.2;
             ctx.fillStyle = "rgba(154, 140, 152, 1)";
-            nodes.filter(n => n.isPlayer1Home).forEach(n => { ctx.beginPath(); ctx.arc(n.x, n.y, nodeRadius * 1.5, 0, 2 * Math.PI); ctx.fill(); });
+            nodes.filter(n => n.isPlayer1Home).forEach(n => {
+                ctx.beginPath();
+                ctx.arc(n.x, n.y, nodeRadius * 1.5, 0, 2 * Math.PI);
+                ctx.fill();
+            });
             ctx.fillStyle = "rgba(201, 173, 167, 1)";
-            nodes.filter(n => n.isPlayer2Home).forEach(n => { ctx.beginPath(); ctx.arc(n.x, n.y, nodeRadius * 1.5, 0, 2 * Math.PI); ctx.fill(); });
+            nodes.filter(n => n.isPlayer2Home).forEach(n => {
+                ctx.beginPath();
+                ctx.arc(n.x, n.y, nodeRadius * 1.5, 0, 2 * Math.PI);
+                ctx.fill();
+            });
             ctx.globalAlpha = 1.0;
 
+            // 연결선
             ctx.strokeStyle = '#22223b';
             ctx.lineWidth = 3;
             for (let i = 0; i < nodes.length; i++) {
-                adjacency[i].forEach(neighborId => {
+                const neighbors = adjacency[i] || [];
+                neighbors.forEach(neighborId => {
                     if (i < neighborId) {
                         ctx.beginPath();
                         ctx.moveTo(nodes[i].x, nodes[i].y);
@@ -378,17 +439,21 @@
                 });
             }
 
+            // 이동 가능 위치 표시 (초록색)
+            ctx.fillStyle = '#2a9d8f';
+            ctx.globalAlpha = 0.6;
             possibleMoves.forEach(moveId => {
                 const node = nodes[moveId];
-                ctx.beginPath();
-                ctx.arc(node.x, node.y, nodeRadius, 0, 2 * Math.PI);
-                ctx.fillStyle = moveIndicatorColor;
-                ctx.globalAlpha = 0.6;
-                ctx.fill();
-                ctx.globalAlpha = 1.0;
+                if (node) {
+                    ctx.beginPath();
+                    ctx.arc(node.x, node.y, nodeRadius, 0, 2 * Math.PI);
+                    ctx.fill();
+                }
             });
+            ctx.globalAlpha = 1.0;
 
-            ctx.font = `${nodeRadius * 1.5}px GmarketSans`;
+            // 노드와 말
+            ctx.font = `${nodeRadius * 1.5}px Arial`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             nodes.forEach(node => {
@@ -406,109 +471,65 @@
                 if(selectedNodeId === node.id) {
                     ctx.beginPath();
                     ctx.arc(node.x, node.y, nodeRadius * 1.2, 0, 2 * Math.PI);
-                    ctx.strokeStyle = accentColor;
+                    ctx.strokeStyle = '#FFC84A';
                     ctx.lineWidth = 4;
                     ctx.stroke();
                 }
             });
         }
-        
-        function updateHeaderUI() {
-            const header = document.getElementById('game-header');
-            const p1Turn = (isHost && isMyTurn) || (!isHost && !isMyTurn);
-            const p2Turn = (!isHost && isMyTurn) || (isHost && !isMyTurn);
 
-            const p1Avatar = player1Info.avatar.startsWith('http') ? `<img src="${player1Info.avatar}" alt="p1">` : player1Info.avatar;
-            const p2Avatar = player2Info.avatar.startsWith('http') ? `<img src="${player2Info.avatar}" alt="p2">` : player2Info.avatar;
-
-            header.innerHTML = `
-                <div class="player-info ${p1Turn ? 'my-turn' : ''}">
-                    <div class="avatar">${p1Avatar}</div>
-                    <span class="piece-emoji">${player1Piece}</span>
-                    <span class="nickname">${player1Info.nickname}</span>
-                </div>
-                <div class="player-info ${p2Turn ? 'my-turn' : ''}">
-                    <span class="nickname">${player2Info.nickname}</span>
-                    <span class="piece-emoji">${player2Piece}</span>
-                    <div class="avatar">${p2Avatar}</div>
-                </div>
-            `;
-        }
-
-        // --- ✨ 클릭 로직 수정 ---
-
-        function setupInputHandlers() {
-            canvas.addEventListener('click', e => {
-                if (!isMyTurn || isGameOver) return;
-                const rect = canvas.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
-
-                const clickedNode = nodes.find(n => Math.hypot(n.x - x, n.y - y) < nodeRadius * 1.2);
-
-                if (!clickedNode) {
-                    deselectPiece();
-                    return;
-                }
-
-                if (selectedNodeId !== null) { // 이미 말이 선택된 상태
-                    if (possibleMoves.includes(clickedNode.id)) {
-                        // 1. 이동 가능한 곳(초록원)을 클릭함 -> 이동
-                        movePiece(selectedNodeId, clickedNode.id);
-                    } else if (clickedNode.piece === myPlayerNum) {
-                        // 2. 다른 내 말을 클릭함 -> 선택 변경
-                        selectPiece(clickedNode);
-                    } else {
-                        // 3. 그 외 (빈칸, 상대 말) -> 선택 취소
-                        deselectPiece();
-                    }
-                } else { // 아무것도 선택되지 않은 상태
-                    if (clickedNode.piece === myPlayerNum) {
-                        // 1. 내 말을 클릭함 -> 선택
-                        selectPiece(clickedNode);
-                    } else {
-                        // 2. 그 외 (빈칸, 상대 말) -> 아무것도 안함
-                        deselectPiece();
-                    }
-                }
+        function movePiece(fromId, toId) {
+            const newNodes = JSON.parse(JSON.stringify(nodes)); 
+            newNodes[toId].piece = newNodes[fromId].piece;
+            newNodes[fromId].piece = null;
+            
+            roomRef.child('gameState').update({
+                nodes: newNodes,
+                currentTurn: myPlayerNum === 1 ? 2 : 1
             });
+            
+            deselectPiece();
         }
-
+        
         function selectPiece(node) {
             selectedNodeId = node.id;
-            possibleMoves = adjacency[selectedNodeId].filter(id => nodes[id].piece === null);
-            drawBoard(); // 선택 표시 및 이동 경로 표시
+            const neighbors = adjacency[node.id] || [];
+            
+            console.log('🎯 선택한 노드:', node);
+            console.log('📍 이웃 ID 목록:', neighbors);
+            
+            // 각 이웃 노드의 상태를 자세히 출력
+            neighbors.forEach(id => {
+                const neighborNode = nodes[id];
+                console.log(`  - 이웃 ${id}: 존재=${!!neighborNode}, piece=${neighborNode?.piece}`);
+            });
+            
+            // ✅ 수정: piece가 null 또는 undefined면 빈 칸으로 인식
+            possibleMoves = neighbors.filter(id => {
+                const targetNode = nodes[id];
+                // piece가 없거나(undefined) null이면 빈 칸
+                const isEmpty = targetNode && (targetNode.piece === null || targetNode.piece === undefined);
+                return isEmpty;
+            });
+            
+            console.log('✅ 이동 가능한 노드 ID:', possibleMoves);
+            
+            drawBoard();
         }
 
         function deselectPiece() {
             selectedNodeId = null;
             possibleMoves = [];
-            drawBoard(); // 선택 및 경로 표시 제거
+            drawBoard();
         }
 
-        function movePiece(fromId, toId) {
-            // 1. 로컬 상태 즉시 업데이트
-            nodes[toId].piece = nodes[fromId].piece;
-            nodes[fromId].piece = null;
-            
-            // 2. 선택 상태 초기화 (이동 후에는 항상 선택 해제)
-            deselectPiece(); // drawBoard()가 여기서 호출되어 즉시 이동을 그림
-
-            // 3. Firebase에 변경 사항 전송
-            const nextTurn = myPlayerNum === 1 ? 2 : 1;
-            roomRef.child('gameState/nodes').set(nodes);
-            roomRef.child('gameState/currentTurn').set(nextTurn);
-        }
-        
-        // --- 게임 승리 판정 및 종료 ---
-        
         function checkWinCondition() {
             if (isGameOver || !nodes.length) return;
             const p1HomeNodes = nodes.filter(n => n.isPlayer1Home);
             const p2HomeNodes = nodes.filter(n => n.isPlayer2Home);
             
-            if (p2HomeNodes.length > 0 && p2HomeNodes.every(n => n.piece === 1)) showGameOver(1);
-            else if (p1HomeNodes.length > 0 && p1HomeNodes.every(n => n.piece === 2)) showGameOver(2);
+            if (p2HomeNodes.length && p2HomeNodes.every(n => n.piece === 1)) showGameOver(1);
+            else if (p1HomeNodes.length && p1HomeNodes.every(n => n.piece === 2)) showGameOver(2);
         }
         
         function showGameOver(winnerNum) {
@@ -516,45 +537,17 @@
             isGameOver = true;
             if(roomRef) roomRef.off();
             
-            const iWon = (winnerNum === myPlayerNum);
-            updatePlayerStats(iWon);
-            const resultText = iWon ? '🎉 승리!' : '😢 패배...';
+            const resultText = (winnerNum === myPlayerNum) ? '🎉 승리!' : '😢 패배...';
 
             gameOverOverlay.innerHTML = `
                 <div class="modal-content">
-                    <h2 id="game-over-message">${resultText}</h2>
-                    <div class="modal-buttons">
-                        <button id="to-lobby-btn" class="menu-btn secondary">대기실로 돌아가기</button>
-                    </div>
+                    <h2>${resultText}</h2>
+                    <button class="menu-btn" onclick="location.href='대기실.html'">대기실로</button>
                 </div>`;
             gameOverOverlay.style.display = 'flex';
             
-            document.getElementById('to-lobby-btn').addEventListener('click', () => {
-                window.location.href = '대기실.html';
-            });
+            if(isHost) roomRef.remove();
         }
-
-        function updatePlayerStats(won) {
-            if (!myPlayerId || myPlayerId.startsWith('guest_')) return;
-            const userRef = playersStatsRef.child(myPlayerId);
-            userRef.transaction(userData => {
-                if (userData) {
-                    if (!userData.gameStats) userData.gameStats = {};
-                    if (!userData.gameStats.crossingKnights) {
-                        userData.gameStats.crossingKnights = { wins: 0, losses: 0, plays: 0 };
-                    }
-                    const stats = userData.gameStats.crossingKnights;
-                    stats.wins = (stats.wins || 0) + (won ? 1 : 0);
-                    stats.losses = (stats.losses || 0) + (won ? 0 : 1);
-                    stats.plays = (stats.plays || 0) + 1;
-                    if (!userData.profile) userData.profile = { points: 0 };
-                    userData.profile.points = (userData.profile.points || 0) + (won ? 150 : 50);
-                }
-                return userData;
-            });
-        }
-
-        initialize();
     });
     </script>
 </body>
