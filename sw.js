@@ -1,18 +1,13 @@
-// service-worker.js
-
-const CACHE_NAME = 'minigame-heaven-v1'; // ✨ 캐시 이름 변경 (프로젝트에 맞게)
+const CACHE_NAME = 'minigame-heaven-v2'; // ✨ 캐시 이름 변경 (프로젝트에 맞게)
 const URLS_TO_CACHE = [
-  '/', // 루트 경로
-  '/index.html',
-  '/대기실.html', // ✨ 주요 HTML 파일 추가
-  '/게임방.html', // ✨ 주요 HTML 파일 추가
-  /* '/styles.css', // 만약 CSS 파일이 분리되어 있다면 추가 */
-  /* '/script.js',  // 만약 JS 파일이 분리되어 있다면 추가 */
+  '', // 루트 경로
+  'index.html',
+  '대기실.html', // ✨ 주요 HTML 파일 추가
+  '게임방.html', // ✨ 주요 HTML 파일 추가
 
   // ✨ manifest.json 에 정의된 아이콘 경로와 일치시키세요
   '/icons/icon-192x192.png',
   '/icons/icon-512x512.png'
-  // 다른 크기 아이콘이나 이미지 에셋이 있다면 추가
 ];
 
 // 서비스 워커 설치: URLS_TO_CACHE 목록의 파일을 캐시에 저장
@@ -21,7 +16,6 @@ self.addEventListener('install', (event) => {
     caches.open(CACHE_NAME)
       .then((cache) => {
         console.log('Opened cache:', CACHE_NAME);
-        // addAll은 하나라도 실패하면 전체가 실패합니다. 경로가 정확한지 확인!
         return cache.addAll(URLS_TO_CACHE);
       })
       .catch(err => {
@@ -72,3 +66,4 @@ self.addEventListener('activate', (event) => {
   // 즉시 클라이언트를 제어하도록 설정 (선택사항)
   return self.clients.claim();
 });
+
