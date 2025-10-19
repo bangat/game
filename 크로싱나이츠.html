@@ -307,18 +307,23 @@
             if (!adjacency[id2].includes(id1)) adjacency[id2].push(id1);
         }
         
+        // 변경 코드
         function generateRandomMap() {
             nodes = [];
             adjacency = {};
-            const mapType = Math.random();
             
-            if (mapType < 0.33) {
-                generateXShapeMap();
-            } else if (mapType < 0.66) {
-                generateTriangleMap();
-            } else {
-                generateDiamondMap();
-            }
+            // 맵 생성 함수들을 배열에 모두 담습니다.
+            const mapGenerators = [
+                generateXShapeMap,
+                generateTriangleMap,
+                generateDiamondMap,
+                generateAlquerqueMap, // 새로 추가한 5x5 맵
+                generateHourglassMap  // 새로 추가한 모래시계 맵
+            ];
+
+            // 배열에서 랜덤으로 함수 하나를 골라 실행합니다.
+            const chosenGenerator = mapGenerators[Math.floor(Math.random() * mapGenerators.length)];
+            chosenGenerator();
         }
         
         function generateXShapeMap() {
@@ -339,6 +344,65 @@
             [[0,4],[1,4],[2,4],[3,4],[5,4],[6,4],[7,4],[8,4],
              [0,5],[5,1],[1,8],[8,3],[3,7],[7,2],[2,6],[6,0]
             ].forEach(([a, b]) => addEdge(a, b));
+        }
+
+        // (기존 generateDiamondMap 함수 바로 아래에 붙여넣으세요)
+
+        function generateAlquerqueMap() {
+            const rows = 5, cols = 5;
+            const padding = boardSize * 0.1;
+            const cellW = (boardSize - 2 * padding) / (cols - 1);
+            const cellH = (boardSize - 2 * padding) / (rows - 1);
+
+            // 1. 25개의 노드 생성
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    const x = padding + c * cellW;
+                    const y = padding + r * cellH;
+                    // 위쪽 2줄은 P1 홈, 아래쪽 2줄은 P2 홈으로 설정
+                    const isP1Home = r < 2;
+                    const isP2Home = r > 2;
+                    addNode(x, y, isP1Home, isP2Home);
+                }
+            }
+            
+            // 2. 모든 노드를 8방향으로 연결
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    const id = r * cols + c;
+                    if (c < cols - 1) addEdge(id, id + 1); // 오른쪽
+                    if (r < rows - 1) addEdge(id, id + cols); // 아래
+                    if (r < rows - 1 && c < cols - 1) addEdge(id, id + cols + 1); // 아래-오른쪽
+                    if (r < rows - 1 && c > 0) addEdge(id, id + cols - 1); // 아래-왼쪽
+                }
+            }
+        }
+
+        function generateHourglassMap() {
+            const p = boardSize * 0.15; // Padding
+            const w = boardSize - 2 * p, h = boardSize - 2 * p;
+
+            // 9개의 노드 위치를 직접 지정
+            addNode(p + w/2, p,       true, false);  // 0: Top
+            addNode(p,       p + h/4, true, false);  // 1: Top-Left
+            addNode(p + w,   p + h/4, true, false);  // 2: Top-Right
+            addNode(p,       p + h/2, false, false); // 3: Mid-Left
+            addNode(p + w/2, p + h/2, false, false); // 4: Center
+            addNode(p + w,   p + h/2, false, false); // 5: Mid-Right
+            addNode(p,       p + 3*h/4, false, true); // 6: Bottom-Left
+            addNode(p + w,   p + 3*h/4, false, true); // 7: Bottom-Right
+            addNode(p + w,   p + h,     false, true); // 8: Bottom
+            addNode(p,       p + h,     false, true); // 9: Bottom-Left 2
+            addNode(p + w/2, p + h,     false, true); // 10: Bottom 2
+
+            // 노드 연결
+            [
+                [0,1], [0,2], [1,3], [1,4], [2,4], [2,5],
+                [3,4], [4,5], [3,6], [4,6], [4,7], [5,7],
+                [6,9], [6,10], [7,10], [8,10], [9,10]
+            ].forEach(([a, b]) => addEdge(a, b));
+             // 직접 연결 추가
+            addEdge(8, 9);
         }
         
         function generateTriangleMap() {
