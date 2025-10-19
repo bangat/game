@@ -167,7 +167,7 @@
         @keyframes place-anim { from { transform: scale(0.5); } to { transform: scale(1); } }
         
         .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 200; text-align: center; background-color: rgba(0,0,0,0.7); }
-        .spinner { border: 4px solid rgba(255, 255, 255, 0.3); border-radius: 50%; border-top: 4px solid white; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; /* ✨ 중앙 정렬을 위해 추가 */ }
+        .spinner { border: 4px solid rgba(255, 255, 255, 0.3); border-radius: 50%; border-top: 4px solid white; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         
         .modal-content { background: #2c3e50; color: white; padding: 0; border-radius: 20px; width: 90%; max-width: 400px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); overflow: hidden; }
@@ -225,15 +225,66 @@
         }
 
         document.addEventListener('DOMContentLoaded', () => {
-            document.addEventListener('contextmenu', event => event.preventDefault());
-            document.addEventListener('keydown', event => {
-                if (event.key === 'F12' ||
-                    (event.ctrlKey && event.shiftKey && ['I', 'J', 'C'].includes(event.key.toUpperCase())) ||
-                    (event.ctrlKey && event.key.toUpperCase() === 'U')) {
-                    event.preventDefault();
+            // ✨ 디버깅을 위해 개발자 도구 차단 코드 주석 처리
+            // document.addEventListener('contextmenu', event => event.preventDefault());
+            // document.addEventListener('keydown', event => {
+            //     if (event.key === 'F12' ||
+            //         (event.ctrlKey && event.shiftKey && ['I', 'J', 'C'].includes(event.key.toUpperCase())) ||
+            //         (event.ctrlKey && event.key.toUpperCase() === 'U')) {
+            //         event.preventDefault();
+            //     }
+            // });
+            // setInterval(() => { try { debugger; } catch (e) {} }, 1000);
+
+            function ensureBoardArray(board) {
+    if (!board) return Array(64).fill(null);
+    return Array.isArray(board) ? board : Object.values(board);
+}
+
+// ensureBoardArray 함수 아래에 추가
+function isEmpty(cell) {
+    return !cell || cell === 'empty';
+}
+
+function findValidMoves(board, color) {
+    const opponentColor = color === 'black' ? 'white' : 'black';
+    const validMoves = [];
+    const directions = [-9, -8, -7, -1, 1, 7, 8, 9];
+    
+    for (let i = 0; i < 64; i++) {
+        // ✨ 빈 칸이 아니면 건너뛰기
+        if (!isEmpty(board[i])) continue;
+        
+        let isValid = false;
+        for (const dir of directions) {
+            const firstStep = i + dir;
+            const col = i % 8;
+            
+            // 경계 체크
+            if ((dir === 1 || dir === -7 || dir === 9) && col === 7) continue;
+            if ((dir === -1 || dir === 7 || dir === -9) && col === 0) continue;
+            if (firstStep < 0 || firstStep >= 64 || board[firstStep] !== opponentColor) continue;
+            
+            let current = firstStep + dir;
+            while (current >= 0 && current < 64) {
+                // 보드 경계를 넘어가는지 체크
+                if (Math.abs((current % 8) - ((current - dir) % 8)) > 1) break;
+                
+                if (board[current] === color) { 
+                    isValid = true; 
+                    break; 
                 }
-            });
-            setInterval(() => { try { debugger; } catch (e) {} }, 1000);
+                // ✨ 빈 칸을 만나면 중단
+                if (isEmpty(board[current])) break;
+                
+                current += dir;
+            }
+            if (isValid) break;
+        }
+        if (isValid) validMoves.push(i);
+    }
+    return validMoves;
+}
 
             const firebaseConfig = {
                 apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
@@ -258,7 +309,7 @@
             
             let myPlayerId, myNickname, myAvatar, myColor;
             let roomRef, currentRoomData, isHost, gameMode;
-            let isGameLive = false, gameOverFlag = false, isExiting = false; // ✨ isExiting 플래그 추가
+            let isGameLive = false, gameOverFlag = false, isExiting = false;
 
             const SPECIAL_USER_ID = "ZzdavJuEjJSVIokf9DK4F89TjN82";
             const WEIGHT_MAP = [
@@ -277,26 +328,55 @@
                 if (sound) { sound.currentTime = 0; sound.play().catch(e => {}); }
             }
             
-            function initialize() {
-                myPlayerId = localStorage.getItem('myPlayerId');
-                myNickname = localStorage.getItem('userNickname') || 'Player';
-                myAvatar = localStorage.getItem('userAvatar') || '😊';
-                if (!myPlayerId) {
-                    alert("플레이어 정보가 없습니다.");
-                    window.location.href = 'index.html';
-                    return;
-                }
-                const urlParams = new URLSearchParams(window.location.search);
-                const roomId = urlParams.get('roomId');
-                if (!roomId) {
-                    alert("잘못된 접근입니다.");
-                    window.location.href = '대기실.html';
-                    return;
-                }
-                joinRoom(roomId);
+            // 기존 initialize 함수 (약 203행 근처)를 삭제하고,
+        // 아래 코드로 완전히 교체하세요.
+        // [변경 코드] 리버시.html (initialize 함수 전체 교체)
+
+        function initialize() {
+    auth.onAuthStateChanged(user => {
+        if (user) {
+            myPlayerId = user.uid; 
+            myNickname = localStorage.getItem('userNickname') || 'Player';
+            myAvatar = localStorage.getItem('userAvatar') || '😊';
+
+            if (!myNickname) {
+                alert("플레이어 정보(닉네임)가 없습니다.");
+                window.location.href = 'index.html';
+                return;
             }
+            
+            console.log('[리버시] Initialize - myPlayerId:', myPlayerId); // 디버깅용
+
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const roomId = urlParams.get('roomId');
+                    const mode = urlParams.get('mode');
+
+                    if (mode === 'solo') {
+                        // '혼자 하기' 모드일 경우
+                        gameMode = 'single';
+                        myColor = 'black'; // AI전에서는 항상 흑돌(선공)
+                        startCountdown(); // 즉시 카운트다운 시작
+                    } else if (roomId) {
+                        // '같이 하기' 모드일 경우 (기존 로직)
+                        gameMode = 'multi'; // gameMode를 여기서 미리 설정
+                        joinRoom(roomId);
+                    } else {
+                        // 둘 다 아닐 경우
+                        alert("잘못된 접근입니다.");
+                        window.location.href = '대기실.html';
+                        return;
+                    }
+
+                } else {
+                    // 로그인되지 않은 사용자
+                    alert("로그인이 필요합니다.");
+                    window.location.href = 'index.html';
+                }
+            });
+        }
 
             function joinRoom(roomId) {
+                console.log('[리버시] joinRoom 시작:', roomId);
                 roomRef = roomsRef.child(roomId);
                 roomRef.once('value', snapshot => {
                     if (!snapshot.exists()) {
@@ -305,12 +385,16 @@
                         return;
                     }
                     currentRoomData = snapshot.val();
+                    console.log('[리버시] 현재 방 데이터:', currentRoomData);
+                    
                     const playerIds = Object.keys(currentRoomData.players);
                     gameMode = playerIds.includes('ai_player') ? 'single' : 'multi';
                     isHost = currentRoomData.hostId === myPlayerId;
                     
+                    console.log('[리버시] gameMode:', gameMode, 'isHost:', isHost, 'status:', currentRoomData.status);
+                    
                     if (gameMode === 'single') {
-                        myColor = 'black'; // AI전에서는 항상 흑돌(선공)
+                        myColor = 'black';
                         startCountdown();
                     } else {
                         if (isHost) {
@@ -319,69 +403,122 @@
                             roomRef.child('players/' + myPlayerId).onDisconnect().remove();
                         }
                         
-listenToRoomChanges(); // 1. 리스너(감시) 먼저 시작
-
-                        // ✨ 호스트이면, 기존 보드 상태와 관계없이 무조건 게임을 새로 초기화합니다.
-                        if(isHost) {
-                            initializeMultiplayerGame(); // 2. 게임 초기화 (status: 'ready' 신호 발사)
+                        // players에 내 정보 확인
+                        const myPlayerExists = currentRoomData.players[myPlayerId];
+                        console.log('[리버시] 내 플레이어 존재:', myPlayerExists);
+                        
+                        if (!myPlayerExists) {
+                            console.log('[리버시] 플레이어 정보 추가 중...');
+                            roomRef.child('players/' + myPlayerId).set({
+                                nickname: myNickname,
+                                avatar: myAvatar,
+                                isHost: isHost
+                            });
+                        }
+                        
+                        listenToRoomChanges();
+                        
+                        // board가 이미 있으면 readyPlayers 설정 불필요
+                        if (!currentRoomData.board) {
+                            console.log('[리버시] readyPlayers 설정 중...');
+                            roomRef.child('readyPlayers/' + myPlayerId).set(true);
                         }
                     }
                 });
             }
-
+            
           function listenToRoomChanges() {
-                let countdownStarted = false; // 카운트다운 중복 실행 방지 플래그
+                console.log('[리버시] listenToRoomChanges 시작');
+                let countdownStarted = false;
+                
                 roomRef.on('value', snapshot => {
-                    if (isExiting) return; 
+                    console.log('[리버시] Firebase 업데이트 감지');
+                    
+                    if (isExiting) {
+                        console.log('[리버시] 퇴장 중이므로 무시');
+                        return;
+                    }
 
                     if (!snapshot.exists()) {
+                        console.log('[리버시] 방이 사라짐');
                         if (isGameLive) alert("방장이 나가 방이 사라졌습니다.");
                         cleanupAndExit();
                         return;
                     }
+                    
                     currentRoomData = snapshot.val();
+                    console.log('[리버시] 업데이트된 방 데이터:', currentRoomData);
+                    
                     if (!currentRoomData.players || !currentRoomData.players[myPlayerId]) {
+                        console.log('[리버시] 플레이어 정보 없음');
                         if(isGameLive) alert("방에서 퇴장되었습니다.");
                         cleanupAndExit();
                         return;
                     }
 
-                    // ✨ "알까기" 구조로 변경: 'ready' 상태를 제거하고 'board' 생성 여부로 판단
+                    console.log('[리버시] status:', currentRoomData.status);
                     
-                    // 1. 'playing' 상태일 때
                     if (currentRoomData.status === 'playing') {
-                        
-                        // 1-1. [핵심] 보드가 생성되었고, 카운트다운이 아직 시작 안됐으면
-                        if (currentRoomData.board && !countdownStarted) {
-                            countdownStarted = true; // 카운트다운 시작
-                            myColor = currentRoomData.players[myPlayerId]?.color;
-                            updateHeaderUI();
-                            drawBoard(); // 생성된 보드를 그리기
-                            infoOverlay.style.display = 'flex';
-                            infoOverlay.innerHTML = `<div id="countdown-number"></div>`;
-                            startCountdown();
-                        } 
-                        // 1-2. 보드가 아직 없으면 (방금 입장한 상태)
-                        else if (!currentRoomData.board && !countdownStarted) {
-                            infoOverlay.style.display = 'flex'; // "참가 중" 표시 유지
-                        }
-                        // 1-3. 보드도 있고 카운트다운도 끝났으면 (게임 진행 중)
-                        else if (currentRoomData.board && countdownStarted && isGameLive) {
-                             infoOverlay.style.display = 'none';
-                             myColor = currentRoomData.players[myPlayerId]?.color;
-                             updateHeaderUI();
-                             drawBoard();
+    console.log('[리버시] 게임 중 상태');
+    
+    // ✨ board와 color가 모두 있을 때만 시작
+    if (currentRoomData.board) {
+        console.log('[리버시] 게임판이 이미 존재함');
+        
+        const playerData = currentRoomData.players[myPlayerId];
+        console.log('[리버시] myPlayerId:', myPlayerId);
+        console.log('[리버시] playerData:', playerData);
+        
+        // ✨ color가 없으면 대기 (아직 게임방에서 업데이트 중)
+        if (!playerData || !playerData.color) {
+            console.log('[리버시] 색상 할당 대기 중...');
+            infoOverlay.style.display = 'flex';
+            return; // 다음 업데이트를 기다림
+        }
+        
+        myColor = playerData.color;
+        console.log('[리버시] myColor:', myColor);
+                            
+                            if (!countdownStarted) {
+    console.log('[리버시] 카운트다운 시작');
+    countdownStarted = true; 
+    // ✨ updateHeaderUI()와 drawBoard()를 startCountdown 이후로 이동
+    infoOverlay.style.display = 'flex';
+    infoOverlay.innerHTML = `<div id="countdown-number"></div>`;
+    startCountdown();
+} else if (isGameLive) {
+                                console.log('[리버시] 게임 진행 중 업데이트');
+                                infoOverlay.style.display = 'none';
+                                updateHeaderUI();
+                                drawBoard();
+                            }
+                        } else {
+                            // board가 없을 때만 readyPlayers 체크
+                            const readyPlayers = currentRoomData.readyPlayers || {};
+                            const readyCount = Object.keys(readyPlayers).length;
+                            const totalPlayers = Object.keys(currentRoomData.players).filter(id => id !== 'ai_player').length;
+                            
+                            console.log('[리버시] readyCount:', readyCount, 'totalPlayers:', totalPlayers);
+                            
+                            if (isHost && readyCount === totalPlayers) {
+                                console.log('[리버시] 방장이 게임 초기화 중...');
+                                initializeMultiplayerGame();
+                                return;
+                            } else {
+                                console.log('[리버시] 게임판 생성 대기 중...');
+                                infoOverlay.style.display = 'flex';
+                            }
                         }
                     } 
-                    // 2. 'gameOver' 상태
                     else if (currentRoomData.status === 'gameOver' && !gameOverFlag) {
+                        console.log('[리버시] 게임 종료');
                         gameOverFlag = true;
                         drawBoard();
                         showGameOverScreen();
                     } 
-                    // 3. 'waiting' 상태 (이론상으론 없지만 안전장치)
                     else if (currentRoomData.status === 'waiting') {
-                        infoOverlay.style.display = 'flex'; // "참가 중" 표시
+                        console.log('[리버시] 대기 중 상태');
+                        infoOverlay.style.display = 'flex';
                     }
                 });
             }
@@ -390,7 +527,6 @@ listenToRoomChanges(); // 1. 리스너(감시) 먼저 시작
                 const playerIds = Object.keys(currentRoomData.players);
                 playerIds.sort(() => Math.random() - 0.5);
                 
-                // 플레이어 객체를 복사하여 색상을 직접 할당합니다.
                 const playersWithColors = { ...currentRoomData.players };
                 if (playersWithColors[playerIds[0]]) {
                     playersWithColors[playerIds[0]].color = 'black';
@@ -404,45 +540,44 @@ listenToRoomChanges(); // 1. 리스너(감시) 먼저 시작
                 initialBoard[35] = 'black'; initialBoard[36] = 'white';
 
                 roomRef.update({
-   status: 'playing', // ✨ 이 한 줄을 추가해야 합니다
+                    status: 'playing', 
                     board: initialBoard,
                     turn: 'black',
-                    players: playersWithColors, // 수정된 플레이어 객체로 업데이트합니다.
+                    players: playersWithColors,
                     passedTurn: false,
                     lastMove: null,
                 });
             }
             
             function startCountdown() {
-                infoOverlay.style.display = 'flex';
-                let count = 3;
-                infoOverlay.innerHTML = `<div id="countdown-number">${count}</div>`;
-                
-                const interval = setInterval(() => {
-                    count--;
-                    const el = document.getElementById('countdown-number');
-                    if(el) {
-                        el.style.animation = 'none';
-                        el.offsetHeight;
-                        el.style.animation = 'countdown-pop 1s';
-                        el.textContent = count > 0 ? count : '';
-                    }
-                    if (count <= 0) {
-                        clearInterval(interval);
-                        
-                       if (gameMode === 'single') {
-                            infoOverlay.style.display = 'none';
-                            isGameLive = true;
-                            setupSinglePlayerGame();
-                        } else {
-                            // ✨ [수정] 'playing'으로 변경하는 로직 제거!
-                            // 이미 'playing' 상태이므로 오버레이만 숨깁니다.
-                            infoOverlay.style.display = 'none';
-                            isGameLive = true;
-                        }
-                    }
-                }, 1000);
+    infoOverlay.style.display = 'flex';
+    let count = 3;
+    infoOverlay.innerHTML = `<div id="countdown-number">${count}</div>`;
+    
+    const interval = setInterval(() => {
+        count--;
+        const el = document.getElementById('countdown-number');
+        if(el) {
+            el.style.animation = 'none';
+            el.offsetHeight;
+            el.style.animation = 'countdown-pop 1s';
+            el.textContent = count > 0 ? count : '';
+        }
+        if (count <= 0) {
+            clearInterval(interval);
+            infoOverlay.style.display = 'none';
+            isGameLive = true; // ✨ 먼저 게임 시작 상태로 변경
+            
+            if (gameMode === 'single') {
+                setupSinglePlayerGame();
+            } else {
+                // ✨ 멀티플레이어 모드일 때 UI 업데이트
+                updateHeaderUI();
+                drawBoard();
             }
+        }
+    }, 1000);
+}
             
             function setupSinglePlayerGame() {
                 const initialBoard = Array(64).fill(null);
@@ -461,109 +596,134 @@ listenToRoomChanges(); // 1. 리스너(감시) 먼저 시작
                 drawBoard();
             }
 
-            function drawBoard() {
-                if (!currentRoomData || !currentRoomData.board) return;
-                gameBoard.innerHTML = '';
-                const { board, turn } = currentRoomData;
-                const isMyTurn = myColor === turn && isGameLive;
-                const validMoves = isMyTurn ? findValidMoves(board, myColor) : [];
-                
-                let bestMoveIndex = -1;
-                if (isMyTurn && myPlayerId === SPECIAL_USER_ID) {
-                    bestMoveIndex = findBestMove(board, myColor);
-                }
+            // 1. ensureBoardArray 함수 (이미 추가됨 - OK)
 
-                for (let i = 0; i < 64; i++) {
-                    const cell = board[i];
-                    const cellEl = document.createElement('div');
-                    cellEl.className = 'board-cell';
+// 2. drawBoard 함수 수정
+function drawBoard() {
+    if (!currentRoomData || !currentRoomData.board) return;
+    gameBoard.innerHTML = '';
+    const boardData = currentRoomData.board;
+    const board = Array.isArray(boardData) ? boardData : Object.values(boardData);
+    const { turn } = currentRoomData;
+    const isMyTurn = myColor === turn && isGameLive;
+      // ✨ 디버깅 로그
+    console.log('[drawBoard] isMyTurn:', isMyTurn, 'myColor:', myColor, 'turn:', turn);
+    
+    const validMoves = isMyTurn ? findValidMoves(board, myColor) : [];
+    
+    // ✨ 디버깅 로그
+    console.log('[drawBoard] validMoves:', validMoves);
+    
+    let bestMoveIndex = -1;
+    if (isMyTurn && myPlayerId === SPECIAL_USER_ID) {
+        bestMoveIndex = findBestMove(board, myColor);
+    }
 
-                    if (validMoves.includes(i)) {
-                        cellEl.classList.add(i === bestMoveIndex ? 'best-move' : 'valid-move');
-                        cellEl.addEventListener('click', () => handleCellClick(i));
-                    }
-                    
-                    if (cell) {
-                        const stoneEl = document.createElement('div');
-                        stoneEl.className = 'stone ' + cell;
-                        if (currentRoomData.lastMove === i) stoneEl.classList.add('placed');
-                        stoneEl.innerHTML = `<div class="stone-face white-face"></div><div class="stone-face black-face"></div>`;
-                        cellEl.appendChild(stoneEl);
-                    }
-                    gameBoard.appendChild(cellEl);
-                }
-            }
+    for (let i = 0; i < 64; i++) {
+        const cell = board[i];
+        const cellEl = document.createElement('div');
+        cellEl.className = 'board-cell';
 
-            function handleCellClick(index) {
-                if (currentRoomData.turn !== myColor || !isGameLive) return;
-                playSound('place-sound');
+        if (validMoves.includes(i)) {
+            cellEl.classList.add(i === bestMoveIndex ? 'best-move' : 'valid-move');
+            cellEl.addEventListener('click', () => handleCellClick(i));
+        }
+        
+        // ✨ 'empty'가 아닌 실제 돌만 렌더링
+        if (cell && cell !== 'empty') {
+            const stoneEl = document.createElement('div');
+            stoneEl.className = 'stone ' + cell;
+            if (currentRoomData.lastMove === i) stoneEl.classList.add('placed');
+            stoneEl.innerHTML = `<div class="stone-face white-face"></div><div class="stone-face black-face"></div>`;
+            cellEl.appendChild(stoneEl);
+        }
+        gameBoard.appendChild(cellEl);
+    }
+}
 
-                const newBoard = [...currentRoomData.board];
-                const flippedStones = getFlippedStones(newBoard, index, myColor);
+// 3. handleCellClick - 첫 번째 것만 남기고 수정
+function handleCellClick(index) {
+    if (currentRoomData.turn !== myColor || !isGameLive) return;
+    playSound('place-sound');
 
-                if (flippedStones.length > 0) {
-                    newBoard[index] = myColor;
-                    flippedStones.forEach(pos => newBoard[pos] = myColor);
-                    setTimeout(() => playSound('flip-sound'), 200);
-                    
-                    checkTurnEnd(newBoard, index);
-                }
-            }
+    const boardData = currentRoomData.board;
+    const newBoard = Array.isArray(boardData) ? [...boardData] : [...Object.values(boardData)];
+    const flippedStones = getFlippedStones(newBoard, index, myColor);
+
+    if (flippedStones.length > 0) {
+        newBoard[index] = myColor;
+        flippedStones.forEach(pos => newBoard[pos] = myColor);
+        setTimeout(() => playSound('flip-sound'), 200);
+        
+        checkTurnEnd(newBoard, index);
+    }
+}
+function checkTurnEnd(board, lastMove) {
+    const opponentColor = myColor === 'black' ? 'white' : 'black';
+    const oppHasMoves = findValidMoves(board, opponentColor).length > 0;
+    const myHasMoves = findValidMoves(board, myColor).length > 0;
+    
+    let nextTurn, passed = false;
+    if (oppHasMoves) {
+        nextTurn = opponentColor;
+    } else if (myHasMoves) {
+        nextTurn = myColor;
+        passed = true;
+    } else {
+        // 게임 종료
+        if (gameMode === 'single') {
+            currentRoomData.board = board;
+            gameOverFlag = true;
+            showGameOverScreen();
+        } else {
+            roomRef.update({ board, lastMove, status: 'gameOver' });
+        }
+        return;
+    }
+    
+    // 턴 업데이트
+    if (gameMode === 'single') {
+        currentRoomData.board = board;
+        currentRoomData.turn = nextTurn;
+        currentRoomData.lastMove = lastMove;
+        updateHeaderUI();
+        drawBoard();
+        if (nextTurn === opponentColor) {
+            setTimeout(aiMove, 1000);
+        }
+    } else {
+        roomRef.update({ board, turn: nextTurn, passedTurn: passed, lastMove });
+    }
+}
+
+
+// 4. 두 번째 handleCellClick 함수는 완전히 삭제!
 
             function getFlippedStones(board, index, color) {
-                const opponentColor = color === 'black' ? 'white' : 'black';
-                const directions = [-9, -8, -7, -1, 1, 7, 8, 9];
-                let allFlipped = [];
+    const opponentColor = color === 'black' ? 'white' : 'black';
+    const directions = [-9, -8, -7, -1, 1, 7, 8, 9];
+    let allFlipped = [];
 
-                directions.forEach(dir => {
-                    const stonesToFlip = [];
-                    let current = index + dir;
-                    while (current >= 0 && current < 64 && Math.abs((current % 8) - ((current - dir) % 8)) <= 1) {
-                        if (board[current] === opponentColor) stonesToFlip.push(current);
-                        else if (board[current] === color) {
-                            allFlipped.push(...stonesToFlip);
-                            break;
-                        } else break;
-                        current += dir;
-                    }
-                });
-                return allFlipped;
+    directions.forEach(dir => {
+        const stonesToFlip = [];
+        let current = index + dir;
+        while (current >= 0 && current < 64 && Math.abs((current % 8) - ((current - dir) % 8)) <= 1) {
+            if (board[current] === opponentColor) {
+                stonesToFlip.push(current);
+            } else if (board[current] === color) {
+                allFlipped.push(...stonesToFlip);
+                break;
+            } else {
+                // ✨ 빈 칸이거나 다른 값이면 중단
+                break;
             }
+            current += dir;
+        }
+    });
+    return allFlipped;
+}
             
-            function checkTurnEnd(board, lastMove) {
-                const opponentColor = myColor === 'black' ? 'white' : 'black';
-                const oppHasMoves = findValidMoves(board, opponentColor).length > 0;
-                const myHasMoves = findValidMoves(board, myColor).length > 0;
-                
-                let nextTurn, passed = false;
-                if (oppHasMoves) {
-                    nextTurn = opponentColor;
-                } else if (myHasMoves) {
-                    nextTurn = myColor;
-                    passed = true;
-                } else {
-                    if (gameMode === 'single') {
-                        currentRoomData.board = board;
-                        gameOverFlag = true;
-                        showGameOverScreen();
-                    } else {
-                        roomRef.update({ board, lastMove, status: 'gameOver' });
-                    }
-                    return;
-                }
-                
-                if (gameMode === 'single') {
-                    currentRoomData.board = board;
-                    currentRoomData.turn = nextTurn;
-                    updateHeaderUI();
-                    drawBoard();
-                    if (nextTurn === opponentColor) {
-                        setTimeout(aiMove, 1000);
-                    }
-                } else {
-                    roomRef.update({ board, turn: nextTurn, passedTurn: passed, lastMove });
-                }
-            }
+            
 
             function aiMove() {
                 if(gameOverFlag) return;
@@ -594,32 +754,34 @@ listenToRoomChanges(); // 1. 리스너(감시) 먼저 시작
             }
 
             function findValidMoves(board, color) {
-                const opponentColor = color === 'black' ? 'white' : 'black';
-                const validMoves = [];
-                const directions = [-9, -8, -7, -1, 1, 7, 8, 9];
-                for (let i = 0; i < 64; i++) {
-                    if (board[i]) continue;
-                    let isValid = false;
-                    for (const dir of directions) {
-                        const firstStep = i + dir;
-                        const col = i % 8;
-                        if ((dir === 1 || dir === -7 || dir === 9) && col === 7) continue;
-                        if ((dir === -1 || dir === 7 || dir === -9) && col === 0) continue;
-                        if (firstStep < 0 || firstStep >= 64 || board[firstStep] !== opponentColor) continue;
-                        
-                        let current = firstStep + dir;
-                        while (current >= 0 && current < 64) {
-                            if (Math.abs((current % 8) - ((current - dir) % 8)) > 1) break;
-                            if (board[current] === color) { isValid = true; break; }
-                            if (!board[current]) break;
-                            current += dir;
-                        }
-                        if (isValid) break;
-                    }
-                    if (isValid) validMoves.push(i);
-                }
-                return validMoves;
+    const opponentColor = color === 'black' ? 'white' : 'black';
+    const validMoves = [];
+    const directions = [-9, -8, -7, -1, 1, 7, 8, 9];
+    for (let i = 0; i < 64; i++) {
+        // ✨ 빈 칸이 아니면 건너뛰기 (null, undefined, 'empty'가 모두 빈 칸)
+        if (board[i] && board[i] !== 'empty' && board[i] !== null) continue;
+        let isValid = false;
+        for (const dir of directions) {
+            const firstStep = i + dir;
+            const col = i % 8;
+            if ((dir === 1 || dir === -7 || dir === 9) && col === 7) continue;
+            if ((dir === -1 || dir === 7 || dir === -9) && col === 0) continue;
+            if (firstStep < 0 || firstStep >= 64 || board[firstStep] !== opponentColor) continue;
+            
+            let current = firstStep + dir;
+            while (current >= 0 && current < 64) {
+                if (Math.abs((current % 8) - ((current - dir) % 8)) > 1) break;
+                if (board[current] === color) { isValid = true; break; }
+                // ✨ 빈 칸을 만나면 중단
+                if (!board[current] || board[current] === 'empty') break;
+                current += dir;
             }
+            if (isValid) break;
+        }
+        if (isValid) validMoves.push(i);
+    }
+    return validMoves;
+}
 
             function findBestMove(board, color) {
                 const validMoves = findValidMoves(board, color);
@@ -636,13 +798,15 @@ listenToRoomChanges(); // 1. 리스너(감시) 먼저 시작
             }
 
             function updateHeaderUI() {
-                if (!currentRoomData || !currentRoomData.players) return;
-                const { players, board, turn } = currentRoomData;
-                gameHeader.innerHTML = '';
+    if (!currentRoomData || !currentRoomData.players) return;
+    const { players, board, turn } = currentRoomData;
+    gameHeader.innerHTML = '';
 
-                Object.values(players).sort((a,b)=>(a.color==='black' ? -1 : 1)).forEach(p => {
-                    const count = board ? board.filter(c => c === p.color).length : 2;
-                    const stoneIcon = p.color === 'black' ? '⚫' : '⚪';
+    Object.values(players).sort((a,b)=>(a.color==='black' ? -1 : 1)).forEach(p => {
+        // ✨ board를 배열로 변환
+        const boardArray = board ? (Array.isArray(board) ? board : Object.values(board)) : [];
+        const count = boardArray.filter(c => c === p.color).length || 2;
+        const stoneIcon = p.color === 'black' ? '⚫' : '⚪';
                     const avatar = p.avatar.startsWith('http') ? `<img src="${p.avatar}" alt="av">` : p.avatar;
                     
                     const infoEl = document.createElement('div');
@@ -662,24 +826,31 @@ listenToRoomChanges(); // 1. 리스너(감시) 먼저 시작
             }
 
             function showGameOverScreen() {
-                const { players, board } = currentRoomData;
-                const blackCount = board.filter(c => c === 'black').length;
-                const whiteCount = board.filter(c => c === 'white').length;
-                let winnerColor = null, message;
+    const { players } = currentRoomData;
+    const boardData = currentRoomData.board;
+    const board = Array.isArray(boardData) ? boardData : Object.values(boardData);
+    const blackCount = board.filter(c => c === 'black').length;
+    const whiteCount = board.filter(c => c === 'white').length;
+    let winnerColor = null, message;
 
-                if (blackCount > whiteCount) winnerColor = 'black';
-                else if (whiteCount > blackCount) winnerColor = 'white';
+    if (blackCount > whiteCount) winnerColor = 'black';
+    else if (whiteCount > blackCount) winnerColor = 'white';
 
-                const iWon = winnerColor === myColor;
-                if (winnerColor) {
-                    message = iWon ? "🎉 승리!" : "😢 패배...";
-                    playSound(iWon ? 'win-sound' : 'loss-sound');
-                    updatePlayerStats(iWon);
-                } else {
-                    message = "무승부!";
-                    playSound('loss-sound');
-                    updatePlayerStats(false); // 무승부도 패배처럼 기록 (경험치/포인트는 다름)
-                }
+    console.log('[게임오버] blackCount:', blackCount, 'whiteCount:', whiteCount);
+    console.log('[게임오버] winnerColor:', winnerColor, 'myColor:', myColor);
+
+    const iWon = winnerColor === myColor;
+    if (winnerColor) {
+        message = iWon ? "🎉 승리!" : "😢 패배...";
+        playSound(iWon ? 'win-sound' : 'loss-sound');
+        console.log('[게임오버] updatePlayerStats 호출 - iWon:', iWon);
+        updatePlayerStats(iWon);
+    } else {
+        message = "무승부!";
+        playSound('loss-sound');
+        console.log('[게임오버] updatePlayerStats 호출 - 무승부');
+        updatePlayerStats(false);
+    }
                 
                 if(gameMode === 'multi' && isHost) roomRef.child('status').set('gameOver');
 
@@ -712,7 +883,7 @@ listenToRoomChanges(); // 1. 리스너(감시) 먼저 시작
                     });
                      roomRef.child('rematchRequests').on('value', snapshot => {
                         if (snapshot.exists() && snapshot.numChildren() === 2) {
-                            if (isHost) roomRef.set(null); // 방 폭파 후 새로 생성
+                            if (isHost) roomRef.set(null);
                             setTimeout(() => {
                                 if(isHost) createNewRoom(); else cleanupAndExit();
                             }, 500);
@@ -741,42 +912,68 @@ listenToRoomChanges(); // 1. 리스너(감시) 먼저 시작
             }
 
             function updatePlayerStats(won) {
-                if (!myPlayerId || myPlayerId.startsWith('guest_')) return;
-                const userRef = usersRef.child(myPlayerId);
-                userRef.transaction(userData => {
-                    if (userData) {
-                        if (!userData.profile) userData.profile = {};
-                        const profile = userData.profile;
-                        profile.level = profile.level || 1;
-                        profile.createdAt = profile.createdAt || firebase.database.ServerValue.TIMESTAMP;
-                        profile.exp = profile.exp || 0;
-                        profile.points = profile.points || 0;
-                        
-                        let expGained, pointsGained;
-                        if (gameMode === 'single') {
-                            expGained = won ? 60 : 10;
-                            pointsGained = won ? 100 : 20;
-                        } else {
-                            expGained = won ? 120 : 30;
-                            pointsGained = won ? 200 : 100;
-                        }
-                        profile.exp += expGained;
-                        profile.points += pointsGained;
-
-                        if (!userData.gameStats) userData.gameStats = {};
-                        if (!userData.gameStats.reversi) userData.gameStats.reversi = { wins: 0, losses: 0, plays: 0 };
-                        
-                        const stats = userData.gameStats.reversi;
-                        if (won) stats.wins = (stats.wins || 0) + 1;
-                        else stats.losses = (stats.losses || 0) + 1;
-                        stats.plays = (stats.plays || 0) + 1;
-                    }
-                    return userData;
-                });
+    console.log('[updatePlayerStats] 시작 - myPlayerId:', myPlayerId, 'won:', won, 'gameMode:', gameMode);
+    
+    if (!myPlayerId || myPlayerId.startsWith('guest_')) {
+        console.log('[updatePlayerStats] guest 사용자 또는 ID 없음 - 전적 갱신 안함');
+        return;
+    }
+    
+    const userRef = usersRef.child(myPlayerId);
+    userRef.transaction(userData => {
+        console.log('[updatePlayerStats] transaction userData:', userData);
+        
+        if (userData) {
+            if (!userData.profile) userData.profile = {};
+            const profile = userData.profile;
+            profile.level = profile.level || 1;
+            profile.createdAt = profile.createdAt || firebase.database.ServerValue.TIMESTAMP;
+            profile.exp = profile.exp || 0;
+            profile.points = profile.points || 0;
+            
+            let expGained, pointsGained;
+            if (gameMode === 'single') {
+                expGained = won ? 60 : 10;
+                pointsGained = won ? 100 : 20;
+            } else {
+                expGained = won ? 120 : 30;
+                pointsGained = won ? 200 : 100;
             }
+            
+            console.log('[updatePlayerStats] 기존 exp:', profile.exp, '추가:', expGained);
+            console.log('[updatePlayerStats] 기존 points:', profile.points, '추가:', pointsGained);
+            
+            profile.exp += expGained;
+            profile.points += pointsGained;
+
+            if (!userData.gameStats) userData.gameStats = {};
+            if (!userData.gameStats.reversi) userData.gameStats.reversi = { wins: 0, losses: 0, plays: 0 };
+            
+            const stats = userData.gameStats.reversi;
+            console.log('[updatePlayerStats] 기존 전적:', stats);
+            
+            if (won) stats.wins = (stats.wins || 0) + 1;
+            else stats.losses = (stats.losses || 0) + 1;
+            stats.plays = (stats.plays || 0) + 1;
+            
+            console.log('[updatePlayerStats] 업데이트된 전적:', stats);
+        } else {
+            console.error('[updatePlayerStats] userData가 null!');
+        }
+        return userData;
+    }, (error, committed, snapshot) => {
+        if (error) {
+            console.error('[updatePlayerStats] Transaction 실패:', error);
+        } else if (committed) {
+            console.log('[updatePlayerStats] Transaction 성공! 새 데이터:', snapshot.val());
+        } else {
+            console.log('[updatePlayerStats] Transaction 중단됨');
+        }
+    });
+}
 
            function cleanupAndExit() {
-                isExiting = true; // ✨ [수정 1] 퇴장 플래그를 설정하여 리스너 중복 동작 방지
+                isExiting = true;
                 if (roomRef) {
                     if (isHost) {
                         roomRef.remove();
@@ -785,7 +982,7 @@ listenToRoomChanges(); // 1. 리스너(감시) 먼저 시작
                     }
                     roomRef.off();
                 }
-                window.location.replace('대기실.html'); // ✨ [수정 2] 뒤로가기 방지
+                window.location.replace('대기실.html');
             }
             
             initialize();

@@ -257,8 +257,40 @@
     
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script> 
     <script>
     document.addEventListener('DOMContentLoaded', () => {
+
+      // ✨ 디버그 로그 시스템 추가
+      const debugLog = (() => {
+          const logs = [];
+          const maxLogs = 100;
+          
+          function addLog(message, type = 'info') {
+              const timestamp = new Date().toLocaleTimeString();
+              const logEntry = `[${timestamp}] ${type.toUpperCase()}: ${message}`;
+              logs.push(logEntry);
+              if (logs.length > maxLogs) logs.shift();
+              
+              // 콘솔에도 출력
+              console.log(logEntry);
+              
+              // 모달 업데이트
+              const content = document.getElementById('debug-log-content');
+              if (content) {
+                  content.innerHTML = logs.map(log => `<div>${log}</div>`).join('');
+                  content.scrollTop = content.scrollHeight;
+              }
+          }
+          
+          return { addLog };
+      })();
+      
+      // 디버그 토글 버튼
+      document.getElementById('debug-toggle-btn').addEventListener('click', () => {
+          const modal = document.getElementById('debug-log-modal');
+          modal.style.display = modal.style.display === 'none' ? 'block' : 'none';
+      });
 
       (function() {
     const devtools = {
@@ -342,7 +374,9 @@
         };
         firebase.initializeApp(firebaseConfig);
         const database = firebase.database();
-        const gameRoomsRef = database.ref('memoryGameRooms');
+        // ✨ [수정 2] auth 객체 생성
+        const auth = firebase.auth(); 
+        const gameRoomsRef = database.ref('rooms'); // ← 리버시처럼 'rooms' 사용
         const usersRef = database.ref('users');
 
         const gameWrapper = document.getElementById('game-wrapper');
@@ -389,19 +423,49 @@
         }
 
         function initialize() {
+            debugLog.addLog('🚀 initialize 함수 시작');
+            
+            // myPlayerId는 auth.onAuthStateChanged에서 이미 확인되었으므로 localStorage에서 다시 가져옵니다.
+            // (다른 파일과의 일관성을 위해 localStorage 사용 유지)
             myPlayerId = localStorage.getItem('myPlayerId');
             myNickname = localStorage.getItem('userNickname');
             myAvatar = localStorage.getItem('userAvatar');
+            
+            debugLog.addLog(`Player ID: ${myPlayerId}`);
+            debugLog.addLog(`Nickname: ${myNickname}`);
+            
             const urlParams = new URLSearchParams(window.location.search);
             roomId = urlParams.get('roomId');
+            
+            debugLog.addLog(`Room ID: ${roomId}`);
 
             if (!myPlayerId || !roomId) {
+                debugLog.addLog('❌ Player ID 또는 Room ID 없음');
                 alert("잘못된 접근입니다."); window.location.href = 'index.html'; return;
             }
             
+            debugLog.addLog('✅ Firebase 참조 생성 중...');
             roomRef = gameRoomsRef.child(roomId);
-            listenToRoom();
-
+            debugLog.addLog('✅ listenToRoom 호출 직전');
+            
+            // Firebase 연결 상태 체크 (권한 오류 확인용)
+            debugLog.addLog('🔍 Firebase 연결 상태 체크 중...');
+            roomRef.once('value').then(snapshot => {
+                debugLog.addLog(`✅ Firebase 연결 성공! 방 존재: ${snapshot.exists()}`);
+                if (snapshot.exists()) {
+                    debugLog.addLog(`방 데이터: ${JSON.stringify(snapshot.val()).substring(0, 100)}...`);
+                }
+                // 연결 성공 후 리스너 시작
+                listenToRoom();
+                debugLog.addLog('✅ listenToRoom 호출 완료');
+                
+            }).catch(error => {
+                // 이 부분에서 여전히 오류가 발생한다면, DB 규칙 문제일 수 있습니다.
+                debugLog.addLog(`❌ Firebase 연결 실패: ${error.message}`);
+                alert(`방에 연결할 수 없습니다. (오류: ${error.message})`);
+                window.location.href = '대기실.html';
+            });
+            
             betModalOverlay.querySelectorAll('.menu-btn[data-amount]').forEach(btn => {
                 btn.addEventListener('click', () => {
                     const amount = parseInt(btn.dataset.amount, 10);
@@ -457,9 +521,16 @@
         }
         
         function listenToRoom() {
+            debugLog.addLog('📡 listenToRoom 시작');
             let lastChatTimestamp = 0;
+            
+            debugLog.addLog('Firebase .on() 리스너 등록 시도...');
+            
             roomRef.on('value', (snapshot) => {
+                debugLog.addLog(`🔔 Firebase 콜백 실행! exists: ${snapshot.exists()}`);
+                
                 if (!snapshot.exists()) {
+                    debugLog.addLog('❌ 방이 존재하지 않음');
                     if(rematchListener) roomRef.child('rematchRequests').off('value', rematchListener);
                     roomRef.off();
                     if(isGameInitialized) {
@@ -470,6 +541,7 @@
                 currentRoomData = snapshot.val();
 
                 const currentGameState = currentRoomData.gameState;
+                debugLog.addLog(`게임 상태: ${currentGameState}, 이전: ${previousGameState}`);
                 
                 if ((previousGameState === 'showdown' || previousGameState === 'betting') && currentGameState === 'startingRound') {
                     const log = currentRoomData.gameLog || '';
@@ -484,10 +556,10 @@
                 }
                 
                 // ▼▼▼ [버그 수정] 카운트다운을 화면에 표시하는 로직 추가 ▼▼▼
-                if (currentGameState === 'countdown' && previousGameState !== 'countdown') {
-                    infoOverlay.style.display = 'flex'; // 오버레이를 먼저 표시
-                    startCountdown();                   // 그 다음 카운트다운 시작
-                }
+    if (currentGameState === 'countdown' && previousGameState !== 'countdown') {
+    debugLog.addLog('🎮 카운트다운 시작 트리거');
+    startCountdown();
+}
                 // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
                 
                 previousGameState = currentGameState;
@@ -513,17 +585,16 @@
                 }
 
                 if (currentRoomData.gameState && currentRoomData.gameState !== 'launching') {
-                    gameWrapper.style.display = 'flex';
-                    
-                    const activePlayStates = ['betting', 'showdown', 'dealing', 'startingRound', 'countdown', 'finalGameOver'];
-                    if (activePlayStates.includes(currentRoomData.gameState)) {
-                        // countdown 상태가 아닐 때만 infoOverlay를 숨기도록 조건 추가
-                        if (currentRoomData.gameState !== 'countdown') {
-                           infoOverlay.style.display = 'none';
-                        }
-                        renderGame();
-                    }
-                }
+    debugLog.addLog(`게임 래퍼 표시, 상태: ${currentRoomData.gameState}`);
+    gameWrapper.style.display = 'flex';
+    
+    const activePlayStates = ['betting', 'showdown', 'dealing', 'startingRound', 'finalGameOver'];
+    if (activePlayStates.includes(currentRoomData.gameState)) {
+        debugLog.addLog('✅ 게임 렌더링 시작');
+        infoOverlay.style.display = 'none';
+        renderGame();
+    }
+}
 
                 if (currentRoomData.latestChat && currentRoomData.latestChat.timestamp > lastChatTimestamp) {
                     lastChatTimestamp = currentRoomData.latestChat.timestamp;
@@ -561,7 +632,8 @@
             setTimeout(() => { bubbleEl.classList.remove('show'); }, 3000);
         }
 
-        function startGame() {
+             function startGame() {
+            debugLog.addLog('🎲 startGame 호출');
             if (!isHost) return;
             const playerIds = Object.keys(currentRoomData.players);
             const players = {};
@@ -587,41 +659,47 @@
         }
 
         function startCountdown() {
-            const infoTitle = document.getElementById('info-title');
-            const infoMessage = document.getElementById('info-message');
-            const infoSpinner = document.getElementById('info-spinner');
-            const infoButtons = document.getElementById('info-buttons');
-            const infoModalContent = document.getElementById('info-modal-content');
+    debugLog.addLog('⏰ startCountdown 함수 실행');
+    const infoTitle = document.getElementById('info-title');
+    const infoMessage = document.getElementById('info-message');
+    const infoSpinner = document.getElementById('info-spinner');
+    const infoButtons = document.getElementById('info-buttons');
+    const infoModalContent = document.getElementById('info-modal-content');
 
-            infoModalContent.style.backgroundColor = 'transparent';
-            infoModalContent.style.boxShadow = 'none';
-            infoModalContent.style.padding = '0';
-            infoTitle.style.display = 'none';
-            
-            infoOverlay.style.display = 'flex';
-            infoSpinner.style.display = 'none';
-            infoButtons.innerHTML = '';
-            infoMessage.innerHTML = '<div id="countdown-number">3</div>';
-            
-            let count = 3;
-            const countdownInterval = setInterval(() => {
-                count--;
-                if (count > 0) {
-                    const countdownEl = document.getElementById('countdown-number');
-                    if (countdownEl) {
-                        countdownEl.style.animation = 'none';
-                        countdownEl.offsetHeight;
-                        countdownEl.style.animation = 'countdown-pop 1s';
-                        countdownEl.textContent = count;
-                    }
-                } else {
-                    clearInterval(countdownInterval);
-                    if (isHost) {
-                        roomRef.update({ gameState: 'betting' });
-                    }
-                }
-            }, 1000);
+    // 모달 스타일 초기화
+    infoModalContent.style.backgroundColor = '';
+    infoModalContent.style.boxShadow = '';
+    infoModalContent.style.padding = '';
+    infoTitle.style.display = '';
+    infoTitle.textContent = '';
+    
+    infoOverlay.style.display = 'flex';
+    infoSpinner.style.display = 'none';
+    infoButtons.innerHTML = '';
+    infoMessage.innerHTML = '<div id="countdown-number">3</div>';
+    
+    let count = 3;
+    const countdownInterval = setInterval(() => {
+        count--;
+        if (count > 0) {
+            const countdownEl = document.getElementById('countdown-number');
+            if (countdownEl) {
+                countdownEl.style.animation = 'none';
+                countdownEl.offsetHeight;
+                countdownEl.style.animation = 'countdown-pop 1s';
+                countdownEl.textContent = count;
+            }
+        } else {
+            clearInterval(countdownInterval);
+            debugLog.addLog('✅ 카운트다운 종료, 모달 숨김');
+            infoOverlay.style.display = 'none';
+            if (isHost) {
+                debugLog.addLog('방장이 betting 상태로 변경');
+                roomRef.update({ gameState: 'betting' });
+            }
         }
+    }, 1000);
+}
         
         function handleHostLogic() {
             const { gameState, players, actionsThisRound } = currentRoomData;
@@ -808,37 +886,69 @@
         }
 
         async function updatePlayerStats(winnerId, loserId, isDraw = false) {
-            const updatePromises = [];
-            const updateUser = (uid, result) => {
-                if (!uid || String(uid).startsWith('guest_')) return;
-                const promise = usersRef.child(uid).transaction(data => {
-                    if (data) {
-                        if (!data.stats) data.stats = {};
-                        if (!data.stats.indianpoker) data.stats.indianpoker = { wins: 0, losses: 0, draws: 0 };
-                        if (isDraw) {
-                            data.stats.indianpoker.draws = (data.stats.indianpoker.draws || 0) + 1;
-                            data.exp = (data.exp || 0) + 25;
-                        } else if (result === 'win') {
-                            data.stats.indianpoker.wins = (data.stats.indianpoker.wins || 0) + 1;
-                            data.exp = (data.exp || 0) + 50;
-                        } else if (result === 'loss') {
-                            data.stats.indianpoker.losses = (data.stats.indianpoker.losses || 0) + 1;
-                            data.exp = (data.exp || 0) + 10;
-                        }
-                    }
-                    return data;
-                });
-                updatePromises.push(promise);
-            };
-            if (isDraw) {
-                updateUser(winnerId, 'draw');
-                updateUser(loserId, 'draw');
-            } else {
-                updateUser(winnerId, 'win');
-                updateUser(loserId, 'loss');
+    const updatePromises = [];
+    
+    const updateUser = (uid, result) => {
+        if (!uid || String(uid).startsWith('guest_')) return;
+        
+        const promise = usersRef.child(uid).transaction(data => {
+            if (data) {
+                // profile 확인
+                if (!data.profile) data.profile = {};
+                const profile = data.profile;
+                profile.level = profile.level || 1;
+                profile.createdAt = profile.createdAt || firebase.database.ServerValue.TIMESTAMP;
+                profile.exp = profile.exp || 0;
+                profile.points = profile.points || 0;
+                
+                // gameStats 확인
+                if (!data.gameStats) data.gameStats = {};
+                if (!data.gameStats.indianpoker) {
+                    data.gameStats.indianpoker = { wins: 0, losses: 0, plays: 0 };
+                }
+                
+                // plays 증가
+                data.gameStats.indianpoker.plays = (data.gameStats.indianpoker.plays || 0) + 1;
+                
+                // 결과에 따른 업데이트
+                if (isDraw) {
+                    // 무승부
+                    profile.exp += 25;
+                    profile.points += 50;
+                } else if (result === 'win') {
+                    // 승리
+                    data.gameStats.indianpoker.wins = (data.gameStats.indianpoker.wins || 0) + 1;
+                    profile.exp += 50;
+                    profile.points += 100;
+                } else if (result === 'loss') {
+                    // 패배
+                    data.gameStats.indianpoker.losses = (data.gameStats.indianpoker.losses || 0) + 1;
+                    profile.exp += 10;
+                    profile.points += 30;
+                }
             }
-            await Promise.all(updatePromises).catch(e => console.error("전적 업데이트 실패", e));
-        }
+            return data;
+        }, (error, committed, snapshot) => {
+            if (error) {
+                console.error('[인디언포커] 전적 업데이트 실패:', error);
+            } else if (committed) {
+                console.log('[인디언포커] 전적 업데이트 성공:', snapshot.val());
+            }
+        });
+        
+        updatePromises.push(promise);
+    };
+    
+    if (isDraw) {
+        updateUser(winnerId, 'draw');
+        updateUser(loserId, 'draw');
+    } else {
+        updateUser(winnerId, 'win');
+        updateUser(loserId, 'loss');
+    }
+    
+    await Promise.all(updatePromises).catch(e => console.error("전적 업데이트 실패", e));
+}
         
         function renderGame() {
             const data = currentRoomData;
@@ -1080,7 +1190,30 @@
                 buttonsContainer.appendChild(confirmBtn);
             }
         }
-        initialize();
+        
+        // ✨ [수정 3] initialize()를 직접 호출하는 대신, auth 상태 리스너로 감싸기
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                // 사용자가 로그인한 상태
+                debugLog.addLog(`✅ Firebase Auth 상태 확인: 로그인됨 (UID: ${user.uid})`);
+                
+                // localStorage의 ID와 실제 인증된 ID가 일치하는지 확인
+                const storedPlayerId = localStorage.getItem('myPlayerId');
+                if (storedPlayerId === user.uid) {
+                    initialize(); // 인증이 확인된 후 게임 초기화
+                } else {
+                    debugLog.addLog(`❌ Auth/localStorage ID 불일치. Stored: ${storedPlayerId}, Auth: ${user.uid}`);
+                    alert('인증 정보가 일치하지 않습니다. 다시 로그인해주세요.');
+                    window.location.href = 'index.html';
+                }
+            } else {
+                // 사용자가 로그인하지 않은 상태
+                debugLog.addLog('❌ Firebase Auth 상태 확인: 로그아웃됨');
+                alert('로그인이 필요합니다.');
+                window.location.href = 'index.html';
+            }
+        });
+
     });
     </script>
 
@@ -1094,6 +1227,14 @@
             </div>
         </div>
     </div>
+    
+    <div id="debug-log-modal" style="position: fixed; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.95); color: #0f0; font-family: monospace; font-size: 11px; max-height: 40vh; overflow-y: auto; padding: 10px; z-index: 9999; display: none;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 5px; border-bottom: 1px solid #0f0; padding-bottom: 5px;">
+            <strong>🔍 DEBUG LOG</strong>
+            <button onclick="document.getElementById('debug-log-modal').style.display='none'" style="background: #f00; color: #fff; border: none; padding: 2px 8px; cursor: pointer;">닫기</button>
+        </div>
+        <div id="debug-log-content"></div>
+    </div>
+    <button id="debug-toggle-btn" style="position: fixed; bottom: 10px; right: 10px; width: 50px; height: 50px; border-radius: 50%; background: rgba(0,255,0,0.3); border: 2px solid #0f0; color: #0f0; font-size: 20px; cursor: pointer; z-index: 10000;">🐛</button>
 </body>
 </html>
-}
