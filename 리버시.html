@@ -321,11 +321,14 @@
                         
 listenToRoomChanges(); // 1. 리스너(감시) 먼저 시작
 
-// ✨ 2. (알까기 방식) "나 페이지 로드 완료!" 신호를 Firebase에 보냅니다.
-                        roomRef.child('readyPlayers/' + myPlayerId).set(true);
+                        // ✨ 호스트이면, 기존 보드 상태와 관계없이 무조건 게임을 새로 초기화합니다.
+                        if(isHost) {
+                            initializeMultiplayerGame(); // 2. 게임 초기화 (status: 'ready' 신호 발사)
+                        }
                     }
                 });
             }
+
           function listenToRoomChanges() {
                 let countdownStarted = false; // 카운트다운 중복 실행 방지 플래그
                 roomRef.on('value', snapshot => {
@@ -343,41 +346,31 @@ listenToRoomChanges(); // 1. 리스너(감시) 먼저 시작
                         return;
                     }
 
-                    // ✨ [수정] 알까기 핸드셰이크 로직 적용
+                    // ✨ "알까기" 구조로 변경: 'ready' 상태를 제거하고 'board' 생성 여부로 판단
                     
-                    // 1. 'playing' 상태일 때만 로직 실행
+                    // 1. 'playing' 상태일 때
                     if (currentRoomData.status === 'playing') {
                         
-                        // 1-1. (알까기 방식) 모든 플레이어가 로드되었는지 확인
-                        const readyCount = currentRoomData.readyPlayers ? Object.keys(currentRoomData.readyPlayers).length : 0;
-                        const totalPlayers = Object.keys(currentRoomData.players).filter(id => id !== 'ai_player').length;
-
-                        // 1-2. 방장이고, 모두가 준비됐고, 아직 게임판이 안 만들어졌다면 -> 방장이 게임을 생성!
-                        if (isHost && readyCount === totalPlayers && !currentRoomData.board) {
-                            initializeMultiplayerGame(); // 방장이 게임을 "생성"
-                            return; // initializeMultiplayerGame이 update를 유발하므로 여기서 리턴
-                        }
-
-                        // 1-3. 게임판이 드디어 생성되었고, 카운트다운을 아직 안했다면 -> 카운트다운 시작
+                        // 1-1. [핵심] 보드가 생성되었고, 카운트다운이 아직 시작 안됐으면
                         if (currentRoomData.board && !countdownStarted) {
-                            countdownStarted = true; 
+                            countdownStarted = true; // 카운트다운 시작
                             myColor = currentRoomData.players[myPlayerId]?.color;
                             updateHeaderUI();
-                            drawBoard();
+                            drawBoard(); // 생성된 보드를 그리기
                             infoOverlay.style.display = 'flex';
                             infoOverlay.innerHTML = `<div id="countdown-number"></div>`;
                             startCountdown();
+                        } 
+                        // 1-2. 보드가 아직 없으면 (방금 입장한 상태)
+                        else if (!currentRoomData.board && !countdownStarted) {
+                            infoOverlay.style.display = 'flex'; // "참가 중" 표시 유지
                         }
-                        // 1-4. 게임이 진행 중일 때 (데이터 동기화)
+                        // 1-3. 보드도 있고 카운트다운도 끝났으면 (게임 진행 중)
                         else if (currentRoomData.board && countdownStarted && isGameLive) {
                              infoOverlay.style.display = 'none';
                              myColor = currentRoomData.players[myPlayerId]?.color;
                              updateHeaderUI();
                              drawBoard();
-                        }
-                        // 1-5. (로딩 중) 아직 게임판이 생성되기 전
-                        else if (!currentRoomData.board && !countdownStarted) {
-                            infoOverlay.style.display = 'flex'; // "참가 중" 표시 유지
                         }
                     } 
                     // 2. 'gameOver' 상태
@@ -386,7 +379,7 @@ listenToRoomChanges(); // 1. 리스너(감시) 먼저 시작
                         drawBoard();
                         showGameOverScreen();
                     } 
-                    // 3. 'waiting' 상태 (방금 입장한 상태)
+                    // 3. 'waiting' 상태 (이론상으론 없지만 안전장치)
                     else if (currentRoomData.status === 'waiting') {
                         infoOverlay.style.display = 'flex'; // "참가 중" 표시
                     }
@@ -411,10 +404,7 @@ listenToRoomChanges(); // 1. 리스너(감시) 먼저 시작
                 initialBoard[35] = 'black'; initialBoard[36] = 'white';
 
                 roomRef.update({
-                    // ✨ [중요] status: 'playing'을 여기서 명시적으로 다시 써줍니다.
-                    // (이전 waiting -> playing 과 덮어쓰기지만, 모든 데이터가
-                    // 이 시점에 생성됨을 보장하는 핵심 코드입니다.)
-                    status: 'playing', 
+   status: 'playing', // ✨ 이 한 줄을 추가해야 합니다
                     board: initialBoard,
                     turn: 'black',
                     players: playersWithColors, // 수정된 플레이어 객체로 업데이트합니다.

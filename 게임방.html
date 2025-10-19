@@ -126,8 +126,9 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
-   <script>
-    function escapeHTML(str) {
+    <script>
+
+function escapeHTML(str) {
         if (typeof str !== 'string') return '';
         const map = {
             '&': '&amp;',
@@ -150,7 +151,7 @@
             appId: "1:858281658455:web:9131280a459be983933b12"
         };
 
-        document.addEventListener('contextmenu', event => event.preventDefault());
+                document.addEventListener('contextmenu', event => event.preventDefault());
         document.addEventListener('keydown', event => {
             if (event.key === 'F12' ||
                 (event.ctrlKey && event.shiftKey && ['I', 'J', 'C'].includes(event.key.toUpperCase())) ||
@@ -179,14 +180,12 @@
         const leaveRoomBtn = document.getElementById('leave-room-btn');
         const emojiToggleBtn = document.getElementById('emoji-toggle-btn');
         const emojiPopover = document.getElementById('emoji-popover');
-        const lobbyFooter = document.querySelector('.game-lobby-footer'); // ✨ UI 요소 선택 추가
 
         let currentUser, myNickname, myAvatar, roomRef, currentRoomData, isHost;
         let previousPlayerNicks = {};
 
         const availableGames = [
             { id: 'alkkagi', name: '알까기', icon: '⚪', file: '알까기.html', maxPlayers: 2 },
-            { id: 'crossingKnights', name: '크로싱 나이츠', icon: '♞', file: '크로싱나이츠.html', maxPlayers: 2 },
             { id: 'memoryGame', name: '메모리', icon: '🧠', file: '메모리게임.html', maxPlayers: 4 },
             { id: 'reversi', name: '리버시', icon: '⚫', file: '리버시.html', maxPlayers: 2 },
             { id: 'indianpoker', name: '인디언포커', icon: '🃏', file: '인디언포커.html', maxPlayers: 2 },
@@ -269,11 +268,14 @@
                 if (currentRoomData.status === 'playing') {
                     const game = availableGames.find(g => g.id === currentRoomData.gameType);
                     if (game) {
+                        // 중요: 게임 시작을 위해 정상적으로 나가는 것이므로,
+                        // 페이지 이탈 시 방이 삭제되는 onDisconnect 이벤트를 취소합니다.
                         if (isHost) {
                             roomRef.onDisconnect().cancel();
                         } else {
                             roomRef.child('players/' + currentUser.uid).onDisconnect().cancel();
                         }
+
                         if(roomRef) roomRef.off(); 
                         window.location.href = `${game.file}?roomId=${snapshot.key}`; 
                     }
@@ -304,18 +306,19 @@
         function handlePlayerChanges(oldPlayers) {
             const currentPlayers = currentRoomData.players || {};
             const oldPlayerIds = Object.keys(oldPlayers);
-            const currentPlayerIds = Object.keys(currentPlayers);
+        const currentPlayerIds = Object.keys(currentPlayers);
 
-            const joined = currentPlayerIds.filter(id => !oldPlayerIds.includes(id));
-            const left = oldPlayerIds.filter(id => !currentPlayerIds.includes(id));
+        const joined = currentPlayerIds.filter(id => !oldPlayerIds.includes(id));
+        const left = oldPlayerIds.filter(id => !currentPlayerIds.includes(id));
 
-            joined.forEach(id => {
-                if (id !== currentUser.uid && oldPlayerIds.length > 0) { 
-                    addSystemMessage(`${currentPlayers[id].nickname}님이 입장했습니다.`);
-                    playSound('enter-sound');
-                    vibrate();
-                }
-            });
+        joined.forEach(id => {
+            // ▼ '&& oldPlayerIds.length > 0' 조건을 추가합니다.
+            if (id !== currentUser.uid && oldPlayerIds.length > 0) { 
+                addSystemMessage(`${currentPlayers[id].nickname}님이 입장했습니다.`);
+                playSound('enter-sound');
+                vibrate();
+            }
+        });
 
             left.forEach(id => {
                 const leftPlayerNickname = oldPlayers[id]?.nickname;
@@ -416,31 +419,54 @@
         }
 
         function startGame() {
-            if (!isHost) return;
-            const game = availableGames.find(g => g.id === currentRoomData.gameType);
-            if (!game) return;
-            const updates = { status: 'playing' };
-            const playerIds = Object.keys(currentRoomData.players);
-            
-            if (['alkkagi', 'reversi','candysop'].includes(game.id) && playerIds.length === 1) {
-                updates[`players/ai_player`] = { nickname: 'AI', avatar: '🤖', isHost: false };
-            }
+    if (!isHost) return;
+    const game = availableGames.find(g => g.id === currentRoomData.gameType);
+    if (!game) return;
+    const updates = { status: 'playing' };
+    const playerIds = Object.keys(currentRoomData.players); // ✨ 플레이어 ID 미리 가져오기
+    
+    // 1인용 AI 추가 로직
+    if (['alkkagi', 'reversi','candysop'].includes(game.id) && playerIds.length === 1) {
+        updates[`players/ai_player`] = { nickname: 'AI', avatar: '🤖', isHost: false };
+    }
 
-            if (game.id === 'memoryGame') {
-                updates.cards = generateCards(10);
-                updates.playerOrder = playerIds.sort(() => Math.random() - 0.5);
-                updates.turn = updates.playerOrder[0];
-                updates.flippedCards = [];
-                playerIds.forEach(pid => {
-                    updates[`players/${pid}/score`] = 0;
-                });
-            }
-            
-            // ✨ [수정] 'reversi' 관련 게임판 생성 로직을 완전히 제거했습니다.
-            // 알까기처럼 'status: playing' 신호만 보냅니다.
+    // 메모리 게임 데이터 생성 로직
+    if (game.id === 'memoryGame') {
+        updates.cards = generateCards(10);
+        updates.playerOrder = playerIds.sort(() => Math.random() - 0.5);
+        updates.turn = updates.playerOrder[0];
+        updates.flippedCards = [];
+        playerIds.forEach(pid => {
+            updates[`players/${pid}/score`] = 0;
+        });
+    }
 
-            roomRef.update(updates);
+    // ✨ [리버시 2인용] 게임 시작 시 보드와 턴 정보를 생성합니다.
+    if (game.id === 'reversi' && playerIds.length > 1) {
+        // 플레이어 ID를 랜덤으로 섞어 색상 지정
+        const sortedPlayerIds = [...playerIds].sort(() => Math.random() - 0.5);
+        const playersWithColors = { ...currentRoomData.players };
+        
+        if (playersWithColors[sortedPlayerIds[0]]) {
+            playersWithColors[sortedPlayerIds[0]].color = 'black';
         }
+        if (playersWithColors[sortedPlayerIds[1]]) {
+            playersWithColors[sortedPlayerIds[1]].color = 'white';
+        }
+        
+        const initialBoard = Array(64).fill(null);
+        initialBoard[27] = 'white'; initialBoard[28] = 'black';
+        initialBoard[35] = 'black'; initialBoard[36] = 'white';
+
+        updates.board = initialBoard;
+        updates.turn = 'black';
+        updates.players = playersWithColors; // 색상 정보가 포함된 players 객체로 덮어쓰기
+        updates.passedTurn = false;
+        updates.lastMove = null;
+    }
+
+    roomRef.update(updates);
+}
         
         function generateCards(pairCount) {
             const themes = [['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯'], ['🍔','🍕','🍟','🌭','🍿','🥨','🥯','🥞','🧇','🧀']];
@@ -452,32 +478,33 @@
 
         function cleanupAndExit() {
             if (roomRef) {
-                roomRef.off();
+                roomRef.off(); // ★ 리스너를 가장 먼저 제거하여 불필요한 알림을 방지합니다.
             }
 
             if (roomRef && currentUser) {
                 if (isHost) {
+                    // 내가 방장이라면, 방 전체를 삭제하고 페이지를 이동합니다.
                     roomRef.remove().finally(() => {
                         window.location.href = '대기실.html';
                     });
                 } else {
+                    // 내가 게스트라면, 나만 나가고 페이지를 이동합니다.
                     roomRef.child('players/' + currentUser.uid).remove().finally(() => {
                         window.location.href = '대기실.html';
                     });
                 }
             } else {
+                // 예외 상황: roomRef나 currentUser가 없을 경우 바로 페이지를 이동합니다.
                 window.location.href = '대기실.html';
             }
         }
-        
-        // ✨ 키보드가 올라올 때 입력창이 가려지는 현상 방지
-        chatInput.addEventListener('focus', () => {
-            // setTimeout을 주어 키보드 애니메이션이 끝난 후 스크롤되도록 합니다.
-            setTimeout(() => {
-                lobbyFooter.scrollIntoView({ behavior: 'smooth', block: 'end' });
-            }, 150);
-        });
 
+
+        function escapeHTML(str) {
+            if (typeof str !== 'string') return '';
+            return str.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'})[m]);
+        }
+        
         sendChatBtn.addEventListener('click', () => { sendMessage(chatInput.value); chatInput.value = ''; chatInput.focus(); });
         chatInput.addEventListener('keypress', e => { if (e.key === 'Enter') { sendMessage(chatInput.value); chatInput.value = ''; e.preventDefault(); }});
         startGameBtn.addEventListener('click', startGame);
@@ -491,6 +518,6 @@
             }
         });
     });
-</script>
+    </script>
 </body>
 </html>
