@@ -321,26 +321,20 @@
         });
 
         function updateLobbyUI() {
-    if (!currentUserData || !currentUserData.profile) return;
-    const profile = currentUserData.profile;
-    const avatar = profile.avatar;
+            if (!currentUserData || !currentUserData.profile) return;
+            const profile = currentUserData.profile;
+            const avatar = profile.avatar;
 
-    // ✨ [보안 수정]
-    myProfileAvatar.innerHTML = ''; // 기존 내용을 비웁니다.
-    if (avatar && avatar.startsWith('http')) {
-        const img = document.createElement('img');
-        img.src = avatar;
-        img.alt = 'avatar';
-        myProfileAvatar.appendChild(img);
-    } else if (avatar) {
-        myProfileAvatar.textContent = avatar;
-    }
-
-    myProfileNickname.textContent = profile.nickname;
-
-    const myProfilePoints = document.getElementById('my-profile-points');
-    myProfilePoints.textContent = `💰 ${(profile.points || 0).toLocaleString()} P`;
-}
+            if (avatar.startsWith('http')) {
+                myProfileAvatar.innerHTML = `<img src="${avatar}" alt="avatar">`;
+            } else {
+                myProfileAvatar.textContent = avatar;
+            }
+            myProfileNickname.textContent = profile.nickname;
+            
+            const myProfilePoints = document.getElementById('my-profile-points');
+            myProfilePoints.textContent = `💰 ${(profile.points || 0).toLocaleString()} P`;
+        }
         
         function listenToRooms() {
             if (roomListener) roomsRef.off('value', roomListener);
@@ -423,28 +417,22 @@
         });
 
         myProfileBtn.addEventListener('click', () => {
-    clickSound.play();
-    if (!currentUserData) return;
-    const profile = currentUserData.profile;
-    const avatarEl = document.getElementById('profile-dashboard-avatar');
+            clickSound.play();
+            if (!currentUserData) return;
+            const profile = currentUserData.profile;
+            const avatarEl = document.getElementById('profile-dashboard-avatar');
+            if (profile.avatar.startsWith('http')) {
+                avatarEl.innerHTML = `<img src="${profile.avatar}" alt="avatar">`;
+            } else {
+                avatarEl.textContent = profile.avatar;
+            }
 
-    // ✨ [보안 수정]
-    avatarEl.innerHTML = ''; // 기존 내용을 비웁니다.
-    if (profile.avatar && profile.avatar.startsWith('http')) {
-        const img = document.createElement('img');
-        img.src = profile.avatar;
-        img.alt = 'avatar';
-        avatarEl.appendChild(img);
-    } else if (profile.avatar) {
-        avatarEl.textContent = profile.avatar;
-    }
-
-    document.getElementById('profile-dashboard-nickname').textContent = profile.nickname;
-    document.getElementById('profile-dashboard-level').textContent = profile.level || 1;
-    document.getElementById('profile-points').textContent = profile.points || 0;
-
-    showModal(profileModal);
-});
+            document.getElementById('profile-dashboard-nickname').textContent = profile.nickname;
+            document.getElementById('profile-dashboard-level').textContent = profile.level || 1;
+            document.getElementById('profile-points').textContent = profile.points || 0;
+            
+            showModal(profileModal);
+        });
 
         // ▼▼▼ [수정] 게임 탭 버튼에 이벤트 리스너 추가 ▼▼▼
         document.querySelectorAll('.game-mode-tab-btn').forEach(btn => {
@@ -571,74 +559,43 @@
                 }
 
                 users.slice(0, 100).forEach((user, i) => {
-    const profile = user.profile;
-    const gameStats = user.gameStats;
+                    const profile = user.profile;
+                    const gameStats = user.gameStats;
+                    const avatarHTML = profile.avatar.startsWith('http') ? `<img src="${profile.avatar}" alt="avatar">` : profile.avatar;
+                    let statsHTML = '';
 
-    let statsHTML = '';
-    if (gameId === 'points') {
-        const totalWins = Object.values(gameStats || {}).reduce((sum, game) => sum + (game.wins || 0), 0);
-        const totalLosses = Object.values(gameStats || {}).reduce((sum, game) => sum + (game.losses || 0), 0);
-        statsHTML = `
-            <div class="stat-item wins">${totalWins}승</div>
-            <div class="stat-item losses">${totalLosses}패</div>
-            <div class="stat-item points">${(profile.points || 0).toLocaleString()} P</div>`;
-    } else {
-        const game = gameStats?.[gameId] || { wins: 0, losses: 0, plays: 0 };
-        const totalGames = game.wins + game.losses;
-        const winRate = totalGames > 0 ? ((game.wins / totalGames) * 100).toFixed(0) + '%' : '0%';
-        statsHTML = `
-            <div class="stat-item wins">${game.wins}승</div>
-            <div class="stat-item losses">${game.losses}패</div>
-            <div class="stat-item winrate">${winRate}</div>
-            <div class="stat-item plays">${game.plays || 0}회</div>`;
-    }
-
-    const rankItem = document.createElement('div');
-    rankItem.className = 'rank-item';
-
-    // 랭킹 숫자
-    const rankColRank = document.createElement('div');
-    rankColRank.className = 'rank-col-rank';
-    rankColRank.textContent = i + 1;
-
-    // 프로필
-    const rankColProfile = document.createElement('div');
-    rankColProfile.className = 'rank-col-profile';
-
-    const rankAvatarContainer = document.createElement('div');
-    rankAvatarContainer.className = 'rank-avatar';
-    // --- ✨ 안전하게 아바타 생성 ---
-    if (profile.avatar && profile.avatar.startsWith('http')) {
-        const avatarImg = document.createElement('img');
-        avatarImg.src = profile.avatar;
-        avatarImg.alt = 'avatar';
-        rankAvatarContainer.appendChild(avatarImg);
-    } else if (profile.avatar) {
-        rankAvatarContainer.textContent = profile.avatar; // 이모지 등 텍스트 아바타
-    }
-
-    const profileText = document.createElement('div');
-    profileText.className = 'profile-text';
-
-    const nicknameDiv = document.createElement('div');
-    nicknameDiv.className = 'nickname';
-    nicknameDiv.textContent = profile.nickname; // escapeHTML 대신 textContent 사용
-
-    const levelDiv = document.createElement('div');
-    levelDiv.className = 'level';
-    levelDiv.textContent = `Lv. ${profile.level || 1}`;
-
-    profileText.append(nicknameDiv, levelDiv);
-    rankColProfile.append(rankAvatarContainer, profileText);
-
-    // 통계
-    const rankColStats = document.createElement('div');
-    rankColStats.className = 'rank-col-stats';
-    rankColStats.innerHTML = statsHTML; // 이 부분은 서버 데이터가 아니므로 innerHTML 사용 가능
-
-    rankItem.append(rankColRank, rankColProfile, rankColStats);
-    rankingList.appendChild(rankItem);
-});
+                    if (gameId === 'points') {
+                        const totalWins = Object.values(gameStats || {}).reduce((sum, game) => sum + (game.wins || 0), 0);
+                        const totalLosses = Object.values(gameStats || {}).reduce((sum, game) => sum + (game.losses || 0), 0);
+                        statsHTML = `
+                            <div class="stat-item wins">${totalWins}승</div>
+                            <div class="stat-item losses">${totalLosses}패</div>
+                            <div class="stat-item points">${(profile.points || 0).toLocaleString()} P</div>`;
+                    } else {
+                        const game = gameStats?.[gameId] || { wins: 0, losses: 0, plays: 0 };
+                        const totalGames = game.wins + game.losses;
+                        const winRate = totalGames > 0 ? ((game.wins / totalGames) * 100).toFixed(0) + '%' : '0%';
+                        statsHTML = `
+                            <div class="stat-item wins">${game.wins}승</div>
+                            <div class="stat-item losses">${game.losses}패</div>
+                            <div class="stat-item winrate">${winRate}</div>
+                            <div class="stat-item plays">${game.plays || 0}회</div>`;
+                    }
+                    
+                    const rankItem = document.createElement('div');
+                    rankItem.className = 'rank-item';
+                    rankItem.innerHTML = `
+                        <div class="rank-col-rank">${i + 1}</div>
+                        <div class="rank-col-profile">
+                            <div class="rank-avatar">${avatarHTML}</div>
+                            <div class="profile-text">
+                                <div class="nickname">${escapeHTML(profile.nickname)}</div>
+                                <div class="level">Lv. ${profile.level || 1}</div>
+                            </div>
+                        </div>
+                        <div class="rank-col-stats">${statsHTML}</div>`;
+                    rankingList.appendChild(rankItem);
+                });
             });
         }
 
