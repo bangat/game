@@ -114,11 +114,26 @@
             font-size: 1.5em;
             font-weight: 700;
             text-align: center;
-            min-height: 100px;
+            /* min-height: 100px; */ /* 높이를 아래 desc로 이동 */
             display: flex;
             justify-content: center;
             align-items: center;
+            padding-top: 10px; /* 상단 여백 */
         }
+
+        /* ▼▼▼ [신규] 문제 뜻풀이 스타일 ▼▼▼ */
+        #question-desc {
+            font-size: 0.9em; /* 더 작은 폰트 */
+            font-weight: 500;
+            color: var(--accent-color); /* 노란색 */
+            text-align: center;
+            padding: 0 15px;
+            min-height: 60px; /* 최소 높이 확보 */
+            display: none; /* 평소엔 숨김 */
+            justify-content: center;
+            align-items: center;
+        }
+        /* ▲▲▲ [신규] ▲▲▲ */
 
         #round-timer-bar {
             width: 100%;
@@ -219,6 +234,7 @@
                 <div id="round-info">Round 1 / 30</div>
                 <div id="round-timer-bar"><div id="round-timer-fill"></div></div>
                 <div id="question-text">문제를 불러오는 중입니다...</div>
+                <div id="question-desc"></div>
                 <div id="options-grid">
                     <button classclass="option-btn" data-index="0"></button>
                     <button class="option-btn" data-index="1"></button>
@@ -245,12 +261,12 @@
             <div class="modal-body">
                 <p id="topic-modal-desc">방장이 첫 10라운드의 주제를 선택합니다.</p>
                 <div class="topic-btn-grid modal-buttons">
-                    <button class="menu-btn primary" data-topic="english">🔠 영단어</button>
-                    <button class="menu-btn primary" data-topic="proverb">📜 속담</button>
-                    <button class="menu-btn primary" data-topic="idiom">📖 사자성어</button>
-                    <button class="menu-btn primary" data-topic="capital">🌍 수도 맞히기</button>
-                    <button class="menu-btn primary" data-topic="history">👑 역사 인물</button>
-                    <button class="menu-btn primary" data-topic="random">🎲 랜덤</button>
+                    <button class="menu-btn primary" data-topic="english">🔠영단어</button>
+                    <button class="menu-btn primary" data-topic="proverb">📜속담</button>
+                    <button class="menu-btn primary" data-topic="idiom">📖사자성어</button>
+                    <button class="menu-btn primary" data-topic="capital">🌍수도</button>
+                    <button class="menu-btn primary" data-topic="history">👑역사인물</button>
+                    <button class="menu-btn primary" data-topic="random">🎲랜덤</button>
                 </div>
             </div>
         </div>
@@ -272,7 +288,17 @@
             "AIzaSyCPVYU35xKXGMAZXT8yQ4QjLeIpSdI"  // 2번 키
         ];
         let currentKeyIndex = 0;
-        const currentModel = "gemini-2.5-flash"; // 속도가 빠른 Flash 모델 사용
+        const currentModel = "gemini-2.5-flash-lite"; // 속도가 빠른 Flash 모델 사용
+
+        // ▼▼▼ [신규] 사용자에게 보여줄 주제명 (UX 개선용) ▼▼▼
+        const topicMapForDisplay = {
+            "english": "🔠 영단어",
+            "proverb": "📜 속담",
+            "idiom": "📖 사자성어",
+            "capital": "🌍 수도 맞히기",
+            "history": "👑 역사 인물"
+        };
+        // ▲▲▲ [신규] ▲▲▲
 
         // API 키 순환 함수
         function rotateKey() {
@@ -341,31 +367,38 @@
             }
         }
 
-        // 주제별 퀴즈 10개 생성용 Prompt
+        // ▼▼▼ [수정] 퀴즈 생성 프롬프트 수정 (API 오류, 속담 난이도 상향) ▼▼▼
         function getPromptForTopic(topic) {
-            const topicMap = {
-                "english": "초/중급 수준의 영어 단어",
-                "proverb": "유명한 한국 속담 (빈칸 '○' 1개 포함)",
-                "idiom": "유명한 사자성어 (뜻풀이)",
-                "capital": "유명한 국가의 수도",
-                "history": "유명한 역사적 인물"
+            // 각 주제별로 AI에게 명확한 q, correct, incorrect 규칙을 지시
+            const topicInstructions = {
+                "english": "question은 초급~중급 수준의 생활에 필요한 영어 단어 또는 중학교~고등학교 수준의 영어 단어이고, correct는 그 단어의 한글 뜻, incorrect는 헷갈리는 한글 뜻 3개여야 합니다.",
+                "proverb": "question은 '유명한 한국 속담'이며, 속담의 '중~고급 난이도' 수준이어야 하고 빈칸 '○'를 문제 텍스트수에 따라 적절하게 포함해야 합니다. correct는 그 빈칸에 들어갈 핵심 단어, incorrect는 헷갈리는 오답 단어 3개여야 합니다.",
+                "idiom": "question은 유명한 사자성어의 뜻풀이, correct는 그 뜻에 맞는 사자성어, incorrect는 헷갈리는 다른 사자성어 3개여야 합니다.",
+                "capital": "question은 'OO의 수도는?' 형식의 국가 질문, correct는 그 국가의 수도 이름(반드시 정답이 포함되어야합니다.), incorrect는 헷갈리는 다른 도시 이름 3개여야 합니다.",
+               "history": "question은 '조선의 4대 왕'처럼 유명한 역사적 인물에 대한 설명이어야 합니다. correct는 그 인물의 이름('세종대왕')이어야 합니다. incorrect는 헷갈리는 다른 인물 이름 3개여야 합니다."
             };
+
+            let finalTopic = topic;
             if (topic === "random") {
-                const topics = Object.keys(topicMap);
-                topic = topics[Math.floor(Math.random() * topics.length)];
+                const topics = Object.keys(topicInstructions);
+                finalTopic = topics[Math.floor(Math.random() * topics.length)];
             }
 
-            const promptHeader = `너는 "스피드 퀴즈" 게임의 출제자야.
-규칙에 맞는 퀴즈 10개 세트를 JSON 배열 형식으로만 응답해줘.
-1. 10개 모두 "${topicMap[topic]}" 주제여야 해.
-2. 각 문제는 "question"(문제), "correct"(정답), "incorrect"(오답 3개 배열) 키를 가져야 해.
-3. 속담이면 "question"에 빈칸 '○'를 1개만 포함하고, "correct"는 빈칸의 답이어야 해.
-4. 사자성어면 "question"은 뜻풀이, "correct"는 사자성어여야 해.
-5. 오답은 정답과 헷갈리지만 명백히 틀린 답이어야 해.
-JSON 배열 형식으로만 응답해줘.
+            const instruction = topicInstructions[finalTopic];
+
+            // AI가 JSON 형식만 반환하도록 더 엄격하게 지시
+            const promptHeader = `너는 "스피드 퀴즈" 게임의 출제자입니다.
+반드시 다음 규칙을 지켜 퀴즈 10개 세트를 JSON 배열 형식으로만 응답해주세요.
+1. 각 퀴즈 객체는 "question"(string), "correct"(string), "incorrect"(string 배열 3개) 키를 가져야 합니다.
+2. 10개 퀴즈 모두 다음 규칙을 따라야 합니다: ${instruction}
+3. 오답(incorrect)은 정답(correct)과 헷갈리지만 명백히 틀린 답이어야 합니다.
+4. 문제와 매칭되는 정답이 배열에 포함되어있는지 검토후 출제하세요. 무조건 있어야 합니다.
+4. 응답은 오직 JSON 배열(Array) 형식이어야 합니다. 다른 텍스트나 설명, 마크다운(\`\`\`json)을 절대 포함하지 마세요.
 `;
-            return promptHeader;
+            // ✨ [핵심] 객체로 반환
+            return { prompt: promptHeader, topicName: finalTopic }; 
         }
+        // ▲▲▲ [수정] 퀴즈 생성 프롬프트 수정 ▲▲▲
 
         // --- Firebase 설정 ---
         // (대기실.html 등에서 가져온 설정)
@@ -392,6 +425,7 @@ JSON 배열 형식으로만 응답해줘.
         const questionText = document.getElementById('question-text');
         const optionsGrid = document.getElementById('options-grid');
         const optionBtns = optionsGrid.querySelectorAll('.option-btn');
+        const questionDesc = document.getElementById('question-desc'); // ▼▼▼ [신규] 뜻풀이 div
         
         const infoOverlay = document.getElementById('info-overlay');
         const infoText = document.getElementById('info-text');
@@ -404,9 +438,11 @@ JSON 배열 형식으로만 응답해줘.
         let myPlayerId, myNickname, myAvatar;
         let roomRef, currentRoomData, isHost;
         let isExiting = false, isGameLive = false, gameOverFlag = false;
+        let isSoloMode = false; // ✨ 혼자 하기 모드 플래그
         
         const TOTAL_ROUNDS = 30;
-        const ROUND_TIME_MS = 10000; // 10초
+        const ROUND_TIME_MS = 7000; // 7
+        let roundEndTimeout;
         let currentRoundTimer;
         
         // --- 유틸리티 함수 ---
@@ -421,6 +457,7 @@ JSON 배열 형식으로만 응답해줘.
         }
 
         // --- 초기화 ---
+        // --- 초기화 ---
         document.addEventListener('DOMContentLoaded', () => {
             // (보안 코드)
             document.addEventListener('contextmenu', event => event.preventDefault());
@@ -433,26 +470,65 @@ JSON 배열 형식으로만 응답해줘.
             });
             // setInterval(() => { try { debugger; } catch (e) {} }, 1000);
 
-            myPlayerId = localStorage.getItem('myPlayerId');
-            myNickname = localStorage.getItem('userNickname') || 'Player';
-            myAvatar = localStorage.getItem('userAvatar') || '😊';
-            
-            if (!myPlayerId) {
-                alert("플레이어 정보가 없습니다.");
-                window.location.replace('index.html');
-                return;
-            }
-            const urlParams = new URLSearchParams(window.location.search);
-            const roomId = urlParams.get('roomId');
-            if (!roomId) {
-                alert("잘못된 접근입니다.");
-                window.location.replace('대기실.html');
-                return;
-            }
-            joinRoom(roomId);
+            // ▼▼▼ [수정] Firebase Auth로 플레이어 ID를 가져오도록 수정 (멀티플레이 버그) ▼▼▼
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    myPlayerId = user.uid; // ✨ 핵심: localStorage 대신 auth.uid 사용
+
+                    // DB에서 최신 닉네임/아바타 가져오기 (localStorage는 오래됐을 수 있음)
+                    usersRef.child(myPlayerId).child('profile').once('value', snapshot => {
+                        if (snapshot.exists()) {
+                            myNickname = snapshot.val().nickname || 'Player';
+                            myAvatar = snapshot.val().avatar || '😊';
+                        } else {
+                            // DB에 프로필이 없는 비정상적 상황
+                            myNickname = 'Player';
+                            myAvatar = '😊';
+                        }
+
+                        // URL 파라미터 확인 및 방 입장
+                        const urlParams = new URLSearchParams(window.location.search);
+                        const roomId = urlParams.get('roomId');
+                        if (!roomId) {
+                            alert("잘못된 접근입니다.");
+                            window.location.replace('대기실.html');
+                            return;
+                        }
+                        joinRoom(roomId);
+
+                    });
+
+                } else {
+                    // 로그인되지 않은 사용자
+                    alert("로그인이 필요합니다.");
+                    window.location.replace('index.html');
+                }
+            });
+            // ▲▲▲ [수정] ▲▲▲
         });
         
         function joinRoom(roomId) {
+            const urlParams = new URLSearchParams(window.location.search);
+            isSoloMode = urlParams.get('mode') === 'solo'; // ✨ '혼자 하기' 모드 확인
+
+            if (isSoloMode) {
+                // ✨ 혼자 하기 모드 초기화 (DB 필요 없음)
+                isHost = true; // 혼자 하기는 항상 호스트처럼 동작
+                currentRoomData = {
+                    roomName: '혼자 하기',
+                    players: { [myPlayerId]: { nickname: myNickname, avatar: myAvatar, isHost: true } },
+                    scores: { [myPlayerId]: 0 },
+                    currentRound: 0,
+                    status: 'preparing',
+                    quizSet: null
+                };
+                
+                // ▼▼▼ [수정] 솔로 모드도 'processRoomState'를 사용해 UI 렌더링
+                processRoomState({});
+                return;
+            }
+
+            // ✨ 멀티 플레이 모드 (기존 로직)
             roomRef = roomsRef.child(roomId);
             roomRef.once('value', snapshot => {
                 if (!snapshot.exists()) {
@@ -470,10 +546,13 @@ JSON 배열 형식으로만 응답해줘.
                     roomRef.child('players/' + myPlayerId).onDisconnect().remove();
                 }
                 
-                listenToRoomChanges();
+                listenToRoomChanges(); // 1. 리스너 부착
 
-                // 호스트는 게임을 준비시킴
-                if (isHost) {
+                // 2. [핵심] 게스트가 현재 방 상태를 즉시 처리하도록 호출
+                processRoomState({}); 
+
+                // 3. 호스트는 게임을 준비시킴
+                if (isHost && currentRoomData.status !== 'preparing') { // (중복 방지)
                     // 점수판 초기화
                     const initialScores = {};
                     Object.keys(currentRoomData.players).forEach(pid => {
@@ -491,37 +570,70 @@ JSON 배열 형식으로만 응답해줘.
         
         // --- Gemini API 호출 (Host Only) ---
         async function fetchQuizSet(topic) {
-            infoText.textContent = `"${topic}" 주제의 퀴즈 10개를 생성 중...`;
+            // ▼▼▼ [수정] Fix 1 & 2: 프롬프트 가져오기 및 게스트 로딩 상태 전파 ▼▼▼
+            // 1. 위에서 수정한 getPromptForTopic 함수에서 프롬프트와 실제 주제명(topicName)을 받아옴
+            const { prompt, topicName } = getPromptForTopic(topic);
+            const topicDisplayName = topicMapForDisplay[topicName] || "랜덤";
+            
+            if (!isSoloMode && isHost) {
+                // 2. (멀티플레이) API 호출 전에, 게스트에게 "생성 중" 상태를 먼저 알림
+                roomRef.update({ 
+                    status: 'generating_quiz',
+                    currentTopicName: topicDisplayName // ✨ 게스트에게 보여줄 주제명
+                });
+            }
+            // ▲▲▲ [수정] Fix 1 & 2 ▲▲▲
+
+            // 3. (호스트/솔로) 로컬 UI 즉시 업데이트
+            infoText.textContent = `"${topicDisplayName}" 문제 생성 중...`;
             infoSpinner.style.display = 'block';
             hostRetryBtn.style.display = 'none';
             infoOverlay.style.display = 'flex';
 
             try {
-                const prompt = getPromptForTopic(topic);
+                // 4. API 호출
                 const quizSet = await callGeminiAPI(prompt);
 
                 if (!quizSet || quizSet.length < 10) {
                     throw new Error("API가 10문제 세트를 반환하지 않았습니다.");
                 }
 
-                // API 호출 성공! 퀴즈 세트를 DB에 저장하고 게임 시작
-                const baseRound = currentRoomData.currentRound || 0;
-                roomRef.update({
-                    quizSet: quizSet,
-                    currentTopic: topic,
-                    currentRound: baseRound, // 0, 10, 20
-                    status: 'starting' // '시작 중' 상태로 변경
-                });
-                
+                // 5. API 호출 성공!
                 topicModal.style.display = 'none'; // 주제 선택 모달 닫기
+                infoOverlay.style.display = 'none';
+                
+                if (isSoloMode) {
+                    // ✨ 솔로 모드: 내부 변수 업데이트 후 카운트다운 시작
+                    currentRoomData.quizSet = quizSet;
+                    currentRoomData.currentTopic = topicName; // ✨ 실제 주제명(topicName) 저장
+                    currentRoomData.currentRound = currentRoomData.currentRound || 0;
+                    currentRoomData.status = 'starting';
+                    startRoundCountdown(3);
+                } else {
+                    // ✨ 멀티 모드: 퀴즈 세트를 DB에 저장하고 게임 시작
+                    const baseRound = currentRoomData.currentRound || 0;
+                    roomRef.update({
+                        quizSet: quizSet,
+                        currentTopic: topicName, // ✨ 실제 주제명(topicName) 저장
+                        currentRound: baseRound, 
+                        status: 'starting' // '시작 중' 상태로 변경
+                    });
+                }
                 
             } catch (error) {
+                // 6. API 호출 실패!
                 console.error("fetchQuizSet 오류:", error);
                 infoText.textContent = "퀴즈 생성 실패! (API 오류)";
                 infoSpinner.style.display = 'none';
                 hostRetryBtn.style.display = 'block';
-                // 재시도 버튼에 현재 토픽 정보를 저장
+                // 재시도 버튼에 현재 토픽 정보를 저장 (e.g., 'random')
                 hostRetryBtn.dataset.topic = topic;
+
+                // ▼▼▼ [신규] Fix 2: 생성 실패 시 멀티플레이 상태 되돌리기 ▼▼▼
+                if (!isSoloMode && isHost) {
+                    roomRef.update({ status: 'preparing' }); // 호스트가 다시 주제를 선택하도록
+                }
+                // ▲▲▲ [신규] Fix 2 ▲▲▲
             }
         }
         
@@ -551,61 +663,131 @@ JSON 배열 형식으로만 응답해줘.
                     return;
                 }
                 
-                isGameLive = true; // 게임이 시작됨
-                updateHeaderUI(); // 점수판 항상 업데이트
+                // ✨ [핵심] 상태 처리 함수 호출
+                processRoomState(oldRoomData);
+            });
+        }
 
-                // --- 상태(status)에 따라 UI 변경 ---
+        // ▼▼▼ [신규] (All) 방 상태에 따른 UI/로직 처리 함수 ▼▼▼
+        function processRoomState(oldRoomData = {}) {
+            if (!currentRoomData) return; // 데이터가 없으면 중단
 
-                // 1. (Host) 게임 준비: 호스트가 주제를 선택
-                if (currentRoomData.status === 'preparing' && isHost) {
-                    if (oldRoomData.status !== 'preparing') { // 이 상태에 처음 진입
+            isGameLive = true; 
+            updateHeaderUI(); // 점수판 항상 업데이트
+
+            const oldStatus = oldRoomData.status;
+            const newStatus = currentRoomData.status;
+
+            // --- 상태(status)에 따라 UI 변경 ---
+
+            // ▼▼▼ [신규] 'playing' 상태 (첫 진입) 처리 ▼▼▼
+            if (newStatus === 'playing') {
+                if (isHost) {
+                    infoText.textContent = "게임을 초기화 중입니다...";
+                } else {
+                    infoText.textContent = "게임에 참가하는 중... 잠시만 기다려주세요...";
+                }
+                infoSpinner.style.display = 'block';
+                hostRetryBtn.style.display = 'none';
+                infoOverlay.style.display = 'flex';
+            }
+            // ▲▲▲ [신규] ▲▲▲
+            
+            // 1. 게임 준비
+            if (newStatus === 'preparing') {
+                if (isHost) {
+                    if (oldStatus !== 'preparing') { 
+                        infoOverlay.style.display = 'none'; 
                         showTopicModal("첫 10라운드의 주제를 선택하세요.", false);
                     }
+                } else {
+                    // (Guest) 게스트(non-host)는 대기 메시지 표시
+                    infoText.textContent = "방장이 게임 주제를 선택 중입니다...";
+                    infoSpinner.style.display = 'block';
+                    hostRetryBtn.style.display = 'none';
+                    infoOverlay.style.display = 'flex';
                 }
-                
-                // 2. (All) 게임 시작 중: 카운트다운
-                if (currentRoomData.status === 'starting' && oldRoomData.status !== 'starting') {
-                    startRoundCountdown(3); // 3초 카운트다운
+            }
+            
+            // 2. 퀴즈 생성 중
+            if (newStatus === 'generating_quiz') {
+                const topicName = currentRoomData.currentTopicName || '게임';
+                infoText.textContent = `"${topicName}" 주제의 퀴즈를 생성 중입니다...`;
+                infoSpinner.style.display = 'block';
+                hostRetryBtn.style.display = 'none';
+                infoOverlay.style.display = 'flex';
+                topicModal.style.display = 'none'; // (호스트) 주제 모달 닫기
+            }
+            
+            // 3. 게임 시작 중: 카운트다운
+            if (newStatus === 'starting' && oldStatus !== 'starting') {
+                startRoundCountdown(3); 
+            }
+            
+            // 4. 문제 표시
+            if (newStatus === 'showing_question') {
+                if (oldStatus !== 'showing_question') {
+                    displayQuiz();
                 }
-                
-                // 3. (All) 문제 표시
-                if (currentRoomData.status === 'showing_question') {
-                    if (oldRoomData.status !== 'showing_question') {
-                        // 새 라운드가 시작됨
-                        displayQuiz();
-                    }
-                }
-                
-                // 4. (All) 결과 표시
-                if (currentRoomData.status === 'showing_result') {
-                    if (oldRoomData.status !== 'showing_result') {
-                        // 결과가 방금 집계됨
-                        displayResult();
-                    }
-                }
+            }
 
-                // 5. (All) 주제 변경
-                if (currentRoomData.status === 'changing_topic' && oldRoomData.status !== 'changing_topic') {
-                    const topicChangerId = currentRoomData.topicChanger;
+            // ▼▼▼ [신규] 4.5. (멀티) 첫 정답자 감지 시 즉시 라운드 종료 ▼▼▼
+            if (!isSoloMode && newStatus === 'showing_question' && 
+                currentRoomData.roundFirstCorrect && 
+                oldRoomData.roundFirstCorrect !== currentRoomData.roundFirstCorrect) 
+            {
+                if (isHost) {
+                    // 호스트는 즉시 라운드를 종료시킴
+                    console.log("첫 정답자 감지! 라운드 즉시 종료.");
+                    clearTimeout(roundEndTimeout); // 기존 타이머 취소
+                    setTimeout(triggerResult, 100); // 0.1초 후 즉시 결과 집계
+                }
+            }
+            // ▲▲▲ [신규] ▲▲▲
+            
+            // 5. 결과 표시
+            if (newStatus === 'showing_result') {
+                if (oldStatus !== 'showing_result') {
+                    displayResult();
+                }
+            }
+
+            // 6. 주제 변경
+            if (newStatus === 'changing_topic') {
+                const topicChangerId = currentRoomData.topicChanger;
+                
+                // (Host Only) 꼴찌가 주제를 선택하면 즉시 퀴즈 생성
+                if (isHost && currentRoomData.selectedNextTopic && oldRoomData.selectedNextTopic !== currentRoomData.selectedNextTopic) {
+                    const topicToFetch = currentRoomData.selectedNextTopic; 
+                    roomRef.child('selectedNextTopic').remove(); 
+                    fetchQuizSet(topicToFetch); 
+                    return;
+                }
+                
+                // (All) 꼴찌가 선택 중
+                if (oldStatus !== 'changing_topic' || infoOverlay.style.display === 'none') { 
                     if (topicChangerId === myPlayerId) {
                         // 내가 꼴찌!
+                        infoOverlay.style.display = 'none'; 
                         showTopicModal("역전의 시간! 다음 주제를 선택하세요.", true);
                     } else {
                         // 다른 사람이 꼴찌
                         const changerNickname = currentRoomData.players[topicChangerId]?.nickname || '플레이어';
                         infoText.textContent = `현재 꼴찌(${changerNickname})가 다음 주제를 선택 중입니다...`;
                         infoSpinner.style.display = 'block';
+                        hostRetryBtn.style.display = 'none'; 
                         infoOverlay.style.display = 'flex';
                     }
                 }
-                
-                // 6. (All) 게임 종료
-                if (currentRoomData.status === 'gameOver' && !gameOverFlag) {
-                    gameOverFlag = true;
-                    showGameOverScreen();
-                }
-            });
+            }
+            
+            // 7. 게임 종료
+            if (newStatus === 'gameOver' && !gameOverFlag) {
+                gameOverFlag = true;
+                showGameOverScreen();
+            }
         }
+        // ▲▲▲ [신규] ▲▲▲
         
         // --- 호스트 전용: 게임 흐름 제어 ---
         
@@ -638,6 +820,27 @@ JSON 배열 형식으로만 응답해줘.
             }, 1000);
         }
 
+// (Solo Only) 상태 변경 처리
+        function handleSoloModeState() {
+            if (!isSoloMode) return;
+            
+            const status = currentRoomData.status;
+            
+            if (status === 'starting') {
+                startRoundCountdown(3);
+            } else if (status === 'showing_question') {
+                displayQuiz();
+            } else if (status === 'showing_result') {
+                displayResult();
+            } else if (status === 'changing_topic') {
+                // 솔로 모드는 꼴찌 유저 없음 -> 바로 모달 표시
+                showTopicModal("다음 10라운드의 주제를 선택하세요.", true);
+            } else if (status === 'gameOver') {
+                showGameOverScreen();
+            }
+        }
+
+        // (Host) 문제 출제 신호 보내기
         // (Host) 문제 출제 신호 보내기
         function triggerQuestion() {
             if (!isHost) return;
@@ -655,87 +858,124 @@ JSON 배열 형식으로만 응답해줘.
                 return;
             }
             
-            roomRef.update({
-                status: 'showing_question',
-                currentRound: roundIndex + 1,
-                roundAnswers: null, // 라운드 답변 초기화
-                roundFirstCorrect: null, // '첫 정답자' 초기화
-                roundStartTime: firebase.database.ServerValue.TIMESTAMP,
-                topicChanged: false // 주제 변경 플래그 리셋
-            });
+           if (isSoloMode) {
+                // ▼▼▼ [수정] 솔로 모드: (버그 수정) 덮어쓰기 대신 데이터 병합 ▼▼▼
+                const newRoundData = { // 새 로컬 변수 사용
+                    status: 'showing_question',
+                    currentRound: roundIndex + 1,
+                    roundAnswers: null,
+                    roundFirstCorrect: null,
+                    roundStartTime: Date.now(),
+                    topicChanged: false
+                };
+                Object.assign(currentRoomData, newRoundData); // 기존 currentRoomData에 새 정보 병합
+                handleSoloModeState();
+            } else {
+                // ✨ 멀티 모드: DB 업데이트 (기존 로직)
+                roomRef.update({
+                    status: 'showing_question',
+                    currentRound: roundIndex + 1,
+                    roundAnswers: null, // 라운드 답변 초기화
+                    roundFirstCorrect: null, // '첫 정답자' 초기화
+                    roundStartTime: firebase.database.ServerValue.TIMESTAMP,
+                    topicChanged: false // 주제 변경 플래그 리셋
+                });
+            }
         }
         
+
         // (Host) 10초 후 결과 집계
+        // ▼▼▼ [수정] (Host) 결과 집계 (setTimeout 래퍼 제거) ▼▼▼
         function triggerResult() {
-            if (!isHost) return;
+            clearTimeout(roundEndTimeout); // [신규] 타이머 중복 실행 방지
             
-            // 10초(ROUND_TIME_MS)가 지나면 결과를 집계
-            setTimeout(() => {
-                if (currentRoomData.status !== 'showing_question') return; // 이미 결과가 집계됨
+            // [수정] 호스트가 아니거나, 상태가 'showing_question'이 아니면 즉시 중단
+            if (!isHost || currentRoomData.status !== 'showing_question') return; 
 
-                const answers = currentRoomData.roundAnswers || {};
-                const scores = { ...currentRoomData.scores };
-                const firstCorrectId = currentRoomData.roundFirstCorrect;
-                
-                const quizSetIndex = (currentRoomData.currentRound - 1) % 10;
-                const correct = currentRoomData.quizSet[quizSetIndex].correct;
-                
-                // 점수 계산
-                Object.keys(answers).forEach(pid => {
-                    if (answers[pid].answer === correct) {
-                        if (pid === firstCorrectId) {
-                            scores[pid] += 100; // 첫 정답자
-                        } else {
-                            scores[pid] += 20; // 일반 정답자
-                        }
+            // (기존 setTimeout 안에 있던 로직을 밖으로 꺼냄)
+            const answers = currentRoomData.roundAnswers || {};
+            const scores = { ...currentRoomData.scores };
+            const firstCorrectId = currentRoomData.roundFirstCorrect;
+            
+            const quizSetIndex = (currentRoomData.currentRound - 1) % 10;
+            const correct = currentRoomData.quizSet[quizSetIndex].correct;
+            
+            // 점수 계산
+            Object.keys(answers).forEach(pid => {
+                if (answers[pid].answer === correct) {
+                    if (pid === firstCorrectId) {
+                        scores[pid] += 100; // 첫 정답자
+                    } else {
+                        scores[pid] += 20; // 일반 정답자
                     }
-                });
+                }
+            });
 
+            if (isSoloMode) {
+                // ✨ 솔로 모드: 내부 변수 업데이트 후 UI 처리
+                currentRoomData.status = 'showing_result';
+                currentRoomData.scores = scores;
+                handleSoloModeState();
+            } else {
+                // ✨ 멀티 모드: DB 업데이트 (기존 로직)
                 roomRef.update({
                     status: 'showing_result',
                     scores: scores
                 });
-                
-            }, ROUND_TIME_MS + 500); // 10.5초 (네트워크 지연 감안)
+            }
         }
+        // ▲▲▲ [수정] ▲▲▲
         
-        // (Host) 10/20 라운드에 주제 변경
+   
+        // ▼▼▼ [수정] 10/20 라운드 주제 변경 (솔로 모드 버그 수정) ▼▼▼
         function triggerTopicChange() {
             if (!isHost) return;
-            
-            const scores = currentRoomData.scores;
-            let lowestScore = Infinity;
-            let lowestPlayerId = null;
-            
-            // 꼴찌 찾기 (참가자 중에서)
-            Object.keys(currentRoomData.players).forEach(pid => {
-                if (scores[pid] <= lowestScore) {
-                    lowestScore = scores[pid];
-                    lowestPlayerId = pid;
-                }
-            });
 
-            roomRef.update({
-                status: 'changing_topic',
-                topicChanger: lowestPlayerId,
-                topicChanged: true // 주제 변경 완료 플래그 (중복 방지)
-            });
-            
-            // (안전장치) 꼴찌가 20초간 주제를 안 고르면 호스트가 랜덤 선택
-            setTimeout(() => {
-                if (isHost && currentRoomData.status === 'changing_topic') {
-                    console.warn("꼴찌 유저가 주제를 선택하지 않아 호스트가 랜덤 선택합니다.");
-                    fetchQuizSet("random");
-                }
-            }, 20000);
+            if (isSoloMode) {
+                // ✨ 솔로 모드: 즉시 'changing_topic' 상태로 변경
+                currentRoomData.status = 'changing_topic';
+                currentRoomData.topicChanged = true; // (중요)
+                handleSoloModeState();
+
+            } else {
+                // ✨ 멀티 모드: 꼴찌(topicChanger)를 찾아 DB 업데이트
+                let loserId = null;
+                let minScore = Infinity;
+                const scores = currentRoomData.scores || {};
+                
+                // 꼴찌 찾기 (참가자 목록 기준)
+                Object.keys(currentRoomData.players).forEach(pid => {
+                    const score = scores[pid] || 0;
+                    if (score < minScore) {
+                        minScore = score;
+                        loserId = pid;
+                    }
+                });
+
+                roomRef.update({
+                    status: 'changing_topic',
+                    topicChanger: loserId,
+                    topicChanged: true // (중요) 무한 루프 방지
+                });
+            }
         }
-        
-        // (Host) 게임 종료
+        // ▲▲▲ [수정] 10/20 라운드 주제 변경 ▲▲▲
+        // ▼▼▼ [신규] 게임 종료 (솔로 모드 처리) ▼▼▼
         function triggerGameOver() {
             if (!isHost) return;
-            roomRef.update({ status: 'gameOver' });
-            updatePlayerStats(); // 호스트가 승패 기록
+            
+            if (isSoloMode) {
+                // ✨ 솔로 모드: 내부 변수 업데이트 후 UI 처리
+                currentRoomData.status = 'gameOver';
+                updatePlayerStats();
+                handleSoloModeState();
+            } else {
+                // ✨ 멀티 모드: DB 업데이트 (기존 로직)
+                roomRef.update({ status: 'gameOver' });
+                updatePlayerStats(); // 호스트가 승패 기록
+            }
         }
+        // ▲▲▲ [신규] 게임 종료 ▲▲▲
         
         // --- 클라이언트 UI 렌더링 ---
         
@@ -745,28 +985,23 @@ JSON 배열 형식으로만 응답해줘.
             document.getElementById('topic-modal-desc').textContent = desc;
             
             topicModal.querySelectorAll('.topic-btn-grid button').forEach(btn => {
-                btn.onclick = () => {
+               btn.onclick = () => {
                     playSound('click-sound');
                     const topic = btn.dataset.topic;
+
+                    // ✨ [핵심 수정] 로딩 오버레이를 먼저 표시합니다.
+                    topicModal.style.display = 'none'; // 주제 선택 모달 숨김
+                    infoText.textContent = `"${topic}" 주제의 퀴즈 10개를 생성 요청 중...`;
+                    infoSpinner.style.display = 'block';
+                    infoOverlay.style.display = 'flex';
                     
-                    if (isHost) {
-                        // 호스트가 직접 선택 (게임 시작 또는 꼴찌 AFK)
+                    if (isSoloMode || isHost) {
+                        // 솔로 모드이거나 호스트인 경우, 퀴즈 생성 로직을 시작합니다.
                         fetchQuizSet(topic);
                     } else {
-                        // 꼴찌 유저가 선택 (주제 변경)
+                        // 멀티 모드에서 꼴찌 유저인 경우, 주제를 DB에 기록하고 호스트가 생성하길 기다립니다.
                         roomRef.update({ selectedNextTopic: topic });
-                        topicModal.style.display = 'none';
-                        // 호스트가 이 'selectedNextTopic'을 감지하고 fetchQuizSet을 호출해야 함
-                        // (listenToRoomChanges에 로직 추가 필요 - 지금은 꼴찌 AFK로직으로 대체)
-                    }
-                    
-                    // 꼴찌가 선택하면 호스트가 감지해서 fetchQuizSet을 실행해야 함.
-                    // (개선) 지금은 꼴찌 AFK 로직(20초)에 의존하고 있음.
-                    // (개선) 꼴찌가 누르면, 호스트가 'selectedNextTopic'을 감지하고 바로 fetchQuizSet(topic)을 실행하게 해야함.
-                    
-                    // 임시: 꼴찌가 눌러도 호스트가 API를 호출하게 함 (간소화)
-                    if (isHost) {
-                         fetchQuizSet(topic);
+                        // 호스트가 감지할 때까지 로딩 상태 유지
                     }
                 }
             });
@@ -790,30 +1025,60 @@ JSON 배열 형식으로만 응답해줘.
             }
             
             roundInfo.textContent = `Round ${round} / ${TOTAL_ROUNDS}`;
-            questionText.textContent = quiz.question;
+
+            // ▼▼▼ [수정] 문제와 뜻풀이 분리 로직 ▼▼▼
+            const fullQuestion = quiz.question;
+            const splitIndex = fullQuestion.indexOf('. '); 
+
+            if (splitIndex > -1 && fullQuestion.length > splitIndex + 2) {
+                questionText.textContent = fullQuestion.substring(0, splitIndex + 1); 
+                questionDesc.textContent = fullQuestion.substring(splitIndex + 2); 
+                questionDesc.style.display = 'flex'; 
+            } else {
+                questionText.textContent = fullQuestion;
+                questionDesc.textContent = '';
+                questionDesc.style.display = 'none'; 
+            }
+            // ▲▲▲ [수정] ▲▲▲
             
-            const options = [...quiz.incorrect, quiz.correct];
-            options.sort(() => Math.random() - 0.5); // 보기 섞기
+            const options = [...quiz.incorrect, quiz.correct]; 
+            if (options.length !== 4) {
+                console.error("퀴즈 보기가 4개가 아닙니다. 데이터 오류:", quiz);
+                questionText.textContent = "퀴즈 데이터 오류 발생!";
+                return;
+            }
+            options.sort(() => Math.random() - 0.5); 
             
             optionBtns.forEach((btn, i) => {
                 btn.textContent = options[i];
                 btn.disabled = false;
-                btn.className = 'option-btn'; // 스타일 리셋
+                btn.className = 'option-btn'; 
                 btn.onclick = () => handleAnswerClick(options[i], quiz.correct);
             });
             
-            // 타이머 시작
+            // ▼▼▼ [수정] 주제별 타이머 및 호스트 타이머 설정 ▼▼▼
+            const topic = currentRoomData.currentTopic;
+            let currentRoundTime = ROUND_TIME_MS; // 기본 7초
+
+            // '속담' 또는 '사자성어'일 경우 12초로 설정
+            if (topic === 'proverb' || topic === 'idiom') {
+                currentRoundTime = 12000; // 12초
+            }
+            
+            // 타이머 UI 시작
             timerFill.style.transition = 'none';
             timerFill.style.width = '100%';
             setTimeout(() => {
-                timerFill.style.transition = `width ${ROUND_TIME_MS}ms linear`;
+                timerFill.style.transition = `width ${currentRoundTime}ms linear`;
                 timerFill.style.width = '0%';
             }, 100);
 
-            // (Host) 10초 후 결과 집계 시작
+            // (Host) 타이머 시간 후 결과 집계 시작
             if (isHost) {
-                triggerResult();
+                clearTimeout(roundEndTimeout); // 이전 타이머가 있다면 제거
+                roundEndTimeout = setTimeout(triggerResult, currentRoundTime + 500); // 0.5초 여유
             }
+            // ▲▲▲ [수정] ▲▲▲
         }
         
         // (All) 답변 클릭 처리
@@ -829,33 +1094,55 @@ JSON 배열 형식으로만 응답해줘.
             
             const isCorrect = (selectedAnswer === correctAnswer);
             
-            // 1. 내 답변을 DB에 기록
-            roomRef.child('roundAnswers/' + myPlayerId).set({
-                answer: selectedAnswer,
-                time: firebase.database.ServerValue.TIMESTAMP
-            });
-            
-            // 2. (Transaction) 내가 '첫 번째 정답자'인지 확인
-            if (isCorrect) {
-                roomRef.child('roundFirstCorrect').transaction(currentVal => {
-                    if (currentVal === null) {
-                        return myPlayerId; // 내가 첫 정답자!
-                    }
-                    return; // 이미 누가 선점함 (undefined 반환 = 트랜잭션 취소)
-                }).then(result => {
-                    if (result.committed && result.snapshot.val() === myPlayerId) {
-                        console.log("내가 첫 번째 정답자!");
-                        playSound('correct-sound');
-                    }
+            if (isSoloMode) {
+                // ▼▼▼ [수정] 솔로 모드: 정답 시 즉시 결과 처리 ▼▼▼
+                currentRoomData.roundAnswers = { [myPlayerId]: { answer: selectedAnswer, time: Date.now() } };
+                if (isCorrect) {
+                    currentRoomData.roundFirstCorrect = myPlayerId;
+                    console.log("솔로 모드에서 정답!");
+                    playSound('correct-sound');
+                    clearTimeout(roundEndTimeout); // 기존 타이머 취소
+                    setTimeout(triggerResult, 100); // 0.1초 후 즉시 결과 집계
+                }
+                // ▲▲▲ [수정] ▲▲▲
+            } else {
+                // ✨ 멀티 모드: DB 기록 및 트랜잭션 (기존 로직)
+                
+                // 1. 내 답변을 DB에 기록
+                roomRef.child('roundAnswers/' + myPlayerId).set({
+                    answer: selectedAnswer,
+                    time: firebase.database.ServerValue.TIMESTAMP
                 });
+                
+                // 2. (Transaction) 내가 '첫 번째 정답자'인지 확인
+                if (isCorrect) {
+                    roomRef.child('roundFirstCorrect').transaction(currentVal => {
+                        if (currentVal === null) {
+                            return myPlayerId; // 내가 첫 정답자!
+                        }
+                        return; // 이미 누가 선점함 (undefined 반환 = 트랜잭션 취소)
+                    }).then(result => {
+                        if (result.committed && result.snapshot.val() === myPlayerId) {
+                            console.log("내가 첫 번째 정답자!");
+                            playSound('correct-sound');
+                        }
+                    });
+                }
             }
         }
         
         // (All) 결과 화면 표시
         function displayResult() {
             if (currentRoomData.status !== 'showing_result') return;
-            
-            clearInterval(currentRoundTimer); // 타이머 중지
+            questionDesc.style.display = 'none'; 
+            clearTimeout(roundEndTimeout); // ▼▼▼ [수정] 기존 타이머 확실히 제거
+            clearInterval(currentRoundTimer); // (이 코드는 사실상 작동 안하지만 유지)
+            // ▼▼▼ [신규] CSS 타이머 바 즉시 정지 (문제 4 수정) ▼▼▼
+            const currentWidth = timerFill.offsetWidth;
+            timerFill.style.transition = 'none'; // 애니메이션 즉시 중지
+            // 부모 대비 현재 너비(%)로 고정
+            timerFill.style.width = (currentWidth / timerFill.parentElement.offsetWidth) * 100 + '%';
+            // ▲▲▲ [신규] ▲▲▲
             quizArea.style.display = 'flex';
 
             const quizSetIndex = (currentRoomData.currentRound - 1) % 10;
@@ -1000,7 +1287,7 @@ JSON 배열 형식으로만 응답해줘.
         // (All) 방 나가기
         function cleanupAndExit() {
             isExiting = true;
-            if (roomRef) {
+            if (!isSoloMode && roomRef) { // ✨ 멀티 모드에서만 DB 정리
                 if (isHost) {
                     roomRef.remove();
                 } else {
