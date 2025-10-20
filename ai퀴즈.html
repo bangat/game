@@ -371,7 +371,7 @@
         function getPromptForTopic(topic) {
             // 각 주제별로 AI에게 명확한 q, correct, incorrect 규칙을 지시
             const topicInstructions = {
-                "english": "question은 초급~중급 수준의 생활에 필요한 영어 단어이고, correct는 그 단어의 한글 뜻, incorrect는 헷갈리는 한글 뜻 3개여야 합니다.",
+                "english": "question은 중급~고급 수준의 생활영어 단어여야 합니다. correct는 그 단어의 한글 뜻이어야 합니다. incorrect는 헷갈리는 한글 뜻 3개여야 합니다.",
                 "proverb": "question은 '유명한 한국 속담'이며, 속담의 '중~고급 난이도' 수준이어야 하고 빈칸 '○'를 문제 텍스트수에 따라 적절하게 포함해야 합니다. correct는 그 빈칸에 들어갈 핵심 단어, incorrect는 헷갈리는 오답 단어 3개여야 합니다.",
                 "idiom": "question은 유명한 사자성어의 뜻풀이, correct는 그 뜻에 맞는 사자성어, incorrect는 헷갈리는 다른 사자성어 3개여야 합니다.",
                 "capital": "question은 'OO의 수도는?' 형식의 국가 질문, correct는 그 국가의 수도 이름(반드시 정답이 포함되어야합니다.), incorrect는 헷갈리는 다른 도시 이름 3개여야 합니다.",
@@ -1011,6 +1011,26 @@
             topicModal.style.display = 'flex';
         }
 
+        // ▼▼▼ [신규] (All) 시드 기반 배열 셔플 (모든 클라이언트 동일 순서) ▼▼▼
+        function seededShuffle(array, seed) {
+            let m = array.length, t, i;
+            const pseudoRandom = () => {
+                // 간단한 LCG (선형 합동 생성기)
+                seed = (seed * 9301 + 49297) % 233280;
+                return seed / 233280;
+            };
+
+            while (m) {
+                i = Math.floor(pseudoRandom() * m--);
+                t = array[m];
+                array[m] = array[i];
+                array[i] = t;
+            }
+            return array;
+        }
+        // ▲▲▲ [신규] ▲▲▲
+        
+
         // (All) 퀴즈 UI 표시
         function displayQuiz() {
             infoOverlay.style.display = 'none';
@@ -1020,18 +1040,27 @@
             const quizSetIndex = (round - 1) % 10;
             const quiz = currentRoomData.quizSet[quizSetIndex];
             
-            if (!quiz) {
-                console.error("퀴즈 데이터를 불러올 수 없습니다.", round, quizSetIndex);
-                if(isHost) alert("퀴즈 데이터 오류! 게임을 종료합니다.");
+            // ▼▼▼ [수정] AI 데이터 오류 방어 (버그 1 수정) ▼▼▼
+            if (!quiz || !quiz.correct || !quiz.incorrect) {
+                console.error("퀴즈 데이터를 불러올 수 없습니다.", round, quizSetIndex, quiz);
+                questionText.textContent = "퀴즈 데이터 오류 발생!";
+                
+                // [신규] 오류 시 버튼 숨김 (찌꺼기 데이터 방지)
+                optionBtns.forEach(btn => { btn.style.display = 'none'; });
+                
+                if(isHost) {
+                    // 3초 후 다음 라운드로 강제 이동
+                    setTimeout(triggerQuestion, 3000);
+                }
                 return;
             }
+            // ▲▲▲ [수정] ▲▲▲
             
             roundInfo.textContent = `Round ${round} / ${TOTAL_ROUNDS}`;
 
-            // ▼▼▼ [수정] 문제와 뜻풀이 분리 로직 ▼▼▼
+            // [수정] 문제와 뜻풀이 분리 로직 (유지)
             const fullQuestion = quiz.question;
             const splitIndex = fullQuestion.indexOf('. '); 
-
             if (splitIndex > -1 && fullQuestion.length > splitIndex + 2) {
                 questionText.textContent = fullQuestion.substring(0, splitIndex + 1); 
                 questionDesc.textContent = fullQuestion.substring(splitIndex + 2); 
@@ -1041,33 +1070,38 @@
                 questionDesc.textContent = '';
                 questionDesc.style.display = 'none'; 
             }
-            // ▲▲▲ [수정] ▲▲▲
             
+            // ▼▼▼ [수정] 버그 1 & 2 수정 (시드 셔플 및 AI 복원력) ▼▼▼
+            
+            // [수정] AI가 3개 미만의 오답을 줘도 게임이 진행되도록 함
             const options = [...quiz.incorrect, quiz.correct]; 
-            if (options.length !== 4) {
-                console.error("퀴즈 보기가 4개가 아닙니다. 데이터 오류:", quiz);
-                questionText.textContent = "퀴즈 데이터 오류 발생!";
-                return;
-            }
-            options.sort(() => Math.random() - 0.5); 
+
+            // [수정] DB의 라운드 시작 시간을 시드로 사용하여 모든 클라이언트가 동일하게 셔플
+            const seed = currentRoomData.roundStartTime || Date.now(); // 시드 (없으면 현재 시간)
+            const shuffledOptions = seededShuffle(options, seed);
             
             optionBtns.forEach((btn, i) => {
-                btn.textContent = options[i];
-                btn.disabled = false;
-                btn.className = 'option-btn'; 
-                btn.onclick = () => handleAnswerClick(options[i], quiz.correct);
+                if (shuffledOptions[i]) {
+                    // [수정] 옵션이 있으면 버튼 내용 채우고 보이기
+                    btn.textContent = shuffledOptions[i];
+                    btn.style.display = 'block'; // 버튼 보이기
+                    btn.disabled = false;
+                    btn.className = 'option-btn'; 
+                    btn.onclick = () => handleAnswerClick(shuffledOptions[i], quiz.correct);
+                } else {
+                    // [수정] AI가 4개 미만의 옵션을 줬다면 (e.g. 3개), 남는 버튼 숨기기
+                    btn.style.display = 'none'; 
+                }
             });
+            // ▲▲▲ [수정] ▲▲▲
             
-            // ▼▼▼ [수정] 주제별 타이머 및 호스트 타이머 설정 ▼▼▼
+            // [수정] 주제별 타이머 및 호스트 타이머 설정 (유지)
             const topic = currentRoomData.currentTopic;
             let currentRoundTime = ROUND_TIME_MS; // 기본 7초
-
-            // '속담' 또는 '사자성어'일 경우 12초로 설정
             if (topic === 'proverb' || topic === 'idiom') {
                 currentRoundTime = 12000; // 12초
             }
             
-            // 타이머 UI 시작
             timerFill.style.transition = 'none';
             timerFill.style.width = '100%';
             setTimeout(() => {
@@ -1075,12 +1109,10 @@
                 timerFill.style.width = '0%';
             }, 100);
 
-            // (Host) 타이머 시간 후 결과 집계 시작
             if (isHost) {
-                clearTimeout(roundEndTimeout); // 이전 타이머가 있다면 제거
-                roundEndTimeout = setTimeout(triggerResult, currentRoundTime + 500); // 0.5초 여유
+                clearTimeout(roundEndTimeout); 
+                roundEndTimeout = setTimeout(triggerResult, currentRoundTime + 500); 
             }
-            // ▲▲▲ [수정] ▲▲▲
         }
         
         // (All) 답변 클릭 처리
