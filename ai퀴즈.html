@@ -1,0 +1,1016 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Gemini 챌린지 퀴즈</title>
+    <link href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff" as="font" type="font/woff" crossorigin>
+    <style>
+        @font-face {
+            font-family: 'GmarketSans';
+            src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff') format('woff');
+            font-weight: 500;
+        }
+        @font-face {
+            font-family: 'GmarketSans';
+            src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansBold.woff') format('woff');
+            font-weight: 700;
+        }
+
+        :root {
+            --bg-color: #2c3e50;
+            --board-bg: #34495e;
+            --border-color: #2c3e50;
+            --primary-color: #4a8dff;
+            --accent-color: #ffc84a;
+            --correct-color: #2ecc71;
+            --incorrect-color: #e74c3c;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%; height: 100%; overflow: hidden;
+            font-family: 'GmarketSans', sans-serif;
+            background-color: var(--bg-color); color: white;
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            -webkit-user-select: none; user-select: none;
+            touch-action: manipulation;
+        }
+
+        #game-wrapper {
+            width: 100%; height: 100%;
+            display: flex; flex-direction: column;
+        }
+        #game-header {
+            flex-shrink: 0; display: grid;
+            grid-template-columns: 1fr 1fr;
+            padding: 10px; background-color: rgba(0,0,0,0.3);
+            gap: 8px;
+        }
+        
+        .player-info {
+            display: flex; align-items: center; gap: 8px;
+            background-color: rgba(255,255,255,0.1);
+            padding: 8px; border-radius: 10px;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+        .player-info.my-turn {
+            border-color: var(--accent-color);
+            box-shadow: 0 0 15px var(--accent-color);
+        }
+        .player-info .avatar { 
+            font-size: 1.5em; 
+            width: 32px; height: 32px;
+            display: flex; justify-content: center; align-items: center;
+            flex-shrink: 0;
+        }
+        .player-info .avatar img {
+            width: 100%; height: 100%;
+            object-fit: contain; border-radius: 50%;
+        }
+        .player-info .details {
+            display: flex; flex-direction: column;
+            min-width: 0;
+        }
+        .player-info .nickname {
+            font-weight: 700; font-size: 0.9em;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .player-info .score {
+            font-weight: 700; font-size: 1em;
+            color: var(--accent-color);
+        }
+
+        #game-container {
+            width: 100%; flex-grow: 1;
+            display: flex; flex-direction: column; 
+            justify-content: center; align-items: center;
+            position: relative; overflow: hidden; padding: 20px;
+            background-image: url('https://www.transparenttextures.com/patterns/wood-pattern.png');
+        }
+
+        #quiz-area {
+            width: 100%;
+            background-color: var(--board-bg);
+            border: 8px solid var(--border-color);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border-radius: 20px;
+            padding: 25px;
+            display: flex; flex-direction: column;
+            gap: 20px;
+            max-width: 500px;
+        }
+
+        #round-info {
+            text-align: center;
+            font-size: 1.2em;
+            font-weight: 700;
+            color: var(--accent-color);
+        }
+
+        #question-text {
+            font-size: 1.5em;
+            font-weight: 700;
+            text-align: center;
+            min-height: 100px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #round-timer-bar {
+            width: 100%;
+            height: 10px;
+            background-color: rgba(0,0,0,0.3);
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        #round-timer-fill {
+            width: 100%;
+            height: 100%;
+            background-color: var(--accent-color);
+            transition: width 0.1s linear;
+        }
+        
+        #options-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 15px;
+        }
+        
+        .option-btn {
+            width: 100%;
+            padding: 20px;
+            font-size: 1.1em;
+            font-weight: 700;
+            font-family: 'GmarketSans', sans-serif;
+            border-radius: 12px;
+            border: none;
+            cursor: pointer;
+            background-color: #ecf0f1;
+            color: #34495e;
+            transition: all 0.2s ease;
+        }
+        .option-btn:not(:disabled):hover {
+            transform: scale(1.03);
+        }
+        .option-btn:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+        .option-btn.selected {
+            background-color: var(--primary-color);
+            color: white;
+        }
+        .option-btn.correct {
+            background-color: var(--correct-color);
+            color: white;
+            animation: pulse-correct 0.5s;
+        }
+        .option-btn.incorrect {
+            background-color: var(--incorrect-color);
+            color: white;
+            opacity: 0.5;
+        }
+        @keyframes pulse-correct {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        /* 오버레이 및 모달 (리버시.html에서 가져옴) */
+        .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 200; text-align: center; background-color: rgba(0,0,0,0.7); }
+        .spinner { border: 4px solid rgba(255, 255, 255, 0.3); border-radius: 50%; border-top: 4px solid white; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        .modal-content { background: #2c3e50; color: white; padding: 0; border-radius: 20px; width: 90%; max-width: 400px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); overflow: hidden; }
+        .modal-header { background-color: #34495e; padding: 15px; }
+        .modal-header h2 { font-size: 1.8em; }
+        .modal-body { padding: 25px; }
+        .modal-buttons { display: flex; flex-direction: column; gap: 12px; align-items: center; margin-top: 25px; }
+        .menu-btn { width: 100%; padding: 15px; font-size: 1.2em; font-weight: bold; border-radius: 12px; border: none; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.1s; margin: 8px 0; }
+        .menu-btn.primary { background-color: var(--primary-color); color: white; }
+        .menu-btn.secondary { background-color: #e9eff8; color: #333; }
+        .menu-btn:active { transform: scale(0.98); }
+        .menu-btn:disabled { background-color: #ccc; color: #888; cursor: not-allowed; }
+        
+        #countdown-number { font-size: 8em; font-weight: 700; color: white; text-shadow: 0 0 30px rgba(255,255,255,0.8); animation: countdown-pop 1s; }
+        @keyframes countdown-pop { from { transform: scale(0.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+        #score-board { margin: 20px 0; }
+        .score-row { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-radius: 8px; font-size: 1.2em; font-weight: 700; margin: 8px auto; max-width: 300px; }
+        .score-row.winner { background-color: var(--accent-color); color: #111; transform: scale(1.05); }
+        .score-row.loser { background-color: #f0f3f4; color: #333; }
+        
+        .score-avatar { display: inline-flex; align-items: center; gap: 8px; }
+        .score-avatar img { width: 28px; height: 28px; object-fit: contain; border-radius: 50%; }
+
+        /* 주제 선택 모달용 버튼 */
+        .topic-btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    </style>
+</head>
+<body>
+    <div id="game-wrapper">
+        <div id="game-header"></div>
+        <div id="game-container">
+            <div id="quiz-area" style="display: none;">
+                <div id="round-info">Round 1 / 30</div>
+                <div id="round-timer-bar"><div id="round-timer-fill"></div></div>
+                <div id="question-text">문제를 불러오는 중입니다...</div>
+                <div id="options-grid">
+                    <button classclass="option-btn" data-index="0"></button>
+                    <button class="option-btn" data-index="1"></button>
+                    <button class="option-btn" data-index="2"></button>
+                    <button class="option-btn" data-index="3"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="game-over-overlay" class="overlay" style="display: none;"></div>
+    
+    <div id="info-overlay" class="overlay">
+        <div class="modal-content" style="background: transparent; box-shadow: none;">
+             <p id="info-text" style="color: white; font-size: 1.3em; margin-bottom: 20px;">게임에 참가하는 중...</p>
+            <div id="info-spinner" class="spinner"></div>
+            <button id="host-retry-btn" class="menu-btn secondary" style="display: none;">API 호출 재시도</button>
+        </div>
+    </div>
+    
+    <div id="topic-modal" class="overlay" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header"><h2 id="topic-modal-title">게임 주제 선택</h2></div>
+            <div class="modal-body">
+                <p id="topic-modal-desc">방장이 첫 10라운드의 주제를 선택합니다.</p>
+                <div class="topic-btn-grid modal-buttons">
+                    <button class="menu-btn primary" data-topic="english">🔠 영단어</button>
+                    <button class="menu-btn primary" data-topic="proverb">📜 속담</button>
+                    <button class="menu-btn primary" data-topic="idiom">📖 사자성어</button>
+                    <button class="menu-btn primary" data-topic="capital">🌍 수도 맞히기</button>
+                    <button class="menu-btn primary" data-topic="history">👑 역사 인물</button>
+                    <button class="menu-btn primary" data-topic="random">🎲 랜덤</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <audio id="click-sound" src="https://blog.kakaocdn.net/dna/dC0WAE/dJMb84DsZw6/AAAAAAAAAAAAAAAAAAAAAC8XpuPuNVEsdp6Ia-d35XR-m3FCZxObUR5uFI1tk2iv/%EB%B2%84%ED%8A%BC%EC%82%AC%EC%9A%B4%EB%93%9C.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=RdbjxdP75HLHSpBIhymVkYpUOA0%3D&attach=1&knm=tfile.mp3" preload="auto"></audio>
+    <audio id="correct-sound" src="https://blog.kakaocdn.net/dna/u8HMx/dJMb9OAFJEJ/AAAAAAAAAAAAAAAAAAAAAIqs8CjD3Mo8q0lPZ4p1BuoAVpWIP8fBfafJry8rMXni/%EC%99%8C%EA%B5%B4%EB%A6%AC%EB%8A%94%EC%86%8C%EB%A6%AC.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=NnUO7jp%2B7JkU35w00W9cS%2FB266M%3D&attach=1&knm=tfile.mp3" preload="auto"></audio>
+    <audio id="win-sound" src="https://blog.kakaocdn.net/dna/kC4is/dJMb8WZJowA/AAAAAAAAAAAAAAAAAAAAAIQeZhVDJf0ZGAWyyMr_hsc6TMe3BFUVXd0FNTl5VDcY/%EA%B2%8C%EC%9D%B4%EC%8A%B9%EB%A6%AC.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=qZKwGj5NQeAFNrOvCPAMXc6aX9I%3D&attach=1&knm=tfile.mp3" preload="auto"></audio>
+    <audio id="loss-sound" src="https://blog.kakaocdn.net/dna/Zqr4u/dJMb9V0NWlD/AAAAAAAAAAAAAAAAAAAAANQFEr99iVFS25T5ZW3Q2dixeZXsbUzh7OWB40uYQMu9/%EC%95%8C%EA%B9%8C%EA%B8%B0%ED%8C%A8%EB%B0%B0.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=2xNnbSadPzs2ZZi1BssfyCye8jI%3D&attach=1&knm=tfile.mp3" preload="auto"></audio>
+    
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    
+    <script>
+        // --- Gemini API 설정 ---
+        const API_KEYS = [
+            "AIzaSyCD-TQrqY6skTi2d61FyK_xP3igLeIpSdI", // 1번 키
+            "AIzaSyCPVYU35xKXGMAZXT8yQ4QjLeIpSdI"  // 2번 키
+        ];
+        let currentKeyIndex = 0;
+        const currentModel = "gemini-2.5-flash"; // 속도가 빠른 Flash 모델 사용
+
+        // API 키 순환 함수
+        function rotateKey() {
+            currentKeyIndex = (currentKeyIndex + 1) % API_KEYS.length;
+            console.warn(`API 키 429 오류. 다음 키로 교체합니다: (index ${currentKeyIndex})`);
+            return API_KEYS[currentKeyIndex];
+        }
+
+        // Gemini API 호출 함수 (429 재시도 로직 포함)
+        async function callGeminiAPI(prompt) {
+            let key = API_KEYS[currentKeyIndex];
+            let url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${key}`;
+
+            const requestBody = {
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: {
+                    temperature: 0.7,
+                    topK: 1,
+                    topP: 1,
+                    maxOutputTokens: 2048,
+                },
+                safetySettings: [ // 안전 설정
+                    { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
+                    { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
+                    { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
+                    { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_MEDIUM_AND_ABOVE" }
+                ]
+            };
+
+            try {
+                let response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody)
+                });
+
+                if (response.status === 429) { // 429 (Too Many Requests) 오류
+                    key = rotateKey(); // 키 교체
+                    url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${key}`;
+                    
+                    // 새 키로 한 번 더 재시도
+                    response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(requestBody)
+                    });
+                }
+
+                if (!response.ok) { // 429 이외의 오류
+                    throw new Error(`API 호출 실패: ${response.status} ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                
+                // Gemini 응답에서 순수 텍스트(JSON) 부분만 추출
+                let jsonText = data.candidates[0].content.parts[0].text;
+                
+                // Gemini가 가끔 ```json ... ``` 마크다운을 포함할 때 제거
+                jsonText = jsonText.replace(/```json/g, "").replace(/```/g, "").trim();
+
+                return JSON.parse(jsonText); // JSON 텍스트를 객체로 변환
+
+            } catch (error) {
+                console.error("Gemini API 호출 중 심각한 오류:", error);
+                throw error; // 오류를 상위로 전파
+            }
+        }
+
+        // 주제별 퀴즈 10개 생성용 Prompt
+        function getPromptForTopic(topic) {
+            const topicMap = {
+                "english": "초/중급 수준의 영어 단어",
+                "proverb": "유명한 한국 속담 (빈칸 '○' 1개 포함)",
+                "idiom": "유명한 사자성어 (뜻풀이)",
+                "capital": "유명한 국가의 수도",
+                "history": "유명한 역사적 인물"
+            };
+            if (topic === "random") {
+                const topics = Object.keys(topicMap);
+                topic = topics[Math.floor(Math.random() * topics.length)];
+            }
+
+            const promptHeader = `너는 "스피드 퀴즈" 게임의 출제자야.
+규칙에 맞는 퀴즈 10개 세트를 JSON 배열 형식으로만 응답해줘.
+1. 10개 모두 "${topicMap[topic]}" 주제여야 해.
+2. 각 문제는 "question"(문제), "correct"(정답), "incorrect"(오답 3개 배열) 키를 가져야 해.
+3. 속담이면 "question"에 빈칸 '○'를 1개만 포함하고, "correct"는 빈칸의 답이어야 해.
+4. 사자성어면 "question"은 뜻풀이, "correct"는 사자성어여야 해.
+5. 오답은 정답과 헷갈리지만 명백히 틀린 답이어야 해.
+JSON 배열 형식으로만 응답해줘.
+`;
+            return promptHeader;
+        }
+
+        // --- Firebase 설정 ---
+        // (대기실.html 등에서 가져온 설정)
+        const firebaseConfig = {
+            apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
+            authDomain: "goodluck-7c14b.firebaseapp.com",
+            databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com",
+            projectId: "goodluck-7c14b",
+            storageBucket: "goodluck-7c14b.appspot.com",
+            messagingSenderId: "858281658455",
+            appId: "1:858281658455:web:9131280a459be983933b12"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+        const auth = firebase.auth();
+        const roomsRef = db.ref('rooms');
+        const usersRef = db.ref('users');
+
+        // --- HTML 요소 ---
+        const gameHeader = document.getElementById('game-header');
+        const quizArea = document.getElementById('quiz-area');
+        const roundInfo = document.getElementById('round-info');
+        const timerFill = document.getElementById('round-timer-fill');
+        const questionText = document.getElementById('question-text');
+        const optionsGrid = document.getElementById('options-grid');
+        const optionBtns = optionsGrid.querySelectorAll('.option-btn');
+        
+        const infoOverlay = document.getElementById('info-overlay');
+        const infoText = document.getElementById('info-text');
+        const infoSpinner = document.getElementById('info-spinner');
+        const hostRetryBtn = document.getElementById('host-retry-btn');
+        const gameOverOverlay = document.getElementById('game-over-overlay');
+        const topicModal = document.getElementById('topic-modal');
+
+        // --- 게임 상태 변수 ---
+        let myPlayerId, myNickname, myAvatar;
+        let roomRef, currentRoomData, isHost;
+        let isExiting = false, isGameLive = false, gameOverFlag = false;
+        
+        const TOTAL_ROUNDS = 30;
+        const ROUND_TIME_MS = 10000; // 10초
+        let currentRoundTimer;
+        
+        // --- 유틸리티 함수 ---
+        function escapeHTML(str) {
+            if (typeof str !== 'string') return '';
+            const map = {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#03G;'};
+            return str.replace(/[&<>"']/g, m => map[m]);
+        }
+        function playSound(id) {
+            const sound = document.getElementById(id);
+            if (sound) { sound.currentTime = 0; sound.play().catch(e => {}); }
+        }
+
+        // --- 초기화 ---
+        document.addEventListener('DOMContentLoaded', () => {
+            // (보안 코드)
+            document.addEventListener('contextmenu', event => event.preventDefault());
+            document.addEventListener('keydown', event => {
+                if (event.key === 'F12' ||
+                    (event.ctrlKey && event.shiftKey && ['I', 'J', 'C'].includes(event.key.toUpperCase())) ||
+                    (event.ctrlKey && event.key.toUpperCase() === 'U')) {
+                    event.preventDefault();
+                }
+            });
+            // setInterval(() => { try { debugger; } catch (e) {} }, 1000);
+
+            myPlayerId = localStorage.getItem('myPlayerId');
+            myNickname = localStorage.getItem('userNickname') || 'Player';
+            myAvatar = localStorage.getItem('userAvatar') || '😊';
+            
+            if (!myPlayerId) {
+                alert("플레이어 정보가 없습니다.");
+                window.location.replace('index.html');
+                return;
+            }
+            const urlParams = new URLSearchParams(window.location.search);
+            const roomId = urlParams.get('roomId');
+            if (!roomId) {
+                alert("잘못된 접근입니다.");
+                window.location.replace('대기실.html');
+                return;
+            }
+            joinRoom(roomId);
+        });
+        
+        function joinRoom(roomId) {
+            roomRef = roomsRef.child(roomId);
+            roomRef.once('value', snapshot => {
+                if (!snapshot.exists()) {
+                    alert("방을 찾을 수 없습니다.");
+                    window.location.replace('대기실.html');
+                    return;
+                }
+                currentRoomData = snapshot.val();
+                isHost = currentRoomData.hostId === myPlayerId;
+
+                // 접속 종료 시 처리
+                if (isHost) {
+                    roomRef.onDisconnect().remove();
+                } else {
+                    roomRef.child('players/' + myPlayerId).onDisconnect().remove();
+                }
+                
+                listenToRoomChanges();
+
+                // 호스트는 게임을 준비시킴
+                if (isHost) {
+                    // 점수판 초기화
+                    const initialScores = {};
+                    Object.keys(currentRoomData.players).forEach(pid => {
+                        initialScores[pid] = 0;
+                    });
+                    
+                    roomRef.update({
+                        status: 'preparing', // '준비 중' 상태
+                        scores: initialScores,
+                        currentRound: 0
+                    });
+                }
+            });
+        }
+        
+        // --- Gemini API 호출 (Host Only) ---
+        async function fetchQuizSet(topic) {
+            infoText.textContent = `"${topic}" 주제의 퀴즈 10개를 생성 중...`;
+            infoSpinner.style.display = 'block';
+            hostRetryBtn.style.display = 'none';
+            infoOverlay.style.display = 'flex';
+
+            try {
+                const prompt = getPromptForTopic(topic);
+                const quizSet = await callGeminiAPI(prompt);
+
+                if (!quizSet || quizSet.length < 10) {
+                    throw new Error("API가 10문제 세트를 반환하지 않았습니다.");
+                }
+
+                // API 호출 성공! 퀴즈 세트를 DB에 저장하고 게임 시작
+                const baseRound = currentRoomData.currentRound || 0;
+                roomRef.update({
+                    quizSet: quizSet,
+                    currentTopic: topic,
+                    currentRound: baseRound, // 0, 10, 20
+                    status: 'starting' // '시작 중' 상태로 변경
+                });
+                
+                topicModal.style.display = 'none'; // 주제 선택 모달 닫기
+                
+            } catch (error) {
+                console.error("fetchQuizSet 오류:", error);
+                infoText.textContent = "퀴즈 생성 실패! (API 오류)";
+                infoSpinner.style.display = 'none';
+                hostRetryBtn.style.display = 'block';
+                // 재시도 버튼에 현재 토픽 정보를 저장
+                hostRetryBtn.dataset.topic = topic;
+            }
+        }
+        
+        // 재시도 버튼 이벤트 (호스트에게만 보임)
+        hostRetryBtn.addEventListener('click', () => {
+            const topic = hostRetryBtn.dataset.topic;
+            if (topic) {
+                fetchQuizSet(topic);
+            }
+        });
+
+        // --- 실시간 게임 로직 (State Machine) ---
+        function listenToRoomChanges() {
+            roomRef.on('value', snapshot => {
+                if (isExiting || !snapshot.exists()) {
+                    if (isGameLive && !gameOverFlag) alert("방장이 나가 방이 사라졌습니다.");
+                    cleanupAndExit();
+                    return;
+                }
+                
+                const oldRoomData = currentRoomData || {};
+                currentRoomData = snapshot.val();
+                
+                if (!currentRoomData.players || !currentRoomData.players[myPlayerId]) {
+                    if (isGameLive && !gameOverFlag) alert("방에서 퇴장되었습니다.");
+                    cleanupAndExit();
+                    return;
+                }
+                
+                isGameLive = true; // 게임이 시작됨
+                updateHeaderUI(); // 점수판 항상 업데이트
+
+                // --- 상태(status)에 따라 UI 변경 ---
+
+                // 1. (Host) 게임 준비: 호스트가 주제를 선택
+                if (currentRoomData.status === 'preparing' && isHost) {
+                    if (oldRoomData.status !== 'preparing') { // 이 상태에 처음 진입
+                        showTopicModal("첫 10라운드의 주제를 선택하세요.", false);
+                    }
+                }
+                
+                // 2. (All) 게임 시작 중: 카운트다운
+                if (currentRoomData.status === 'starting' && oldRoomData.status !== 'starting') {
+                    startRoundCountdown(3); // 3초 카운트다운
+                }
+                
+                // 3. (All) 문제 표시
+                if (currentRoomData.status === 'showing_question') {
+                    if (oldRoomData.status !== 'showing_question') {
+                        // 새 라운드가 시작됨
+                        displayQuiz();
+                    }
+                }
+                
+                // 4. (All) 결과 표시
+                if (currentRoomData.status === 'showing_result') {
+                    if (oldRoomData.status !== 'showing_result') {
+                        // 결과가 방금 집계됨
+                        displayResult();
+                    }
+                }
+
+                // 5. (All) 주제 변경
+                if (currentRoomData.status === 'changing_topic' && oldRoomData.status !== 'changing_topic') {
+                    const topicChangerId = currentRoomData.topicChanger;
+                    if (topicChangerId === myPlayerId) {
+                        // 내가 꼴찌!
+                        showTopicModal("역전의 시간! 다음 주제를 선택하세요.", true);
+                    } else {
+                        // 다른 사람이 꼴찌
+                        const changerNickname = currentRoomData.players[topicChangerId]?.nickname || '플레이어';
+                        infoText.textContent = `현재 꼴찌(${changerNickname})가 다음 주제를 선택 중입니다...`;
+                        infoSpinner.style.display = 'block';
+                        infoOverlay.style.display = 'flex';
+                    }
+                }
+                
+                // 6. (All) 게임 종료
+                if (currentRoomData.status === 'gameOver' && !gameOverFlag) {
+                    gameOverFlag = true;
+                    showGameOverScreen();
+                }
+            });
+        }
+        
+        // --- 호스트 전용: 게임 흐름 제어 ---
+        
+        // (Host) 3초 카운트다운 후 라운드 시작
+        function startRoundCountdown(seconds) {
+            infoOverlay.style.display = 'flex';
+            infoSpinner.style.display = 'none';
+            hostRetryBtn.style.display = 'none';
+            
+            let count = seconds;
+            infoText.innerHTML = `<div id="countdown-number">${count}</div>`;
+            
+            const interval = setInterval(() => {
+                count--;
+                const el = document.getElementById('countdown-number');
+                if (count > 0) {
+                    if(el) {
+                        el.style.animation = 'none';
+                        el.offsetHeight; 
+                        el.style.animation = 'countdown-pop 1s';
+                        el.textContent = count;
+                    }
+                } else {
+                    clearInterval(interval);
+                    infoOverlay.style.display = 'none';
+                    if (isHost) {
+                        triggerQuestion(); // 호스트가 실제 라운드 시작
+                    }
+                }
+            }, 1000);
+        }
+
+        // (Host) 문제 출제 신호 보내기
+        function triggerQuestion() {
+            if (!isHost) return;
+            
+            const roundIndex = (currentRoomData.currentRound || 0);
+            
+            if (roundIndex >= TOTAL_ROUNDS) {
+                triggerGameOver();
+                return;
+            }
+            
+            // 10라운드가 끝났으면 주제 변경
+            if (roundIndex > 0 && roundIndex % 10 === 0 && !currentRoomData.topicChanged) {
+                triggerTopicChange();
+                return;
+            }
+            
+            roomRef.update({
+                status: 'showing_question',
+                currentRound: roundIndex + 1,
+                roundAnswers: null, // 라운드 답변 초기화
+                roundFirstCorrect: null, // '첫 정답자' 초기화
+                roundStartTime: firebase.database.ServerValue.TIMESTAMP,
+                topicChanged: false // 주제 변경 플래그 리셋
+            });
+        }
+        
+        // (Host) 10초 후 결과 집계
+        function triggerResult() {
+            if (!isHost) return;
+            
+            // 10초(ROUND_TIME_MS)가 지나면 결과를 집계
+            setTimeout(() => {
+                if (currentRoomData.status !== 'showing_question') return; // 이미 결과가 집계됨
+
+                const answers = currentRoomData.roundAnswers || {};
+                const scores = { ...currentRoomData.scores };
+                const firstCorrectId = currentRoomData.roundFirstCorrect;
+                
+                const quizSetIndex = (currentRoomData.currentRound - 1) % 10;
+                const correct = currentRoomData.quizSet[quizSetIndex].correct;
+                
+                // 점수 계산
+                Object.keys(answers).forEach(pid => {
+                    if (answers[pid].answer === correct) {
+                        if (pid === firstCorrectId) {
+                            scores[pid] += 100; // 첫 정답자
+                        } else {
+                            scores[pid] += 20; // 일반 정답자
+                        }
+                    }
+                });
+
+                roomRef.update({
+                    status: 'showing_result',
+                    scores: scores
+                });
+                
+            }, ROUND_TIME_MS + 500); // 10.5초 (네트워크 지연 감안)
+        }
+        
+        // (Host) 10/20 라운드에 주제 변경
+        function triggerTopicChange() {
+            if (!isHost) return;
+            
+            const scores = currentRoomData.scores;
+            let lowestScore = Infinity;
+            let lowestPlayerId = null;
+            
+            // 꼴찌 찾기 (참가자 중에서)
+            Object.keys(currentRoomData.players).forEach(pid => {
+                if (scores[pid] <= lowestScore) {
+                    lowestScore = scores[pid];
+                    lowestPlayerId = pid;
+                }
+            });
+
+            roomRef.update({
+                status: 'changing_topic',
+                topicChanger: lowestPlayerId,
+                topicChanged: true // 주제 변경 완료 플래그 (중복 방지)
+            });
+            
+            // (안전장치) 꼴찌가 20초간 주제를 안 고르면 호스트가 랜덤 선택
+            setTimeout(() => {
+                if (isHost && currentRoomData.status === 'changing_topic') {
+                    console.warn("꼴찌 유저가 주제를 선택하지 않아 호스트가 랜덤 선택합니다.");
+                    fetchQuizSet("random");
+                }
+            }, 20000);
+        }
+        
+        // (Host) 게임 종료
+        function triggerGameOver() {
+            if (!isHost) return;
+            roomRef.update({ status: 'gameOver' });
+            updatePlayerStats(); // 호스트가 승패 기록
+        }
+        
+        // --- 클라이언트 UI 렌더링 ---
+        
+        // (All) 주제 선택 모달 표시
+        function showTopicModal(desc, isTopicChange) {
+            document.getElementById('topic-modal-title').textContent = isTopicChange ? "주제 변경!" : "게임 주제 선택";
+            document.getElementById('topic-modal-desc').textContent = desc;
+            
+            topicModal.querySelectorAll('.topic-btn-grid button').forEach(btn => {
+                btn.onclick = () => {
+                    playSound('click-sound');
+                    const topic = btn.dataset.topic;
+                    
+                    if (isHost) {
+                        // 호스트가 직접 선택 (게임 시작 또는 꼴찌 AFK)
+                        fetchQuizSet(topic);
+                    } else {
+                        // 꼴찌 유저가 선택 (주제 변경)
+                        roomRef.update({ selectedNextTopic: topic });
+                        topicModal.style.display = 'none';
+                        // 호스트가 이 'selectedNextTopic'을 감지하고 fetchQuizSet을 호출해야 함
+                        // (listenToRoomChanges에 로직 추가 필요 - 지금은 꼴찌 AFK로직으로 대체)
+                    }
+                    
+                    // 꼴찌가 선택하면 호스트가 감지해서 fetchQuizSet을 실행해야 함.
+                    // (개선) 지금은 꼴찌 AFK 로직(20초)에 의존하고 있음.
+                    // (개선) 꼴찌가 누르면, 호스트가 'selectedNextTopic'을 감지하고 바로 fetchQuizSet(topic)을 실행하게 해야함.
+                    
+                    // 임시: 꼴찌가 눌러도 호스트가 API를 호출하게 함 (간소화)
+                    if (isHost) {
+                         fetchQuizSet(topic);
+                    }
+                }
+            });
+            
+            topicModal.style.display = 'flex';
+        }
+
+        // (All) 퀴즈 UI 표시
+        function displayQuiz() {
+            infoOverlay.style.display = 'none';
+            quizArea.style.display = 'flex';
+            
+            const round = currentRoomData.currentRound;
+            const quizSetIndex = (round - 1) % 10;
+            const quiz = currentRoomData.quizSet[quizSetIndex];
+            
+            if (!quiz) {
+                console.error("퀴즈 데이터를 불러올 수 없습니다.", round, quizSetIndex);
+                if(isHost) alert("퀴즈 데이터 오류! 게임을 종료합니다.");
+                return;
+            }
+            
+            roundInfo.textContent = `Round ${round} / ${TOTAL_ROUNDS}`;
+            questionText.textContent = quiz.question;
+            
+            const options = [...quiz.incorrect, quiz.correct];
+            options.sort(() => Math.random() - 0.5); // 보기 섞기
+            
+            optionBtns.forEach((btn, i) => {
+                btn.textContent = options[i];
+                btn.disabled = false;
+                btn.className = 'option-btn'; // 스타일 리셋
+                btn.onclick = () => handleAnswerClick(options[i], quiz.correct);
+            });
+            
+            // 타이머 시작
+            timerFill.style.transition = 'none';
+            timerFill.style.width = '100%';
+            setTimeout(() => {
+                timerFill.style.transition = `width ${ROUND_TIME_MS}ms linear`;
+                timerFill.style.width = '0%';
+            }, 100);
+
+            // (Host) 10초 후 결과 집계 시작
+            if (isHost) {
+                triggerResult();
+            }
+        }
+        
+        // (All) 답변 클릭 처리
+        function handleAnswerClick(selectedAnswer, correctAnswer) {
+            playSound('click-sound');
+            // 모든 버튼 비활성화
+            optionBtns.forEach(btn => {
+                btn.disabled = true;
+                if (btn.textContent === selectedAnswer) {
+                    btn.classList.add('selected'); // 내가 선택한 것
+                }
+            });
+            
+            const isCorrect = (selectedAnswer === correctAnswer);
+            
+            // 1. 내 답변을 DB에 기록
+            roomRef.child('roundAnswers/' + myPlayerId).set({
+                answer: selectedAnswer,
+                time: firebase.database.ServerValue.TIMESTAMP
+            });
+            
+            // 2. (Transaction) 내가 '첫 번째 정답자'인지 확인
+            if (isCorrect) {
+                roomRef.child('roundFirstCorrect').transaction(currentVal => {
+                    if (currentVal === null) {
+                        return myPlayerId; // 내가 첫 정답자!
+                    }
+                    return; // 이미 누가 선점함 (undefined 반환 = 트랜잭션 취소)
+                }).then(result => {
+                    if (result.committed && result.snapshot.val() === myPlayerId) {
+                        console.log("내가 첫 번째 정답자!");
+                        playSound('correct-sound');
+                    }
+                });
+            }
+        }
+        
+        // (All) 결과 화면 표시
+        function displayResult() {
+            if (currentRoomData.status !== 'showing_result') return;
+            
+            clearInterval(currentRoundTimer); // 타이머 중지
+            quizArea.style.display = 'flex';
+
+            const quizSetIndex = (currentRoomData.currentRound - 1) % 10;
+            const correct = currentRoomData.quizSet[quizSetIndex].correct;
+            const firstCorrectId = currentRoomData.roundFirstCorrect;
+            const myAnswer = currentRoomData.roundAnswers?.[myPlayerId]?.answer;
+            
+            optionBtns.forEach(btn => {
+                btn.disabled = true;
+                const btnText = btn.textContent;
+                
+                if (btnText === correct) {
+                    btn.classList.add('correct');
+                } else if (btnText === myAnswer && myAnswer !== correct) {
+                    btn.classList.add('incorrect');
+                }
+            });
+            
+            if (firstCorrectId) {
+                const winnerNick = currentRoomData.players[firstCorrectId]?.nickname || '정답자';
+                questionText.textContent = `${winnerNick}님이 첫 정답! (+100점)`;
+            } else {
+                questionText.textContent = "정답: " + correct;
+            }
+            
+            // (Host) 3초 뒤 다음 라운드 시작
+            if (isHost) {
+                setTimeout(() => {
+                    triggerQuestion(); // 다음 문제 출제
+                }, 3000);
+            }
+        }
+        
+        // (All) 헤더 UI 업데이트 (점수판)
+        function updateHeaderUI() {
+            if (!currentRoomData || !currentRoomData.players) return;
+            gameHeader.innerHTML = '';
+            
+            const scores = currentRoomData.scores || {};
+            
+            Object.keys(currentRoomData.players).forEach(pid => {
+                const player = currentRoomData.players[pid];
+                if (!player) return; // AI 플레이어 등 예외처리
+                
+                const avatar = player.avatar.startsWith('http') ? `<img src="${player.avatar}" alt="av">` : player.avatar;
+                
+                const infoEl = document.createElement('div');
+                infoEl.className = 'player-info';
+                
+                infoEl.innerHTML = `
+                    <div class="avatar">${avatar}</div>
+                    <div class="details">
+                        <div class="nickname">${escapeHTML(player.nickname)}</div>
+                        <div class="score">${scores[pid] || 0} 점</div>
+                    </div>`;
+                gameHeader.appendChild(infoEl);
+            });
+        }
+        
+        // (All) 게임 종료 화면
+        function showGameOverScreen() {
+            const scores = currentRoomData.scores;
+            const players = currentRoomData.players;
+            
+            let winnerId = null;
+            let maxScore = -Infinity;
+            
+            Object.keys(scores).forEach(pid => {
+                if (scores[pid] > maxScore) {
+                    maxScore = scores[pid];
+                    winnerId = pid;
+                }
+            });
+            
+            const iWon = (winnerId === myPlayerId);
+            const message = iWon ? "🎉 승리!" : "😢 패배...";
+            playSound(iWon ? 'win-sound' : 'loss-sound');
+
+            const scoresHTML = Object.keys(players).map(pid => {
+                const player = players[pid];
+                const avatar = player.avatar.startsWith('http') ? `<img src="${player.avatar}" alt="av">` : player.avatar;
+                return `<div class="score-row ${pid === winnerId ? 'winner' : 'loser'}">
+                            <span class="score-avatar">${avatar} ${escapeHTML(player.nickname)}</span>
+                            <span>${scores[pid] || 0} 점</span>
+                        </div>`;
+            }).sort((a,b) => b.includes('winner') ? 1 : -1).join(''); // 승자가 위로 오게
+
+            gameOverOverlay.innerHTML = `
+                <div class="modal-content" style="background: #2c3e50;">
+                    <div class="modal-header"><h2>${message}</h2></div>
+                    <div class="modal-body" style="color:white;">
+                        <div id="score-board">${scoresHTML}</div>
+                        <button id="lobby-btn" class="menu-btn secondary">대기실로</button>
+                    </div>
+                </div>`;
+            gameOverOverlay.style.display = 'flex';
+            document.getElementById('lobby-btn').addEventListener('click', cleanupAndExit);
+            // (참고) 리매치 기능은 이 퀴즈 게임에서는 제외했습니다.
+        }
+
+        // (Host) 게임 통계 업데이트
+        function updatePlayerStats() {
+            if (!isHost) return; // 호스트만 통계 처리
+            
+            const scores = currentRoomData.scores;
+            let winnerId = null;
+            let maxScore = -Infinity;
+            Object.keys(scores).forEach(pid => {
+                if (scores[pid] > maxScore) {
+                    maxScore = scores[pid];
+                    winnerId = pid;
+                }
+            });
+            
+            // 모든 플레이어의 승/패 기록
+            Object.keys(currentRoomData.players).forEach(pid => {
+                if (pid.startsWith('guest_') || pid === 'ai_player') return;
+                
+                const userRef = usersRef.child(pid);
+                const won = (pid === winnerId);
+                
+                userRef.transaction(userData => {
+                    if (userData) {
+                        if (!userData.profile) userData.profile = {};
+                        const profile = userData.profile;
+                        profile.exp = (profile.exp || 0) + (won ? 120 : 30);
+                        profile.points = (profile.points || 0) + (won ? 200 : 100);
+
+                        if (!userData.gameStats) userData.gameStats = {};
+                        if (!userData.gameStats.quiz) userData.gameStats.quiz = { wins: 0, losses: 0, plays: 0 };
+                        
+                        const stats = userData.gameStats.quiz;
+                        if (won) stats.wins = (stats.wins || 0) + 1;
+                        else stats.losses = (stats.losses || 0) + 1;
+                        stats.plays = (stats.plays || 0) + 1;
+                    }
+                    return userData;
+                });
+            });
+        }
+        
+        // (All) 방 나가기
+        function cleanupAndExit() {
+            isExiting = true;
+            if (roomRef) {
+                if (isHost) {
+                    roomRef.remove();
+                } else {
+                    roomRef.child('players/' + myPlayerId).remove();
+                }
+                roomRef.off();
+            }
+            window.location.replace('대기실.html'); // 뒤로가기 방지
+        }
+        
+    </script>
+</body>
+</html>
