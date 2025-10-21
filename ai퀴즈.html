@@ -224,6 +224,28 @@
 
         /* 주제 선택 모달용 버튼 */
         .topic-btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        
+        /* ▼▼▼ [신규] 프로그레스 바 스타일 ▼▼▼ */
+        #progress-bar-container {
+            display: none; /* 평소엔 숨김 */
+            width: 70%;    /* 너비 조정 */
+            max-width: 300px; /* 최대 너비 */
+            height: 12px;   /* 높이 조정 */
+            background-color: rgba(0, 0, 0, 0.4); /* 배경색 약간 어둡게 */
+            border-radius: 6px; /* 둥근 모서리 */
+            overflow: hidden;
+            margin-top: 20px; /* 위쪽 텍스트와의 간격 */
+            margin-left: auto;  /* ▼▼▼ [추가] 가운데 정렬 ▼▼▼ */
+            margin-right: auto; /* ▲▲▲ [추가] 가운데 정렬 ▲▲▲ */
+        }
+        #progress-bar-fill {
+            width: 0%;
+            height: 100%;
+            background-color: var(--accent-color); /* 채워지는 색 */
+            border-radius: 6px;
+            transition: width 0.3s ease-out; /* 부드러운 전환 */
+        }
+        /* ▲▲▲ [신규] ▲▲▲ */
     </style>
 </head>
 <body>
@@ -251,6 +273,9 @@
         <div class="modal-content" style="background: transparent; box-shadow: none;">
              <p id="info-text" style="color: white; font-size: 1.3em; margin-bottom: 20px;">게임에 참가하는 중...</p>
             <div id="info-spinner" class="spinner"></div>
+<div id="progress-bar-container">
+                <div id="progress-bar-fill"></div>
+            </div>
             <button id="host-retry-btn" class="menu-btn secondary" style="display: none;">API 호출 재시도</button>
         </div>
     </div>
@@ -261,12 +286,12 @@
             <div class="modal-body">
                 <p id="topic-modal-desc">방장이 첫 10라운드의 주제를 선택합니다.</p>
                 <div class="topic-btn-grid modal-buttons">
-                    <button class="menu-btn primary" data-topic="english">🔠영단어</button>
+                    <button class="menu-btn primary" data-topic="english">🔠영어 단어</button>
                     <button class="menu-btn primary" data-topic="proverb">📜속담</button>
                     <button class="menu-btn primary" data-topic="idiom">📖사자성어</button>
                     <button class="menu-btn primary" data-topic="capital">🌍수도</button>
                     <button class="menu-btn primary" data-topic="history">👑한국사</button>
-                    <button class="menu-btn primary" data-topic="spelling">📝맞춤법</button>
+                    <button class="menu-btn primary" data-topic="easy_words">📚낱말 퀴즈</button>
                     <button class="menu-btn primary" data-topic="random">🎲랜덤</button>
                 </div>
             </div>
@@ -289,17 +314,39 @@
             "AIzaSyCD-TQrqY6skTi2d61FyK_xP3igLeIpSdI", // 1번 키
             "AIzaSyCPVYU35xKXGMAZXT8yQ4QjLeIpSdI"  // 2번 키
         ];
+
+        // ▼▼▼ TTS 관련 변수 및 초기화 ▼▼▼
+        let synth = window.speechSynthesis;
+        let voices = [];
+
+        function populateVoiceList() {
+            voices = synth.getVoices().sort(function (a, b) {
+                const aname = a.name.toUpperCase();
+                const bname = b.name.toUpperCase();
+                if (aname < bname) return -1;
+                else if (aname == bname) return 0;
+                else return +1;
+            });
+            // console.log("Available voices:", voices); // 사용 가능한 음성 목록 확인용
+        }
+
+        populateVoiceList();
+        if (speechSynthesis.onvoiceschanged !== undefined) {
+            speechSynthesis.onvoiceschanged = populateVoiceList;
+        }
+
+
         let currentKeyIndex = 0;
         const currentModel = "gemini-2.5-flash-lite"; // 속도가 빠른 Flash 모델 사용
 
         // ▼▼▼ [신규] 사용자에게 보여줄 주제명 (UX 개선용) ▼▼▼
         const topicMapForDisplay = {
-            "english": "🔠영단어",
+            "english": "🔠영어단어",
             "proverb": "📜속담",
             "idiom": "📖사자성어",
             "capital": "🌍수도",
             "history": "👑역사",
-            "spelling": "📝맞춤법"
+            "easy_words": "📚낱말퀴즈"
         };
         // ▲▲▲ [신규] ▲▲▲
 
@@ -370,16 +417,16 @@
             }
         }
 
-                                        // ▼▼▼ [수정] 퀴즈 생성 프롬프트 (맞춤법 4지선다 방식으로 변경) ▼▼▼
+                                       // ▼▼▼ [수정] 퀴즈 생성 프롬프트 (영어 퀴즈: 영단어 -> 한글 뜻 방식으로 복구) ▼▼▼
         function getPromptForTopic(topic) {
             const topicInstructions = {
-                "english": "question은 '사과'나 '책상' 같은 초/중급 수준의 **영어 명사(noun)**에 대한 한글 뜻이어야 합니다. correct는 그 뜻에 맞는 영어 **명사**('apple', 'desk')여야 합니다. incorrect는 헷갈리는 다른 영어 **명사** 3개여야 합니다.",
+                // [핵심 수정] "영단어(명사) -> 한글 뜻(명사)" 방식으로 변경
+                "english": "question은 'chair' 같은 초/중급 수준의 **영어 명사(noun)**여야 합니다. correct는 그 단어의 한글 뜻('의자')이어야 합니다. incorrect는 정답과 헷갈리는 **다른 한글 명사** 3개여야 합니다(예: ['책상', '가위', '소파']).",
                 "proverb": "question은 '가는 말이 고와야 ○ 말이 곱다'처럼 빈칸 '○'가 1개 포함된 '중~고급 난이도'의 유명한 한국 속담이어야 합니다. correct는 그 빈칸에 들어갈 단어('오는')여야 합니다. incorrect는 헷갈리는 오답 단어 3개여야 합니다.",
                 "idiom": "question은 '매우 몹시 놀람'처럼 유명한 사자성어의 뜻풀이여야 합니다. correct는 그 뜻에 맞는 사자성어('경천동지')여야 합니다. incorrect는 헷갈리는 다른 사자성어 3개여야 합니다.",
                 "capital": "question은 '프랑스'처럼 국가 이름이어야 합니다. '수도는?' 같은 말을 절대 붙이지 마세요. correct는 그 국가의 수도('파리')여야 합니다. incorrect는 헷갈리는 다른 도시 이름 3개여야 합니다.",
                 "history": "question은 '고조선을 세운 사람은?'처럼 **초등학생~중1 수준의 일반 한국사** 문제여야 합니다. correct는 그 질문의 정답('단군왕검')이어야 합니다. incorrect는 헷갈리는 다른 오답 3개여야 합니다.",
-                // [핵심 수정] 맞춤법: 올바른 단어 1개 + 틀린 단어 3개 고르기 방식
-                "spelling": `question은 항상 "다음 중 올바른 표기는?" 이어야 합니다. correct는 '학교'처럼 **초등학교 1~2학년 수준**의 올바른 단어 1개여야 합니다. incorrect는 correct 단어를 **일부러 틀리게 쓴 단어 3개** (예: ['학꾜', '하꾜', '하꾺'])여야 합니다. (틀린 단어는 서로 비슷하게 헷갈려야 합니다).`
+                "easy_words": `question은 "'하늘을 나는 것'처럼 **6~8세 수준**의 쉽고 짧은 설명이어야 합니다. correct는 설명에 맞는 **한 글자 또는 두 글자** 명사여야 합니다(예: '새'). incorrect는 정답과 **다른 카테고리**의 쉬운 명사 3개여야 합니다(예: ['나무', '책상', '바다']).`
             };
 
             let finalTopic = topic;
@@ -392,12 +439,11 @@
 
             const promptHeader = `너는 "스피드 퀴즈" 게임의 출제자입니다.
 반드시 다음 규칙을 지켜 퀴즈 10개 세트를 JSON 배열 형식으로만 응답해주세요.
-1. 각 퀴즈 객체는 "question"(string), "correct"(string), "incorrect"(string 배열) 키를 가져야 합니다.
+1. 각 퀴즈 객체는 "question"(string), "correct"(string), "incorrect"(string 배열 3개) 키를 가져야 합니다.
 2. 10개 퀴즈 모두 다음 규칙을 따라야 합니다: ${instruction}
-3. [중요] 'incorrect'는 반드시 3개의 문자열이 담긴 배열이어야 합니다. (맞춤법 포함 모든 주제)
+3. [중요] 'incorrect'는 반드시 3개의 문자열이 담긴 배열이어야 합니다.
 4. 응답은 오직 JSON 배열(Array) 형식이어야 합니다. 다른 텍스트나 설명, 마크다운(\`\`\`json)을 절대 포함하지 마세요.
 `;
-            // [삭제] 이전 맞춤법 관련 5번 규칙 제거됨
             return { prompt: promptHeader, topicName: finalTopic };
         }
         // ▲▲▲ [수정] ▲▲▲
@@ -451,6 +497,11 @@
         const ROUND_TIME_MS = 10000; // 7
         let roundEndTimeout;
         let currentRoundTimer;
+
+        let progressInterval;
+        let loadingDotsInterval; // 로딩 점 애니메이션용
+        const progressBarContainer = document.getElementById('progress-bar-container');
+        const progressBarFill = document.getElementById('progress-bar-fill');
         
         // --- 유틸리티 함수 ---
         function escapeHTML(str) {
@@ -593,11 +644,14 @@
             }
             // ▲▲▲ [수정] Fix 1 & 2 ▲▲▲
 
-            // 3. (호스트/솔로) 로컬 UI 즉시 업데이트
-            infoText.textContent = `"${topicDisplayName}" 문제를 생성중...`;
-            infoSpinner.style.display = 'block';
+  
+            infoText.innerHTML = `${topicDisplayName} 문제를 생성중...<br>잠시만 기다려주세요.`; // 따옴표 제거, 줄바꿈 추가
+            infoSpinner.style.display = 'none'; // 스피너 숨기기
+            startProgressBarSimulation(); // 프로그레스 바 시작
+            startLoadingDotsAnimation(); // 로딩 점 애니메이션 시작
             hostRetryBtn.style.display = 'none';
             infoOverlay.style.display = 'flex';
+  
 
             try {
                 // 4. API 호출
@@ -609,25 +663,34 @@
 
                 // 5. API 호출 성공!
                 topicModal.style.display = 'none'; // 주제 선택 모달 닫기
-                infoOverlay.style.display = 'none';
-                
-                if (isSoloMode) {
-                    // ✨ 솔로 모드: 내부 변수 업데이트 후 카운트다운 시작
-                    currentRoomData.quizSet = quizSet;
-                    currentRoomData.currentTopic = topicName; // ✨ 실제 주제명(topicName) 저장
-                    currentRoomData.currentRound = currentRoomData.currentRound || 0;
-                    currentRoomData.status = 'starting';
-                    startRoundCountdown(3);
-                } else {
-                    // ✨ 멀티 모드: 퀴즈 세트를 DB에 저장하고 게임 시작
-                    const baseRound = currentRoomData.currentRound || 0;
-                    roomRef.update({
-                        quizSet: quizSet,
-                        currentTopic: topicName, // ✨ 실제 주제명(topicName) 저장
-                        currentRound: baseRound, 
-                        status: 'starting' // '시작 중' 상태로 변경
-                    });
-                }
+                // infoOverlay.style.display = 'none'; // <-- 숨기는 로직을 stopProgressBarSimulation으로 이동
+
+                // ▼▼▼ [수정] 프로그레스 바 완료 후 다음 단계 실행 ▼▼▼
+                const nextStepCallback = () => {
+                    if (isSoloMode) {
+                        // ✨ 솔로 모드: 내부 변수 업데이트 후 카운트다운 시작
+                        currentRoomData.quizSet = quizSet;
+                        currentRoomData.currentTopic = topicName;
+                        currentRoomData.currentRound = currentRoomData.currentRound || 0;
+                        currentRoomData.status = 'starting';
+                        // 콜백 내부에서 카운트다운 시작
+                        startRoundCountdown(3);
+                    } else {
+                        // ✨ 멀티 모드: 퀴즈 세트를 DB에 저장 -> 리스너가 'starting' 감지 후 카운트다운 시작
+                        const baseRound = currentRoomData.currentRound || 0;
+                        roomRef.update({
+                            quizSet: quizSet,
+                            currentTopic: topicName,
+                            currentRound: baseRound,
+                            status: 'starting'
+                        });
+                        // 멀티 모드는 DB 업데이트 후 리스너가 처리하므로 여기서 카운트다운 X
+                    }
+                };
+
+                // 프로그레스 바를 100%로 채우고 콜백 실행
+                stopProgressBarSimulation(true, nextStepCallback);
+                // ▲▲▲ [수정] ▲▲▲
                 
             } catch (error) {
                 // 6. API 호출 실패!
@@ -721,11 +784,19 @@
             // 2. 퀴즈 생성 중
             if (newStatus === 'generating_quiz') {
                 const topicName = currentRoomData.currentTopicName || '게임';
-                infoText.textContent = `"${topicName}" 문제를 생성중입니다..`;
-                infoSpinner.style.display = 'block';
+                infoText.innerHTML = `${topicName} 문제를 생성중...<br>잠시만 기다려주세요.`; // 따옴표 제거, 줄바꿈 추가
+                infoSpinner.style.display = 'none'; // 스피너 숨기기
+                if (oldStatus !== 'generating_quiz') { // 상태가 처음 변경되었을 때만 시뮬레이션 시작
+                   startProgressBarSimulation();
+                   startLoadingDotsAnimation(); // 로딩 점 애니메이션 시작
+                }
                 hostRetryBtn.style.display = 'none';
                 infoOverlay.style.display = 'flex';
-                topicModal.style.display = 'none'; // (호스트) 주제 모달 닫기
+                topicModal.style.display = 'none';
+                // ▲▲▲ [수정] ▲▲▲
+            } else {
+                 stopProgressBarSimulation(false); // 즉시 숨김
+                 stopLoadingDotsAnimation(); // 로딩 점 애니메이션 중지
             }
             
             // 3. 게임 시작 중: 카운트다운
@@ -805,6 +876,8 @@
             infoOverlay.style.display = 'flex';
             infoSpinner.style.display = 'none';
             hostRetryBtn.style.display = 'none';
+            stopLoadingDotsAnimation(); // 로딩 점 애니메이션 중지
+  
             
             let count = seconds;
             infoText.innerHTML = `<div id="countdown-number">${count}</div>`;
@@ -1051,6 +1124,11 @@
 
             // AI 데이터 오류 방어 (오답 개수 포함)
             if (!quiz || !quiz.correct || !quiz.incorrect || quiz.incorrect.length < 3) {
+                // ▼▼▼ 영어 퀴즈일 경우 TTS 호출 ▼▼▼
+            if (topic === 'english' && quiz.question) {
+                speakWord(quiz.question);
+            }
+            // ▲▲▲ [신규] ▲▲▲
                 console.error("퀴즈 데이터를 불러올 수 없습니다 (오답 부족 포함).", round, quizSetIndex, quiz);
                 questionText.textContent = "퀴즈 데이터 오류 발생!";
                 optionBtns.forEach(btn => { btn.style.display = 'none'; }); // 모든 버튼 숨김
@@ -1113,7 +1191,64 @@
             }
         }
 
+// ▼▼▼ [신규] TTS 실행 함수 ▼▼▼
+        // ▼▼▼ [수정] TTS 실행 함수 (음성 로딩 지연 처리 강화) ▼▼▼
+        function speakWord(word) {
+            // [추가] 음성 목록이 비어 있으면 다시 로드 시도
+            if (voices.length === 0) {
+                console.log("음성 목록 로딩 중... 재시도.");
+                populateVoiceList(); 
+                // 잠시 후 다시 시도 (비동기 로드를 위한 약간의 지연)
+                setTimeout(() => speakWord(word), 200); 
+                return;
+            }
 
+            if (synth.speaking) {
+                // 이미 말하고 있으면 취소하고 새로 시작 (옵션)
+                 synth.cancel(); 
+                 // console.log('Previous speech cancelled.');
+                 // 잠시 후 다시 시도
+                 setTimeout(() => speakWord(word), 50); 
+                 return;
+                // 아니면 그냥 무시:
+                // console.warn('Synth is already speaking.'); return; 
+            }
+            
+            if (word && typeof word === 'string' && word.trim() !== '') {
+                const utterThis = new SpeechSynthesisUtterance(word.trim());
+                
+                utterThis.onend = function (event) {
+                    // console.log('Speech finished.');
+                }
+                utterThis.onerror = function (event) {
+                    console.error('SpeechSynthesisUtterance error:', event);
+                }
+                
+                // 영어 음성 찾기 (더 다양한 경우 고려)
+                let selectedVoice = voices.find(voice => voice.lang === 'en-US' && voice.localService); // 로컬 미국 영어 우선
+                if (!selectedVoice) selectedVoice = voices.find(voice => voice.lang === 'en-US'); // 원격 미국 영어
+                if (!selectedVoice) selectedVoice = voices.find(voice => voice.lang.startsWith('en-') && voice.localService); // 로컬 영어
+                if (!selectedVoice) selectedVoice = voices.find(voice => voice.lang.startsWith('en-')); // 원격 영어
+
+                if (selectedVoice) {
+                    utterThis.voice = selectedVoice;
+                     console.log("Using voice:", selectedVoice.name, selectedVoice.lang); // 어떤 음성이 선택되었는지 확인
+                } else {
+                    console.warn("English voice not found. Using default voice.");
+                    // 기본 음성(대개 시스템 언어)으로라도 시도
+                }
+                
+                // utterThis.pitch = 1; 
+                // utterThis.rate = 1; 
+
+                // [추가] 읽기 시작 전 로그
+                 console.log(`Attempting to speak: "${word}"`);
+                synth.speak(utterThis);
+            } else {
+                console.warn("SpeakWord: Invalid word provided -", word);
+            }
+        }
+        // ▲▲▲ [수정] ▲▲▲
         
         // (All) 답변 클릭 처리
         function handleAnswerClick(selectedAnswer, correctAnswer) {
@@ -1348,6 +1483,70 @@
             window.location.replace('대기실.html'); // 뒤로가기 방지
         }
         
+        // ▼▼▼ [신규] 프로그레스 바 시뮬레이션 함수 ▼▼▼
+        function startProgressBarSimulation() {
+            clearInterval(progressInterval); // 이전 인터벌 클리어
+            progressBarFill.style.transition = 'width 0.3s ease-out'; // 부드러운 전환 효과
+            progressBarFill.style.width = '0%'; // 0%에서 시작
+            progressBarContainer.style.display = 'block';
+
+            let progress = 0;
+            progressInterval = setInterval(() => {
+                progress += 5; // 5%씩 증가 (속도 조절 가능)
+                if (progress <= 95) { // 95%까지만 자동으로 증가
+                    progressBarFill.style.width = progress + '%';
+                } else {
+                    clearInterval(progressInterval); // 95% 도달 시 자동 증가 멈춤
+                }
+            }, 200); // 0.2초마다 증가 (속도 조절 가능)
+        }
+
+        function stopProgressBarSimulation(complete = true, callback = null) { // 콜백 파라미터 추가
+            clearInterval(progressInterval);
+            stopLoadingDotsAnimation(); // 로딩 점 애니메이션도 여기서 확실히 중지
+
+            if (complete) {
+                // 완료 시 100% 채우고 잠시 후 숨기고 콜백 실행
+                progressBarFill.style.transition = 'width 0.1s ease-out'; // 빠르게 100%
+                progressBarFill.style.width = '100%';
+                setTimeout(() => {
+                    progressBarContainer.style.display = 'none';
+                    progressBarFill.style.width = '0%'; // 다음을 위해 리셋
+                    
+                    // ▼▼▼ [추가] 콜백 함수 실행 ▼▼▼
+                    if (callback) {
+                        callback();
+                    } else {
+                        // 콜백 없으면 infoOverlay 숨기기 (호출 실패 등)
+                         infoOverlay.style.display = 'none';
+                    }
+                    // ▲▲▲ [추가] ▲▲▲
+                }, 300); // 0.3초 후 숨김 및 콜백 실행
+            } else {
+                // 중단/실패 시 즉시 숨김
+                progressBarContainer.style.display = 'none';
+                progressBarFill.style.width = '0%'; // 리셋
+                infoOverlay.style.display = 'none'; // 실패 시 오버레이도 숨김
+            }
+        }
+
+        // ▼▼▼ [신규] 로딩 점 애니메이션 함수 ▼▼▼
+        function startLoadingDotsAnimation() {
+            stopLoadingDotsAnimation(); // 이전 애니메이션 중지
+            let dotCount = 1;
+            loadingDotsInterval = setInterval(() => {
+                let dots = '.'.repeat(dotCount);
+                // 현재 infoText 내용을 유지하면서 점만 업데이트
+                const baseText = infoText.innerHTML.split('<br>')[0]; // 첫 줄만 가져옴
+                infoText.innerHTML = `${baseText}<br>잠시만 기다려주세요${dots}`;
+                dotCount = (dotCount % 3) + 1; // 1 -> 2 -> 3 -> 1 반복
+            }, 500); // 0.5초마다 점 변경
+        }
+
+        function stopLoadingDotsAnimation() {
+            clearInterval(loadingDotsInterval);
+        }
+        // ▲▲▲ [신규] ▲▲▲
     </script>
 </body>
 </html>
