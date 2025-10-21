@@ -370,7 +370,7 @@
             }
         }
 
-                                // ▼▼▼ [수정] 퀴즈 생성 프롬프트 (맞춤법 중복 단어 방지 강화) ▼▼▼
+                                        // ▼▼▼ [수정] 퀴즈 생성 프롬프트 (맞춤법 4지선다 방식으로 변경) ▼▼▼
         function getPromptForTopic(topic) {
             const topicInstructions = {
                 "english": "question은 '사과'나 '책상' 같은 초/중급 수준의 **영어 명사(noun)**에 대한 한글 뜻이어야 합니다. correct는 그 뜻에 맞는 영어 **명사**('apple', 'desk')여야 합니다. incorrect는 헷갈리는 다른 영어 **명사** 3개여야 합니다.",
@@ -378,8 +378,8 @@
                 "idiom": "question은 '매우 몹시 놀람'처럼 유명한 사자성어의 뜻풀이여야 합니다. correct는 그 뜻에 맞는 사자성어('경천동지')여야 합니다. incorrect는 헷갈리는 다른 사자성어 3개여야 합니다.",
                 "capital": "question은 '프랑스'처럼 국가 이름이어야 합니다. '수도는?' 같은 말을 절대 붙이지 마세요. correct는 그 국가의 수도('파리')여야 합니다. incorrect는 헷갈리는 다른 도시 이름 3개여야 합니다.",
                 "history": "question은 '고조선을 세운 사람은?'처럼 **초등학생~중1 수준의 일반 한국사** 문제여야 합니다. correct는 그 질문의 정답('단군왕검')이어야 합니다. incorrect는 헷갈리는 다른 오답 3개여야 합니다.",
-                // [핵심 수정] 맞춤법 규칙 강화: 중복 불가 명시
-                "spelling": `question은 '김치찌개 / 김치찌게' 처럼 **서로 헷갈리지만 의미상 연관된 다른 단어** 2개를 '/'로 묶은 **초등학교 1~2학년 수준**의 문자열이어야 합니다. ('짜장면 / 짜장면' 처럼 **같은 단어는 절대 안됩니다**). correct는 그 중 올바른 표기('김치찌개')여야 합니다. incorrect는 **['김치찌게']처럼 question에 제시된 틀린 표기 1개만 포함하는 배열**이어야 합니다. (correct 값과 incorrect 배열 값은 **서로 달라야 하며**, 반드시 question에 제시된 두 단어 중 하나여야 합니다).`
+                // [핵심 수정] 맞춤법: 올바른 단어 1개 + 틀린 단어 3개 고르기 방식
+                "spelling": `question은 항상 "다음 중 올바른 표기는?" 이어야 합니다. correct는 '학교'처럼 **초등학교 1~2학년 수준**의 올바른 단어 1개여야 합니다. incorrect는 correct 단어를 **일부러 틀리게 쓴 단어 3개** (예: ['학꾜', '하꾜', '하꾺'])여야 합니다. (틀린 단어는 서로 비슷하게 헷갈려야 합니다).`
             };
 
             let finalTopic = topic;
@@ -394,16 +394,14 @@
 반드시 다음 규칙을 지켜 퀴즈 10개 세트를 JSON 배열 형식으로만 응답해주세요.
 1. 각 퀴즈 객체는 "question"(string), "correct"(string), "incorrect"(string 배열) 키를 가져야 합니다.
 2. 10개 퀴즈 모두 다음 규칙을 따라야 합니다: ${instruction}
-3. [중요] 'question' 필드에는 오직 문제 텍스트(예: "프랑스" 또는 "김치찌개 / 김치찌게")만 포함하고, 다른 말을 절대 포함하지 마세요.
-4. [중요] 'incorrect'는 반드시 규칙에 맞는 개수(맞춤법은 1개, 나머지는 3개)의 문자열이 담긴 배열이어야 합니다.
-5. [중요] 맞춤법 문제의 경우:
-    a. question 필드에 '/'로 구분된 두 단어는 **절대 같으면 안 됩니다.**
-    b. correct 값과 incorrect 배열의 값은 **서로 달라야 하며**, 반드시 question 필드에 제시된 두 단어 중 하나여야 합니다. 절대 다른 단어를 만들지 마세요.
-6. 응답은 오직 JSON 배열(Array) 형식이어야 합니다. 다른 텍스트나 설명, 마크다운(\`\`\`json)을 절대 포함하지 마세요.
+3. [중요] 'incorrect'는 반드시 3개의 문자열이 담긴 배열이어야 합니다. (맞춤법 포함 모든 주제)
+4. 응답은 오직 JSON 배열(Array) 형식이어야 합니다. 다른 텍스트나 설명, 마크다운(\`\`\`json)을 절대 포함하지 마세요.
 `;
+            // [삭제] 이전 맞춤법 관련 5번 규칙 제거됨
             return { prompt: promptHeader, topicName: finalTopic };
         }
         // ▲▲▲ [수정] ▲▲▲
+
 
 
 
@@ -1041,7 +1039,7 @@
         // ▲▲▲ [신규] ▲▲▲
         
 
-                // (All) 퀴즈 UI 표시
+                        // (All) 퀴즈 UI 표시
         function displayQuiz() {
             infoOverlay.style.display = 'none';
             quizArea.style.display = 'flex';
@@ -1051,99 +1049,56 @@
             const quizSetIndex = (round - 1) % 10;
             const quiz = currentRoomData.quizSet[quizSetIndex];
 
-            // AI 데이터 오류 방어
-            if (!quiz || !quiz.correct || !quiz.incorrect) {
-                console.error("퀴즈 데이터를 불러올 수 없습니다.", round, quizSetIndex, quiz);
+            // AI 데이터 오류 방어 (오답 개수 포함)
+            if (!quiz || !quiz.correct || !quiz.incorrect || quiz.incorrect.length < 3) {
+                console.error("퀴즈 데이터를 불러올 수 없습니다 (오답 부족 포함).", round, quizSetIndex, quiz);
                 questionText.textContent = "퀴즈 데이터 오류 발생!";
-                optionBtns.forEach(btn => { btn.style.display = 'none'; });
-                if (isHost) { setTimeout(triggerQuestion, 3000); }
+                optionBtns.forEach(btn => { btn.style.display = 'none'; }); // 모든 버튼 숨김
+                if (isHost) { setTimeout(triggerQuestion, 3000); } // 호스트는 강제 진행
                 return;
             }
 
             roundInfo.textContent = `Round ${round} / ${TOTAL_ROUNDS}`;
 
-            // 문제/설명 분리 (맞춤법 제외)
-            if (topic !== 'spelling') {
-                const fullQuestion = quiz.question;
-                const splitIndex = fullQuestion.indexOf('. ');
-                if (splitIndex > -1 && fullQuestion.length > splitIndex + 2) {
-                    questionText.textContent = fullQuestion.substring(0, splitIndex + 1);
-                    questionDesc.textContent = fullQuestion.substring(splitIndex + 2);
-                    questionDesc.style.display = 'flex';
-                } else {
-                    questionText.textContent = fullQuestion;
-                    questionDesc.textContent = '';
-                    questionDesc.style.display = 'none';
-                }
+            // 문제/설명 분리 (이제 모든 주제 동일하게 적용 가능)
+            const fullQuestion = quiz.question;
+            const splitIndex = fullQuestion.indexOf('. ');
+            if (topic !== 'spelling' && splitIndex > -1 && fullQuestion.length > splitIndex + 2) { // 맞춤법 제외
+                questionText.textContent = fullQuestion.substring(0, splitIndex + 1);
+                questionDesc.textContent = fullQuestion.substring(splitIndex + 2);
+                questionDesc.style.display = 'flex';
             } else {
-                // 맞춤법 문제는 분리 없이 그대로 표시
-                questionText.textContent = quiz.question;
+                questionText.textContent = fullQuestion; // 맞춤법 또는 설명 없는 문제
                 questionDesc.textContent = '';
                 questionDesc.style.display = 'none';
             }
 
-            // ▼▼▼ [핵심 수정] 주제별 버튼 설정 ▼▼▼
+            // ▼▼▼ [핵심 수정] 모든 주제에 대해 4개 버튼 로직 사용 ▼▼▼
             const correctOption = quiz.correct;
-            const incorrectOptions = quiz.incorrect;
+            const incorrectOptions = quiz.incorrect; // 이제 항상 3개일 것으로 기대
             const seed = currentRoomData.currentRound; // 시드는 라운드 번호
 
-            if (topic === 'spelling') {
-                // 맞춤법: 버튼 2개만 사용
-                if (incorrectOptions.length < 1) { // AI가 틀린 답을 안 줬으면 오류 처리
-                    console.error("맞춤법 퀴즈 데이터 오류: 틀린 보기가 없습니다.", quiz);
-                    questionText.textContent = "맞춤법 데이터 오류!";
-                    optionBtns.forEach(btn => { btn.style.display = 'none'; });
-                    if (isHost) { setTimeout(triggerQuestion, 3000); }
-                    return;
-                }
-                
-                let options = [correctOption, incorrectOptions[0]]; // 정답, 오답(틀린표기)
-                options = seededShuffle(options, seed); // 2개 셔플
+            let options = [...incorrectOptions, correctOption]; // 오답 3개 + 정답 1개
+            options = seededShuffle(options, seed); // 4개 셔플
 
-                // 버튼 2개 설정
-                optionBtns[0].textContent = options[0];
-                optionBtns[0].style.display = 'block';
-                optionBtns[0].disabled = false;
-                optionBtns[0].className = 'option-btn';
-                optionBtns[0].onclick = () => handleAnswerClick(options[0], correctOption);
-
-                optionBtns[1].textContent = options[1];
-                optionBtns[1].style.display = 'block';
-                optionBtns[1].disabled = false;
-                optionBtns[1].className = 'option-btn';
-                optionBtns[1].onclick = () => handleAnswerClick(options[1], correctOption);
-
-                // 나머지 버튼 2개 숨기기
-                optionBtns[2].style.display = 'none';
-                optionBtns[3].style.display = 'none';
-
-            } else {
-                // 다른 주제: 기존 4개 버튼 로직
-                if (incorrectOptions.length < 3) { // AI가 오답 3개를 안 줬으면 오류 처리
-                    console.error("퀴즈 데이터 오류: 오답이 3개가 아닙니다.", quiz);
-                    questionText.textContent = "퀴즈 데이터 오류!";
-                    optionBtns.forEach(btn => { btn.style.display = 'none'; });
-                    if (isHost) { setTimeout(triggerQuestion, 3000); }
-                    return;
-                }
-
-                let options = [...incorrectOptions, correctOption]; // 오답 3개 + 정답 1개
-                options = seededShuffle(options, seed); // 4개 셔플
-
-                optionBtns.forEach((btn, i) => {
+            optionBtns.forEach((btn, i) => {
+                // AI가 혹시 4개 미만 옵션을 주더라도 오류 방지
+                if (options[i]) {
                     btn.textContent = options[i];
-                    btn.style.display = 'block';
+                    btn.style.display = 'block'; // 버튼 보이기
                     btn.disabled = false;
                     btn.className = 'option-btn';
                     btn.onclick = () => handleAnswerClick(options[i], correctOption);
-                });
-            }
+                } else {
+                    btn.style.display = 'none'; // 옵션 없으면 숨기기
+                }
+            });
             // ▲▲▲ [핵심 수정] ▲▲▲
 
             // 타이머 설정 (기존과 동일)
-            let currentRoundTime = ROUND_TIME_MS;
+            let currentRoundTime = ROUND_TIME_MS; // 10초
             if (topic === 'proverb' || topic === 'idiom') {
-                currentRoundTime = 12000;
+                currentRoundTime = 12000; // 속담/사자성어는 12초
             }
             timerFill.style.transition = 'none';
             timerFill.style.width = '100%';
@@ -1157,6 +1112,7 @@
                 roundEndTimeout = setTimeout(triggerResult, currentRoundTime + 500);
             }
         }
+
 
         
         // (All) 답변 클릭 처리
