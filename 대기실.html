@@ -281,7 +281,7 @@
 
         let currentUser, currentUserData, roomListener;
 
-        const availableGames = [
+  const availableGames = [
             { id: 'alkkagi', name: '알까기', icon: '⚪', file: '알까기.html', maxPlayers: 2, color: '#8d6e63', canSolo: true },
             { id: 'crossingKnights', name: '크로싱 나이츠', icon: '♞', file: '크로싱나이츠.html', maxPlayers: 2, color: '#4a4e69', canSolo: false },
             { id: 'memoryGame', name: '메모리', icon: '🧠', file: '메모리게임.html', maxPlayers: 4, color: '#4CAF50', canSolo: false },
@@ -289,7 +289,7 @@
             { id: 'indianpoker', name: '인디언포커', icon: '🃏', file: '인디언포커.html', maxPlayers: 2, color: '#C9372C', canSolo: false },
             { id: 'candysoap', name: '캔디솝', icon: '🍬', file: '캔디솝.html', isSolo: true, color: '#FF69B4', canSolo: true },
             { id: 'quiz', name: 'AI 스피드퀴즈', icon: '❓', file: 'ai퀴즈.html', maxPlayers: 4, color: '#8E44AD', canSolo: true },
-
+            { id: 'linePuzzle', name: '라인 퍼즐', icon: '🎨', file: '라인퍼즐.html', isSolo: true, color: '#3498DB', canSolo: true } // ✨ 윗줄(quiz) 끝에 쉼표가 꼭 있어야 합니다.
         ];
 
         function cleanupMyGhostRooms(myId) {
@@ -534,6 +534,7 @@
             loadRanking('points');
         }
 
+       // ▼▼▼ [수정] AI 퀴즈 랭킹에 '최고 점수' 반영 ▼▼▼
         function loadRanking(gameId) {
             const rankingContent = document.getElementById('ranking-content');
             rankingContent.innerHTML = `<div class="spinner"></div>`;
@@ -545,14 +546,17 @@
                     if (user.profile?.nickname) { users.push(user); }
                 });
 
+                // [수정] 정렬 로직 분기
                 if (gameId === 'points') {
-                    // '통합 랭킹'은 포인트를 기준으로 정렬합니다. (모든 유저 표시)
+                    // 통합 랭킹: 포인트 기준 정렬
                     users.sort((a, b) => (b.profile.points || 0) - (a.profile.points || 0));
+                } else if (gameId === 'quiz') {
+                    // AI 퀴즈 랭킹: 최고 점수(highscore) 기준 정렬
+                    users = users.filter(user => user.gameStats?.quiz?.plays > 0); // 1회 이상 플레이 필터링
+                    users.sort((a, b) => (b.gameStats?.quiz?.highscore || 0) - (a.gameStats?.quiz?.highscore || 0));
                 } else {
-                    // ✨ [수정] 게임별 랭킹은 해당 게임을 1회 이상 플레이한 유저만 필터링
-                    users = users.filter(user => user.gameStats?.[gameId]?.plays > 0);
-                    
-                    // 승리 횟수를 기준으로 정렬합니다.
+                    // 나머지 게임 랭킹: 승리(wins) 기준 정렬
+                    users = users.filter(user => user.gameStats?.[gameId]?.plays > 0); // 1회 이상 플레이 필터링
                     users.sort((a, b) => (b.gameStats?.[gameId]?.wins || 0) - (a.gameStats?.[gameId]?.wins || 0));
                 }
 
@@ -570,14 +574,25 @@
                     const avatarHTML = profile.avatar.startsWith('http') ? `<img src="${profile.avatar}" alt="avatar">` : profile.avatar;
                     let statsHTML = '';
 
+                    // [수정] 표시할 스탯 분기
                     if (gameId === 'points') {
+                        // 통합 랭킹 스탯
                         const totalWins = Object.values(gameStats || {}).reduce((sum, game) => sum + (game.wins || 0), 0);
                         const totalLosses = Object.values(gameStats || {}).reduce((sum, game) => sum + (game.losses || 0), 0);
                         statsHTML = `
                             <div class="stat-item wins">${totalWins}승</div>
                             <div class="stat-item losses">${totalLosses}패</div>
                             <div class="stat-item points">${(profile.points || 0).toLocaleString()} P</div>`;
+                    } else if (gameId === 'quiz') {
+                        // AI 퀴즈 스탯: 최고 점수 포함
+                        const game = gameStats?.quiz || { wins: 0, losses: 0, plays: 0, highscore: 0 };
+                        statsHTML = `
+                            <div class="stat-item points">최고 ${game.highscore}점</div>
+                            <div class="stat-item wins">${game.wins}승</div>
+                            <div class="stat-item losses">${game.losses}패</div>
+                            <div class="stat-item plays">${game.plays || 0}회</div>`;
                     } else {
+                        // 나머지 게임 스탯
                         const game = gameStats?.[gameId] || { wins: 0, losses: 0, plays: 0 };
                         const totalGames = game.wins + game.losses;
                         const winRate = totalGames > 0 ? ((game.wins / totalGames) * 100).toFixed(0) + '%' : '0%';
@@ -604,6 +619,7 @@
                 });
             });
         }
+        // ▲▲▲ [수정] AI 퀴즈 랭킹에 '최고 점수' 반영 ▲▲▲
 
         logoutBtn.addEventListener('click', () => {
             clickSound.play();

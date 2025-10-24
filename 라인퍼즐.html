@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>라인 퍼즐</title>
+    <link rel="manifest" href="manifest.json">
+    <link href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff" as="font" type="font/woff" crossorigin>
+    <style>
+        :root {
+            --bg-color: #2c3e50;
+            --board-bg: #34495e;
+            --cell-bg: #4a6572;
+            --primary-color: #3498DB;
+            --accent-color: #FFC84A;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%; height: 100%; overflow: hidden;
+            font-family: 'GmarketSans', sans-serif;
+            background-color: var(--bg-color); color: white;
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            -webkit-user-select: none; user-select: none;
+            touch-action: none;
+        }
+
+        #game-wrapper {
+            width: 100%; height: 100%;
+            display: flex; flex-direction: column;
+        }
+
+        #game-header {
+            flex-shrink: 0; display: flex;
+            justify-content: space-between; align-items: center;
+            padding: 15px 20px; background-color: rgba(0,0,0,0.2);
+            border-bottom: 2px solid var(--board-bg);
+        }
+        #level-info {
+            font-size: 1.5em; font-weight: 700;
+        }
+        .header-btn {
+            padding: 10px 15px; font-size: 1em; font-weight: 700;
+            border-radius: 8px; border: none; cursor: pointer;
+            background-color: var(--primary-color); color: white;
+        }
+        #reset-btn { background-color: var(--accent-color); color: #333; }
+
+        #game-container {
+            width: 100%; flex-grow: 1;
+            display: flex; justify-content: center; align-items: center;
+            position: relative; overflow: hidden; padding: 20px;
+        }
+
+        #game-board {
+            display: grid;
+            background-color: var(--board-bg);
+            border: 5px solid var(--board-bg);
+            border-radius: 10px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+            aspect-ratio: 1 / 1;
+            position: relative;
+            
+            /* ✨ [수정] 보드 크기 강제 */
+            width: 90vmin;
+            height: 90vmin;
+            max-width: 450px;
+            max-height: 450px;
+        }
+        
+        /* ✨ [신규] 캔버스 스타일: 그리드 위에 겹침 */
+        #path-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 5; /* 점(dot)보다는 아래, 셀(cell)보다는 위 */
+            pointer-events: none; /* 캔버스가 터치를 가로채지 않도록 함 */
+        }
+
+        .board-cell {
+            background-color: var(--cell-bg);
+            position: relative;
+            /* ✨ [제거] 셀 배경색 채우기 관련 속성 제거 */
+        }
+        
+        .board-cell.dot::after {
+            content: '';
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 70%; /* ✨ 60% -> 70%로 키움 */
+            height: 70%; /* ✨ 60% -> 70%로 키움 */
+            border-radius: 50%;
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+            z-index: 10; /* 캔버스(5)보다 위에 있도록 z-index 추가 */
+        }
+
+        /* ✨ [제거] .color-red { background-color ... } 같은 셀 채우기 스타일 모두 제거 */
+        
+        /* 점(dot) 색상 스타일은 유지 (::after 에 적용) */
+        .board-cell.dot.color-red::after { background-color: #E74C3C; }
+        .board-cell.dot.color-green::after { background-color: #2ECC71; }
+        .board-cell.dot.color-blue::after { background-color: #3498DB; }
+        .board-cell.dot.color-yellow::after { background-color: #F1C40F; }
+        .board-cell.dot.color-orange::after { background-color: #E67E22; }
+        .board-cell.dot.color-purple::after { background-color: #9B59B6; }
+
+        /* 오버레이 및 모달 (기존과 동일) */
+        .overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            display: none; justify-content: center; align-items: center;
+            background-color: rgba(0,0,0,0.7);
+            z-index: 1000;
+        }
+        .overlay.active { display: flex; }
+        .modal-content {
+            background: #ecf0f1; color: #333;
+            padding: 30px; border-radius: 20px;
+            text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+        }
+        .modal-content h2 { font-size: 2em; margin-bottom: 20px; color: var(--primary-color); }
+        .modal-btn {
+            padding: 12px 25px; font-size: 1.1em; font-weight: 700;
+            border-radius: 10px; border: none; cursor: pointer;
+            margin: 0 10px;
+        }
+        .modal-btn.primary { background-color: var(--primary-color); color: white; }
+        .modal-btn.secondary { background-color: var(--accent-color); color: #333; }
+
+    </style>
+</head>
+<body>
+    <div id="game-wrapper">
+        <div id="game-header">
+            <button id="lobby-btn" class="header-btn">대기실</button>
+            <span id="level-info">Level 1</span>
+            <button id="reset-btn" class="header-btn">초기화</button>
+        </div>
+        <div id="game-container">
+            <div id="game-board">
+                <canvas id="path-canvas"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div id="level-clear-modal" class="overlay">
+        <div class="modal-content">
+            <h2>🎉 레벨 클리어!</h2>
+            <button id="next-level-btn" class="modal-btn primary">다음 레벨</button>
+        </div>
+    </div>
+    
+    <script>
+        document.addEventListener('contextmenu', event => event.preventDefault());
+        document.addEventListener('keydown', event => {
+            if (event.key === 'F12' ||
+                (event.ctrlKey && event.shiftKey && ['I', 'J', 'C'].includes(event.key.toUpperCase())) ||
+                (event.ctrlKey && event.key.toUpperCase() === 'U')) {
+                event.preventDefault();
+            }
+        });
+        setInterval(() => { try { debugger; } catch (e) {} }, 1000);
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const gameBoard = document.getElementById('game-board');
+            const levelInfo = document.getElementById('level-info');
+            const resetBtn = document.getElementById('reset-btn');
+            const lobbyBtn = document.getElementById('lobby-btn');
+            const levelClearModal = document.getElementById('level-clear-modal');
+            const nextLevelBtn = document.getElementById('next-level-btn');
+            
+            // ✨ [신규] 캔버스 변수 추가
+            const pathCanvas = document.getElementById('path-canvas');
+            const pathCtx = pathCanvas.getContext('2d');
+
+            // --- 레벨 데이터 ---
+            // s: start [row, col], e: end [row, col]
+            // --- 레벨 데이터 ---
+            // s: start [row, col], e: end [row, col]
+            const levels = [
+                {
+                    size: 5,
+                    dots: [
+                        { c: 'red', s: [0, 0], e: [4, 0] },     // ✨ 수정: (4, 4) -> (4, 0)
+                        { c: 'green', s: [1, 1], e: [3, 3] },
+                        { c: 'blue', s: [0, 4], e: [4, 4] },    // ✨ 수정: (4, 0) -> (4, 4)
+                    ]
+                },
+                {
+                    size: 6,
+                    dots: [
+                        { c: 'red', s: [0, 0], e: [3, 3] },
+                        { c: 'green', s: [1, 0], e: [4, 3] },
+                        { c: 'blue', s: [2, 0], e: [5, 3] },
+                        { c: 'yellow', s: [0, 5], e: [5, 5] },
+                    ]
+                },
+                {
+                    size: 7,
+                    dots: [
+                        { c: 'red', s: [0, 0], e: [6, 6] },
+                        { c: 'green', s: [1, 1], e: [5, 5] },
+                        { c: 'blue', s: [2, 2], e: [4, 4] },
+                        { c: 'yellow', s: [0, 3], e: [6, 3] },
+                        { c: 'orange', s: [3, 0], e: [3, 6] },
+                    ]
+                },
+            ];
+
+            let currentLevelIndex = 0;
+            let currentLevel;
+            let boardState = []; // 보드 2D 배열 (각 셀의 상태 저장)
+            let paths = {}; // 완성/진행중인 경로 저장
+            let dotMap = new Map(); // 점의 위치와 색상 저장
+
+            let isDrawing = false;
+            let currentColor = null;
+            let currentPath = []; // 현재 그리고 있는 경로 (셀 DOM 요소 저장)
+            let boardRect;
+            let cellSize;
+            
+            // ✨ [신규] 16진수 색상 반환 헬퍼 함수
+            function getHexColor(colorName) {
+                switch(colorName) {
+                    case 'red': return '#E74C3C';
+                    case 'green': return '#2ECC71';
+                    case 'blue': return '#3498DB';
+                    case 'yellow': return '#F1C40F';
+                    case 'orange': return '#E67E22';
+                    case 'purple': return '#9B59B6';
+                    default: return '#bdc3c7'; // 회색
+                }
+            }
+            
+            // ✨ [신규] 모든 경로를 캔버스에 그리는 함수
+            function drawPaths() {
+                pathCtx.clearRect(0, 0, pathCanvas.width, pathCanvas.height);
+                pathCtx.lineCap = 'round';
+                pathCtx.lineJoin = 'round';
+                
+                // 완성된 경로 + 현재 그리는 경로 모두 합치기
+                const pathsToDraw = [...Object.values(paths), currentPath];
+                const offset = cellSize / 2; // 셀의 중심으로 오프셋
+
+                pathsToDraw.forEach(path => {
+                    if (path.length < 1) return; // 경로가 비어있으면 스킵
+                    
+                    const color = path[0].color;
+                    pathCtx.strokeStyle = getHexColor(color);
+                    pathCtx.lineWidth = cellSize * 0.4; // ✨ 선 두께 30% -> 40%
+                    
+                    pathCtx.beginPath();
+                    
+                    let r = path[0].cell.dataset.row;
+                    let c = path[0].cell.dataset.col;
+                    pathCtx.moveTo(c * cellSize + offset, r * cellSize + offset);
+                    
+                    // 경로가 1개일 때(점 클릭)도 작은 원으로 표시
+                    if (path.length === 1) {
+                         pathCtx.fillStyle = getHexColor(color);
+                         pathCtx.arc(c * cellSize + offset, r * cellSize + offset, pathCtx.lineWidth / 3, 0, 2 * Math.PI);
+                         pathCtx.fill();
+                    }
+
+                    for (let i = 1; i < path.length; i++) {
+                        r = path[i].cell.dataset.row;
+                        c = path[i].cell.dataset.col;
+                        pathCtx.lineTo(c * cellSize + offset, r * cellSize + offset);
+                    }
+                    pathCtx.stroke();
+                });
+            }
+
+            function loadLevel(levelIndex) {
+                currentLevel = levels[levelIndex];
+                if (!currentLevel) {
+                    currentLevelIndex = 0;
+                    currentLevel = levels[0];
+                }
+                
+                levelInfo.textContent = `Level ${levelIndex + 1}`;
+                gameBoard.innerHTML = ''; // 보드 초기화
+                gameBoard.appendChild(pathCanvas); // ✨ 캔버스를 다시 추가
+                
+                boardState = [];
+                paths = {};
+                dotMap.clear();
+
+                const { size, dots } = currentLevel;
+                gameBoard.style.gridTemplateColumns = `repeat(${size}, 1fr)`;
+                gameBoard.style.gridTemplateRows = `repeat(${size}, 1fr)`;
+
+                // 1. 보드 셀과 2D 배열 초기화
+                for (let r = 0; r < size; r++) {
+                    const row = [];
+                    for (let c = 0; c < size; c++) {
+                        const cell = document.createElement('div');
+                        cell.className = 'board-cell';
+                        cell.dataset.row = r;
+                        cell.dataset.col = c;
+                        gameBoard.appendChild(cell);
+                        row.push({ cell, color: null, isDot: false });
+                    }
+                    boardState.push(row);
+                }
+
+                // 2. 점(dot) 배치
+                dots.forEach(dot => {
+                    const [sr, sc] = dot.s;
+                    const [er, ec] = dot.e;
+                    
+                    boardState[sr][sc].cell.classList.add('dot', `color-${dot.c}`);
+                    boardState[sr][sc].isDot = true;
+                    boardState[sr][sc].color = dot.c;
+                    
+                    boardState[er][ec].cell.classList.add('dot', `color-${dot.c}`);
+                    boardState[er][ec].isDot = true;
+                    boardState[er][ec].color = dot.c;
+
+                    dotMap.set(`${sr}-${sc}`, { color: dot.c, isEnd: false, pair: `${er}-${ec}` });
+                    dotMap.set(`${er}-${ec}`, { color: dot.c, isEnd: true, pair: `${sr}-${sc}` });
+                });
+                
+                // 3. 보드 및 캔버스 크기 캐싱
+                setTimeout(() => {
+                    boardRect = gameBoard.getBoundingClientRect();
+                    cellSize = boardRect.width / size;
+                    // ✨ 캔버스 크기를 보드 크기와 동일하게 설정
+                    pathCanvas.width = boardRect.width;
+                    pathCanvas.height = boardRect.height;
+                    drawPaths(); // ✨ 초기 경로(없음) 그리기
+                }, 0);
+            }
+
+            function getCellFromPos(x, y) {
+                if (!boardRect) return null; // boardRect가 로드되기 전이면 
+                
+                if (x < boardRect.left || x > boardRect.right || y < boardRect.top || y > boardRect.bottom) {
+                    return null;
+                }
+                const col = Math.floor((x - boardRect.left) / cellSize);
+                const row = Math.floor((y - boardRect.top) / cellSize);
+                
+                if (row >= 0 && row < currentLevel.size && col >= 0 && col < currentLevel.size) {
+                    return boardState[row][col];
+                }
+                return null;
+            }
+
+            function onDrawStart(e) {
+                e.preventDefault();
+                const pos = e.touches ? e.touches[0] : e;
+                const cellState = getCellFromPos(pos.clientX, pos.clientY);
+                
+                if (!cellState || !cellState.isDot) return; // 점 위에서만 시작 가능
+
+                isDrawing = true;
+                currentColor = cellState.color;
+                
+                // 이미 완성된 경로가 있다면 지우기
+                if (paths[currentColor]) {
+                    clearPath(currentColor);
+                }
+                
+                currentPath = [cellState];
+                // ✨ [수정] classList 대신 boardState에만 색상 저장
+                boardState[cellState.cell.dataset.row][cellState.cell.dataset.col].color = currentColor;
+                drawPaths(); // ✨ 캔버스 그리기
+            }
+
+            function onDrawMove(e) {
+                if (!isDrawing) return;
+                e.preventDefault();
+                
+                const pos = e.touches ? e.touches[0] : e;
+                const cellState = getCellFromPos(pos.clientX, pos.clientY);
+                
+                if (!cellState || cellState === currentPath[currentPath.length - 1]) {
+                    return; // 보드 밖이거나 같은 셀에 머무를 때
+                }
+                
+                const { row, col } = cellState.cell.dataset;
+                const cellKey = `${row}-${col}`;
+
+                // --- 1. 되감기 (Rewind) 로직 ---
+                const prevCellIndex = currentPath.findIndex(s => s === cellState);
+                if (prevCellIndex > -1) {
+                    // 현재 셀이 경로에 이미 존재하면, 그 지점까지 되감기
+                    const cellsToClear = currentPath.splice(prevCellIndex + 1);
+                    cellsToClear.forEach(s => {
+                        if (!s.isDot) { // 점이 아닌 셀만 색상 제거
+                            // ✨ [제거] classList 제거
+                            boardState[s.cell.dataset.row][s.cell.dataset.col].color = null;
+                        }
+                    });
+                    drawPaths(); // ✨ 캔버스 그리기
+                    return;
+                }
+
+                // --- 2. 경로 연장 (Extend) 로직 ---
+                
+                // 2-1. 다른 색상의 경로/점을 침범했는지 확인
+                if (cellState.color && cellState.color !== currentColor) {
+                    // 다른 색 경로를 침범함, 그리기 중단 (하지만 경로는 유지)
+                    onDrawEnd(e);
+                    return;
+                }
+
+                // 2-2. 인접한 셀인지 확인 (대각선 이동 방지)
+                const lastCell = currentPath[currentPath.length - 1];
+                const dRow = Math.abs(row - lastCell.cell.dataset.row);
+                const dCol = Math.abs(col - lastCell.cell.dataset.col);
+                if (dRow + dCol > 1) {
+                    return; // 대각선이거나 너무 멀리 점프함
+                }
+
+                // 2-3. 경로 추가
+                currentPath.push(cellState);
+                // ✨ [제거] classList 추가
+                boardState[row][col].color = currentColor;
+                drawPaths(); // ✨ 캔버스 그리기
+
+                // 2-4. 목표점에 도달했는지 확인
+                if (cellState.isDot && cellState.color === currentColor && currentPath.length > 1) {
+                    const startDotKey = `${currentPath[0].cell.dataset.row}-${currentPath[0].cell.dataset.col}`;
+                    const endDotInfo = dotMap.get(cellKey);
+                    
+                    // 시작점과 도착점이 올바른 쌍인지 확인
+                    if (endDotInfo.pair === startDotKey) {
+                        paths[currentColor] = [...currentPath]; // 경로 완성
+                        isDrawing = false;
+                        currentColor = null;
+                        currentPath = [];
+                        checkWin();
+                    }
+                }
+            }
+
+            function onDrawEnd(e) {
+                if (!isDrawing) return;
+                
+                // 경로가 완성되지 않았다면 (목표점에 도달 X)
+                if (currentColor && !paths[currentColor]) {
+                    clearPath(currentColor, false); // 임시 경로만 지움
+                }
+                
+                isDrawing = false;
+                currentColor = null;
+                currentPath = [];
+                drawPaths(); // ✨ 캔버스 정리
+            }
+            
+            function clearPath(color, clearCompleted = true) {
+                let path_to_clear = currentPath; // 기본값: 현재 그리던 경로
+                
+                if (clearCompleted && paths[color]) {
+                    path_to_clear = paths[color]; // 완성된 경로
+                    delete paths[color];
+                }
+
+                path_to_clear.forEach(cellState => {
+                    // 점(dot)이 아닌 셀만 색상을 지운다
+                    if (!cellState.isDot) {
+                        // ✨ [제거] classList 제거
+                        boardState[cellState.cell.dataset.row][cellState.cell.dataset.col].color = null;
+                    }
+                });
+                
+                drawPaths(); // ✨ 캔버스 다시 그리기
+            }
+
+            function resetGame() {
+                loadLevel(currentLevelIndex);
+            }
+
+            function checkWin() {
+                const { size, dots } = currentLevel;
+                
+                // 1. 모든 쌍이 연결되었는지?
+                if (Object.keys(paths).length !== dots.length) {
+                    return; // 아직 모든 경로가 완성되지 않음
+                }
+                
+                // 2. 모든 칸이 채워졌는지?
+                let filledCells = 0;
+                for (let r = 0; r < size; r++) {
+                    for (let c = 0; c < size; c++) {
+                        if (boardState[r][c].color) {
+                            filledCells++;
+                        }
+                    }
+                }
+
+                if (filledCells === size * size) {
+                    // --- 레벨 클리어 ---
+                    drawPaths(); // ✨ 승리 직전 마지막으로 한번 더 그림
+                    setTimeout(() => { // 0.1초 후 모달 표시
+                         levelClearModal.classList.add('active');
+                    }, 100);
+                }
+            }
+
+            // --- 이벤트 리스너 등록 ---
+            gameBoard.addEventListener('mousedown', onDrawStart);
+            gameBoard.addEventListener('mousemove', onDrawMove);
+            document.addEventListener('mouseup', onDrawEnd); // document에 걸어야 보드 밖에서 떼도 인식됨
+
+            gameBoard.addEventListener('touchstart', onDrawStart, { passive: false });
+            gameBoard.addEventListener('touchmove', onDrawMove, { passive: false });
+            gameBoard.addEventListener('touchend', onDrawEnd);
+
+            resetBtn.addEventListener('click', resetGame);
+            lobbyBtn.addEventListener('click', () => {
+                window.location.href = '대기실.html';
+            });
+            nextLevelBtn.addEventListener('click', () => {
+                currentLevelIndex++;
+                if (currentLevelIndex >= levels.length) {
+                    alert("모든 레벨을 클리어했습니다! 1레벨로 돌아갑니다.");
+                    currentLevelIndex = 0;
+                }
+                loadLevel(currentLevelIndex);
+                levelClearModal.classList.remove('active');
+            });
+            
+            // --- 초기 레벨 로드 ---
+            loadLevel(currentLevelIndex);
+            
+            // ✨ [수정] 리사이즈 이벤트 시 캔버스/보드 크기 재설정
+            window.addEventListener('resize', () => {
+                 setTimeout(() => {
+                    boardRect = gameBoard.getBoundingClientRect();
+                    cellSize = boardRect.width / currentLevel.size;
+                    pathCanvas.width = boardRect.width;
+                    pathCanvas.height = boardRect.height;
+                    drawPaths(); // 리사이즈 후 캔버스 다시 그리기
+                }, 100);
+            });
+        });
+    </script>
+</body>
+</html>
