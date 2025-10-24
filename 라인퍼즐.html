@@ -249,7 +249,7 @@
                     
                     const color = path[0].color;
                     pathCtx.strokeStyle = getHexColor(color);
-                    pathCtx.lineWidth = cellSize * 0.4; // ✨ 선 두께 30% -> 40%
+                    pathCtx.lineWidth = cellSize * 0.2; // ✨ 선 두께 30% -> 40%
                     
                     pathCtx.beginPath();
                     
@@ -418,38 +418,48 @@
 
                 // 2-3. 경로 추가
                 currentPath.push(cellState);
-                // ✨ [제거] classList 추가
                 boardState[row][col].color = currentColor;
                 drawPaths(); // ✨ 캔버스 그리기
 
-                // 2-4. 목표점에 도달했는지 확인
-                if (cellState.isDot && cellState.color === currentColor && currentPath.length > 1) {
-                    const startDotKey = `${currentPath[0].cell.dataset.row}-${currentPath[0].cell.dataset.col}`;
-                    const endDotInfo = dotMap.get(cellKey);
-                    
-                    // 시작점과 도착점이 올바른 쌍인지 확인
-                    if (endDotInfo.pair === startDotKey) {
-                        paths[currentColor] = [...currentPath]; // 경로 완성
-                        isDrawing = false;
-                        currentColor = null;
-                        currentPath = [];
-                        checkWin();
-                    }
-                }
+                // ✨ [수정] 2-4 목표점 도달 확인 로직 (onDrawEnd로 이동시킴)
+                // (이하 코드 블록 전체 삭제)
+
             }
 
             function onDrawEnd(e) {
                 if (!isDrawing) return;
                 
-                // 경로가 완성되지 않았다면 (목표점에 도달 X)
-                if (currentColor && !paths[currentColor]) {
+                let pathCompleted = false;
+                
+                // 1. 경로가 완성되었는지 손을 뗀 시점에서 확인
+                if (currentColor && currentPath.length > 1) {
+                    const startCell = currentPath[0];
+                    const endCell = currentPath[currentPath.length - 1];
+                    const startKey = `${startCell.cell.dataset.row}-${startCell.cell.dataset.col}`;
+                    const endKey = `${endCell.cell.dataset.row}-${endCell.cell.dataset.col}`;
+                    
+                    const endDotInfo = dotMap.get(endKey);
+
+                    // 1. 끝점이 점인가? 2. 색이 같은가? 3. 올바른 짝인가?
+                    if (endCell.isDot && endCell.color === currentColor && endDotInfo && endDotInfo.pair === startKey) {
+                        paths[currentColor] = [...currentPath]; // 경로 완성
+                        pathCompleted = true;
+                    }
+                }
+
+                // 2. 경로가 완성되지 않았다면 (중간에 손을 뗐다면)
+                if (!pathCompleted && currentColor) {
                     clearPath(currentColor, false); // 임시 경로만 지움
                 }
                 
                 isDrawing = false;
                 currentColor = null;
                 currentPath = [];
-                drawPaths(); // ✨ 캔버스 정리
+                
+                drawPaths(); // 캔버스 정리
+                
+                // ✨ [BUGFIX] 모든 로직이 끝난 후, 여기서 승리 체크
+                checkWin();
             }
             
             function clearPath(color, clearCompleted = true) {
