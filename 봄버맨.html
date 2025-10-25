@@ -15,6 +15,9 @@
             --path-color: #27ae60; /* 잔디 바닥 */
             --player1-color: #3498db;
             --player2-color: #e74c3c;
+            --explosion-color: rgba(255, 80, 80, 0.7); /* 폭발 효과 */
+            --item-bomb-color: #9b59b6;
+            --item-range-color: #f1c40f;
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         html, body {
@@ -40,6 +43,7 @@
         .player-info { display: flex; align-items: center; gap: 8px; }
         .player-avatar { font-size: 1.5em; }
         .player-avatar img { width: 32px; height: 32px; border-radius: 50%; }
+        .player-stats { font-size: 0.8em; display: flex; gap: 5px; margin-left: 5px;}
 
         #game-container {
             width: 100%; flex-grow: 1;
@@ -61,19 +65,35 @@
             position: absolute;
             width: calc(100% / 11); 
             height: calc(100% / 15);
+            transition: background-color 0.2s linear; 
         }
-        .wall { background-color: var(--wall-color); }
-        .path { background-color: var(--path-color); }
+        .wall { background-color: var(--wall-color); z-index: 1;}
+        .path { background-color: var(--path-color); z-index: 1;}
         .crate { 
             background-color: var(--crate-color); 
             border: 1px solid rgba(0,0,0,0.3);
             box-shadow: inset 2px 2px 5px rgba(255,255,255,0.2), inset -2px -2px 5px rgba(0,0,0,0.2);
+            z-index: 1;
+        }
+        .explosion {
+            position: absolute;
+             /* ✨ [수정] top, left 추가 */
+            top: 0;
+            left: 0;
+            background-color: var(--explosion-color);
+            z-index: 20; 
+            animation: fade-out 0.5s forwards;
+            pointer-events: none; 
+            border-radius: 20%;
+        }
+        @keyframes fade-out {
+            from { opacity: 1; transform: scale(1); }
+            to { opacity: 0; transform: scale(0.8); }
         }
 
-        /* ✨ [신규] 폭탄 스타일 */
         .bomb {
             position: absolute;
-            /* ✨ [수정] top, left 추가 */
+             /* ✨ [수정] top, left 추가 */
             top: 0;
             left: 0;
             width: calc(100% / 11);
@@ -82,10 +102,30 @@
             display: flex; justify-content: center; align-items: center;
             font-size: calc(100vh / 25); 
             transition: transform 0.1s linear;
-            /* ✨ [수정] 애니메이션 임시 주석 처리 */
-            /* animation: pulse-bomb 1s infinite; */
+            /* animation: pulse-bomb 1s infinite; */ /* 애니메이션 임시 제거 */
         }
-        /* @keyframes pulse-bomb is not needed if animation is removed */
+        /* @keyframes pulse-bomb { ... } */
+
+        .item {
+            position: absolute;
+            width: calc(100% / 11);
+            height: calc(100% / 15);
+            z-index: 6; 
+            display: flex; justify-content: center; align-items: center;
+            font-size: calc(100vh / 28);
+            border-radius: 50%;
+            opacity: 0.9;
+        }
+        .item-bomb { background-color: var(--item-bomb-color); }
+        .item-range { background-color: var(--item-range-color); }
+        .item-balloon { 
+             animation: float 2s ease-in-out infinite;
+        }
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-5px); }
+            100% { transform: translateY(0px); }
+        }
 
         .player {
             position: absolute;
@@ -95,11 +135,15 @@
             z-index: 10;
             display: flex; justify-content: center; align-items: center;
             font-size: 0.8em;
-            transition: transform 0.1s linear;
+            transition: transform 0.1s linear, opacity 0.3s ease; 
         }
         .player-avatar-img {
             width: 90%; height: 90%;
             object-fit: contain; border-radius: 50%;
+        }
+        .player.dead {
+            opacity: 0.5;
+            pointer-events: none; 
         }
 
         #controls-container {
@@ -146,6 +190,27 @@
             background-color: rgba(255, 80, 80, 0.9);
             transform: scale(0.95);
         }
+        
+        .overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            display: none; flex-direction: column; justify-content: center; align-items: center;
+            background-color: rgba(0,0,0,0.7);
+            z-index: 1000;
+        }
+        .overlay.active { display: flex; }
+        .modal-content {
+            background: #ecf0f1; color: #333;
+            padding: 30px; border-radius: 20px;
+            text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+        }
+        .modal-content h2 { font-size: 2em; margin-bottom: 20px; color: var(--primary-color); }
+        .modal-btn {
+            padding: 12px 25px; font-size: 1.1em; font-weight: 700;
+            border-radius: 10px; border: none; cursor: pointer;
+            margin: 10px;
+        }
+        .modal-btn.primary { background-color: var(--primary-color); color: white; }
+        .modal-btn.secondary { background-color: #bdc3c7; color: #333; }
     </style>
 </head>
 <body>
@@ -167,7 +232,12 @@
     
     <button id="bomb-btn">💣</button>
     
-    <div id="info-overlay" class="overlay" style="display: none;"></div>
+    <div id="game-over-modal" class="overlay">
+        <div class="modal-content">
+            <h2 id="game-over-message"></h2>
+            <button id="lobby-btn" class="modal-btn secondary">대기실로</button>
+        </div>
+    </div>
 
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
@@ -177,7 +247,8 @@
         document.addEventListener('contextmenu', event => event.preventDefault());
 
         document.addEventListener('DOMContentLoaded', () => {
-            const firebaseConfig = {
+            // ... (Firebase 설정 등 이전 코드와 동일) ...
+             const firebaseConfig = {
                 apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
                 authDomain: "goodluck-7c14b.firebaseapp.com",
                 databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com",
@@ -194,12 +265,18 @@
 
             const gameBoard = document.getElementById('game-board');
             const gameHeader = document.getElementById('game-header');
+            const gameOverModal = document.getElementById('game-over-modal');
+            const gameOverMessage = document.getElementById('game-over-message');
+            const lobbyBtn = document.getElementById('lobby-btn');
             
             let myPlayerId, myNickname, myAvatar, roomRef, isHost;
             let currentRoomData = {};
             let playerElements = {}; 
             let bombElements = {}; 
+            let itemElements = {}; 
+            let explosionElements = {}; 
             let mapGrid = []; 
+            let mapElements = []; 
             let TILE_WIDTH = 0;
             let TILE_HEIGHT = 0;
             
@@ -210,11 +287,18 @@
             let moveInterval = null; 
             const MOVE_SPEED = 150; 
             
-            // ✨ [신규] 서버 시간 오프셋 변수
             let serverTimeOffset = 0;
+            
+            const ITEM_TYPES = {
+                BOMB_COUNT: 'bomb',
+                BOMB_RANGE: 'range'
+            };
+            const ITEM_ICONS = {
+                [ITEM_TYPES.BOMB_COUNT]: '💣',
+                [ITEM_TYPES.BOMB_RANGE]: '🔥'
+            };
 
             function initialize() {
-                // ✨ [신규] 서버 시간 오프셋 계산 (게임 시작 전에 한번만)
                 const offsetRef = db.ref(".info/serverTimeOffset");
                 offsetRef.on("value", (snap) => {
                     serverTimeOffset = snap.val();
@@ -267,16 +351,27 @@
             }
             
             function setupGameLayout() {
-                TILE_WIDTH = gameBoard.clientWidth / GRID_COLS;
-                TILE_HEIGHT = gameBoard.clientHeight / GRID_ROWS;
-                
-                if (isHost && !currentRoomData.map) {
-                    generateMap();
-                    renderMap(); 
-                }
+                // ✨ [수정] 맵이 화면에 맞춰진 후 크기 계산
+                requestAnimationFrame(() => {
+                    TILE_WIDTH = gameBoard.clientWidth / GRID_COLS;
+                    TILE_HEIGHT = gameBoard.clientHeight / GRID_ROWS;
+                    console.log(`[setupGameLayout] Tile Size: W=${TILE_WIDTH.toFixed(1)}, H=${TILE_HEIGHT.toFixed(1)}`);
+
+                    if (isHost && !currentRoomData.map) {
+                        generateMap();
+                        renderMap(); 
+                    } else if (currentRoomData.map && mapGrid.length > 0) {
+                        // 이미 맵 데이터는 있지만 크기 계산이 늦었을 경우 강제 리렌더링
+                         renderMap();
+                         renderPlayers(currentRoomData.players);
+                         renderBombs(currentRoomData.bombs);
+                         renderItems(currentRoomData.items);
+                    }
+                });
             }
 
-            function generateMap() {
+            // ... (generateMap 함수는 이전과 동일) ...
+             function generateMap() {
                 mapGrid = [];
                 let player1Pos = { r: GRID_ROWS - 2, c: Math.floor(GRID_COLS / 2) }; 
                 let player2Pos = { r: 1, c: Math.floor(GRID_COLS / 2) }; 
@@ -317,29 +412,48 @@
                 const guestId = playerIds.find(id => id !== hostId);
                 
                 let playersData = { ...currentRoomData.players };
-                playersData[hostId] = { ...playersData[hostId], r: player1Pos.r, c: player1Pos.c };
+                playersData[hostId] = { ...playersData[hostId], r: player1Pos.r, c: player1Pos.c, stats: { maxBombs: 1, bombRange: 1, isAlive: true } };
                 if (guestId && playersData[guestId]) {
-                    playersData[guestId] = { ...playersData[guestId], r: player2Pos.r, c: player2Pos.c };
+                    playersData[guestId] = { ...playersData[guestId], r: player2Pos.r, c: player2Pos.c, stats: { maxBombs: 1, bombRange: 1, isAlive: true } };
                 }
+
+                let initialItems = {};
+                const itemTypes = [ITEM_TYPES.BOMB_COUNT, ITEM_TYPES.BOMB_RANGE];
+                initialItems[roomRef.child('items').push().key] = {
+                    r: GRID_ROWS - 2, c: 1, type: itemTypes[Math.floor(Math.random() * itemTypes.length)], isVisible: true, isBalloon: true
+                };
+                 initialItems[roomRef.child('items').push().key] = {
+                    r: 1, c: GRID_COLS - 2, type: itemTypes[Math.floor(Math.random() * itemTypes.length)], isVisible: true, isBalloon: true
+                };
 
                 roomRef.update({
                     map: mapGrid,
-                    players: playersData
+                    players: playersData,
+                    items: initialItems, 
+                    status: 'playing' 
                 });
             }
 
             function listenToRoomChanges() {
                 roomRef.on('value', snapshot => {
                     if (!snapshot.exists()) {
-                        alert("방장이 나갔습니다.");
-                        window.location.href = '대기실.html';
+                        if (gameOverModal.style.display !== 'flex') {
+                            alert("방장이 나갔습니다.");
+                            window.location.href = '대기실.html';
+                        }
                         return;
                     }
                     
+                    const oldStatus = currentRoomData.status;
                     currentRoomData = snapshot.val();
                     
-                    if (currentRoomData.map && mapGrid.length === 0) {
-                        mapGrid = currentRoomData.map;
+                    // ✨ 맵 데이터 변경 시 시각 효과 업데이트
+                    if (currentRoomData.map && mapGrid.length > 0 && JSON.stringify(mapGrid) !== JSON.stringify(currentRoomData.map)) {
+                         console.log("Map data changed, updating visuals.");
+                        updateMapVisuals(currentRoomData.map);
+                    } else if (currentRoomData.map && mapGrid.length === 0) {
+                         console.log("Initial map data received.");
+                         mapGrid = currentRoomData.map;
                         if (TILE_WIDTH > 0) {
                             renderMap();
                         } else {
@@ -353,27 +467,67 @@
                     }
                     
                     renderBombs(currentRoomData.bombs);
+                    renderItems(currentRoomData.items); 
+                    
+                    if (currentRoomData.status === 'gameOver' && oldStatus !== 'gameOver') {
+                        showGameOver(currentRoomData.winner);
+                    }
                 });
             }
 
-            function renderMap() {
+             function renderMap() {
+                console.log("[renderMap] Rendering map...");
                 gameBoard.innerHTML = '';
+                mapElements = []; 
                 mapGrid.forEach((row, r) => {
+                    const rowElements = [];
                     row.forEach((tileType, c) => {
                         const cell = document.createElement('div');
                         cell.className = 'grid-cell';
-                        if (tileType === 1) {
-                            cell.classList.add('wall');
-                        } else if (tileType === 2) {
-                            cell.classList.add('crate');
+                        cell.dataset.r = r; 
+                        cell.dataset.c = c;
+                        
+                        if (tileType === 1) cell.classList.add('wall');
+                        else if (tileType === 2) cell.classList.add('crate');
+                        else cell.classList.add('path');
+                        
+                        // ✨ [수정] 크기 계산 후 적용 보장
+                        if(TILE_WIDTH > 0 && TILE_HEIGHT > 0){
+                            cell.style.transform = `translate(${c * TILE_WIDTH}px, ${r * TILE_HEIGHT}px)`;
                         } else {
-                            cell.classList.add('path');
+                             console.warn(`[renderMap] Tile size zero during cell creation at ${r},${c}`);
                         }
                         
-                        cell.style.transform = `translate(${c * TILE_WIDTH}px, ${r * TILE_HEIGHT}px)`;
                         gameBoard.appendChild(cell);
+                        rowElements.push(cell); 
                     });
+                    mapElements.push(rowElements); 
                 });
+            }
+            
+            function updateMapVisuals(newMapData) {
+                console.log("[updateMapVisuals] Updating map visuals...");
+                if (!mapElements.length) {
+                     console.warn("[updateMapVisuals] mapElements not ready.");
+                     return;
+                }
+                for (let r = 0; r < GRID_ROWS; r++) {
+                    for (let c = 0; c < GRID_COLS; c++) {
+                        // ✨ mapElements[r] 존재 확인
+                        if (!mapElements[r] || !mapElements[r][c]) continue; 
+                        
+                        const cellEl = mapElements[r][c];
+                        const oldType = mapGrid[r]?.[c]; // 이전 맵 데이터 안전하게 접근
+                        const newType = newMapData[r]?.[c]; // 새 맵 데이터 안전하게 접근
+                        
+                        if (oldType === 2 && newType === 0) { 
+                            console.log(`[updateMapVisuals] Crate destroyed at ${r},${c}`);
+                            cellEl.classList.remove('crate');
+                            cellEl.classList.add('path');
+                        }
+                    }
+                }
+                mapGrid = newMapData; 
             }
             
             function renderPlayers(players) {
@@ -409,64 +563,101 @@
                     const x = pData.c * TILE_WIDTH;
                     const y = pData.r * TILE_HEIGHT;
                     playerEl.style.transform = `translate(${x}px, ${y}px)`;
+                    playerEl.classList.toggle('dead', !pData.stats?.isAlive);
                 });
             }
-
-            // ✨ [수정] 폭탄 렌더링 (타이머 로직 변경)
-            function renderBombs(bombsData) {
-                // ✨ 1. 타일 크기 확실히 계산 (함수 시작 시)
-                if (TILE_WIDTH === 0 || TILE_HEIGHT === 0) {
-                    TILE_WIDTH = gameBoard.clientWidth / GRID_COLS;
-                    TILE_HEIGHT = gameBoard.clientHeight / GRID_ROWS;
-                    if (TILE_WIDTH === 0 || TILE_HEIGHT === 0) {
-                        console.warn("[renderBombs] TILE size still zero, delaying render.");
-                        // ✨ 크기 계산될 때까지 50ms 후 재시도
-                        setTimeout(() => renderBombs(currentRoomData.bombs), 50); 
-                        return; 
+            
+            function renderItems(itemsData) {
+                if (!itemsData) itemsData = {};
+                if (TILE_WIDTH === 0) return;
+                
+                const itemsOnScreen = {};
+                for (const itemId in itemsData) {
+                    const iData = itemsData[itemId];
+                    itemsOnScreen[itemId] = true;
+                    
+                    let itemEl = itemElements[itemId];
+                    if (!itemEl) {
+                        itemEl = document.createElement('div');
+                        itemEl.id = itemId;
+                        itemEl.className = 'item';
+                        itemEl.textContent = ITEM_ICONS[iData.type] || '?';
+                        itemEl.classList.add(`item-${iData.type}`);
+                        if (iData.isBalloon) {
+                            itemEl.classList.add('item-balloon');
+                        }
+                        gameBoard.appendChild(itemEl);
+                        itemElements[itemId] = itemEl;
                     }
-                     console.log(`[renderBombs] TILE Size Calculated: W=${TILE_WIDTH.toFixed(1)}, H=${TILE_HEIGHT.toFixed(1)}`);
+                    
+                    itemEl.style.transform = `translate(${iData.c * TILE_WIDTH}px, ${iData.r * TILE_HEIGHT}px)`;
+                }
+                
+                for (const itemId in itemElements) {
+                    if (!itemsOnScreen[itemId]) {
+                        itemElements[itemId].remove();
+                        delete itemElements[itemId];
+                    }
+                }
+            }
+
+            // ✨ [수정] renderBombs (DOM 생성 후 transform 적용)
+            function renderBombs(bombsData) {
+                if (TILE_WIDTH === 0 || TILE_HEIGHT === 0) {
+                    // 재계산 시도
+                     TILE_WIDTH = gameBoard.clientWidth / GRID_COLS;
+                     TILE_HEIGHT = gameBoard.clientHeight / GRID_ROWS;
+                    if (TILE_WIDTH === 0 || TILE_HEIGHT === 0){
+                         // console.warn("[renderBombs] Tile size still zero.");
+                         return; 
+                    }
                 }
                 
                 if (!bombsData) bombsData = {};
-                
                 const now = Date.now() + serverTimeOffset; 
                 const bombsOnScreen = {}; 
 
                 for (const bombId in bombsData) {
                     const bData = bombsData[bombId];
-                    
-                    // ✨ 2. 데이터 유효성 검사 강화
-                    if (typeof bData.r !== 'number' || typeof bData.c !== 'number' || typeof bData.placedAt !== 'number') {
-                        console.warn(`[renderBombs] Invalid or incomplete data for bomb ${bombId}:`, bData);
-                        continue; 
-                    }
-                    
+                    if (typeof bData.r !== 'number' || typeof bData.c !== 'number' || typeof bData.placedAt !== 'number') continue; 
                     bombsOnScreen[bombId] = true; 
                     
                     let bombEl = bombElements[bombId];
+                    // ✨ DOM 생성 로직 수정: 생성 후 즉시 transform 적용
                     if (!bombEl) {
                         bombEl = document.createElement('div');
                         bombEl.id = bombId;
                         bombEl.className = 'bomb';
                         bombEl.textContent = '💣';
                         bombEl.style.fontSize = `${TILE_HEIGHT * 0.8}px`;
-                        gameBoard.appendChild(bombEl);
+                        // ✨ 먼저 DOM에 추가
+                        gameBoard.appendChild(bombEl); 
                         bombElements[bombId] = bombEl;
+                        
+                        // ✨ 추가한 직후에 위치 계산 및 적용
+                        const bombR = Number(bData.r);
+                        const bombC = Number(bData.c);
+                        if (!isNaN(bombR) && !isNaN(bombC)) {
+                             const bombX = bombC * TILE_WIDTH;
+                             const bombY = bombR * TILE_HEIGHT;
+                             // console.log(`[renderBombs] Initial position for ${bombId}: translate(${bombX.toFixed(1)}px, ${bombY.toFixed(1)}px)`);
+                             bombEl.style.transform = `translate(${bombX}px, ${bombY}px)`;
+                        } else {
+                             console.error(`[renderBombs] Invalid coords during creation for ${bombId}`);
+                        }
+                        
+                    } else {
+                         // ✨ 이미 존재하는 DOM이면 위치만 업데이트
+                        const bombR = Number(bData.r);
+                        const bombC = Number(bData.c);
+                         if (!isNaN(bombR) && !isNaN(bombC)) {
+                             const bombX = bombC * TILE_WIDTH;
+                             const bombY = bombR * TILE_HEIGHT;
+                             // console.log(`[renderBombs] Updating position for ${bombId}: translate(${bombX.toFixed(1)}px, ${bombY.toFixed(1)}px)`);
+                             bombEl.style.transform = `translate(${bombX}px, ${bombY}px)`;
+                        }
                     }
                     
-                    // ✨ 3. 최종 좌표 계산 및 로그 출력 (소수점 포함)
-                    const bombR = bData.r; // 이미 number 타입임 (위에서 검사)
-                    const bombC = bData.c;
-                    const bombX = bombC * TILE_WIDTH;
-                    const bombY = bombR * TILE_HEIGHT;
-                    
-                    // ✨ 결정적인 로그: 여기서 r, c, x, y 값이 어떻게 나오는지 확인!
-                    console.log(`[renderBombs] Applying transform for ${bombId}: r=${bombR}, c=${bombC} => translate(${bombX.toFixed(1)}px, ${bombY.toFixed(1)}px)`); 
-                    
-                    // ✨ 4. 스타일 적용
-                    bombEl.style.transform = `translate(${bombX}px, ${bombY}px)`;
-                    
-                    // 호스트 타이머 체크
                     if (isHost) {
                         const timeElapsed = now - bData.placedAt;
                         if (timeElapsed > 3000) { 
@@ -475,11 +666,9 @@
                     }
                 }
                 
-                // DOM 정리 로직 (이전과 동일)
                 for (const bombId in bombElements) {
                     if (!bombsOnScreen[bombId]) { 
-                        if (bombElements[bombId]) { // ✨ 요소가 실제 존재하는지 확인 후 제거
-                             console.log(`[renderBombs] Removing DOM for ${bombId}`);
+                        if (bombElements[bombId]) {
                             bombElements[bombId].remove();
                             delete bombElements[bombId]; 
                         }
@@ -487,56 +676,151 @@
                 }
             }
 
-            // ✨ [수정] placeBomb 함수는 이전과 동일 (BUGFIX 이미 적용됨)
             function placeBomb() {
-                if (!currentRoomData.players || !currentRoomData.players[myPlayerId]) return;
+                if (!currentRoomData.players || !currentRoomData.players[myPlayerId] || !currentRoomData.players[myPlayerId].stats) return;
                 
+                const myStats = currentRoomData.players[myPlayerId].stats;
                 const myPos = currentRoomData.players[myPlayerId];
                 
-                // ✨ 로그 추가: 현재 플레이어 위치 확인
-                console.log(`[placeBomb] myPos: r=${myPos.r}, c=${myPos.c}`);
-                
-                if (myPos.r === undefined || myPos.c === undefined) {
-                    console.warn("[placeBomb] 플레이어 위치 정보 없음, 설치 불가");
-                    return; 
-                }
+                if (myPos.r === undefined || myPos.c === undefined || !myStats.isAlive) return; 
                 
                 const myBombs = Object.values(currentRoomData.bombs || {}).filter(b => b.owner === myPlayerId).length;
-                if (myBombs >= 1) {
-                     console.log("[placeBomb] 이미 설치된 폭탄 있음");
+                if (myBombs >= myStats.maxBombs) {
                     return; 
                 }
                 
                 const bombId = roomRef.child('bombs').push().key;
                 const bombData = {
                     owner: myPlayerId,
-                    r: myPos.r, // ✨ 이 값이 정확해야 함
-                    c: myPos.c, // ✨ 이 값이 정확해야 함
+                    r: myPos.r,
+                    c: myPos.c,
                     placedAt: firebase.database.ServerValue.TIMESTAMP 
                 };
                 
-                // ✨ 로그 추가: Firebase에 저장할 폭탄 데이터 확인
-                console.log(`[placeBomb] 저장할 데이터: bombId=${bombId}, r=${bombData.r}, c=${bombData.c}`);
-                
                 roomRef.child('bombs/' + bombId).set(bombData);
             }
-
-
             
-            function explodeBomb(bombId, bData) {
-                // (2단계: 여기서 화염 생성, 블록 파괴, 플레이어 사망 로직 추가)
+             function explodeBomb(bombId, bData) {
+                if (!isHost) return; 
                 
-                // ✨ [BUGFIX] Add confirmation/error logging for removal
-                console.log(`[explodeBomb] Attempting to remove bomb ${bombId} from Firebase.`);
-                roomRef.child('bombs/' + bombId).remove()
-                    .then(() => {
-                        console.log(`[explodeBomb] Successfully removed bomb ${bombId} from Firebase.`);
-                    })
-                    .catch((error) => {
-                        console.error(`[explodeBomb] Error removing bomb ${bombId}:`, error);
-                    });
+                console.log(`[explodeBomb] Processing ${bombId}`);
+                roomRef.child('bombs/' + bombId).remove();
                 
-                // Note: The visual removal from the screen happens in renderBombs' cleanup logic
+                const explosionTiles = []; 
+                const ownerStats = currentRoomData.players[bData.owner]?.stats;
+                const range = ownerStats ? ownerStats.bombRange : 1; 
+                
+                explosionTiles.push({ r: bData.r, c: bData.c }); 
+                
+                const directions = [[-1, 0], [1, 0], [0, -1], [0, 1]]; 
+                directions.forEach(([dr, dc]) => {
+                    for (let i = 1; i <= range; i++) {
+                        const r = bData.r + dr * i;
+                        const c = bData.c + dc * i;
+                        if (r < 0 || r >= GRID_ROWS || c < 0 || c >= GRID_COLS) break; 
+                        
+                        // ✨ mapGrid 직접 접근 대신 currentRoomData.map 사용
+                        const tileType = currentRoomData.map?.[r]?.[c]; 
+                        // ✨ 유효하지 않은 타일이면 중단
+                        if (tileType === undefined) break; 
+
+                        explosionTiles.push({ r, c });
+                        
+                        if (tileType === 1) break; 
+                        if (tileType === 2) break; 
+                    }
+                });
+                
+                const updates = {};
+                let newItemKey = null; 
+                
+                explosionTiles.forEach(tile => {
+                    // ✨ 폭발 효과 함수 호출 시점 변경: 업데이트 전 호출
+                    showExplosionEffect(tile.r, tile.c); 
+                    
+                    // ✨ mapGrid 직접 접근 대신 currentRoomData.map 사용
+                    const currentTileType = currentRoomData.map?.[tile.r]?.[tile.c];
+
+                    if (currentTileType === 2) { // 나무상자 파괴
+                        updates[`map/${tile.r}/${tile.c}`] = 0; 
+                        if (Math.random() < 0.3) {
+                            newItemKey = roomRef.child('items').push().key;
+                            updates[`items/${newItemKey}`] = {
+                                r: tile.r, c: tile.c,
+                                type: Math.random() < 0.5 ? ITEM_TYPES.BOMB_COUNT : ITEM_TYPES.BOMB_RANGE,
+                                isVisible: true, isBalloon: false 
+                            };
+                        }
+                    }
+                    
+                    // 플레이어 사망 처리
+                    for (const playerId in currentRoomData.players) {
+                        const pData = currentRoomData.players[playerId];
+                        // ✨ stats 존재 확인 추가
+                        if (pData.stats?.isAlive && pData.r === tile.r && pData.c === tile.c) {
+                            updates[`players/${playerId}/stats/isAlive`] = false;
+                            console.log(`Player ${playerId} hit by explosion!`);
+                        }
+                    }
+                });
+                
+                if (Object.keys(updates).length > 0) {
+                    roomRef.update(updates).then(() => { checkWinCondition(); });
+                } else {
+                     checkWinCondition();
+                }
+            }
+            
+            // ✨ [수정] showExplosionEffect (크기/위치 설정 보강)
+            function showExplosionEffect(r, c) {
+                 if (TILE_WIDTH === 0 || TILE_HEIGHT === 0) {
+                     console.warn("[showExplosionEffect] Tile size zero, cannot show effect.");
+                     return;
+                 }
+                const effectId = `exp-${r}-${c}-${Date.now()}`; 
+                const explosionEl = document.createElement('div');
+                explosionEl.id = effectId;
+                explosionEl.className = 'explosion';
+                
+                // ✨ 크기와 위치를 명확하게 설정
+                explosionEl.style.width = `${TILE_WIDTH}px`;
+                explosionEl.style.height = `${TILE_HEIGHT}px`;
+                explosionEl.style.transform = `translate(${c * TILE_WIDTH}px, ${r * TILE_HEIGHT}px)`;
+                
+                gameBoard.appendChild(explosionEl);
+                
+                setTimeout(() => {
+                    // ✨ 제거 시 요소가 아직 존재하는지 확인
+                    const elToRemove = document.getElementById(effectId);
+                    if(elToRemove) elToRemove.remove();
+                }, 500);
+            }
+            
+            function checkWinCondition() {
+                if (!isHost || !currentRoomData.players) return;
+                const alivePlayers = Object.entries(currentRoomData.players)
+                                         .filter(([id, pData]) => pData.stats?.isAlive);
+                if (alivePlayers.length <= 1 && currentRoomData.status !== 'gameOver') { // ✨ 중복 호출 방지
+                    let winnerId = alivePlayers.length === 1 ? alivePlayers[0][0] : null;
+                    console.log(`Game Over! Winner: ${winnerId || 'Draw'}`);
+                    roomRef.update({ status: 'gameOver', winner: winnerId });
+                }
+            }
+            
+            function showGameOver(winnerId) {
+                let message = "무승부!";
+                if (winnerId) {
+                    const winnerData = currentRoomData.players[winnerId];
+                    const winnerName = winnerData?.nickname || (winnerId === myPlayerId ? myNickname : '상대방');
+                    message = `🎉 ${winnerName} 승리! 🎉`;
+                }
+                gameOverMessage.textContent = message;
+                gameOverModal.classList.add('active');
+                
+                const lobbyBtnGameOver = gameOverModal.querySelector('#lobby-btn');
+                 // ✨ 이벤트 리스너 중복 방지
+                lobbyBtnGameOver.replaceWith(lobbyBtnGameOver.cloneNode(true)); 
+                gameOverModal.querySelector('#lobby-btn').onclick = () => { window.location.href = '대기실.html'; };
             }
 
             function updateHeader(players) {
@@ -553,7 +837,15 @@
                     } else {
                         avatarEl.textContent = pData.avatar;
                     }
+                    
+                    const statsEl = document.createElement('div');
+                    statsEl.className = 'player-stats';
+                    if (pData.stats) {
+                        statsEl.innerHTML = `<span>💣 ${pData.stats.maxBombs}</span> <span>🔥 ${pData.stats.bombRange}</span>`;
+                    }
+                    
                     pInfo.appendChild(avatarEl);
+                    pInfo.appendChild(statsEl); 
                     gameHeader.appendChild(pInfo);
                 });
             }
@@ -569,6 +861,7 @@
                 Object.values(dPadButtons).forEach(btn => {
                     const start = (e) => {
                         e.preventDefault();
+                        if (currentRoomData?.players?.[myPlayerId]?.stats?.isAlive === false) return; 
                         Object.values(dPadButtons).forEach(b => b.el.classList.remove('active'));
                         btn.el.classList.add('active');
                         startContinuousMove(btn.dir, btn.x, btn.y);
@@ -590,6 +883,7 @@
                 document.getElementById('bomb-btn').addEventListener('click', placeBomb);
                 
                 document.addEventListener('keydown', (e) => {
+                     if (currentRoomData?.players?.[myPlayerId]?.stats?.isAlive === false) return; 
                     switch(e.key) {
                         case 'ArrowUp': e.preventDefault(); startContinuousMove('up', 0, -1); break;
                         case 'ArrowDown': e.preventDefault(); startContinuousMove('down', 0, 1); break;
@@ -624,22 +918,47 @@
             }
 
             function tryMove(dc, dr) {
-                if (!currentRoomData.players || !currentRoomData.players[myPlayerId]) return;
+                if (!currentRoomData.players || !currentRoomData.players[myPlayerId] || !currentRoomData.players[myPlayerId].stats?.isAlive) return;
                 const myPos = currentRoomData.players[myPlayerId];
                 if (myPos.r === undefined) return; 
                 const newR = myPos.r + dr;
                 const newC = myPos.c + dc;
                 if (isWalkable(newR, newC)) {
-                    roomRef.child('players/' + myPlayerId).update({ r: newR, c: newC });
+                    const updates = { r: newR, c: newC };
+                    const items = currentRoomData.items || {};
+                    let collectedItemId = null;
+                    let collectedItemType = null;
+                    
+                    for (const itemId in items) {
+                        if (items[itemId].r === newR && items[itemId].c === newC) {
+                            collectedItemId = itemId;
+                            collectedItemType = items[itemId].type;
+                            break;
+                        }
+                    }
+                    
+                    if (collectedItemId && collectedItemType) {
+                        const myStats = { ...myPos.stats }; 
+                        if (collectedItemType === ITEM_TYPES.BOMB_COUNT) {
+                            myStats.maxBombs = Math.min(4, myStats.maxBombs + 1); 
+                        } else if (collectedItemType === ITEM_TYPES.BOMB_RANGE) {
+                            myStats.bombRange = Math.min(4, myStats.bombRange + 1); 
+                        }
+                        updates.stats = myStats; 
+                        roomRef.child('items/' + collectedItemId).remove();
+                    }
+                    
+                    roomRef.child('players/' + myPlayerId).update(updates);
                 }
             }
             
             function isWalkable(r, c) {
-                if (!mapGrid[r] || mapGrid[r][c] === undefined) return false;
-                const tileType = mapGrid[r][c];
-                if (tileType !== 0) return false;
+                // ✨ 맵 데이터 로딩 전/후 안전하게 접근
+                const tileType = currentRoomData?.map?.[r]?.[c];
+                if (tileType === undefined || tileType === 1 || tileType === 2) {
+                    return false;
+                }
                 
-                // ✨ [신규] 폭탄 위로는 이동 불가
                 const bombs = currentRoomData.bombs || {};
                 for (const bombId in bombs) {
                     if (bombs[bombId].r === r && bombs[bombId].c === c) {
