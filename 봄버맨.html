@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>크레이지 봄버</title>
+    <link rel="manifest" href="manifest.json">
+    <link href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff" as="font" type="font/woff" crossorigin>
+    <style>
+        :root {
+            --bg-color: #2c3e50;
+            --board-bg: #34495e;
+            --wall-color: #7f8c8d; /* 파괴불가 벽 */
+            --crate-color: #a0522d; /* 파괴가능 나무상자 */
+            --path-color: #27ae60; /* 잔디 바닥 */
+            --player1-color: #3498db;
+            --player2-color: #e74c3c;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%; height: 100%; overflow: hidden;
+            font-family: 'GmarketSans', sans-serif;
+            background-color: var(--bg-color); color: white;
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            -webkit-user-select: none; user-select: none;
+            touch-action: none;
+        }
+
+        #game-wrapper {
+            width: 100%; height: 100%;
+            display: flex; flex-direction: column;
+        }
+
+        #game-header {
+            flex-shrink: 0; display: flex;
+            justify-content: space-around; align-items: center;
+            padding: 10px; background-color: rgba(0,0,0,0.2);
+        }
+        .player-info { display: flex; align-items: center; gap: 8px; }
+        .player-avatar { font-size: 1.5em; }
+        .player-avatar img { width: 32px; height: 32px; border-radius: 50%; }
+
+        #game-container {
+            width: 100%; flex-grow: 1;
+            display: flex; justify-content: center; align-items: center;
+            position: relative; overflow: hidden; padding: 10px;
+        }
+        
+        #game-board {
+            position: relative;
+            background-color: var(--board-bg);
+            border: 2px solid var(--wall-color);
+            aspect-ratio: 11 / 15; 
+            height: 100%;
+            max-height: 80vh;
+            max-width: none;
+        }
+        
+        .grid-cell {
+            position: absolute;
+            width: calc(100% / 11); 
+            height: calc(100% / 15);
+        }
+        .wall { background-color: var(--wall-color); }
+        .path { background-color: var(--path-color); }
+        .crate { 
+            background-color: var(--crate-color); 
+            border: 1px solid rgba(0,0,0,0.3);
+            box-shadow: inset 2px 2px 5px rgba(255,255,255,0.2), inset -2px -2px 5px rgba(0,0,0,0.2);
+        }
+
+        /* ✨ [신규] 폭탄 스타일 */
+        .bomb {
+            position: absolute;
+            /* ✨ [수정] top, left 추가 */
+            top: 0;
+            left: 0;
+            width: calc(100% / 11);
+            height: calc(100% / 15);
+            z-index: 5; 
+            display: flex; justify-content: center; align-items: center;
+            font-size: calc(100vh / 25); 
+            transition: transform 0.1s linear;
+            /* ✨ [수정] 애니메이션 임시 주석 처리 */
+            /* animation: pulse-bomb 1s infinite; */
+        }
+        /* @keyframes pulse-bomb is not needed if animation is removed */
+
+        .player {
+            position: absolute;
+            width: calc(100% / 11);
+            height: calc(100% / 15);
+            border-radius: 50%;
+            z-index: 10;
+            display: flex; justify-content: center; align-items: center;
+            font-size: 0.8em;
+            transition: transform 0.1s linear;
+        }
+        .player-avatar-img {
+            width: 90%; height: 90%;
+            object-fit: contain; border-radius: 50%;
+        }
+
+        #controls-container {
+            position: fixed;
+            bottom: 30px;
+            left: 30px;
+            z-index: 100;
+        }
+        #d-pad {
+            position: relative;
+            width: 120px; height: 120px;
+        }
+        .d-pad-btn {
+            position: absolute;
+            width: 40px; height: 40px;
+            background-color: rgba(255, 255, 255, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            border-radius: 8px;
+            display: flex; justify-content: center; align-items: center;
+            font-size: 1.5em; color: white;
+            cursor: pointer;
+        }
+        .d-pad-btn.active {
+             background-color: rgba(255, 255, 255, 0.6);
+        }
+        #btn-up { top: 0; left: 40px; }
+        #btn-left { top: 40px; left: 0; }
+        #btn-right { top: 40px; left: 80px; }
+        #btn-down { top: 80px; left: 40px; }
+
+        #bomb-btn {
+            position: fixed;
+            bottom: 40px; right: 40px;
+            width: 80px; height: 80px;
+            background-color: rgba(220, 50, 50, 0.7); 
+            border: 2px solid rgba(255, 255, 255, 0.7);
+            border-radius: 50%;
+            font-size: 3em;
+            color: white;
+            z-index: 100;
+            cursor: pointer; 
+        }
+        #bomb-btn:active {
+            background-color: rgba(255, 80, 80, 0.9);
+            transform: scale(0.95);
+        }
+    </style>
+</head>
+<body>
+    <div id="game-wrapper">
+        <div id="game-header"></div>
+        <div id="game-container">
+            <div id="game-board"></div>
+        </div>
+    </div>
+
+    <div id="controls-container">
+        <div id="d-pad">
+            <button class="d-pad-btn" id="btn-up">↑</button>
+            <button class="d-pad-btn" id="btn-left">←</button>
+            <button class="d-pad-btn" id="btn-right">→</button>
+            <button class="d-pad-btn" id="btn-down">↓</button>
+        </div>
+    </div>
+    
+    <button id="bomb-btn">💣</button>
+    
+    <div id="info-overlay" class="overlay" style="display: none;"></div>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+  
+    <script>
+        document.addEventListener('contextmenu', event => event.preventDefault());
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const firebaseConfig = {
+                apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
+                authDomain: "goodluck-7c14b.firebaseapp.com",
+                databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com",
+                projectId: "goodluck-7c14b",
+                storageBucket: "goodluck-7c14b.appspot.com",
+                messagingSenderId: "858281658455",
+                appId: "1:858281658455:web:9131280a459be983933b12"
+            };
+            firebase.initializeApp(firebaseConfig);
+            const db = firebase.database();
+            const auth = firebase.auth();
+            const roomsRef = db.ref('rooms');
+            const usersRef = db.ref('users');
+
+            const gameBoard = document.getElementById('game-board');
+            const gameHeader = document.getElementById('game-header');
+            
+            let myPlayerId, myNickname, myAvatar, roomRef, isHost;
+            let currentRoomData = {};
+            let playerElements = {}; 
+            let bombElements = {}; 
+            let mapGrid = []; 
+            let TILE_WIDTH = 0;
+            let TILE_HEIGHT = 0;
+            
+            const GRID_COLS = 11;
+            const GRID_ROWS = 15;
+            
+            let moveDirection = { x: 0, y: 0, current: null }; 
+            let moveInterval = null; 
+            const MOVE_SPEED = 150; 
+            
+            // ✨ [신규] 서버 시간 오프셋 변수
+            let serverTimeOffset = 0;
+
+            function initialize() {
+                // ✨ [신규] 서버 시간 오프셋 계산 (게임 시작 전에 한번만)
+                const offsetRef = db.ref(".info/serverTimeOffset");
+                offsetRef.on("value", (snap) => {
+                    serverTimeOffset = snap.val();
+                });
+                
+                auth.onAuthStateChanged(user => {
+                    if (user) {
+                        myPlayerId = user.uid;
+                        myNickname = localStorage.getItem('userNickname');
+                        myAvatar = localStorage.getItem('userAvatar');
+                        
+                        const urlParams = new URLSearchParams(window.location.search);
+                        const roomId = urlParams.get('roomId');
+                        
+                        if (!roomId || !myNickname) {
+                            alert("잘못된 접근입니다.");
+                            window.location.href = '대기실.html';
+                            return;
+                        }
+                        joinRoom(roomId);
+                    } else {
+                        window.location.href = 'index.html';
+                    }
+                });
+            }
+
+            function joinRoom(roomId) {
+                roomRef = roomsRef.child(roomId);
+                
+                roomRef.once('value', snapshot => {
+                    if (!snapshot.exists()) {
+                        alert("방을 찾을 수 없습니다.");
+                        window.location.href = '대기실.html';
+                        return;
+                    }
+                    
+                    currentRoomData = snapshot.val();
+                    isHost = currentRoomData.hostId === myPlayerId;
+
+                    if (isHost) {
+                        roomRef.onDisconnect().remove();
+                    } else {
+                        roomRef.child('players/' + myPlayerId).onDisconnect().remove();
+                    }
+                    
+                    setTimeout(setupGameLayout, 0); 
+                    listenToRoomChanges();
+                    setupControls();
+                });
+            }
+            
+            function setupGameLayout() {
+                TILE_WIDTH = gameBoard.clientWidth / GRID_COLS;
+                TILE_HEIGHT = gameBoard.clientHeight / GRID_ROWS;
+                
+                if (isHost && !currentRoomData.map) {
+                    generateMap();
+                    renderMap(); 
+                }
+            }
+
+            function generateMap() {
+                mapGrid = [];
+                let player1Pos = { r: GRID_ROWS - 2, c: Math.floor(GRID_COLS / 2) }; 
+                let player2Pos = { r: 1, c: Math.floor(GRID_COLS / 2) }; 
+                
+                for (let r = 0; r < GRID_ROWS; r++) {
+                    const row = [];
+                    for (let c = 0; c < GRID_COLS; c++) {
+                        let tileType = 0;
+                        if (r === 0 || r === GRID_ROWS - 1 || c === 0 || c === GRID_COLS - 1) {
+                            tileType = 1;
+                        } else if (r === Math.floor(GRID_ROWS / 2)) {
+                            tileType = 1;
+                        } else if (r % 2 === 0 && c % 2 === 0) {
+                            tileType = 1;
+                        } else {
+                            if (Math.random() < 0.7) {
+                                tileType = 2;
+                            }
+                        }
+                        row.push(tileType);
+                    }
+                    mapGrid.push(row);
+                }
+                
+                const startPoints = [
+                    player1Pos, {r: player1Pos.r - 1, c: player1Pos.c}, {r: player1Pos.r, c: player1Pos.c - 1}, {r: player1Pos.r, c: player1Pos.c + 1},
+                    player2Pos, {r: player2Pos.r + 1, c: player2Pos.c}, {r: player2Pos.r, c: player2Pos.c - 1}, {r: player2Pos.r, c: player2Pos.c + 1}
+                ];
+                
+                startPoints.forEach(pos => {
+                    if (mapGrid[pos.r] && mapGrid[pos.r][pos.c] === 2) {
+                        mapGrid[pos.r][pos.c] = 0;
+                    }
+                });
+                
+                const playerIds = Object.keys(currentRoomData.players);
+                const hostId = currentRoomData.hostId;
+                const guestId = playerIds.find(id => id !== hostId);
+                
+                let playersData = { ...currentRoomData.players };
+                playersData[hostId] = { ...playersData[hostId], r: player1Pos.r, c: player1Pos.c };
+                if (guestId && playersData[guestId]) {
+                    playersData[guestId] = { ...playersData[guestId], r: player2Pos.r, c: player2Pos.c };
+                }
+
+                roomRef.update({
+                    map: mapGrid,
+                    players: playersData
+                });
+            }
+
+            function listenToRoomChanges() {
+                roomRef.on('value', snapshot => {
+                    if (!snapshot.exists()) {
+                        alert("방장이 나갔습니다.");
+                        window.location.href = '대기실.html';
+                        return;
+                    }
+                    
+                    currentRoomData = snapshot.val();
+                    
+                    if (currentRoomData.map && mapGrid.length === 0) {
+                        mapGrid = currentRoomData.map;
+                        if (TILE_WIDTH > 0) {
+                            renderMap();
+                        } else {
+                            setTimeout(setupGameLayout, 50);
+                        }
+                    }
+                    
+                    if (currentRoomData.players) {
+                        renderPlayers(currentRoomData.players);
+                        updateHeader(currentRoomData.players);
+                    }
+                    
+                    renderBombs(currentRoomData.bombs);
+                });
+            }
+
+            function renderMap() {
+                gameBoard.innerHTML = '';
+                mapGrid.forEach((row, r) => {
+                    row.forEach((tileType, c) => {
+                        const cell = document.createElement('div');
+                        cell.className = 'grid-cell';
+                        if (tileType === 1) {
+                            cell.classList.add('wall');
+                        } else if (tileType === 2) {
+                            cell.classList.add('crate');
+                        } else {
+                            cell.classList.add('path');
+                        }
+                        
+                        cell.style.transform = `translate(${c * TILE_WIDTH}px, ${r * TILE_HEIGHT}px)`;
+                        gameBoard.appendChild(cell);
+                    });
+                });
+            }
+            
+            function renderPlayers(players) {
+                if (TILE_WIDTH === 0 || TILE_HEIGHT === 0) return; 
+
+                Object.keys(players).forEach(playerId => {
+                    const pData = players[playerId];
+                    if (pData.r === undefined || pData.c === undefined) return; 
+                    
+                    let playerEl = playerElements[playerId];
+                    
+                    if (!playerEl) {
+                        playerEl = document.createElement('div');
+                        playerEl.className = 'player';
+                        
+                        const avatarImg = document.createElement('img');
+                        avatarImg.className = 'player-avatar-img';
+                        if (pData.avatar.startsWith('http')) {
+                            avatarImg.src = pData.avatar;
+                        } else {
+                            playerEl.textContent = pData.avatar;
+                            playerEl.style.fontSize = `${TILE_HEIGHT * 0.7}px`;
+                        }
+                        
+                        playerEl.style.backgroundColor = (playerId === currentRoomData.hostId) ? 
+                            'var(--player1-color)' : 'var(--player2-color)';
+                        
+                        playerEl.appendChild(avatarImg);
+                        gameBoard.appendChild(playerEl);
+                        playerElements[playerId] = playerEl;
+                    }
+                    
+                    const x = pData.c * TILE_WIDTH;
+                    const y = pData.r * TILE_HEIGHT;
+                    playerEl.style.transform = `translate(${x}px, ${y}px)`;
+                });
+            }
+
+            // ✨ [수정] 폭탄 렌더링 (타이머 로직 변경)
+            function renderBombs(bombsData) {
+                // ✨ 1. 타일 크기 확실히 계산 (함수 시작 시)
+                if (TILE_WIDTH === 0 || TILE_HEIGHT === 0) {
+                    TILE_WIDTH = gameBoard.clientWidth / GRID_COLS;
+                    TILE_HEIGHT = gameBoard.clientHeight / GRID_ROWS;
+                    if (TILE_WIDTH === 0 || TILE_HEIGHT === 0) {
+                        console.warn("[renderBombs] TILE size still zero, delaying render.");
+                        // ✨ 크기 계산될 때까지 50ms 후 재시도
+                        setTimeout(() => renderBombs(currentRoomData.bombs), 50); 
+                        return; 
+                    }
+                     console.log(`[renderBombs] TILE Size Calculated: W=${TILE_WIDTH.toFixed(1)}, H=${TILE_HEIGHT.toFixed(1)}`);
+                }
+                
+                if (!bombsData) bombsData = {};
+                
+                const now = Date.now() + serverTimeOffset; 
+                const bombsOnScreen = {}; 
+
+                for (const bombId in bombsData) {
+                    const bData = bombsData[bombId];
+                    
+                    // ✨ 2. 데이터 유효성 검사 강화
+                    if (typeof bData.r !== 'number' || typeof bData.c !== 'number' || typeof bData.placedAt !== 'number') {
+                        console.warn(`[renderBombs] Invalid or incomplete data for bomb ${bombId}:`, bData);
+                        continue; 
+                    }
+                    
+                    bombsOnScreen[bombId] = true; 
+                    
+                    let bombEl = bombElements[bombId];
+                    if (!bombEl) {
+                        bombEl = document.createElement('div');
+                        bombEl.id = bombId;
+                        bombEl.className = 'bomb';
+                        bombEl.textContent = '💣';
+                        bombEl.style.fontSize = `${TILE_HEIGHT * 0.8}px`;
+                        gameBoard.appendChild(bombEl);
+                        bombElements[bombId] = bombEl;
+                    }
+                    
+                    // ✨ 3. 최종 좌표 계산 및 로그 출력 (소수점 포함)
+                    const bombR = bData.r; // 이미 number 타입임 (위에서 검사)
+                    const bombC = bData.c;
+                    const bombX = bombC * TILE_WIDTH;
+                    const bombY = bombR * TILE_HEIGHT;
+                    
+                    // ✨ 결정적인 로그: 여기서 r, c, x, y 값이 어떻게 나오는지 확인!
+                    console.log(`[renderBombs] Applying transform for ${bombId}: r=${bombR}, c=${bombC} => translate(${bombX.toFixed(1)}px, ${bombY.toFixed(1)}px)`); 
+                    
+                    // ✨ 4. 스타일 적용
+                    bombEl.style.transform = `translate(${bombX}px, ${bombY}px)`;
+                    
+                    // 호스트 타이머 체크
+                    if (isHost) {
+                        const timeElapsed = now - bData.placedAt;
+                        if (timeElapsed > 3000) { 
+                            explodeBomb(bombId, bData);
+                        }
+                    }
+                }
+                
+                // DOM 정리 로직 (이전과 동일)
+                for (const bombId in bombElements) {
+                    if (!bombsOnScreen[bombId]) { 
+                        if (bombElements[bombId]) { // ✨ 요소가 실제 존재하는지 확인 후 제거
+                             console.log(`[renderBombs] Removing DOM for ${bombId}`);
+                            bombElements[bombId].remove();
+                            delete bombElements[bombId]; 
+                        }
+                    }
+                }
+            }
+
+            // ✨ [수정] placeBomb 함수는 이전과 동일 (BUGFIX 이미 적용됨)
+            function placeBomb() {
+                if (!currentRoomData.players || !currentRoomData.players[myPlayerId]) return;
+                
+                const myPos = currentRoomData.players[myPlayerId];
+                
+                // ✨ 로그 추가: 현재 플레이어 위치 확인
+                console.log(`[placeBomb] myPos: r=${myPos.r}, c=${myPos.c}`);
+                
+                if (myPos.r === undefined || myPos.c === undefined) {
+                    console.warn("[placeBomb] 플레이어 위치 정보 없음, 설치 불가");
+                    return; 
+                }
+                
+                const myBombs = Object.values(currentRoomData.bombs || {}).filter(b => b.owner === myPlayerId).length;
+                if (myBombs >= 1) {
+                     console.log("[placeBomb] 이미 설치된 폭탄 있음");
+                    return; 
+                }
+                
+                const bombId = roomRef.child('bombs').push().key;
+                const bombData = {
+                    owner: myPlayerId,
+                    r: myPos.r, // ✨ 이 값이 정확해야 함
+                    c: myPos.c, // ✨ 이 값이 정확해야 함
+                    placedAt: firebase.database.ServerValue.TIMESTAMP 
+                };
+                
+                // ✨ 로그 추가: Firebase에 저장할 폭탄 데이터 확인
+                console.log(`[placeBomb] 저장할 데이터: bombId=${bombId}, r=${bombData.r}, c=${bombData.c}`);
+                
+                roomRef.child('bombs/' + bombId).set(bombData);
+            }
+
+
+            
+            function explodeBomb(bombId, bData) {
+                // (2단계: 여기서 화염 생성, 블록 파괴, 플레이어 사망 로직 추가)
+                
+                // ✨ [BUGFIX] Add confirmation/error logging for removal
+                console.log(`[explodeBomb] Attempting to remove bomb ${bombId} from Firebase.`);
+                roomRef.child('bombs/' + bombId).remove()
+                    .then(() => {
+                        console.log(`[explodeBomb] Successfully removed bomb ${bombId} from Firebase.`);
+                    })
+                    .catch((error) => {
+                        console.error(`[explodeBomb] Error removing bomb ${bombId}:`, error);
+                    });
+                
+                // Note: The visual removal from the screen happens in renderBombs' cleanup logic
+            }
+
+            function updateHeader(players) {
+                gameHeader.innerHTML = '';
+                Object.keys(players).forEach(playerId => {
+                    const pData = players[playerId];
+                    const pInfo = document.createElement('div');
+                    pInfo.className = 'player-info';
+                    
+                    const avatarEl = document.createElement('div');
+                    avatarEl.className = 'player-avatar';
+                    if (pData.avatar.startsWith('http')) {
+                        avatarEl.innerHTML = `<img src="${pData.avatar}" alt="av">`;
+                    } else {
+                        avatarEl.textContent = pData.avatar;
+                    }
+                    pInfo.appendChild(avatarEl);
+                    gameHeader.appendChild(pInfo);
+                });
+            }
+
+            function setupControls() {
+                const dPadButtons = {
+                    'btn-up': { dir: 'up', x: 0, y: -1, el: document.getElementById('btn-up') },
+                    'btn-down': { dir: 'down', x: 0, y: 1, el: document.getElementById('btn-down') },
+                    'btn-left': { dir: 'left', x: -1, y: 0, el: document.getElementById('btn-left') },
+                    'btn-right': { dir: 'right', x: 1, y: 0, el: document.getElementById('btn-right') },
+                };
+
+                Object.values(dPadButtons).forEach(btn => {
+                    const start = (e) => {
+                        e.preventDefault();
+                        Object.values(dPadButtons).forEach(b => b.el.classList.remove('active'));
+                        btn.el.classList.add('active');
+                        startContinuousMove(btn.dir, btn.x, btn.y);
+                    };
+                    const end = (e) => {
+                        e.preventDefault();
+                        btn.el.classList.remove('active');
+                        if (moveDirection.current === btn.dir) {
+                            stopContinuousMove();
+                        }
+                    };
+                    btn.el.addEventListener('mousedown', start);
+                    btn.el.addEventListener('touchstart', start, { passive: false });
+                    btn.el.addEventListener('mouseup', end);
+                    btn.el.addEventListener('touchend', end);
+                    btn.el.addEventListener('mouseleave', end);
+                });
+                
+                document.getElementById('bomb-btn').addEventListener('click', placeBomb);
+                
+                document.addEventListener('keydown', (e) => {
+                    switch(e.key) {
+                        case 'ArrowUp': e.preventDefault(); startContinuousMove('up', 0, -1); break;
+                        case 'ArrowDown': e.preventDefault(); startContinuousMove('down', 0, 1); break;
+                        case 'ArrowLeft': e.preventDefault(); startContinuousMove('left', -1, 0); break;
+                        case 'ArrowRight': e.preventDefault(); startContinuousMove('right', 1, 0); break;
+                        case ' ': e.preventDefault(); placeBomb(); break;
+                    }
+                });
+                
+                document.addEventListener('keyup', (e) => {
+                    const keyMap = {'ArrowUp': 'up', 'ArrowDown': 'down', 'ArrowLeft': 'left', 'ArrowRight': 'right'};
+                    if (moveDirection.current === keyMap[e.key]) {
+                        stopContinuousMove();
+                    }
+                });
+            }
+            
+            function startContinuousMove(dir, x, y) {
+                if (moveDirection.current === dir) return; 
+                stopContinuousMove(); 
+                moveDirection = { x, y, current: dir };
+                tryMove(x, y); 
+                moveInterval = setInterval(() => {
+                    tryMove(moveDirection.x, moveDirection.y);
+                }, MOVE_SPEED);
+            }
+            
+            function stopContinuousMove() {
+                clearInterval(moveInterval);
+                moveInterval = null;
+                moveDirection.current = null;
+            }
+
+            function tryMove(dc, dr) {
+                if (!currentRoomData.players || !currentRoomData.players[myPlayerId]) return;
+                const myPos = currentRoomData.players[myPlayerId];
+                if (myPos.r === undefined) return; 
+                const newR = myPos.r + dr;
+                const newC = myPos.c + dc;
+                if (isWalkable(newR, newC)) {
+                    roomRef.child('players/' + myPlayerId).update({ r: newR, c: newC });
+                }
+            }
+            
+            function isWalkable(r, c) {
+                if (!mapGrid[r] || mapGrid[r][c] === undefined) return false;
+                const tileType = mapGrid[r][c];
+                if (tileType !== 0) return false;
+                
+                // ✨ [신규] 폭탄 위로는 이동 불가
+                const bombs = currentRoomData.bombs || {};
+                for (const bombId in bombs) {
+                    if (bombs[bombId].r === r && bombs[bombId].c === c) {
+                        return false; 
+                    }
+                }
+                
+                return true; 
+            }
+
+            initialize();
+        });
+    </script>
+</body>
+</html>
