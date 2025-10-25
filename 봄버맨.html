@@ -311,7 +311,8 @@
          .modal-content { background: #ecf0f1; color: #333; padding: 30px; border-radius: 20px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.4); }
          .modal-content h2 { font-size: 2em; margin-bottom: 20px; color: var(--primary-color); }
          .modal-btn { padding: 12px 25px; font-size: 1.1em; font-weight: 700; border-radius: 10px; border: none; cursor: pointer; margin: 10px; }
-         .modal-btn.primary { background-color: var(--primary-color); color: white; }
+         /* 약 324행 */
+         .modal-btn.primary { background-color: #3498db; color: white; } /* ✨ var(--primary-color) -> #3498db */
          .modal-btn.secondary { background-color: #bdc3c7; color: #333; }
 
 /* --- 3분 타이머 스타일 --- */
@@ -851,9 +852,13 @@ listenToRoomChanges(); // Firebase 데이터 변경 감지 시작
                     const playerCount = Object.keys(currentRoomData.players).length;
 
                     // 모든 플레이어가 재시작을 요청했다면
-                    if (requestCount === playerCount) {
+                  if (requestCount === playerCount) {
                         // 방장(Host)만 게임 재시작을 처리합니다.
                         if (isHost) {
+                            
+                            // ✨ [신규] 방 삭제 방지: 재시작 전 onDisconnect 핸들러를 취소합니다.
+                            roomRef.onDisconnect().cancel(); 
+
                             // 게임 상태를 초기화하고 재시작 신호를 보냅니다.
                             roomRef.update({
                                 gameState: 'restarting', // 재시작 트리거
@@ -1116,8 +1121,19 @@ listenToRoomChanges(); // Firebase 데이터 변경 감지 시작
 
                    
                     if (playerId === myPlayerId && myIndicatorElement) {
-
-                         myIndicatorElement.style.display = isAlive ? 'block' : 'none'; // '사망' 상태만 반영
+                         // ✨ [수정] (0,0) 화살표 버그 수정
+                         // D-Pad 렉 수정으로 서버 업데이트는 막았지만, '최초 1회' 위치는 설정해야 함.
+                         // myIndicatorElement.style.left가 비어있거나 '0px'일 때만 최초 위치를 설정.
+                         if (!myIndicatorElement.style.left || myIndicatorElement.style.left === '0px') {
+                            const x = pData.c * TILE_WIDTH;
+                            const y = pData.r * TILE_HEIGHT;
+                            const indicatorY = y - TILE_HEIGHT * 0.6; 
+                            myIndicatorElement.style.left = `${x}px`;
+                            myIndicatorElement.style.top = `${indicatorY}px`;
+                         }
+                         
+                         // 사망 상태는 계속 업데이트
+                         myIndicatorElement.style.display = isAlive ? 'block' : 'none'; 
                     }
                 });
 
