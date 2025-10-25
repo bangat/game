@@ -197,7 +197,7 @@
             z-index: 10; /* 아이템(6) < 플레이어(10) < 화살표(11) */
             display: flex; justify-content: center; align-items: center;
             font-size: 0.8em;
-            transition: left 0.1s linear, top 0.1s linear, opacity 0.3s ease; /* 위치/투명도 부드럽게 */
+            transition: left 0.2s linear, top 0.2s linear, opacity 0.3s ease; 
             will-change: left, top, opacity;
         }
         .player-avatar-img {
@@ -774,6 +774,8 @@ listenToRoomChanges(); // Firebase 데이터 변경 감지 시작
                         return; // 함수 종료
                     }
 
+                    
+
                   const oldStatus = currentRoomData.status; // 이전 게임 상태 저장
                     const oldMapDataString = JSON.stringify(currentRoomData.map); // 이전 맵 데이터 문자열로 저장
                     currentRoomData = snapshot.val(); // 최신 방 데이터 저장
@@ -841,7 +843,46 @@ listenToRoomChanges(); // Firebase 데이터 변경 감지 시작
                         showGameOver(currentRoomData.winner); // 게임 오버 화면 표시
                     }
                 });
+               roomRef.child('rematchRequests').on('value', snapshot => {
+                    if (!snapshot.exists() || !currentRoomData || !currentRoomData.players) return;
+
+                    const requests = snapshot.val();
+                    const requestCount = Object.keys(requests).length;
+                    const playerCount = Object.keys(currentRoomData.players).length;
+
+                    // 모든 플레이어가 재시작을 요청했다면
+                    if (requestCount === playerCount) {
+                        // 방장(Host)만 게임 재시작을 처리합니다.
+                        if (isHost) {
+                            // 게임 상태를 초기화하고 재시작 신호를 보냅니다.
+                            roomRef.update({
+                                gameState: 'restarting', // 재시작 트리거
+                                rematchRequests: null,   // 요청 기록 삭제
+                                winner: null,            // 게임오버 상태 삭제
+                                status: 'waiting',       // 대기 상태로 변경 (맵 재생성 유도)
+                                map: null,               // 맵 삭제
+                                items: null,             // 아이템 삭제
+                                bombs: null,             // 폭탄 삭제
+                                gameStartTime: null,     // 시간 삭제
+                                players: currentRoomData.players // ✨ 플레이어 정보는 유지
+                            });
+                        }
+                    }
+                });
+
+                // ✨ [신규] '재시작' 신호 감지 리스너 (알까기.html 참조)
+                roomRef.child('gameState').on('value', snapshot => {
+                    if (snapshot.val() === 'restarting') {
+                        // 재시작 신호를 받으면 0.5초 후 새로고침하여 게임을 다시 시작합니다.
+                        setTimeout(() => {
+                            location.reload();
+                        }, 500);
+                    }
+                }); 
+  
             }
+
+            
 
 
             // 게임 요소들 렌더링 함수 (플레이어, 아이템, 폭탄 순서 중요)
@@ -997,6 +1038,14 @@ listenToRoomChanges(); // Firebase 데이터 변경 감지 시작
                         playerEl.className = 'player';
                         playerEl.id = `player-${playerId}`;
                         
+                        // --- ✨ [신규] (0,0) 스폰 버그 수정 ---
+                        // 생성 시점에 즉시 초기 위치를 설정합니다.
+                        const x = pData.c * TILE_WIDTH;
+                        const y = pData.r * TILE_HEIGHT;
+                        playerEl.style.left = `${x}px`;
+                        playerEl.style.top = `${y}px`;
+                        // --- ✨ [신규] 끝 ---
+
                         // ✨ 1. 아바타 이미지용 <img> 태그 생성
                         const avatarImg = document.createElement('img');
                         avatarImg.className = 'player-avatar-img';
@@ -1053,22 +1102,22 @@ listenToRoomChanges(); // Firebase 데이터 변경 감지 시작
                     playerEl.style.backgroundColor = (playerId === currentRoomData?.hostId) ?
                         'var(--player1-color)' : 'var(--player2-color)';
 
-                    // 위치 계산 및 적용 (top, left)
-                    const x = pData.c * TILE_WIDTH;
-                    const y = pData.r * TILE_HEIGHT;
-                    playerEl.style.left = `${x}px`;
-                    playerEl.style.top = `${y}px`;
+                    if (playerId !== myPlayerId) {
+                        // 위치 계산 및 적용 (top, left) - 다른 플레이어만
+                        const x = pData.c * TILE_WIDTH;
+                        const y = pData.r * TILE_HEIGHT;
+                        playerEl.style.left = `${x}px`;
+                        playerEl.style.top = `${y}px`;
+                    }
 
-                    // 사망 상태 반영
+                    // 사망 상태 반영 (이건 내 플레이어에게도 적용되어야 함)
                     const isAlive = pData.stats.isAlive;
                     playerEl.classList.toggle('dead', !isAlive);
 
-                    // 내 플레이어면 화살표 위치 업데이트
+                   
                     if (playerId === myPlayerId && myIndicatorElement) {
-                         const indicatorY = y - TILE_HEIGHT * 0.6; // 플레이어 살짝 위
-                         myIndicatorElement.style.left = `${x}px`;
-                         myIndicatorElement.style.top = `${indicatorY}px`;
-                         myIndicatorElement.style.display = isAlive ? 'block' : 'none';
+
+                         myIndicatorElement.style.display = isAlive ? 'block' : 'none'; // '사망' 상태만 반영
                     }
                 });
 
@@ -1641,17 +1690,33 @@ if (!bombEl && document.body.contains(gameBoard)) {
                     playSound('sound-lose');
                 }
                 gameOverMessage.textContent = message; // 모달 메시지 설정
+
+                // ✨ [신규] '다시 하기' 버튼 HTML 추가 (알까기.html 참조)
+                const modalContent = gameOverModal.querySelector('.modal-content');
+                modalContent.innerHTML = `
+                    <h2 id="game-over-message">${message}</h2>
+                    <button id="rematch-btn" class="modal-btn primary">다시 하기</button>
+                    <button id="lobby-btn" class="modal-btn secondary">대기실로</button>
+                `;
                 gameOverModal.classList.add('active'); // 모달 보이게
-                // 로비 버튼 가져오기
-                const lobbyBtnGameOver = gameOverModal.querySelector('#lobby-btn');
-                // 버튼 존재하면 이벤트 리스너 재설정 (중복 방지)
+
+                // ✨ [수정] 로비 버튼 이벤트 리스너 (새 HTML 구조에 맞게 수정)
+                const lobbyBtnGameOver = modalContent.querySelector('#lobby-btn');
                 if(lobbyBtnGameOver) {
-                    const newLobbyBtn = lobbyBtnGameOver.cloneNode(true); // 버튼 복제
-                    newLobbyBtn.textContent = "대기실로"; // 텍스트 확인
-                    // 기존 버튼을 복제 버튼으로 교체 (이벤트 리스너 제거 효과)
-                    lobbyBtnGameOver.parentNode.replaceChild(newLobbyBtn, lobbyBtnGameOver);
-                    // 새 버튼에 클릭 이벤트 추가
-                    newLobbyBtn.onclick = () => { window.location.href = '대기실.html'; };
+                    lobbyBtnGameOver.onclick = () => { window.location.href = '대기실.html'; };
+                }
+
+                // ✨ [신규] '다시 하기' 버튼 이벤트 리스너 (알까기.html 참조)
+                const rematchBtn = modalContent.querySelector('#rematch-btn');
+                if (rematchBtn) {
+                    rematchBtn.addEventListener('click', () => {
+                        if (roomRef) {
+                            rematchBtn.disabled = true;
+                            rematchBtn.textContent = '상대방 기다리는 중...';
+                            // Firebase에 재시작 요청
+                            roomRef.child('rematchRequests').child(myPlayerId).set(true);
+                        }
+                    });
                 }
             }
 
