@@ -135,6 +135,8 @@
             height: calc(100% / 15);
             z-index: 5; /* 길(1) < 폭탄(5) < 아이템(6) */
             
+            display: block; /* ✨ [신규] 이미지가 보이도록 display 속성 추가 */
+
             /* ✨ [수정] 이미지를 배경으로 설정 */
             background-image: url('./봄버맨사운드/물풍선.png');
             background-size: 100% 100%; /* 타일 크기에 꽉 채우기 */
@@ -164,8 +166,8 @@
             width: calc(100% / 11);
             height: calc(100% / 15);
             z-index: 6; /* 폭탄(5) < 아이템(6) < 플레이어(10) */
-            display: flex; justify-content: center; align-items: center;
-            font-size: calc(100vh / 28);
+            /* ✨ [삭제] display: flex; justify-content: center; align-items: center; */
+            /* ✨ [삭제] font-size: calc(100vh / 28); */
             border-radius: 50%;
             opacity: 0; /* 기본 숨김 */
             transition: opacity 0.3s ease-in;
@@ -174,8 +176,9 @@
         .item.visible {
             opacity: 0.9;
         }
-        .item-bomb { background-color: var(--item-bomb-color); }
-        .item-range { background-color: var(--item-range-color); }
+        /* ✨ [수정] 아래 두 줄의 background-color를 삭제(주석 처리)합니다 */
+        /* .item-bomb { background-color: var(--item-bomb-color); } */
+        /* .item-range { background-color: var(--item-range-color); } */
         .item-balloon {
              animation: float 2s ease-in-out infinite;
         }
@@ -460,14 +463,16 @@
 
             let moveDirection = { x: 0, y: 0, current: null }; // 현재 이동 방향 정보
             let moveInterval = null; // 연속 이동 인터벌 ID
-            const MOVE_SPEED = 150; // 이동 속도 (ms)
+            const BASE_MOVE_SPEED = 210;
+// ✨ [신규] 속도 레벨 (기본, +1, +2)
+            const speedLevels = [BASE_MOVE_SPEED, 180, 150]; 
 
             let serverTimeOffset = 0; // 클라이언트-서버 시간 차이
             let bombTimerInterval = null; // 폭탄 타이머 체크 인터벌 ID
             let explodingBombs = new Set(); // 현재 폭발 중인 폭탄 ID 저장 Set
 
             // 아이템 타입 정의
-            const ITEM_TYPES = { BOMB_COUNT: 'bomb', BOMB_RANGE: 'range' };
+            const ITEM_TYPES = { BOMB_COUNT: 'bomb', BOMB_RANGE: 'range', SPEED: 'speed' };
            // 아이템 아이콘 정의
              const ITEM_ICONS = { [ITEM_TYPES.BOMB_COUNT]: '💣', [ITEM_TYPES.BOMB_RANGE]: '🔥' };
 
@@ -665,10 +670,10 @@ listenToRoomChanges(); // Firebase 데이터 변경 감지 시작
                 const guestId = playerIds.find(id => id !== hostId);
                 let playersData = { ...currentRoomData.players }; // 기존 아바타 등 정보 유지
                 // 호스트(P1) 데이터 설정
-                playersData[hostId] = { ...playersData[hostId], r: player1Pos.r, c: player1Pos.c, stats: { maxBombs: 1, bombRange: 1, isAlive: true } };
+                playersData[hostId] = { ...playersData[hostId], r: player1Pos.r, c: player1Pos.c, stats: { maxBombs: 1, bombRange: 1, speed: 1, isAlive: true } };
                 // 게스트(P2) 데이터 설정 (존재하면)
                 if (guestId && playersData[guestId]) {
-                    playersData[guestId] = { ...playersData[guestId], r: player2Pos.r, c: player2Pos.c, stats: { maxBombs: 1, bombRange: 1, isAlive: true } };
+                    playersData[guestId] = { ...playersData[guestId], r: player2Pos.r, c: player2Pos.c, stats: { maxBombs: 1, bombRange: 1, speed: 1, isAlive: true } };
                 }
 
                 // 8. 시작 아이템 풍선 위치 선정 (시작점 근처 나무상자 아래)
@@ -735,16 +740,21 @@ listenToRoomChanges(); // Firebase 데이터 변경 감지 시작
                       console.warn("P2 시작 아이템 놓을 상자 못 찾음");
                  }
 
-                // 9. Firebase에 모든 데이터 업데이트
+               // 9. Firebase에 모든 데이터 업데이트
                console.log("[맵 생성] Firebase 업데이트 실행...");
-                roomRef.update({
-                    mapIndex: mapIndex, // 선택된 맵 배경 인덱스
-                    map: mapGrid, // 최종 맵 구조
-                    players: playersData, // 플레이어 위치 및 스탯
-                    items: initialItems, // 시작 아이템
-                    status: 'playing', // 게임 상태 변경
-                    gameStartTime: firebase.database.ServerValue.TIMESTAMP // ✨ [신규] 게임 시작 시간 기록
-                });
+               
+               // ✨ [핵심 수정] players 객체 전체 덮어쓰기 대신 개별 업데이트
+                const updates = {};
+                updates['mapIndex'] = mapIndex;
+                updates['map'] = mapGrid;
+                updates['items'] = initialItems;
+                updates['status'] = 'playing';
+                updates['gameStartTime'] = firebase.database.ServerValue.TIMESTAMP;
+
+                // ✨ 각 플레이어의 r, c, stats만 업데이트
+                updates['players'] = playersData;
+                
+                roomRef.update(updates);
             }
 
 
@@ -957,8 +967,7 @@ listenToRoomChanges(); // Firebase 데이터 변경 감지 시작
             }
 
 
-            // 플레이어 렌더링 함수
-            function renderPlayers(players) {
+           function renderPlayers(players) {
                 // 타일 크기 계산 안됐으면 중단
                 if (TILE_WIDTH <= 0 || TILE_HEIGHT <= 0) return;
 
@@ -981,29 +990,68 @@ listenToRoomChanges(); // Firebase 데이터 변경 감지 시작
                     if (!pData || pData.r === undefined || pData.c === undefined || !pData.stats) return;
 
                     let playerEl = playerElements[playerId]; // 기존 DOM 요소 가져오기
-                    // DOM 요소 없으면 새로 생성 (보드 존재 확인 추가)
+                    
+                    // ✨ [수정] DOM 요소 생성 로직 변경
                     if (!playerEl && document.body.contains(gameBoard)) {
                         playerEl = document.createElement('div');
-                        playerEl.className = 'player'; // 기본 클래스
-                        playerEl.id = `player-${playerId}`; // ID 부여
+                        playerEl.className = 'player';
+                        playerEl.id = `player-${playerId}`;
+                        
+                        // ✨ 1. 아바타 이미지용 <img> 태그 생성
                         const avatarImg = document.createElement('img');
                         avatarImg.className = 'player-avatar-img';
-                        // 아바타 설정 (URL 또는 이모지)
-                        if (pData.avatar && pData.avatar.startsWith('http')) { // 아바타 존재 확인
-                            avatarImg.src = pData.avatar;
-                        } else if (pData.avatar) {
-                            playerEl.textContent = pData.avatar; // 이모지 직접 표시
-                            playerEl.style.fontSize = `${TILE_HEIGHT * 0.7}px`; // 이모지 크기 조절
-                        }
-                        // 플레이어 배경색 설정 (호스트/게스트 구분)
-                        playerEl.style.backgroundColor = (playerId === currentRoomData?.hostId) ? // currentRoomData 존재 확인
-                            'var(--player1-color)' : 'var(--player2-color)';
-                        playerEl.appendChild(avatarImg); // 아바타 이미지 추가 (URL 방식일 때)
-                        gameBoard.appendChild(playerEl); // 게임 보드에 추가
-                        playerElements[playerId] = playerEl; // 추적 객체에 저장
+                        avatarImg.style.display = 'none'; // 기본 숨김
+                        
+                        // ✨ 2. 아바타 이모지용 <span> 태그 생성
+                        const avatarEmoji = document.createElement('span');
+                        avatarEmoji.className = 'player-avatar-emoji';
+                        avatarEmoji.style.display = 'none'; // 기본 숨김
+
+                        playerEl.appendChild(avatarImg); 
+                        playerEl.appendChild(avatarEmoji); // ✨ span 태그 추가
+                        
+                        gameBoard.appendChild(playerEl);
+                        playerElements[playerId] = playerEl;
                     } else if (!playerEl) {
                         return; // 보드 없으면 생성 불가
                     }
+
+                    // ✨ [수정] 아바타/이모지 렌더링 로직 (textContent로 인한 <img> 파괴 버그 수정)
+                    const avatarImgEl = playerEl.querySelector('.player-avatar-img');
+                    const avatarEmojiEl = playerEl.querySelector('.player-avatar-emoji');
+
+                    // ✨ <img>나 <span>이 없는 비정상적인 경우 (예: 이전 버그로 인해)
+                    if (!avatarImgEl || !avatarEmojiEl) {
+                        // DOM 요소를 강제로 재생성하기 위해 제거
+                        if (playerEl) playerEl.remove();
+                        delete playerElements[playerId];
+                        // 다음 렌더링 프레임에서 다시 생성되도록 함
+                        return; 
+                    }
+
+                    if (pData.avatar && pData.avatar.startsWith('http')) {
+                        // 이미지 아바타
+                        if (avatarImgEl.src !== pData.avatar) {
+                           avatarImgEl.src = pData.avatar;
+                        }
+                        avatarImgEl.style.display = 'block';
+                        avatarEmojiEl.style.display = 'none';
+                    } else if (pData.avatar) {
+                        // 이모지 아바타
+                        avatarEmojiEl.textContent = pData.avatar;
+                        avatarEmojiEl.style.fontSize = `${TILE_HEIGHT * 0.7}px`;
+                        avatarEmojiEl.style.display = 'block';
+                        avatarImgEl.style.display = 'none';
+                        avatarImgEl.src = ''; // 이미지 흔적 제거
+                    } else {
+                        // 아바타 정보 없음 (둘 다 숨김)
+                         avatarImgEl.style.display = 'none';
+                         avatarEmojiEl.style.display = 'none';
+                    }
+                    
+                    // ✨ [기존] 플레이어 배경색 설정
+                    playerEl.style.backgroundColor = (playerId === currentRoomData?.hostId) ?
+                        'var(--player1-color)' : 'var(--player2-color)';
 
                     // 위치 계산 및 적용 (top, left)
                     const x = pData.c * TILE_WIDTH;
@@ -1011,17 +1059,15 @@ listenToRoomChanges(); // Firebase 데이터 변경 감지 시작
                     playerEl.style.left = `${x}px`;
                     playerEl.style.top = `${y}px`;
 
-                    // ✨ [BUGFIX] 사망 상태 정확히 반영 (pData.stats.isAlive 직접 사용)
+                    // 사망 상태 반영
                     const isAlive = pData.stats.isAlive;
                     playerEl.classList.toggle('dead', !isAlive);
-                    // console.log(`[렌더링] Player ${playerId}: isAlive=${isAlive}, deadClass 적용=${!isAlive}`); // 디버깅 로그
 
                     // 내 플레이어면 화살표 위치 업데이트
                     if (playerId === myPlayerId && myIndicatorElement) {
                          const indicatorY = y - TILE_HEIGHT * 0.6; // 플레이어 살짝 위
                          myIndicatorElement.style.left = `${x}px`;
                          myIndicatorElement.style.top = `${indicatorY}px`;
-                         // 생존 상태에 따라 화살표 보이기/숨기기
                          myIndicatorElement.style.display = isAlive ? 'block' : 'none';
                     }
                 });
@@ -1065,21 +1111,40 @@ listenToRoomChanges(); // Firebase 데이터 변경 감지 시작
 
                         // ✨ [수정] 아이템 아이콘 설정
                         if (iData.type === ITEM_TYPES.BOMB_COUNT) {
-                            itemEl.style.backgroundImage = "url('./봄버맨사운드/물풍선.png')"; // ✨ 오타 수정 (OUND -> 운드)
+                            itemEl.style.backgroundImage = "url('./봄버맨사운드/물풍선아이템.png')";
                             itemEl.style.backgroundColor = 'transparent';
                             itemEl.textContent = '';
-                            
-                            // ✨ [핵심 추가] 이미지 크기 및 위치 설정
                             itemEl.style.backgroundSize = '100% 100%';
                             itemEl.style.backgroundPosition = 'center';
                             itemEl.style.backgroundRepeat = 'no-repeat';
                             
-                            itemEl.style.fontSize = '0'; // ✨ flex/font 관련 속성 초기화
+                            // ✨ [수정] 이미지 아이템 스타일
+                            itemEl.style.display = 'block'; 
+                            itemEl.style.fontSize = '0'; 
                             
                         } else if (iData.type === ITEM_TYPES.BOMB_RANGE) {
-                            itemEl.style.backgroundImage = 'none';
-                            itemEl.textContent = '🔥'; // 불꽃 이모지
-                            itemEl.style.fontSize = `${TILE_HEIGHT * 0.7}px`; // 이모지 크기
+                            // ✨ [수정] 물줄기강화.png 이미지로 변경
+                            itemEl.style.backgroundImage = "url('./봄버맨사운드/물줄기강화.png')";
+                            itemEl.style.backgroundColor = 'transparent';
+                            itemEl.textContent = '';
+                            itemEl.style.backgroundSize = '100% 100%';
+                            itemEl.style.backgroundPosition = 'center';
+                            itemEl.style.backgroundRepeat = 'no-repeat';
+                            
+                           itemEl.style.display = 'block'; 
+                            itemEl.style.fontSize = '0'; 
+                        
+                        // ✨ [신규] 속도업 아이템 렌더링
+                        } else if (iData.type === ITEM_TYPES.SPEED) {
+                            itemEl.style.backgroundImage = "url('./봄버맨사운드/속도업.png')";
+                            itemEl.style.backgroundColor = 'transparent';
+                            itemEl.textContent = '';
+                            itemEl.style.backgroundSize = '100% 100%';
+                            itemEl.style.backgroundPosition = 'center';
+                            itemEl.style.backgroundRepeat = 'no-repeat';
+                            itemEl.style.display = 'block'; 
+                            itemEl.style.fontSize = '0'; 
+                        
                         } else {
                             itemEl.textContent = '?';
                         }
@@ -1199,6 +1264,15 @@ if (!bombEl && document.body.contains(gameBoard)) {
                 const myBombs = Object.values(currentRoomData.bombs || {}).filter(b => b.owner === myPlayerId).length;
                 // 최대 설치 개수 넘으면 중단
                 if (myBombs >= myStats.maxBombs) return;
+                
+                // ✨ [신규] 이미 해당 위치에 폭탄이 있는지 확인
+                const bombs = currentRoomData.bombs || {};
+                for (const bombId in bombs) {
+                    if (bombs[bombId].r === myPos.r && bombs[bombId].c === myPos.c) {
+                        return; // 이미 폭탄이 있으므로 설치 불가
+                    }
+                }
+                
                 // 새 폭탄 ID 생성
                 const bombId = roomRef.child('bombs').push().key;
                 // 폭탄 데이터 생성 (위치, 설치 시간)
@@ -1312,11 +1386,15 @@ if (!bombEl && document.body.contains(gameBoard)) {
                                 }
                             }
                             if (!revealedItem && Math.random() < 0.3) {
+                                // ✨ [신규] 아이템 드랍 풀 정의 (33% 확률로 섞임)
+                                const itemDropPool = [ITEM_TYPES.BOMB_COUNT, ITEM_TYPES.BOMB_RANGE, ITEM_TYPES.SPEED];
+                                const randomType = itemDropPool[Math.floor(Math.random() * itemDropPool.length)];
+
                                 const newItemKey = roomRef.child('items').push().key;
                                 updates[`items/${newItemKey}`] = {
                                     r: tile.r, c: tile.c,
-                                    type: Math.random() < 0.5 ? ITEM_TYPES.BOMB_COUNT : ITEM_TYPES.BOMB_RANGE,
-                                    isVisible: true, isBalloon: false
+                                    type: randomType, // ✨ 랜덤 타입 적용
+                                    isVisible: true, isBalloon: true
                                 };
                             }
                         }
@@ -1603,13 +1681,20 @@ if (!bombEl && document.body.contains(gameBoard)) {
                     const statsEl = document.createElement('div');
                     statsEl.className = 'player-stats';
                     if (pData.stats) {
-                        // ✨ [수정] 폭탄 아이콘을 <img> 태그로 변경
+                        // ✨ [수정] 폭탄 및 물줄기 아이콘을 <img> 태그로 변경
                         statsEl.innerHTML = `
                             <span style="display: flex; align-items: center; gap: 3px;">
-                                <img src="./봄버맨사운드/물풍선.png" alt="bomb" style="width: 1.2em; height: 1.2em; object-fit: contain;">
+                                <img src="./봄버맨사운드/물풍선아이템.png" alt="bomb" style="width: 1.2em; height: 1.2em; object-fit: contain;">
                                 ${pData.stats.maxBombs ?? 1}
-                            </span> 
-                            <span>🔥 ${pData.stats.bombRange ?? 1}</span>
+                            </span>
+                           <span style="display: flex; align-items: center; gap: 3px;">
+                                <img src="./봄버맨사운드/물줄기강화.png" alt="range" style="width: 1.1em; height: 1.1em; object-fit: contain;">
+                                ${pData.stats.bombRange ?? 1}
+                            </span>
+                            <span style="display: flex; align-items: center; gap: 3px;">
+                                <img src="./봄버맨사운드/속도업.png" alt="speed" style="width: 1.1em; height: 1.1em; object-fit: contain;">
+                                ${pData.stats.speed ?? 1}
+                            </span>
                         `;
                     }
                     pInfo.appendChild(avatarEl);
@@ -1692,34 +1777,55 @@ if (!bombEl && document.body.contains(gameBoard)) {
             }
 
 
-            // 연속 이동 시작 함수
             function startContinuousMove(dir, x, y) {
-                // 이미 해당 방향으로 이동 중이면 중단
+              // 이미 해당 방향으로 이동 중이면 중단
                 if (moveDirection.current === dir) return;
                 stopContinuousMove(); // 기존 이동 중지
                 moveDirection = { x, y, current: dir }; // 새 이동 방향 설정
-                tryMove(x, y); // 즉시 1회 이동 시도
-                // 일정 간격(MOVE_SPEED)마다 이동 시도하는 인터벌 시작
-                moveInterval = setInterval(() => {
-                    // 죽었으면 이동 중지
+
+                // ✨ 재귀적으로 움직임을 처리할 함수
+                const moveLoop = () => {
+                    // 1. 이동이 중지되었는지 확인
+                    if (moveDirection.current !== dir) return; 
+
+                    // 2. 생존 상태 확인
                     if (currentRoomData?.players?.[myPlayerId]?.stats?.isAlive === false) {
                         stopContinuousMove();
                         return;
                     }
-                    tryMove(moveDirection.x, moveDirection.y); // 이동 시도
-                }, MOVE_SPEED);
+                    
+                    // 3. 이동 시도
+                    tryMove(moveDirection.x, moveDirection.y);
+
+                    // 4. ✨ 다음 이동 속도를 '최신' 데이터로 다시 계산
+                    const myStats = currentRoomData?.players?.[myPlayerId]?.stats || { speed: 1 };
+                    const speedLevel = Math.max(0, (myStats.speed || 1) - 1);
+                    const currentInterval = speedLevels[Math.min(speedLevel, speedLevels.length - 1)];
+
+                    // 5. 다음 이동 예약 (setInterval 대신 setTimeout 사용)
+                    moveInterval = setTimeout(moveLoop, currentInterval);
+                };
+                
+                // ✨ 최초 1회 즉시 실행 (즉시 이동 시도)
+                // tryMove(x, y)를 호출하는 대신 moveLoop()를 바로 호출하여 
+                // 이동 -> 속도계산 -> 다음 이동 예약을 한 사이클로 묶습니다.
+                moveLoop();
             }
 
 
-            // 연속 이동 중지 함수
-            function stopContinuousMove() {
-                clearInterval(moveInterval); // 인터벌 중지
+           function stopContinuousMove() {
+                clearTimeout(moveInterval); // ✨ clearInterval -> clearTimeout
                 moveInterval = null; // ID 초기화
                 moveDirection.current = null; // 현재 방향 초기화
-                 // D-Pad 버튼 시각 효과 초기화 (선택 사항)
-                 const dPadButtons = { /* D-pad buttons map here */ }; // Need map here too if used
+                 // D-Pad 버튼 시각 효과 초기화
+                 const dPadButtons = {
+                    'btn-up': { el: document.getElementById('btn-up') },
+                    'btn-down': { el: document.getElementById('btn-down') },
+                    'btn-left': { el: document.getElementById('btn-left') },
+                    'btn-right': { el: document.getElementById('btn-right') },
+                };
                  Object.values(dPadButtons).forEach(btn => {
-                      if(btn?.el) btn.el.classList.remove('active'); // Check if btn.el exists
+                      if(btn?.el) btn.el.classList.remove('active');
                  });
             }
 
@@ -1758,12 +1864,14 @@ if (!bombEl && document.body.contains(gameBoard)) {
                     if (collectedItemId && collectedItemType) {
                         playSound('sound-item-get'); // ✨ [신규] 아이템 획득 사운드
                         // 현재 스탯 복사 (없으면 기본값 사용)
-                        const myStats = { ...(myPos.stats || { maxBombs: 1, bombRange: 1, isAlive: true }) };
+                        const myStats = { ...(myPos.stats || { maxBombs: 1, bombRange: 1, speed: 1, isAlive: true }) };
                         if (collectedItemType === ITEM_TYPES.BOMB_COUNT) {
-                            myStats.maxBombs = Math.min(5, (myStats.maxBombs || 1) + 1); // ✨ 최대 5개로 변경
+                            myStats.maxBombs = Math.min(5, (myStats.maxBombs || 1) + 1); 
                         } else if (collectedItemType === ITEM_TYPES.BOMB_RANGE) {
-                             // ✨ 사거리 1씩 증가, 최대 3칸으로 변경
                             myStats.bombRange = Math.min(3, (myStats.bombRange || 1) + 1);
+                        // ✨ [신규] 속도업 아이템 획득 (최대 3레벨)
+                        } else if (collectedItemType === ITEM_TYPES.SPEED) {
+                            myStats.speed = Math.min(3, (myStats.speed || 1) + 1);
                         }
                         updates.stats = myStats; // 업데이트할 스탯 추가
 
@@ -1773,6 +1881,34 @@ if (!bombEl && document.body.contains(gameBoard)) {
                     }
 
                     // Firebase에 플레이어 위치 (및 스탯) 업데이트 요청
+                    // --- ✨ [신규] 클라이언트 즉시 예측 이동 (렉 제거) ---
+                    // 1. 로컬 데이터 즉시 수정
+                    currentRoomData.players[myPlayerId].r = newR;
+                    currentRoomData.players[myPlayerId].c = newC;
+                    if (updates.stats) { // 스탯 업데이트가 있으면 로컬에도 반영
+                        currentRoomData.players[myPlayerId].stats = updates.stats;
+                        updateHeader(currentRoomData.players); // 헤더 즉시 업데이트
+                    }
+                    
+                    // 2. 로컬 렌더링 즉시 실행 (내 플레이어만)
+                    const myPlayerEl = playerElements[myPlayerId];
+                    // 타일 크기가 계산된 상태인지 확인
+                    if (myPlayerEl && TILE_WIDTH > 0 && TILE_HEIGHT > 0) {
+                        const x = newC * TILE_WIDTH;
+                        const y = newR * TILE_HEIGHT;
+                        myPlayerEl.style.left = `${x}px`;
+                        myPlayerEl.style.top = `${y}px`;
+
+                        // 내 화살표도 즉시 이동
+                        if (myIndicatorElement) {
+                             const indicatorY = y - TILE_HEIGHT * 0.6; 
+                             myIndicatorElement.style.left = `${x}px`;
+                             myIndicatorElement.style.top = `${indicatorY}px`;
+                        }
+                    }
+                    // --- ✨ 예측 이동 끝 ---
+
+                    // 3. Firebase에 업데이트 전송 (기존 로직)
                     roomRef.child('players/' + myPlayerId).update(updates)
                         .catch(error => console.error("플레이어 업데이트 오류:", error)); // 에러 로깅
                 }
