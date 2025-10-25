@@ -9,13 +9,17 @@
     <style>
         :root {
             --bg-color: #2c3e50;
-            --board-bg: #34495e;
-            --wall-color: #7f8c8d; /* 파괴불가 벽 */
-            --crate-color: #a0522d; /* 파괴가능 나무상자 */
-            --path-color: #27ae60; /* 잔디 바닥 */
+             /* ✨ [수정] 사용할 이미지만 남기고, 나무상자/길은 색상 사용 */
+            --board-bg-url: url('봄버맨이미지/맵1.png'); /* ⭐ 맵1.png 경로 */
+            --wall-image-url: url('봄버맨이미지/파괴불가.png'); /* ⭐ 파괴불가.png 경로 */
+
+            --crate-color: #a0522d; /* ✨ 나무상자 색상 복구 */
+            --path-color: transparent; /* ✨ 길은 투명하게 (배경 보이도록) */
+            --wall-color: #7f8c8d; /* 혹시 이미지 로딩 실패 시 보일 색상 */
+
             --player1-color: #3498db;
             --player2-color: #e74c3c;
-            --explosion-color: rgba(255, 80, 80, 0.7); /* 폭발 효과 */
+            --explosion-color: rgba(255, 165, 0, 0.8);
             --item-bomb-color: #9b59b6;
             --item-range-color: #f1c40f;
         }
@@ -25,7 +29,8 @@
             font-family: 'GmarketSans', sans-serif;
             background-color: var(--bg-color); color: white;
             display: flex; flex-direction: column;
-            justify-content: center; align-items: center;
+            justify-content: flex-start;
+            align-items: center;
             -webkit-user-select: none; user-select: none;
             touch-action: none;
         }
@@ -39,6 +44,7 @@
             flex-shrink: 0; display: flex;
             justify-content: space-around; align-items: center;
             padding: 10px; background-color: rgba(0,0,0,0.2);
+            width: 100%;
         }
         .player-info { display: flex; align-items: center; gap: 8px; }
         .player-avatar { font-size: 1.5em; }
@@ -46,79 +52,111 @@
         .player-stats { font-size: 0.8em; display: flex; gap: 5px; margin-left: 5px;}
 
         #game-container {
-            width: 100%; flex-grow: 1;
+            width: 100%;
+            flex-grow: 1;
             display: flex; justify-content: center; align-items: center;
-            position: relative; overflow: hidden; padding: 10px;
+            position: relative; overflow: hidden;
+            padding: 10px;
         }
-        
+
         #game-board {
             position: relative;
-            background-color: var(--board-bg);
-            border: 2px solid var(--wall-color);
-            aspect-ratio: 11 / 15; 
+            background-image: var(--board-bg-url);
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            aspect-ratio: 11 / 15;
             height: 100%;
-            max-height: 80vh;
-            max-width: none;
+            max-height: calc(100vh - 70px);
+            max-width: 100%;
+            overflow: hidden;
         }
-        
+
         .grid-cell {
             position: absolute;
-            width: calc(100% / 11); 
+            width: calc(100% / 11);
             height: calc(100% / 15);
-            transition: background-color 0.2s linear; 
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            transition: opacity 0.3s ease-out, transform 0.3s ease-out;
+            will-change: opacity, transform;
         }
-        .wall { background-color: var(--wall-color); z-index: 1;}
-        .path { background-color: var(--path-color); z-index: 1;}
-        .crate { 
-            background-color: var(--crate-color); 
+        .wall {
+            background-image: var(--wall-image-url);
+            background-color: var(--wall-color);
+            background-size: contain;
+            z-index: 2;
+        }
+        .path {
+             background-color: var(--path-color);
+             z-index: 1;
+        }
+        .crate {
+            background-color: var(--crate-color);
             border: 1px solid rgba(0,0,0,0.3);
             box-shadow: inset 2px 2px 5px rgba(255,255,255,0.2), inset -2px -2px 5px rgba(0,0,0,0.2);
-            z-index: 1;
+            z-index: 2;
+            transition: opacity 0.3s ease-out, transform 0.3s ease-out;
         }
+        .crate.destroyed {
+            opacity: 0;
+            transform: scale(0.5);
+        }
+
         .explosion {
             position: absolute;
-             /* ✨ [수정] top, left 추가 */
-            top: 0;
-            left: 0;
+            top: 0; left: 0;
             background-color: var(--explosion-color);
-            z-index: 20; 
-            animation: fade-out 0.5s forwards;
-            pointer-events: none; 
+            z-index: 20;
+            animation: fade-out-explosion 0.4s forwards;
+            pointer-events: none;
             border-radius: 20%;
         }
-        @keyframes fade-out {
-            from { opacity: 1; transform: scale(1); }
-            to { opacity: 0; transform: scale(0.8); }
+        @keyframes fade-out-explosion {
+            0% { opacity: 1; transform: scale(1.1); }
+            100% { opacity: 0; transform: scale(0.7); }
         }
 
         .bomb {
             position: absolute;
-             /* ✨ [수정] top, left 추가 */
-            top: 0;
-            left: 0;
+            top: 0; left: 0;
             width: calc(100% / 11);
             height: calc(100% / 15);
-            z-index: 5; 
+            z-index: 5;
             display: flex; justify-content: center; align-items: center;
-            font-size: calc(100vh / 25); 
-            transition: transform 0.1s linear;
-            /* animation: pulse-bomb 1s infinite; */ /* 애니메이션 임시 제거 */
+            font-size: calc(100vh / 25);
+            transition: left 0.1s linear, top 0.1s linear; /* ✨ transform 대신 left/top 사용 */
+            will-change: left, top;
+            animation: pulse-bomb 1s infinite;
+            pointer-events: none;
         }
-        /* @keyframes pulse-bomb { ... } */
+        @keyframes pulse-bomb {
+            0% { /* transform 제거 */ }
+            50% { transform: scale(1.1); } /* scale만 사용 */
+            100% { /* transform 제거 */ }
+        }
+
 
         .item {
             position: absolute;
+            top: 0; left: 0;
             width: calc(100% / 11);
             height: calc(100% / 15);
-            z-index: 6; 
+            z-index: 6;
             display: flex; justify-content: center; align-items: center;
             font-size: calc(100vh / 28);
             border-radius: 50%;
+            opacity: 0;
+            transition: opacity 0.3s ease-in;
+            pointer-events: none;
+        }
+        .item.visible {
             opacity: 0.9;
         }
         .item-bomb { background-color: var(--item-bomb-color); }
         .item-range { background-color: var(--item-range-color); }
-        .item-balloon { 
+        .item-balloon {
              animation: float 2s ease-in-out infinite;
         }
         @keyframes float {
@@ -129,13 +167,15 @@
 
         .player {
             position: absolute;
+            top: 0; left: 0;
             width: calc(100% / 11);
             height: calc(100% / 15);
             border-radius: 50%;
             z-index: 10;
             display: flex; justify-content: center; align-items: center;
             font-size: 0.8em;
-            transition: transform 0.1s linear, opacity 0.3s ease; 
+            transition: left 0.1s linear, top 0.1s linear, opacity 0.3s ease;
+            will-change: left, top, opacity;
         }
         .player-avatar-img {
             width: 90%; height: 90%;
@@ -143,74 +183,46 @@
         }
         .player.dead {
             opacity: 0.5;
-            pointer-events: none; 
+            pointer-events: none;
         }
 
-        #controls-container {
-            position: fixed;
-            bottom: 30px;
-            left: 30px;
-            z-index: 100;
-        }
-        #d-pad {
-            position: relative;
-            width: 120px; height: 120px;
-        }
-        .d-pad-btn {
+        .player-indicator {
             position: absolute;
-            width: 40px; height: 40px;
-            background-color: rgba(255, 255, 255, 0.3);
-            border: 1px solid rgba(255, 255, 255, 0.5);
-            border-radius: 8px;
-            display: flex; justify-content: center; align-items: center;
-            font-size: 1.5em; color: white;
-            cursor: pointer;
+            top: 0; left: 0; /* ✨ 위치 기준 추가 */
+            width: calc(100% / 11);
+            z-index: 11;
+            text-align: center;
+            font-size: 1.2em;
+            color: yellow;
+            text-shadow: 0 0 3px black;
+            pointer-events: none;
+            transition: left 0.1s linear, top 0.1s linear;
+            will-change: left, top;
+            animation: bounce 1s infinite ease-in-out;
         }
-        .d-pad-btn.active {
-             background-color: rgba(255, 255, 255, 0.6);
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
         }
-        #btn-up { top: 0; left: 40px; }
-        #btn-left { top: 40px; left: 0; }
-        #btn-right { top: 40px; left: 80px; }
-        #btn-down { top: 80px; left: 40px; }
 
-        #bomb-btn {
-            position: fixed;
-            bottom: 40px; right: 40px;
-            width: 80px; height: 80px;
-            background-color: rgba(220, 50, 50, 0.7); 
-            border: 2px solid rgba(255, 255, 255, 0.7);
-            border-radius: 50%;
-            font-size: 3em;
-            color: white;
-            z-index: 100;
-            cursor: pointer; 
-        }
-        #bomb-btn:active {
-            background-color: rgba(255, 80, 80, 0.9);
-            transform: scale(0.95);
-        }
-        
-        .overlay {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            display: none; flex-direction: column; justify-content: center; align-items: center;
-            background-color: rgba(0,0,0,0.7);
-            z-index: 1000;
-        }
-        .overlay.active { display: flex; }
-        .modal-content {
-            background: #ecf0f1; color: #333;
-            padding: 30px; border-radius: 20px;
-            text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.4);
-        }
-        .modal-content h2 { font-size: 2em; margin-bottom: 20px; color: var(--primary-color); }
-        .modal-btn {
-            padding: 12px 25px; font-size: 1.1em; font-weight: 700;
-            border-radius: 10px; border: none; cursor: pointer;
-            margin: 10px;
-        }
-        .modal-btn.primary { background-color: var(--primary-color); color: white; }
-        .modal-btn.secondary { background-color: #bdc3c7; color: #333; }
+         #controls-container { position: fixed; bottom: 30px; left: 30px; z-index: 100;}
+         #d-pad { position: relative; width: 120px; height: 120px; }
+         .d-pad-btn { position: absolute; width: 40px; height: 40px; background-color: rgba(255, 255, 255, 0.3); border: 1px solid rgba(255, 255, 255, 0.5); border-radius: 8px; display: flex; justify-content: center; align-items: center; font-size: 1.5em; color: white; cursor: pointer; }
+         .d-pad-btn.active { background-color: rgba(255, 255, 255, 0.6); }
+         #btn-up { top: 0; left: 40px; }
+         #btn-left { top: 40px; left: 0; }
+         #btn-right { top: 40px; left: 80px; }
+         #btn-down { top: 80px; left: 40px; }
+         #bomb-btn { position: fixed; bottom: 40px; right: 40px; width: 80px; height: 80px; background-color: rgba(220, 50, 50, 0.7); border: 2px solid rgba(255, 255, 255, 0.7); border-radius: 50%; font-size: 3em; color: white; z-index: 100; cursor: pointer; }
+         #bomb-btn:active { background-color: rgba(255, 80, 80, 0.9); transform: scale(0.95); }
+         .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: none; flex-direction: column; justify-content: center; align-items: center; background-color: rgba(0,0,0,0.7); z-index: 1000; }
+         .overlay.active { display: flex; }
+         .modal-content { background: #ecf0f1; color: #333; padding: 30px; border-radius: 20px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.4); }
+         .modal-content h2 { font-size: 2em; margin-bottom: 20px; color: var(--primary-color); }
+         .modal-btn { padding: 12px 25px; font-size: 1.1em; font-weight: 700; border-radius: 10px; border: none; cursor: pointer; margin: 10px; }
+         .modal-btn.primary { background-color: var(--primary-color); color: white; }
+         .modal-btn.secondary { background-color: #bdc3c7; color: #333; }
+
     </style>
 </head>
 <body>
@@ -229,9 +241,9 @@
             <button class="d-pad-btn" id="btn-down">↓</button>
         </div>
     </div>
-    
+
     <button id="bomb-btn">💣</button>
-    
+
     <div id="game-over-modal" class="overlay">
         <div class="modal-content">
             <h2 id="game-over-message"></h2>
@@ -242,13 +254,12 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
-  
+
     <script>
         document.addEventListener('contextmenu', event => event.preventDefault());
 
         document.addEventListener('DOMContentLoaded', () => {
-            // ... (Firebase 설정 등 이전 코드와 동일) ...
-             const firebaseConfig = {
+            const firebaseConfig = {
                 apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
                 authDomain: "goodluck-7c14b.firebaseapp.com",
                 databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com",
@@ -268,51 +279,84 @@
             const gameOverModal = document.getElementById('game-over-modal');
             const gameOverMessage = document.getElementById('game-over-message');
             const lobbyBtn = document.getElementById('lobby-btn');
-            
+
             let myPlayerId, myNickname, myAvatar, roomRef, isHost;
             let currentRoomData = {};
-            let playerElements = {}; 
-            let bombElements = {}; 
-            let itemElements = {}; 
-            let explosionElements = {}; 
-            let mapGrid = []; 
-            let mapElements = []; 
+            let playerElements = {};
+            let myIndicatorElement = null; // 내 플레이어 화살표
+            let bombElements = {};
+            let itemElements = {};
+            let explosionElements = {};
+            let mapGrid = [];
+            let mapElements = [];
             let TILE_WIDTH = 0;
             let TILE_HEIGHT = 0;
-            
+
             const GRID_COLS = 11;
             const GRID_ROWS = 15;
-            
-            let moveDirection = { x: 0, y: 0, current: null }; 
-            let moveInterval = null; 
-            const MOVE_SPEED = 150; 
-            
+
+            let moveDirection = { x: 0, y: 0, current: null };
+            let moveInterval = null;
+            const MOVE_SPEED = 150;
+
             let serverTimeOffset = 0;
-            
-            const ITEM_TYPES = {
-                BOMB_COUNT: 'bomb',
-                BOMB_RANGE: 'range'
-            };
-            const ITEM_ICONS = {
-                [ITEM_TYPES.BOMB_COUNT]: '💣',
-                [ITEM_TYPES.BOMB_RANGE]: '🔥'
-            };
+            let bombTimerInterval = null;
+            let explodingBombs = new Set();
+
+            const ITEM_TYPES = { BOMB_COUNT: 'bomb', BOMB_RANGE: 'range' };
+            const ITEM_ICONS = { [ITEM_TYPES.BOMB_COUNT]: '💣', [ITEM_TYPES.BOMB_RANGE]: '🔥' };
+
+            const mapLayouts = [
+                // 맵 1 (기본 대칭형)
+                [
+                    [0,0,0,0,0,0,0,0,0,0,0], [0,2,2,2,1,0,1,2,2,2,0], [0,2,1,2,0,2,0,2,1,2,0],
+                    [0,2,0,0,2,1,2,0,0,2,0], [0,1,2,1,0,0,0,1,2,1,0], [0,0,0,2,0,1,0,2,0,0,0],
+                    [0,2,1,0,1,2,1,0,1,2,0], [0,0,0,0,0,0,0,0,0,0,0], [0,2,1,0,1,2,1,0,1,2,0],
+                    [0,0,0,2,0,1,0,2,0,0,0], [0,1,2,1,0,0,0,1,2,1,0], [0,2,0,0,2,1,2,0,0,2,0],
+                    [0,2,1,2,0,2,0,2,1,2,0], [0,2,2,2,1,0,1,2,2,2,0], [0,0,0,0,0,0,0,0,0,0,0],
+                ],
+                // 맵 2 (중앙 개방형)
+                [
+                    [0,0,0,0,0,0,0,0,0,0,0], [0,2,2,1,2,2,2,1,2,2,0], [0,2,1,0,1,0,1,0,1,2,0],
+                    [0,1,0,2,0,2,0,2,0,1,0], [0,2,1,0,1,1,1,0,1,2,0], [0,2,0,2,1,0,1,2,0,2,0],
+                    [0,2,1,0,1,0,1,0,1,2,0], [0,0,0,0,0,0,0,0,0,0,0], [0,2,1,0,1,0,1,0,1,2,0],
+                    [0,2,0,2,1,0,1,2,0,2,0], [0,2,1,0,1,1,1,0,1,2,0], [0,1,0,2,0,2,0,2,0,1,0],
+                    [0,2,1,0,1,0,1,0,1,2,0], [0,2,2,1,2,2,2,1,2,2,0], [0,0,0,0,0,0,0,0,0,0,0],
+                ],
+                 // 맵 3 (복잡한 길)
+                [
+                    [0,0,0,0,0,0,0,0,0,0,0], [0,2,1,2,1,2,1,2,1,2,0], [0,2,0,0,0,1,0,0,0,2,0],
+                    [0,1,0,1,2,2,2,1,0,1,0], [0,2,0,2,1,0,1,2,0,2,0], [0,2,1,2,0,2,0,2,1,2,0],
+                    [0,1,0,1,0,1,0,1,0,1,0], [0,0,0,0,0,0,0,0,0,0,0], [0,1,0,1,0,1,0,1,0,1,0],
+                    [0,2,1,2,0,2,0,2,1,2,0], [0,2,0,2,1,0,1,2,0,2,0], [0,1,0,1,2,2,2,1,0,1,0],
+                    [0,2,0,0,0,1,0,0,0,2,0], [0,2,1,2,1,2,1,2,1,2,0], [0,0,0,0,0,0,0,0,0,0,0],
+                ],
+                // 맵 4 (외곽 순환형)
+                 [
+                    [0,0,0,0,0,0,0,0,0,0,0], [0,2,2,2,2,2,2,2,2,2,0], [0,2,1,1,1,1,1,1,1,2,0],
+                    [0,2,1,2,2,2,2,2,1,2,0], [0,2,1,2,1,1,1,2,1,2,0], [0,2,1,2,1,0,1,2,1,2,0],
+                    [0,2,1,2,1,0,1,2,1,2,0], [0,0,0,0,0,0,0,0,0,0,0], [0,2,1,2,1,0,1,2,1,2,0],
+                    [0,2,1,2,1,0,1,2,1,2,0], [0,2,1,2,1,1,1,2,1,2,0], [0,2,1,2,2,2,2,2,1,2,0],
+                    [0,2,1,1,1,1,1,1,1,2,0], [0,2,2,2,2,2,2,2,2,2,0], [0,0,0,0,0,0,0,0,0,0,0],
+                ]
+            ];
+            let selectedMapLayout = [];
 
             function initialize() {
                 const offsetRef = db.ref(".info/serverTimeOffset");
                 offsetRef.on("value", (snap) => {
                     serverTimeOffset = snap.val();
                 });
-                
+
                 auth.onAuthStateChanged(user => {
                     if (user) {
                         myPlayerId = user.uid;
                         myNickname = localStorage.getItem('userNickname');
                         myAvatar = localStorage.getItem('userAvatar');
-                        
+
                         const urlParams = new URLSearchParams(window.location.search);
                         const roomId = urlParams.get('roomId');
-                        
+
                         if (!roomId || !myNickname) {
                             alert("잘못된 접근입니다.");
                             window.location.href = '대기실.html';
@@ -327,41 +371,41 @@
 
             function joinRoom(roomId) {
                 roomRef = roomsRef.child(roomId);
-                
+
                 roomRef.once('value', snapshot => {
                     if (!snapshot.exists()) {
                         alert("방을 찾을 수 없습니다.");
                         window.location.href = '대기실.html';
                         return;
                     }
-                    
+
                     currentRoomData = snapshot.val();
                     isHost = currentRoomData.hostId === myPlayerId;
 
                     if (isHost) {
                         roomRef.onDisconnect().remove();
+                        if (!bombTimerInterval) {
+                            bombTimerInterval = setInterval(checkBombTimers, 100);
+                        }
                     } else {
                         roomRef.child('players/' + myPlayerId).onDisconnect().remove();
                     }
-                    
-                    setTimeout(setupGameLayout, 0); 
+
+                    setTimeout(setupGameLayout, 0);
                     listenToRoomChanges();
                     setupControls();
                 });
             }
-            
+
             function setupGameLayout() {
-                // ✨ [수정] 맵이 화면에 맞춰진 후 크기 계산
                 requestAnimationFrame(() => {
                     TILE_WIDTH = gameBoard.clientWidth / GRID_COLS;
                     TILE_HEIGHT = gameBoard.clientHeight / GRID_ROWS;
-                    console.log(`[setupGameLayout] Tile Size: W=${TILE_WIDTH.toFixed(1)}, H=${TILE_HEIGHT.toFixed(1)}`);
 
                     if (isHost && !currentRoomData.map) {
                         generateMap();
-                        renderMap(); 
+                        renderMap();
                     } else if (currentRoomData.map && mapGrid.length > 0) {
-                        // 이미 맵 데이터는 있지만 크기 계산이 늦었을 경우 강제 리렌더링
                          renderMap();
                          renderPlayers(currentRoomData.players);
                          renderBombs(currentRoomData.bombs);
@@ -370,67 +414,84 @@
                 });
             }
 
-            // ... (generateMap 함수는 이전과 동일) ...
-             function generateMap() {
-                mapGrid = [];
-                let player1Pos = { r: GRID_ROWS - 2, c: Math.floor(GRID_COLS / 2) }; 
-                let player2Pos = { r: 1, c: Math.floor(GRID_COLS / 2) }; 
-                
-                for (let r = 0; r < GRID_ROWS; r++) {
-                    const row = [];
-                    for (let c = 0; c < GRID_COLS; c++) {
-                        let tileType = 0;
-                        if (r === 0 || r === GRID_ROWS - 1 || c === 0 || c === GRID_COLS - 1) {
-                            tileType = 1;
-                        } else if (r === Math.floor(GRID_ROWS / 2)) {
-                            tileType = 1;
-                        } else if (r % 2 === 0 && c % 2 === 0) {
-                            tileType = 1;
-                        } else {
-                            if (Math.random() < 0.7) {
-                                tileType = 2;
-                            }
-                        }
-                        row.push(tileType);
-                    }
-                    mapGrid.push(row);
-                }
-                
+            function generateMap() {
+                selectedMapLayout = mapLayouts[Math.floor(Math.random() * mapLayouts.length)];
+                mapGrid = JSON.parse(JSON.stringify(selectedMapLayout)); // Use selected layout
+
+                let player1Pos = { r: GRID_ROWS - 2, c: Math.floor(GRID_COLS / 2) };
+                let player2Pos = { r: 1, c: Math.floor(GRID_COLS / 2) };
+
+                // Ensure start points are clear
                 const startPoints = [
                     player1Pos, {r: player1Pos.r - 1, c: player1Pos.c}, {r: player1Pos.r, c: player1Pos.c - 1}, {r: player1Pos.r, c: player1Pos.c + 1},
                     player2Pos, {r: player2Pos.r + 1, c: player2Pos.c}, {r: player2Pos.r, c: player2Pos.c - 1}, {r: player2Pos.r, c: player2Pos.c + 1}
                 ];
-                
                 startPoints.forEach(pos => {
-                    if (mapGrid[pos.r] && mapGrid[pos.r][pos.c] === 2) {
-                        mapGrid[pos.r][pos.c] = 0;
+                    if (pos.r >= 0 && pos.r < GRID_ROWS && pos.c >= 0 && pos.c < GRID_COLS) {
+                        mapGrid[pos.r][pos.c] = 0; // Set to path
                     }
                 });
-                
+
                 const playerIds = Object.keys(currentRoomData.players);
                 const hostId = currentRoomData.hostId;
                 const guestId = playerIds.find(id => id !== hostId);
-                
                 let playersData = { ...currentRoomData.players };
                 playersData[hostId] = { ...playersData[hostId], r: player1Pos.r, c: player1Pos.c, stats: { maxBombs: 1, bombRange: 1, isAlive: true } };
                 if (guestId && playersData[guestId]) {
                     playersData[guestId] = { ...playersData[guestId], r: player2Pos.r, c: player2Pos.c, stats: { maxBombs: 1, bombRange: 1, isAlive: true } };
                 }
 
+                // Place initial items under crates near start points
                 let initialItems = {};
                 const itemTypes = [ITEM_TYPES.BOMB_COUNT, ITEM_TYPES.BOMB_RANGE];
-                initialItems[roomRef.child('items').push().key] = {
-                    r: GRID_ROWS - 2, c: 1, type: itemTypes[Math.floor(Math.random() * itemTypes.length)], isVisible: true, isBalloon: true
+
+                const findCrateSpot = (startPos) => {
+                    const candidates = [
+                        {r: startPos.r, c: startPos.c - 1}, {r: startPos.r, c: startPos.c + 1},
+                        {r: startPos.r - 1, c: startPos.c}, {r: startPos.r + 1, c: startPos.c} // Also check above/below
+                    ];
+                    // Shuffle candidates for randomness
+                    candidates.sort(() => Math.random() - 0.5);
+                    for (let p of candidates) {
+                        if (p.r >= 0 && p.r < GRID_ROWS && p.c >= 0 && p.c < GRID_COLS && mapGrid[p.r][p.c] === 2) {
+                            return p;
+                        }
+                    }
+                     // Fallback: If no adjacent crate, find *any* nearby crate (less ideal)
+                    for (let dr = -2; dr <= 2; dr++){
+                        for (let dc = -2; dc <= 2; dc++){
+                            if(Math.abs(dr) + Math.abs(dc) > 2) continue; // Only check within 2 steps Manhattan distance
+                            const r = startPos.r + dr;
+                            const c = startPos.c + dc;
+                             if (r >= 0 && r < GRID_ROWS && c >= 0 && c < GRID_COLS && mapGrid[r][c] === 2) {
+                                return {r, c};
+                             }
+                        }
+                    }
+                    return null; // No suitable spot found
                 };
-                 initialItems[roomRef.child('items').push().key] = {
-                    r: 1, c: GRID_COLS - 2, type: itemTypes[Math.floor(Math.random() * itemTypes.length)], isVisible: true, isBalloon: true
-                };
+
+                const p1ItemPos = findCrateSpot(player1Pos);
+                if (p1ItemPos) {
+                     initialItems[roomRef.child('items').push().key] = {
+                        r: p1ItemPos.r, c: p1ItemPos.c, type: itemTypes[0], isVisible: false, isBalloon: true
+                    };
+                     mapGrid[p1ItemPos.r][p1ItemPos.c] = 2; // Ensure it's a crate
+                }
+
+                 const p2ItemPos = findCrateSpot(player2Pos);
+                 if (p2ItemPos) {
+                     initialItems[roomRef.child('items').push().key] = {
+                        r: p2ItemPos.r, c: p2ItemPos.c, type: itemTypes[1], isVisible: false, isBalloon: true
+                    };
+                      mapGrid[p2ItemPos.r][p2ItemPos.c] = 2; // Ensure it's a crate
+                 }
 
                 roomRef.update({
                     map: mapGrid,
                     players: playersData,
-                    items: initialItems, 
-                    status: 'playing' 
+                    items: initialItems,
+                    status: 'playing'
                 });
             }
 
@@ -439,20 +500,19 @@
                     if (!snapshot.exists()) {
                         if (gameOverModal.style.display !== 'flex') {
                             alert("방장이 나갔습니다.");
+                            clearInterval(bombTimerInterval);
+                            bombTimerInterval = null;
                             window.location.href = '대기실.html';
                         }
                         return;
                     }
-                    
+
                     const oldStatus = currentRoomData.status;
                     currentRoomData = snapshot.val();
-                    
-                    // ✨ 맵 데이터 변경 시 시각 효과 업데이트
+
                     if (currentRoomData.map && mapGrid.length > 0 && JSON.stringify(mapGrid) !== JSON.stringify(currentRoomData.map)) {
-                         console.log("Map data changed, updating visuals.");
                         updateMapVisuals(currentRoomData.map);
                     } else if (currentRoomData.map && mapGrid.length === 0) {
-                         console.log("Initial map data received.");
                          mapGrid = currentRoomData.map;
                         if (TILE_WIDTH > 0) {
                             renderMap();
@@ -460,89 +520,109 @@
                             setTimeout(setupGameLayout, 50);
                         }
                     }
-                    
+
                     if (currentRoomData.players) {
                         renderPlayers(currentRoomData.players);
                         updateHeader(currentRoomData.players);
                     }
-                    
-                    renderBombs(currentRoomData.bombs);
-                    renderItems(currentRoomData.items); 
-                    
+
+                    renderGameElements();
+
                     if (currentRoomData.status === 'gameOver' && oldStatus !== 'gameOver') {
+                        clearInterval(bombTimerInterval);
+                        bombTimerInterval = null;
                         showGameOver(currentRoomData.winner);
                     }
                 });
             }
 
-             function renderMap() {
-                console.log("[renderMap] Rendering map...");
-                gameBoard.innerHTML = '';
-                mapElements = []; 
+            function renderGameElements() {
+                 renderBombs(currentRoomData.bombs);
+                 renderItems(currentRoomData.items);
+            }
+
+            function renderMap() {
+                gameBoard.innerHTML = ''; // Clear previous elements
+                 // ✨ Create indicator element here if needed, before players
+                 if (!myIndicatorElement && myPlayerId) {
+                    myIndicatorElement = document.createElement('div');
+                    myIndicatorElement.className = 'player-indicator';
+                    myIndicatorElement.textContent = '🔽';
+                    gameBoard.appendChild(myIndicatorElement); // Append to board
+                }
+
+                mapElements = [];
                 mapGrid.forEach((row, r) => {
                     const rowElements = [];
                     row.forEach((tileType, c) => {
                         const cell = document.createElement('div');
                         cell.className = 'grid-cell';
-                        cell.dataset.r = r; 
+                        cell.dataset.r = r;
                         cell.dataset.c = c;
-                        
+
                         if (tileType === 1) cell.classList.add('wall');
                         else if (tileType === 2) cell.classList.add('crate');
                         else cell.classList.add('path');
-                        
-                        // ✨ [수정] 크기 계산 후 적용 보장
+
                         if(TILE_WIDTH > 0 && TILE_HEIGHT > 0){
-                            cell.style.transform = `translate(${c * TILE_WIDTH}px, ${r * TILE_HEIGHT}px)`;
-                        } else {
-                             console.warn(`[renderMap] Tile size zero during cell creation at ${r},${c}`);
+                            cell.style.left = `${c * TILE_WIDTH}px`;
+                            cell.style.top = `${r * TILE_HEIGHT}px`;
                         }
-                        
                         gameBoard.appendChild(cell);
-                        rowElements.push(cell); 
+                        rowElements.push(cell);
                     });
-                    mapElements.push(rowElements); 
+                    mapElements.push(rowElements);
                 });
+                 // ✨ Ensure other elements are rendered AFTER map tiles
+                 renderPlayers(currentRoomData.players);
+                 renderBombs(currentRoomData.bombs);
+                 renderItems(currentRoomData.items);
             }
-            
+
+
             function updateMapVisuals(newMapData) {
-                console.log("[updateMapVisuals] Updating map visuals...");
-                if (!mapElements.length) {
-                     console.warn("[updateMapVisuals] mapElements not ready.");
-                     return;
-                }
+                if (!mapElements.length) return;
                 for (let r = 0; r < GRID_ROWS; r++) {
                     for (let c = 0; c < GRID_COLS; c++) {
-                        // ✨ mapElements[r] 존재 확인
-                        if (!mapElements[r] || !mapElements[r][c]) continue; 
-                        
+                        if (!mapElements[r] || !mapElements[r][c]) continue;
                         const cellEl = mapElements[r][c];
-                        const oldType = mapGrid[r]?.[c]; // 이전 맵 데이터 안전하게 접근
-                        const newType = newMapData[r]?.[c]; // 새 맵 데이터 안전하게 접근
-                        
-                        if (oldType === 2 && newType === 0) { 
-                            console.log(`[updateMapVisuals] Crate destroyed at ${r},${c}`);
-                            cellEl.classList.remove('crate');
-                            cellEl.classList.add('path');
+                        const oldType = mapGrid[r]?.[c];
+                        const newType = newMapData[r]?.[c];
+
+                        if (oldType === 2 && newType === 0) {
+                            cellEl.classList.add('destroyed');
+                             setTimeout(() => {
+                                cellEl.classList.remove('crate', 'destroyed');
+                                cellEl.classList.add('path');
+                                cellEl.style.backgroundImage = 'none'; // Stop using crate image
+                                cellEl.style.backgroundColor = 'var(--path-color)'; // Use path color
+                             }, 300);
                         }
+                        // Add logic here if other tile types can change (e.g., wall -> path)
                     }
                 }
-                mapGrid = newMapData; 
+                mapGrid = newMapData;
             }
-            
+
+
             function renderPlayers(players) {
-                if (TILE_WIDTH === 0 || TILE_HEIGHT === 0) return; 
+                if (TILE_WIDTH === 0 || TILE_HEIGHT === 0) return;
+
+                 if (!myIndicatorElement && myPlayerId) { // Ensure indicator exists
+                    myIndicatorElement = document.createElement('div');
+                    myIndicatorElement.className = 'player-indicator';
+                    myIndicatorElement.textContent = '🔽';
+                    gameBoard.appendChild(myIndicatorElement);
+                }
+
 
                 Object.keys(players).forEach(playerId => {
                     const pData = players[playerId];
-                    if (pData.r === undefined || pData.c === undefined) return; 
-                    
+                    if (pData.r === undefined || pData.c === undefined) return;
                     let playerEl = playerElements[playerId];
-                    
                     if (!playerEl) {
                         playerEl = document.createElement('div');
                         playerEl.className = 'player';
-                        
                         const avatarImg = document.createElement('img');
                         avatarImg.className = 'player-avatar-img';
                         if (pData.avatar.startsWith('http')) {
@@ -551,31 +631,36 @@
                             playerEl.textContent = pData.avatar;
                             playerEl.style.fontSize = `${TILE_HEIGHT * 0.7}px`;
                         }
-                        
-                        playerEl.style.backgroundColor = (playerId === currentRoomData.hostId) ? 
+                        playerEl.style.backgroundColor = (playerId === currentRoomData.hostId) ?
                             'var(--player1-color)' : 'var(--player2-color)';
-                        
                         playerEl.appendChild(avatarImg);
+                        // ✨ Append player to gameBoard, not document body
                         gameBoard.appendChild(playerEl);
                         playerElements[playerId] = playerEl;
                     }
-                    
                     const x = pData.c * TILE_WIDTH;
                     const y = pData.r * TILE_HEIGHT;
-                    playerEl.style.transform = `translate(${x}px, ${y}px)`;
+                    playerEl.style.left = `${x}px`;
+                    playerEl.style.top = `${y}px`;
                     playerEl.classList.toggle('dead', !pData.stats?.isAlive);
+
+                    if (playerId === myPlayerId && myIndicatorElement) {
+                         const indicatorY = y - TILE_HEIGHT * 0.6;
+                         myIndicatorElement.style.left = `${x}px`;
+                         myIndicatorElement.style.top = `${indicatorY}px`;
+                         myIndicatorElement.style.display = pData.stats?.isAlive ? 'block' : 'none';
+                    }
                 });
             }
-            
+
+
             function renderItems(itemsData) {
                 if (!itemsData) itemsData = {};
                 if (TILE_WIDTH === 0) return;
-                
                 const itemsOnScreen = {};
                 for (const itemId in itemsData) {
                     const iData = itemsData[itemId];
                     itemsOnScreen[itemId] = true;
-                    
                     let itemEl = itemElements[itemId];
                     if (!itemEl) {
                         itemEl = document.createElement('div');
@@ -583,230 +668,238 @@
                         itemEl.className = 'item';
                         itemEl.textContent = ITEM_ICONS[iData.type] || '?';
                         itemEl.classList.add(`item-${iData.type}`);
-                        if (iData.isBalloon) {
-                            itemEl.classList.add('item-balloon');
-                        }
+                        if (iData.isBalloon) itemEl.classList.add('item-balloon');
                         gameBoard.appendChild(itemEl);
                         itemElements[itemId] = itemEl;
                     }
-                    
-                    itemEl.style.transform = `translate(${iData.c * TILE_WIDTH}px, ${iData.r * TILE_HEIGHT}px)`;
+                    itemEl.classList.toggle('visible', iData.isVisible);
+
+                    const itemX = iData.c * TILE_WIDTH;
+                    const itemY = iData.r * TILE_HEIGHT;
+                    itemEl.style.left = `${itemX}px`;
+                    itemEl.style.top = `${itemY}px`;
                 }
-                
                 for (const itemId in itemElements) {
                     if (!itemsOnScreen[itemId]) {
-                        itemElements[itemId].remove();
-                        delete itemElements[itemId];
+                         if (itemElements[itemId]) { // Check if element exists before removing
+                            itemElements[itemId].remove();
+                            delete itemElements[itemId];
+                         }
                     }
                 }
             }
 
-            // ✨ [수정] renderBombs (DOM 생성 후 transform 적용)
+
             function renderBombs(bombsData) {
                 if (TILE_WIDTH === 0 || TILE_HEIGHT === 0) {
-                    // 재계산 시도
                      TILE_WIDTH = gameBoard.clientWidth / GRID_COLS;
                      TILE_HEIGHT = gameBoard.clientHeight / GRID_ROWS;
-                    if (TILE_WIDTH === 0 || TILE_HEIGHT === 0){
-                         // console.warn("[renderBombs] Tile size still zero.");
-                         return; 
-                    }
+                    if (TILE_WIDTH === 0 || TILE_HEIGHT === 0) return;
                 }
-                
+
                 if (!bombsData) bombsData = {};
-                const now = Date.now() + serverTimeOffset; 
-                const bombsOnScreen = {}; 
+                const bombsOnScreen = {};
 
                 for (const bombId in bombsData) {
                     const bData = bombsData[bombId];
-                    if (typeof bData.r !== 'number' || typeof bData.c !== 'number' || typeof bData.placedAt !== 'number') continue; 
-                    bombsOnScreen[bombId] = true; 
-                    
+                    if (typeof bData.r !== 'number' || typeof bData.c !== 'number' || typeof bData.placedAt !== 'number') continue;
+                    bombsOnScreen[bombId] = true;
+
                     let bombEl = bombElements[bombId];
-                    // ✨ DOM 생성 로직 수정: 생성 후 즉시 transform 적용
                     if (!bombEl) {
                         bombEl = document.createElement('div');
                         bombEl.id = bombId;
                         bombEl.className = 'bomb';
                         bombEl.textContent = '💣';
                         bombEl.style.fontSize = `${TILE_HEIGHT * 0.8}px`;
-                        // ✨ 먼저 DOM에 추가
-                        gameBoard.appendChild(bombEl); 
+                        // ✨ Append bomb to gameBoard
+                        gameBoard.appendChild(bombEl);
                         bombElements[bombId] = bombEl;
-                        
-                        // ✨ 추가한 직후에 위치 계산 및 적용
-                        const bombR = Number(bData.r);
-                        const bombC = Number(bData.c);
-                        if (!isNaN(bombR) && !isNaN(bombC)) {
-                             const bombX = bombC * TILE_WIDTH;
-                             const bombY = bombR * TILE_HEIGHT;
-                             // console.log(`[renderBombs] Initial position for ${bombId}: translate(${bombX.toFixed(1)}px, ${bombY.toFixed(1)}px)`);
-                             bombEl.style.transform = `translate(${bombX}px, ${bombY}px)`;
-                        } else {
-                             console.error(`[renderBombs] Invalid coords during creation for ${bombId}`);
-                        }
-                        
-                    } else {
-                         // ✨ 이미 존재하는 DOM이면 위치만 업데이트
-                        const bombR = Number(bData.r);
-                        const bombC = Number(bData.c);
-                         if (!isNaN(bombR) && !isNaN(bombC)) {
-                             const bombX = bombC * TILE_WIDTH;
-                             const bombY = bombR * TILE_HEIGHT;
-                             // console.log(`[renderBombs] Updating position for ${bombId}: translate(${bombX.toFixed(1)}px, ${bombY.toFixed(1)}px)`);
-                             bombEl.style.transform = `translate(${bombX}px, ${bombY}px)`;
-                        }
                     }
-                    
-                    if (isHost) {
-                        const timeElapsed = now - bData.placedAt;
-                        if (timeElapsed > 3000) { 
-                            explodeBomb(bombId, bData);
-                        }
+
+                    const bombR = Number(bData.r);
+                    const bombC = Number(bData.c);
+                    if (!isNaN(bombR) && !isNaN(bombC)) {
+                         const bombX = bombC * TILE_WIDTH;
+                         const bombY = bombR * TILE_HEIGHT;
+                         bombEl.style.left = `${bombX}px`;
+                         bombEl.style.top = `${bombY}px`;
                     }
                 }
-                
+
                 for (const bombId in bombElements) {
-                    if (!bombsOnScreen[bombId]) { 
+                    if (!bombsOnScreen[bombId]) {
                         if (bombElements[bombId]) {
                             bombElements[bombId].remove();
-                            delete bombElements[bombId]; 
+                            delete bombElements[bombId];
                         }
                     }
                 }
             }
 
+
+            function checkBombTimers() {
+                if (!isHost || !currentRoomData.bombs) return;
+                const now = Date.now() + serverTimeOffset;
+                const bombs = currentRoomData.bombs;
+                for (const bombId in bombs) {
+                    if (explodingBombs.has(bombId)) continue;
+                    const bData = bombs[bombId];
+                    if (typeof bData.placedAt === 'number') {
+                        if (bData.placedAt + 3000 < now) {
+                            explodeBomb(bombId, bData);
+                        }
+                    }
+                }
+            }
+
+
             function placeBomb() {
                 if (!currentRoomData.players || !currentRoomData.players[myPlayerId] || !currentRoomData.players[myPlayerId].stats) return;
-                
                 const myStats = currentRoomData.players[myPlayerId].stats;
                 const myPos = currentRoomData.players[myPlayerId];
-                
-                if (myPos.r === undefined || myPos.c === undefined || !myStats.isAlive) return; 
-                
+                if (myPos.r === undefined || myPos.c === undefined || !myStats.isAlive) return;
                 const myBombs = Object.values(currentRoomData.bombs || {}).filter(b => b.owner === myPlayerId).length;
-                if (myBombs >= myStats.maxBombs) {
-                    return; 
-                }
-                
+                if (myBombs >= myStats.maxBombs) return;
                 const bombId = roomRef.child('bombs').push().key;
                 const bombData = {
                     owner: myPlayerId,
                     r: myPos.r,
                     c: myPos.c,
-                    placedAt: firebase.database.ServerValue.TIMESTAMP 
+                    placedAt: firebase.database.ServerValue.TIMESTAMP
                 };
-                
                 roomRef.child('bombs/' + bombId).set(bombData);
             }
-            
-             function explodeBomb(bombId, bData) {
-                if (!isHost) return; 
-                
-                console.log(`[explodeBomb] Processing ${bombId}`);
-                roomRef.child('bombs/' + bombId).remove();
-                
-                const explosionTiles = []; 
+
+
+            function explodeBomb(bombId, bData) {
+                if (!isHost || explodingBombs.has(bombId) || !bData) return; // ✨ bData null check
+                explodingBombs.add(bombId);
+
+                setTimeout(() => {
+                    roomRef.child('bombs/' + bombId).remove().then(() => {
+                        explodingBombs.delete(bombId);
+                    }).catch(() => {
+                         explodingBombs.delete(bombId);
+                    });
+                }, 200);
+
+                const explosionTiles = [];
                 const ownerStats = currentRoomData.players[bData.owner]?.stats;
-                const range = ownerStats ? ownerStats.bombRange : 1; 
-                
-                explosionTiles.push({ r: bData.r, c: bData.c }); 
-                
-                const directions = [[-1, 0], [1, 0], [0, -1], [0, 1]]; 
+                const range = ownerStats ? ownerStats.bombRange : 1;
+
+                explosionTiles.push({ r: bData.r, c: bData.c });
+
+                const directions = [[-1, 0], [1, 0], [0, -1], [0, 1]];
                 directions.forEach(([dr, dc]) => {
                     for (let i = 1; i <= range; i++) {
                         const r = bData.r + dr * i;
                         const c = bData.c + dc * i;
-                        if (r < 0 || r >= GRID_ROWS || c < 0 || c >= GRID_COLS) break; 
-                        
-                        // ✨ mapGrid 직접 접근 대신 currentRoomData.map 사용
-                        const tileType = currentRoomData.map?.[r]?.[c]; 
-                        // ✨ 유효하지 않은 타일이면 중단
-                        if (tileType === undefined) break; 
-
+                        if (r < 0 || r >= GRID_ROWS || c < 0 || c >= GRID_COLS) break;
+                        const tileType = currentRoomData.map?.[r]?.[c];
+                        if (tileType === undefined) break;
                         explosionTiles.push({ r, c });
-                        
-                        if (tileType === 1) break; 
-                        if (tileType === 2) break; 
+                        if (tileType === 1) break; // Stop at wall
+                        // ✨ Allow explosion to continue through crates
+                        // if (tileType === 2) break;
                     }
                 });
-                
-                const updates = {};
-                let newItemKey = null; 
-                
-                explosionTiles.forEach(tile => {
-                    // ✨ 폭발 효과 함수 호출 시점 변경: 업데이트 전 호출
-                    showExplosionEffect(tile.r, tile.c); 
-                    
-                    // ✨ mapGrid 직접 접근 대신 currentRoomData.map 사용
-                    const currentTileType = currentRoomData.map?.[tile.r]?.[tile.c];
 
-                    if (currentTileType === 2) { // 나무상자 파괴
-                        updates[`map/${tile.r}/${tile.c}`] = 0; 
+                const updates = {};
+                let triggeredBombIds = [];
+
+                explosionTiles.forEach(tile => {
+                    showExplosionEffect(tile.r, tile.c);
+
+                    const currentTileType = currentRoomData.map?.[tile.r]?.[tile.c];
+                    if (currentTileType === 2) {
+                        updates[`map/${tile.r}/${tile.c}`] = 0;
+                        // Item drop logic (30% chance)
                         if (Math.random() < 0.3) {
-                            newItemKey = roomRef.child('items').push().key;
-                            updates[`items/${newItemKey}`] = {
+                             const newItemKey = roomRef.child('items').push().key;
+                             updates[`items/${newItemKey}`] = {
                                 r: tile.r, c: tile.c,
                                 type: Math.random() < 0.5 ? ITEM_TYPES.BOMB_COUNT : ITEM_TYPES.BOMB_RANGE,
-                                isVisible: true, isBalloon: false 
+                                isVisible: true, isBalloon: false
                             };
                         }
+                        // Check if a hidden balloon item was here
+                        for(const itemId in currentRoomData.items) {
+                             const item = currentRoomData.items[itemId];
+                             if (item.isBalloon && !item.isVisible && item.r === tile.r && item.c === tile.c) {
+                                updates[`items/${itemId}/isVisible`] = true;
+                                break;
+                             }
+                        }
                     }
-                    
-                    // 플레이어 사망 처리
+
+                    // Player hit check
                     for (const playerId in currentRoomData.players) {
                         const pData = currentRoomData.players[playerId];
-                        // ✨ stats 존재 확인 추가
                         if (pData.stats?.isAlive && pData.r === tile.r && pData.c === tile.c) {
                             updates[`players/${playerId}/stats/isAlive`] = false;
-                            console.log(`Player ${playerId} hit by explosion!`);
+                        }
+                    }
+
+                    // Chain reaction check
+                    for (const otherBombId in currentRoomData.bombs) {
+                        if (otherBombId !== bombId && !explodingBombs.has(otherBombId)) {
+                             const otherBomb = currentRoomData.bombs[otherBombId];
+                             if (otherBomb && otherBomb.r === tile.r && otherBomb.c === tile.c) { // ✨ otherBomb null check
+                                triggeredBombIds.push(otherBombId);
+                             }
                         }
                     }
                 });
-                
+
                 if (Object.keys(updates).length > 0) {
-                    roomRef.update(updates).then(() => { checkWinCondition(); });
+                    roomRef.update(updates).then(() => {
+                         triggeredBombIds.forEach(id => setTimeout(() => {
+                             // ✨ Pass potentially updated bomb data for chain reaction
+                             const chainBombData = currentRoomData.bombs ? currentRoomData.bombs[id] : null;
+                             if(chainBombData) explodeBomb(id, chainBombData);
+                         }, 50));
+                         checkWinCondition();
+                    });
                 } else {
+                    triggeredBombIds.forEach(id => setTimeout(() => {
+                         const chainBombData = currentRoomData.bombs ? currentRoomData.bombs[id] : null;
+                         if(chainBombData) explodeBomb(id, chainBombData);
+                    }, 50));
                      checkWinCondition();
                 }
             }
-            
-            // ✨ [수정] showExplosionEffect (크기/위치 설정 보강)
+
+
             function showExplosionEffect(r, c) {
-                 if (TILE_WIDTH === 0 || TILE_HEIGHT === 0) {
-                     console.warn("[showExplosionEffect] Tile size zero, cannot show effect.");
-                     return;
-                 }
-                const effectId = `exp-${r}-${c}-${Date.now()}`; 
+                 if (TILE_WIDTH === 0 || TILE_HEIGHT === 0) return;
+                const effectId = `exp-${r}-${c}-${Date.now()}`;
                 const explosionEl = document.createElement('div');
                 explosionEl.id = effectId;
                 explosionEl.className = 'explosion';
-                
-                // ✨ 크기와 위치를 명확하게 설정
                 explosionEl.style.width = `${TILE_WIDTH}px`;
                 explosionEl.style.height = `${TILE_HEIGHT}px`;
-                explosionEl.style.transform = `translate(${c * TILE_WIDTH}px, ${r * TILE_HEIGHT}px)`;
-                
+                explosionEl.style.left = `${c * TILE_WIDTH}px`;
+                explosionEl.style.top = `${r * TILE_HEIGHT}px`;
                 gameBoard.appendChild(explosionEl);
-                
                 setTimeout(() => {
-                    // ✨ 제거 시 요소가 아직 존재하는지 확인
                     const elToRemove = document.getElementById(effectId);
                     if(elToRemove) elToRemove.remove();
-                }, 500);
+                }, 400);
             }
-            
+
+
             function checkWinCondition() {
                 if (!isHost || !currentRoomData.players) return;
                 const alivePlayers = Object.entries(currentRoomData.players)
                                          .filter(([id, pData]) => pData.stats?.isAlive);
-                if (alivePlayers.length <= 1 && currentRoomData.status !== 'gameOver') { // ✨ 중복 호출 방지
+                if (alivePlayers.length <= 1 && currentRoomData.status !== 'gameOver') {
                     let winnerId = alivePlayers.length === 1 ? alivePlayers[0][0] : null;
-                    console.log(`Game Over! Winner: ${winnerId || 'Draw'}`);
                     roomRef.update({ status: 'gameOver', winner: winnerId });
                 }
             }
-            
+
+
             function showGameOver(winnerId) {
                 let message = "무승부!";
                 if (winnerId) {
@@ -816,12 +909,11 @@
                 }
                 gameOverMessage.textContent = message;
                 gameOverModal.classList.add('active');
-                
                 const lobbyBtnGameOver = gameOverModal.querySelector('#lobby-btn');
-                 // ✨ 이벤트 리스너 중복 방지
-                lobbyBtnGameOver.replaceWith(lobbyBtnGameOver.cloneNode(true)); 
+                lobbyBtnGameOver.replaceWith(lobbyBtnGameOver.cloneNode(true));
                 gameOverModal.querySelector('#lobby-btn').onclick = () => { window.location.href = '대기실.html'; };
             }
+
 
             function updateHeader(players) {
                 gameHeader.innerHTML = '';
@@ -829,7 +921,6 @@
                     const pData = players[playerId];
                     const pInfo = document.createElement('div');
                     pInfo.className = 'player-info';
-                    
                     const avatarEl = document.createElement('div');
                     avatarEl.className = 'player-avatar';
                     if (pData.avatar.startsWith('http')) {
@@ -837,18 +928,17 @@
                     } else {
                         avatarEl.textContent = pData.avatar;
                     }
-                    
                     const statsEl = document.createElement('div');
                     statsEl.className = 'player-stats';
                     if (pData.stats) {
                         statsEl.innerHTML = `<span>💣 ${pData.stats.maxBombs}</span> <span>🔥 ${pData.stats.bombRange}</span>`;
                     }
-                    
                     pInfo.appendChild(avatarEl);
-                    pInfo.appendChild(statsEl); 
+                    pInfo.appendChild(statsEl);
                     gameHeader.appendChild(pInfo);
                 });
             }
+
 
             function setupControls() {
                 const dPadButtons = {
@@ -861,7 +951,7 @@
                 Object.values(dPadButtons).forEach(btn => {
                     const start = (e) => {
                         e.preventDefault();
-                        if (currentRoomData?.players?.[myPlayerId]?.stats?.isAlive === false) return; 
+                        if (currentRoomData?.players?.[myPlayerId]?.stats?.isAlive === false) return;
                         Object.values(dPadButtons).forEach(b => b.el.classList.remove('active'));
                         btn.el.classList.add('active');
                         startContinuousMove(btn.dir, btn.x, btn.y);
@@ -879,11 +969,11 @@
                     btn.el.addEventListener('touchend', end);
                     btn.el.addEventListener('mouseleave', end);
                 });
-                
+
                 document.getElementById('bomb-btn').addEventListener('click', placeBomb);
-                
+
                 document.addEventListener('keydown', (e) => {
-                     if (currentRoomData?.players?.[myPlayerId]?.stats?.isAlive === false) return; 
+                     if (currentRoomData?.players?.[myPlayerId]?.stats?.isAlive === false) return;
                     switch(e.key) {
                         case 'ArrowUp': e.preventDefault(); startContinuousMove('up', 0, -1); break;
                         case 'ArrowDown': e.preventDefault(); startContinuousMove('down', 0, 1); break;
@@ -892,7 +982,7 @@
                         case ' ': e.preventDefault(); placeBomb(); break;
                     }
                 });
-                
+
                 document.addEventListener('keyup', (e) => {
                     const keyMap = {'ArrowUp': 'up', 'ArrowDown': 'down', 'ArrowLeft': 'left', 'ArrowRight': 'right'};
                     if (moveDirection.current === keyMap[e.key]) {
@@ -900,27 +990,30 @@
                     }
                 });
             }
-            
+
+
             function startContinuousMove(dir, x, y) {
-                if (moveDirection.current === dir) return; 
-                stopContinuousMove(); 
+                if (moveDirection.current === dir) return;
+                stopContinuousMove();
                 moveDirection = { x, y, current: dir };
-                tryMove(x, y); 
+                tryMove(x, y);
                 moveInterval = setInterval(() => {
                     tryMove(moveDirection.x, moveDirection.y);
                 }, MOVE_SPEED);
             }
-            
+
+
             function stopContinuousMove() {
                 clearInterval(moveInterval);
                 moveInterval = null;
                 moveDirection.current = null;
             }
 
+
             function tryMove(dc, dr) {
                 if (!currentRoomData.players || !currentRoomData.players[myPlayerId] || !currentRoomData.players[myPlayerId].stats?.isAlive) return;
                 const myPos = currentRoomData.players[myPlayerId];
-                if (myPos.r === undefined) return; 
+                if (myPos.r === undefined) return;
                 const newR = myPos.r + dr;
                 const newC = myPos.c + dc;
                 if (isWalkable(newR, newC)) {
@@ -928,48 +1021,64 @@
                     const items = currentRoomData.items || {};
                     let collectedItemId = null;
                     let collectedItemType = null;
-                    
+
                     for (const itemId in items) {
-                        if (items[itemId].r === newR && items[itemId].c === newC) {
+                         // ✨ Check isVisible as well
+                        if (items[itemId].isVisible && items[itemId].r === newR && items[itemId].c === newC) {
                             collectedItemId = itemId;
                             collectedItemType = items[itemId].type;
                             break;
                         }
                     }
-                    
+
                     if (collectedItemId && collectedItemType) {
-                        const myStats = { ...myPos.stats }; 
+                        const myStats = { ...myPos.stats };
                         if (collectedItemType === ITEM_TYPES.BOMB_COUNT) {
-                            myStats.maxBombs = Math.min(4, myStats.maxBombs + 1); 
+                            myStats.maxBombs = Math.min(4, myStats.maxBombs + 1);
                         } else if (collectedItemType === ITEM_TYPES.BOMB_RANGE) {
-                            myStats.bombRange = Math.min(4, myStats.bombRange + 1); 
+                            myStats.bombRange = Math.min(4, myStats.bombRange + 1);
                         }
-                        updates.stats = myStats; 
+                        updates.stats = myStats;
+                        // ✨ Remove item immediately from Firebase
                         roomRef.child('items/' + collectedItemId).remove();
                     }
-                    
+
                     roomRef.child('players/' + myPlayerId).update(updates);
                 }
             }
-            
+
+
             function isWalkable(r, c) {
-                // ✨ 맵 데이터 로딩 전/후 안전하게 접근
+                 // ✨ Check map bounds first
+                if (r < 0 || r >= GRID_ROWS || c < 0 || c >= GRID_COLS) {
+                     return false;
+                }
                 const tileType = currentRoomData?.map?.[r]?.[c];
-                if (tileType === undefined || tileType === 1 || tileType === 2) {
+                // Cannot walk on walls(1) or crates(2)
+                if (tileType === 1 || tileType === 2) {
                     return false;
                 }
-                
+                // Cannot walk on bombs (unless exploding)
                 const bombs = currentRoomData.bombs || {};
                 for (const bombId in bombs) {
-                    if (bombs[bombId].r === r && bombs[bombId].c === c) {
-                        return false; 
+                    if (!explodingBombs.has(bombId) && bombs[bombId].r === r && bombs[bombId].c === c) {
+                        return false;
                     }
                 }
-                
-                return true; 
+                return true; // Tile is path(0) or undefined (treat as path) and no bomb
             }
 
+
             initialize();
+
+             window.addEventListener('beforeunload', () => {
+                 clearInterval(bombTimerInterval);
+                 bombTimerInterval = null;
+             });
+
+             window.addEventListener('resize', () => {
+                setTimeout(setupGameLayout, 100);
+             });
         });
     </script>
 </body>
