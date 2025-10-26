@@ -7,7 +7,7 @@ const BASE_PATH = SCOPE_URL.pathname.endsWith('/')
 
 /* ===== 2) 캐시 버전 및 이름 설정 ===== */
 // ✨ 앱을 업데이트할 때마다 이 버전을 변경하세요 (예: v1.0.1)
-const SW_VERSION = 'v1.0.5';
+const SW_VERSION = 'v1.0.9';
 const CACHE_NAME = `minigame-heaven-${SW_VERSION}`;
 
 /* ===== 3) 프리캐시 목록 (핵심!) ===== */
