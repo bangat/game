@@ -105,7 +105,9 @@
             { id: 'avatar_9', emoji: '🤴', price: 500 }, { id: 'avatar_10', emoji: '🧛', price: 500 },
             { id: 'avatar_11', emoji: '🧟', price: 500 }, { id: 'avatar_12', emoji: '🧞', price: 500 },
             { id: 'avatar_13', emoji: '🤡', price: 1000 }, { id: 'avatar_14', emoji: '👽', price: 1000 },
-            { id: 'avatar_15', emoji: '🤖', price: 1000 }, { id: 'avatar_16', emoji: '🦁', price: 1000 },
+            { id: 'avatar_15', emoji: '🤖', price: 1000 }, 
+            // ✨ [수정] 'avatar_16' (사자) 삭제 후 '배찌' 이미지 경로로 추가
+            { id: 'avatar_bazzi', emoji: './아바타폴더/배찌.png', price: 1000 }
         ];
 
         auth.onAuthStateChanged(user => {
@@ -134,10 +136,11 @@
                 const isOwned = !!ownedAvatars[item.id];
                  if (isOwned) itemEl.classList.add('owned');
                 
-                const isEmoji = !item.emoji.startsWith('http');
-                const avatarContent = isEmoji ? item.emoji : `<img src="${item.emoji}" alt="avatar">`;
+                // ✨ [수정] .png, .jpg 등 이미지 확장자를 감지하도록 변경 (로컬 경로 이미지도 처리)
+                const isImage = item.emoji.startsWith('http') || item.emoji.startsWith('.') || /\.(png|jpg|jpeg|gif|webp)$/i.test(item.emoji);
+                const avatarContent = isImage ? `<img src="${item.emoji}" alt="avatar">` : item.emoji;
 
-                if ((isEmoji && currentAvatar === item.emoji) || (!isEmoji && currentAvatar === item.emoji)) {
+                if ((!isImage && currentAvatar === item.emoji) || (isImage && currentAvatar === item.emoji)) {
                     itemEl.classList.add('selected');
                 }
                 
@@ -177,7 +180,11 @@
 
             if (isOwned) {
                 usersRef.child(currentUser.uid).child('profile/avatar').set(selectedItem.emoji)
-                    .then(() => alert('아바타가 변경되었습니다.'));
+                    .then(() => {
+                        // ✨ [신규] localStorage에도 변경된 아바타를 저장합니다.
+                        localStorage.setItem('userAvatar', selectedItem.emoji); 
+                        alert('아바타가 변경되었습니다.');
+                    });
             } else {
                 const newPoints = (currentUserData.profile.points || 0) - selectedItem.price;
                 const updates = {};
@@ -186,7 +193,11 @@
                 updates[`users/${currentUser.uid}/profile/ownedAvatars/${selectedItem.id}`] = true;
 
                 db.ref().update(updates)
-                  .then(() => alert('아바타를 구매하고 적용했습니다!'))
+                  .then(() => {
+                      // ✨ [신규] localStorage에도 변경된 아바타를 저장합니다.
+                      localStorage.setItem('userAvatar', selectedItem.emoji);
+                      alert('아바타를 구매하고 적용했습니다!');
+                  })
                   .catch(error => alert('구매 중 오류가 발생했습니다: ' + error.message));
             }
         });

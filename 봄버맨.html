@@ -19,7 +19,7 @@
 
             --player1-color: #3498db;
             --player2-color: #e74c3c;
-            --explosion-color: rgba(255, 165, 0, 0.8);
+            --explosion-color: rgba(52, 152, 219, 0.7);
             --item-bomb-color: #9b59b6;
             --item-range-color: #f1c40f;
         }
@@ -121,7 +121,7 @@
             z-index: 20; /* 가장 위에 보이도록 */
             animation: fade-out-explosion 0.4s forwards;
             pointer-events: none;
-            border-radius: 20%;
+            border-radius: 50%;
         }
         @keyframes fade-out-explosion {
             0% { opacity: 1; transform: scale(1.1); }
@@ -193,7 +193,7 @@
             top: 0; left: 0;
             width: calc(100% / 11);
             height: calc(100% / 15);
-            border-radius: 50%;
+            /* border-radius: 50%; */ /* ✨ [삭제] 원형 배경 제거 */
             z-index: 10; /* 아이템(6) < 플레이어(10) < 화살표(11) */
             display: flex; justify-content: center; align-items: center;
             font-size: 0.8em;
@@ -201,7 +201,7 @@
             will-change: left, top, opacity;
         }
         .player-avatar-img {
-            width: 90%; height: 90%;
+            width: 120%; height: 120%;
             object-fit: contain; border-radius: 50%;
         }
         .player.dead { /* 사망 시 효과 */
@@ -1083,7 +1083,11 @@ listenToRoomChanges(); // Firebase 데이터 변경 감지 시작
                         return; 
                     }
 
-                    if (pData.avatar && pData.avatar.startsWith('http')) {
+                    // 약 861행 'renderPlayers' 함수 내부
+                    // ✨ [수정] http 또는 로컬 이미지(.png 등)를 모두 <img>로 처리
+                    const isImage = pData.avatar && (pData.avatar.startsWith('http') || /\.(png|jpg|jpeg|gif|webp)$/i.test(pData.avatar));
+
+                    if (isImage) {
                         // 이미지 아바타
                         if (avatarImgEl.src !== pData.avatar) {
                            avatarImgEl.src = pData.avatar;
@@ -1104,8 +1108,7 @@ listenToRoomChanges(); // Firebase 데이터 변경 감지 시작
                     }
                     
                     // ✨ [기존] 플레이어 배경색 설정
-                    playerEl.style.backgroundColor = (playerId === currentRoomData?.hostId) ?
-                        'var(--player1-color)' : 'var(--player2-color)';
+playerEl.style.backgroundColor = 'transparent';
 
                     if (playerId !== myPlayerId) {
                         // 위치 계산 및 적용 (top, left) - 다른 플레이어만
@@ -1788,6 +1791,7 @@ if (!bombEl && document.body.contains(gameBoard)) {
 
 
             // 조작 버튼/키 설정 함수
+            // 조작 버튼/키 설정 함수
             function setupControls() {
                 // D-Pad 버튼 정보 객체
                 const dPadButtons = {
@@ -1826,12 +1830,19 @@ if (!bombEl && document.body.contains(gameBoard)) {
                     btn.el.addEventListener('mouseup', end);
                     btn.el.addEventListener('touchend', end);
                     btn.el.addEventListener('mouseleave', end); // 버튼 영역 벗어나도 중지
+                    
+                    // ✨ [신규] 멀티터치 버그 수정을 위해 touchcancel 이벤트 추가
+                    btn.el.addEventListener('touchcancel', end); 
                 });
 
                  // 폭탄 버튼 설정
                  const bombButton = document.getElementById('bomb-btn');
-                 if (bombButton) { // 버튼 존재하면 클릭 이벤트 추가
-                    bombButton.addEventListener('click', placeBomb);
+                 if (bombButton) { // 버튼 존재하면
+                    // ✨ [수정] 'click' 대신 'touchstart'를 사용 (즉시 반응 및 멀티터치 개선)
+                    bombButton.addEventListener('touchstart', (e) => {
+                        e.preventDefault(); // 'click' 이벤트 및 화면 확대/이동 방지
+                        placeBomb();
+                    }, { passive: false });
                  }
 
                 // PC 키보드 누르기 이벤트
