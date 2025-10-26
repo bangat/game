@@ -402,14 +402,16 @@
         }
 
         /* ✨ [신규] 아이템 슬롯 컨테이너 (폭탄 버튼 위) */
+        /* ✨ [수정] 아이템 슬롯 컨테이너 (곡선 배치) */
         #item-slots-container {
             position: fixed;
-            bottom: 130px; /* 폭탄 버튼 높이(80px) + 간격 */
-            right: 45px; /* 폭탄 버튼과 가로 정렬 */
+            bottom: 45px; /* 폭탄 버튼 하단과 정렬 */
+            right: 130px; /* 폭탄 버튼(right:40, w:80) 왼쪽에 배치 */
             z-index: 100;
             display: flex;
-            flex-direction: column; /* 아이템이 위로 쌓이도록 */
+            flex-direction: row-reverse; /* ✨ [수정] 아이템을 수평 역순(좌-우)으로 배치 */
             gap: 10px; /* 슬롯 간 간격 */
+            align-items: flex-end; /* ✨ [신규] 곡선을 위해 하단 정렬 */
         }
 
         /* ✨ [신규] 개별 아이템 슬롯 버튼 */
@@ -428,10 +430,19 @@
             color: white;
             position: relative; /* 개수 표시 위치 기준 */
             box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            transition: transform 0.2s ease-out, background-color 0.1s ease; /* ✨ [신규] 부드러운 이동 효과 */
         }
         .item-slot-btn:active {
             transform: scale(0.95);
             background-color: rgba(0, 0, 0, 0.7);
+        }
+        /* ✨ [신규] 아이템 슬롯 곡선 배치 (ID 기준) */
+        /* #item-slot-1 (Needle)는 기준 (transform: translateY(0)) */
+        #item-slot-2 { /* slot 2 (Shield) */
+            transform: translateY(-15px);
+        }
+        #item-slot-3 { /* slot 3 (Dart) */
+            transform: translateY(-25px);
         }
         .item-slot-btn .item-icon {
             font-size: 2em; /* 아이콘 크기 */
@@ -467,7 +478,7 @@
 
     <div id="game-wrapper">
         <div id="game-header"></div>
-        <div id="game-timer">03:00</div> 
+        <div id="game-timer">05:00</div>
         <div id="game-container">
             <div id="game-board"></div>
         </div>
@@ -484,7 +495,11 @@
 
 </div> <div id="item-slots-container">
         <button id="item-slot-1" class="item-slot-btn" data-item-type="needle">
-            <span class="item-icon">💉</span> <span class="item-count">0</span> </button>
+            <span class="item-icon">💉</span> <span class="item-count" data-count="0">0</span> </button>
+        <button id="item-slot-2" class="item-slot-btn" data-item-type="shield">
+            <span class="item-icon">🛡️</span> <span class="item-count" data-count="0">0</span> </button>
+        <button id="item-slot-3" class="item-slot-btn" data-item-type="dart">
+            <span class="item-icon">🎯</span> <span class="item-count" data-count="0">0</span> </button>
         </div>
 
     <button id="bomb-btn"></button>
@@ -556,7 +571,7 @@
             const countdownOverlayEl = document.getElementById('countdown-overlay');
             const countdownNumberEl = document.getElementById('countdown-number');
             const gameTimerEl = document.getElementById('game-timer');
-            const GAME_TIME_LIMIT = 180; // 3분
+            const GAME_TIME_LIMIT = 300; // 5분
             let gameTimerInterval = null; // 게임 타이머 setInterval ID
             let ghostSpawned = false; // 유령 스폰 여부 (미래 기능용)
             // ✨ [신규] 사운드 스로틀링
@@ -575,13 +590,15 @@
             let bombTimerInterval = null; // 폭탄 타이머 체크 인터벌 ID
             let explodingBombs = new Set(); // 현재 폭발 중인 폭탄 ID 저장 Set
 
-           const ITEM_TYPES = { BOMB_COUNT: 'bomb', BOMB_RANGE: 'range', SPEED: 'speed', NEEDLE: 'needle' }; // ✨ 바늘 추가
-           // 아이템 아이콘 정의 (UI 표시용)
+          const ITEM_TYPES = { BOMB_COUNT: 'bomb', BOMB_RANGE: 'range', SPEED: 'speed', NEEDLE: 'needle', SHIELD: 'shield', DART: 'dart' }; // ✨ 쉴드, 다트 추가
+
 const ITEM_ICONS = {
                  [ITEM_TYPES.BOMB_COUNT]: './봄버맨사운드/물풍선아이템.png',
                  [ITEM_TYPES.BOMB_RANGE]: './봄버맨사운드/물줄기강화.png',
                  [ITEM_TYPES.SPEED]: './봄버맨사운드/속도업.png',
-                 [ITEM_TYPES.NEEDLE]: './봄버맨사운드/바늘.png' // ✨ 이미지 경로로 수정
+                 [ITEM_TYPES.NEEDLE]: './봄버맨사운드/바늘.png',
+                 [ITEM_TYPES.SHIELD]: './봄버맨사운드/쉴드.png',
+                 [ITEM_TYPES.DART]: './봄버맨사운드/다트.png', 
              };
              // ✨ [신규] 사운드 재생 함수 (오류 방지 포함)
              function playSound(id) {
@@ -700,156 +717,157 @@ const ITEM_ICONS = {
 
             // 맵 생성 함수 (방장 전용): 맵 구조, 플레이어 위치, 아이템 등 생성 후 Firebase 업데이트
             // 맵 생성 함수 (방장 전용): 맵 구조, 플레이어 위치, 아이템 등 생성 후 Firebase 업데이트
+            // 맵 생성 함수 (방장 전용): 맵 구조, 플레이어 위치, 아이템 등 생성 후 Firebase 업데이트
             function generateMap() {
-                // 1. 맵 배경색 랜덤 선택
+                // --- 1. 플레이어 수 및 순서 결정 ---
+                const playerIds = Object.keys(currentRoomData.players);
+                const playerCount = playerIds.length;
+                const hostId = currentRoomData.hostId;
+                // 호스트를 제외한 게스트들을 UID 기준으로 정렬 (순서 고정)
+                const guestIds = playerIds.filter(id => id !== hostId).sort();
+                // 최종 플레이어 순서 (P1=호스트, P2=게스트1, P3=게스트2, ...)
+                const orderedPlayerIds = [hostId, ...guestIds];
+
+                // --- 2. 맵 배경색 랜덤 선택 ---
                 const mapIndex = Math.floor(Math.random() * mapBackgroundColors.length);
-                
-                 // ✨ 호스트는 자기 화면 배경색 즉시 설정
-                 const newColor = mapBackgroundColors[mapIndex];
-                 gameBoard.style.backgroundColor = newColor;
-                 console.log("호스트 맵 배경색 즉시 설정:", newColor);
+                const newColor = mapBackgroundColors[mapIndex];
+                gameBoard.style.backgroundColor = newColor; // 호스트 화면 즉시 적용
 
-                // 2. 맵 데이터 초기화 (모든 칸 길(0)로)
+                // --- 3. 맵 데이터 초기화 및 규칙적인 벽(1) 배치 ---
                 mapGrid = Array(GRID_ROWS).fill(null).map(() => Array(GRID_COLS).fill(0));
+                
+                console.log(`[맵 생성] ${playerCount}인용 맵 생성 시작...`);
 
-                // 3. 플레이어 시작 위치 정의
-                let player1Pos = { r: GRID_ROWS - 2, c: Math.floor(GRID_COLS / 2) }; // 아래 중앙
-                let player2Pos = { r: 1, c: Math.floor(GRID_COLS / 2) }; // 위 중앙
-
-                // 4. 파괴 불가 벽(1) 랜덤 배치 (4~6개)
-                let wallCount = 0;
-                const maxWalls = Math.floor(Math.random() * 3) + 4;
-                while (wallCount < maxWalls) {
-                    const r = Math.floor(Math.random() * (GRID_ROWS - 2)) + 1; // 테두리 제외
-                    const c = Math.floor(Math.random() * (GRID_COLS - 2)) + 1; // 테두리 제외
-                    // 시작 지점 주변(2칸 이내) 및 이미 벽/상자가 있는 곳 제외
-                    const isNearP1 = Math.abs(r - player1Pos.r) <= 2 && Math.abs(c - player1Pos.c) <= 2;
-                    const isNearP2 = Math.abs(r - player2Pos.r) <= 2 && Math.abs(c - player2Pos.c) <= 2;
-                    if (mapGrid[r][c] === 0 && !isNearP1 && !isNearP2) {
-                        mapGrid[r][c] = 1; // 벽(1) 배치
-                        wallCount++;
+                for (let r = 0; r < GRID_ROWS; r++) {
+                    for (let c = 0; c < GRID_COLS; c++) {
+                        // (홀수, 홀수) 좌표에 파괴 불가 벽(1) 배치 (예: 1,1 / 1,3 / 3,1 ...)
+                        if (r % 2 !== 0 && c % 2 !== 0) {
+                            mapGrid[r][c] = 1; // Wall
+                        } else {
+                            mapGrid[r][c] = 0; // Path
+                        }
                     }
                 }
 
-                // 5. 파괴 가능 나무상자(2) 랜덤 배치 (빈 공간의 60% 정도)
+                // --- 4. 플레이어 수에 따른 시작 위치 정의 ---
+                let playerPositions = []; // 플레이어 시작 위치 배열
+                const midC = Math.floor(GRID_COLS / 2);
+                const midR = Math.floor(GRID_ROWS / 2);
+
+                if (playerCount <= 2) { // 2인 (기존 요청대로)
+                    playerPositions.push({ r: 1, c: midC }); // 위 중앙
+                    playerPositions.push({ r: GRID_ROWS - 2, c: midC }); // 아래 중앙
+                } else if (playerCount === 3) { // 3인 (요청 기반)
+                    playerPositions.push({ r: 1, c: 1 }); // 10시 (좌상단)
+                    playerPositions.push({ r: midR, c: GRID_COLS - 2 }); // 3시 (우중단)
+                    playerPositions.push({ r: GRID_ROWS - 2, c: 1 }); // 8시 (좌하단)
+                } else { // 4인 (요청 기반)
+                    playerPositions.push({ r: 1, c: 1 }); // 11시 (좌상단)
+                    playerPositions.push({ r: 1, c: GRID_COLS - 2 }); // 1시 (우상단)
+                    playerPositions.push({ r: GRID_ROWS - 2, c: GRID_COLS - 2 }); // 5시 (우하단)
+                    playerPositions.push({ r: GRID_ROWS - 2, c: 1 }); // 7시 (좌하단)
+                }
+                
+                // --- 5. 시작 지점 주변 안전지대(길) 확보 ---
+                const safeZones = new Set();
+                playerPositions.forEach(pos => {
+                    // (r, c) 좌표를 "r,c" 문자열 키로 사용
+                    safeZones.add(`${pos.r},${pos.c}`); // 시작 위치
+                    // 맵 범위 체크하며 상하좌우 1칸 추가
+                    if (pos.r > 0) safeZones.add(`${pos.r - 1},${pos.c}`);
+                    if (pos.r < GRID_ROWS - 1) safeZones.add(`${pos.r + 1},${pos.c}`);
+                    if (pos.c > 0) safeZones.add(`${pos.r},${pos.c - 1}`);
+                    if (pos.c < GRID_COLS - 1) safeZones.add(`${pos.r},${pos.c + 1}`);
+                });
+
+                // --- 6. 파괴 가능 나무상자(2) 랜덤 배치 ---
                 for (let r = 0; r < GRID_ROWS; r++) {
                      for (let c = 0; c < GRID_COLS; c++) {
-                        // 길이(0)이고, 시작 지점 바로 옆(1칸 이내) 아니면 확률적 배치
-                        if (mapGrid[r][c] === 0) {
-                             const isNearP1 = Math.abs(r - player1Pos.r) <= 1 && Math.abs(c - player1Pos.c) <= 1;
-                             const isNearP2 = Math.abs(r - player2Pos.r) <= 1 && Math.abs(c - player2Pos.c) <= 1;
-                             if (!isNearP1 && !isNearP2 && Math.random() < 0.6) {
-                                mapGrid[r][c] = 2; // 나무상자(2) 배치
+                         // 파괴불가 벽(1)이 아니고, 안전지대가 아니면
+                        if (mapGrid[r][c] === 0 && !safeZones.has(`${r},${c}`)) {
+                             if (Math.random() < 0.7) { // 70% 확률로 나무상자(2) 배치
+                                mapGrid[r][c] = 2; 
                              }
                         }
                      }
                 }
-
-                // 6. 시작 지점 주변 강제로 길(0) 만들기 (벽/상자 덮어쓰기)
-                const startPoints = [
-                    player1Pos, {r: player1Pos.r - 1, c: player1Pos.c}, {r: player1Pos.r, c: player1Pos.c - 1}, {r: player1Pos.r, c: player1Pos.c + 1},
-                    player2Pos, {r: player2Pos.r + 1, c: player2Pos.c}, {r: player2Pos.r, c: player2Pos.c - 1}, {r: player2Pos.r, c: player2Pos.c + 1}
-                ];
-                startPoints.forEach(pos => {
+                
+                // --- 7. 안전지대 강제로 길(0) 만들기 (혹시 모를 상자 덮어쓰기) ---
+                safeZones.forEach(key => {
+                    const [r, c] = key.split(',').map(Number);
                     // 맵 범위 안인지 확인 후 길(0)로 변경
-                    if (pos.r >= 0 && pos.r < GRID_ROWS && pos.c >= 0 && pos.c < GRID_COLS) {
-                        mapGrid[pos.r][pos.c] = 0;
+                    if (r >= 0 && r < GRID_ROWS && c >= 0 && c < GRID_COLS) {
+                        mapGrid[r][c] = 0;
                     }
                 });
 
-                // 7. ✨ [수정] 플레이어 위치만 업데이트 (아바타/스탯 덮어쓰기 방지)
-                const playerIds = Object.keys(currentRoomData.players);
-                const hostId = currentRoomData.hostId;
-                const guestId = playerIds.find(id => id !== hostId);
 
-                // ✨ Firebase에 보낼 업데이트 객체
-                const updates = {};
-                
-                // 호스트(P1) 위치 설정
-              // ✨ [수정] 호스트(P1) 데이터 설정 (위치 및 초기 스탯)
-                updates[`players/${hostId}/r`] = player1Pos.r;
-                updates[`players/${hostId}/c`] = player1Pos.c;
-                updates[`players/${hostId}/stats`] = { maxBombs: 1, bombRange: 1, speed: 1, isAlive: true, needles: 0 }; // ✨ needles: 0 추가
-
-                // ✨ [수정] 게스트(P2) 데이터 설정 (위치 및 초기 스탯)
-                if (guestId && currentRoomData.players[guestId]) {
-                    updates[`players/${guestId}/r`] = player2Pos.r;
-                    updates[`players/${guestId}/c`] = player2Pos.c;
-                    updates[`players/${guestId}/stats`] = { maxBombs: 1, bombRange: 1, speed: 1, isAlive: true, needles: 0 }; // ✨ needles: 0 추가
-                }
-                // 8. 시작 아이템 풍선 위치 선정 (시작점 근처 나무상자 아래)
+                // --- 8. 시작 아이템 풍선 위치 선정 ---
                 let initialItems = {};
-                const itemTypes = [ITEM_TYPES.BOMB_COUNT, ITEM_TYPES.BOMB_RANGE]; // 가능한 아이템 종류
-
-                // 주변 나무상자 찾는 함수
+                // 4인 기준 아이템 풀 (순서대로 배정됨)
+                const itemTypes = [ITEM_TYPES.BOMB_COUNT, ITEM_TYPES.BOMB_RANGE, ITEM_TYPES.SHIELD, ITEM_TYPES.SPEED]; // ✨ P3 쉴드, P4 스피드로 변경
+                // 주변 나무상자 찾는 함수 (기존 함수 재사용)
                 const findCrateSpot = (startPos) => {
-                    // 상하좌우 후보 위치
                     const candidates = [
-                        {r: startPos.r, c: startPos.c - 1}, {r: startPos.r, c: startPos.c + 1}, // 좌우
-                        {r: startPos.r - 1, c: startPos.c}, {r: startPos.r + 1, c: startPos.c}  // 상하
+                        {r: startPos.r, c: startPos.c - 1}, {r: startPos.r, c: startPos.c + 1}, 
+                        {r: startPos.r - 1, c: startPos.c}, {r: startPos.r + 1, c: startPos.c}
                     ];
-                    // 후보 위치 랜덤 섞기
                     candidates.sort(() => Math.random() - 0.5);
-                    // 섞인 순서대로 나무상자(2)인지 확인 후 반환
                     for (let p of candidates) {
-                        // 맵 범위 안이고 나무상자(2)인지 확인
                         if (p.r >= 0 && p.r < GRID_ROWS && p.c >= 0 && p.c < GRID_COLS && mapGrid[p.r]?.[p.c] === 2) {
                             return p;
                         }
                     }
-                     // 주변 1칸에 없으면, 2칸 범위에서 다시 찾기 (비상용)
+                     // 1칸 주변에 없으면 2칸 범위에서 다시 찾기
                      for (let dr = -2; dr <= 2; dr++){
                         for (let dc = -2; dc <= 2; dc++){
-                            // 대각선 포함 2칸 이내, 시작점 제외
-                            if(Math.abs(dr) + Math.abs(dc) > 2 || (dr === 0 && dc === 0)) continue;
+                            if(Math.abs(dr) + Math.abs(dc) > 2 || (dr === 0 && dc === 0) || (Math.abs(dr) <= 1 && Math.abs(dc) <= 1)) continue; // 1칸 반경 제외
                             const r = startPos.r + dr;
                             const c = startPos.c + dc;
-                             // 맵 범위 안이고 나무상자(2)이면 반환
                              if (r >= 0 && r < GRID_ROWS && c >= 0 && c < GRID_COLS && mapGrid[r]?.[c] === 2) {
                                 return {r, c};
                              }
                         }
                     }
-                    return null; // 못 찾으면 null 반환
+                    return null; 
                 };
 
-                // P1 아이템 위치 찾고 데이터 생성
-                const p1ItemPos = findCrateSpot(player1Pos);
-                if (p1ItemPos) {
-                     const itemKey = roomRef.child('items').push().key; // Firebase 키 생성
-                     initialItems[itemKey] = {
-                        r: p1ItemPos.r, c: p1ItemPos.c, type: itemTypes[0], // P1은 폭탄 개수
-                        isVisible: false, isBalloon: true // 처음엔 안 보임
-                    };
-                     mapGrid[p1ItemPos.r][p1ItemPos.c] = 2; // 확실히 상자로 덮기
-                     console.log(`P1 시작 아이템 위치: ${p1ItemPos.r}, ${p1ItemPos.c}`);
-                } else {
-                     console.warn("P1 시작 아이템 놓을 상자 못 찾음");
-                }
+                // 모든 플레이어에게 아이템 배정
+                playerPositions.forEach((pos, index) => {
+                    const itemPos = findCrateSpot(pos);
+                    if (itemPos) {
+                         const itemKey = roomRef.child('items').push().key; 
+                         initialItems[itemKey] = {
+                            r: itemPos.r, c: itemPos.c, 
+                            type: itemTypes[index % itemTypes.length], // 아이템 풀에서 순환 선택
+                            isVisible: false, isBalloon: true 
+                        };
+                         mapGrid[itemPos.r][itemPos.c] = 2; // 확실히 상자로 덮기
+                         console.log(`P${index+1} 시작 아이템 위치: ${itemPos.r}, ${itemPos.c}`);
+                    } else {
+                         console.warn(`P${index+1} 시작 아이템 놓을 상자 못 찾음`);
+                    }
+                });
 
-                 // P2 아이템 위치 찾고 데이터 생성
-                 const p2ItemPos = findCrateSpot(player2Pos);
-                 if (p2ItemPos) {
-                      const itemKey = roomRef.child('items').push().key; // Firebase 키 생성
-                     initialItems[itemKey] = {
-                        r: p2ItemPos.r, c: p2ItemPos.c, type: itemTypes[1], // P2는 사거리
-                        isVisible: false, isBalloon: true // 처음엔 안 보임
-                    };
-                      mapGrid[p2ItemPos.r][p2ItemPos.c] = 2; // 확실히 상자로 덮기
-                      console.log(`P2 시작 아이템 위치: ${p2ItemPos.r}, ${p2ItemPos.c}`);
-                 } else {
-                      console.warn("P2 시작 아이템 놓을 상자 못 찾음");
-                 }
-
-               // 9. ✨ [수정] Firebase에 모든 데이터 업데이트
-               console.log("[맵 생성] Firebase 업데이트 실행...");
-               
+                // --- 9. Firebase에 업데이트할 데이터 준비 ---
+                const updates = {};
                 updates['mapIndex'] = mapIndex;
                 updates['map'] = mapGrid;
                 updates['items'] = initialItems;
-                // 'status'와 'gameStartTime', 'players' 객체는 '게임방'에서 이미 설정했으므로
-                // 여기서는 맵/아이템/플레이어좌표만 업데이트합니다.
+
+                // 모든 플레이어 위치 및 초기 스탯 설정
+                orderedPlayerIds.forEach((playerId, index) => {
+                    // 정의된 시작 위치가 있는 플레이어만 (최대 4명)
+                    if (index < playerPositions.length) {
+                        const pos = playerPositions[index];
+                        updates[`players/${playerId}/r`] = pos.r;
+                        updates[`players/${playerId}/c`] = pos.c;
+                        updates[`players/${playerId}/stats`] = { maxBombs: 1, bombRange: 1, speed: 1, isAlive: true, needles: 0, shields: 0, darts: 0 }; // ✨ 쉴드, 다트 스탯 추가
+                    }
+                });
                 
+                // --- 10. Firebase에 모든 데이터 일괄 업데이트 ---
+                console.log("[맵 생성] Firebase 업데이트 실행...");
                 roomRef.update(updates);
             }
 
@@ -892,19 +910,60 @@ const ITEM_ICONS = {
                             // 연결 끊기면 내 플레이어 정보만 삭제 설정
                             roomRef.child('players/' + myPlayerId).onDisconnect().remove();
                         }
+                        // ✨ [신규] 다트 요청 리스너 (방장 전용)
+                        if (isHost) {
+                            roomRef.child('dartRequests').on('child_added', snapshot => {
+                                const request = snapshot.val();
+                                if (!request) return;
+                                
+                                const playerId = request.playerId;
+                                const targetBombId = request.targetBombId;
+                                
+                                // DB에서 최신 데이터 다시 확인 (중요)
+                                const player = currentRoomData.players?.[playerId];
+                                const bomb = currentRoomData.bombs?.[targetBombId];
+
+                                // 1. 유효성 검사 (플레이어, 다트 개수, 폭탄 존재)
+                                if (player && (player.stats?.darts || 0) > 0 && bomb) {
+                                    // 2. 다트 1개 소모
+                                    roomRef.child(`players/${playerId}/stats/darts`).set(player.stats.darts - 1);
+                                    
+                                    // 3. 폭탄 즉시 폭발 (폭발 중이 아닌지 확인)
+                                    if (currentRoomData.bombs?.[targetBombId] && !explodingBombs.has(targetBombId)) {
+                                        console.log(`[방장] ${playerId}의 다트 사용 -> ${targetBombId} 폭발`);
+                                        explodeBomb(targetBombId, bomb);
+                                    }
+                                }
+                                
+                                // 4. 요청 삭제
+                                snapshot.ref.remove();
+                            });
+                        }
                     }
 
                     // ✨ [신규] 게임 시작 감지 (카운트다운 시작)
                     // (oldStatus가 undefined일 때도 정상 작동)
                     if (currentRoomData.status === 'playing' && oldStatus !== 'playing') {
-                        startCountdown(); // 카운트다운 시작
+                        // ✨ [수정] 호스트는 gameStartTime이 없으면 설정하고,
+                        // 모든 클라이언트는 gameStartTime이 설정될 때까지 대기
+                        if (isHost && !currentRoomData.gameStartTime) {
+                            roomRef.child('gameStartTime').set(firebase.database.ServerValue.TIMESTAMP);
+                            return; // gameStartTime이 설정되면 on('value')가 다시 호출됨
+                        }
+                        
+                        // gameStartTime이 설정되었다면 카운트다운 시작
+                        if (currentRoomData.gameStartTime) {
+                            startCountdown(); // 카운트다운 시작
+                        }
                         return; // 맵 렌더링 등은 카운트다운 완료 후
                     }
-                    
+
                     // ✨ [신규] 이미 게임 중일 때 (재접속 등)
                     if (currentRoomData.status === 'playing' && oldStatus === 'playing') {
-                        // 카운트다운 없이 바로 게임 타이머 시작
-                        startGameTimer(); 
+                        // ✨ [수정] 카운트다운 없이, 그리고 타이머가 아직 안 돌고 있을 때만
+                        if (!gameTimerInterval) {
+                            startGameTimer(); 
+                        }
                     }
                     const newMapDataString = JSON.stringify(currentRoomData.map); // 새 맵 데이터 문자열로 저장
 
@@ -1258,28 +1317,47 @@ const ITEM_ICONS = {
                     }
 
                     // ✨ [신규] 내 플레이어면 아이템 슬롯(바늘 개수) 업데이트
+                    // ✨ [수정] 내 플레이어면 모든 아이템 슬롯 업데이트
                     if (playerId === myPlayerId) {
-                        const needleCount = pData.stats?.needles || 0;
-                        const needleSlot = document.getElementById('item-slot-1');
-                        if (needleSlot) {
-                            const countEl = needleSlot.querySelector('.item-count');
-                            const iconEl = needleSlot.querySelector('.item-icon'); // ✨ 아이콘 요소 가져오기
+                        const myStats = pData.stats || {};
+                        const needleCount = myStats.needles || 0;
+                        const shieldCount = myStats.shields || 0;
+                        const dartCount = myStats.darts || 0;
 
+                        // 헬퍼 함수: 슬롯 UI 업데이트
+                        const updateSlot = (slotId, itemType, count) => {
+                            const slotEl = document.getElementById(slotId);
+                            if (!slotEl) return;
+
+                            const countEl = slotEl.querySelector('.item-count');
+                            const iconEl = slotEl.querySelector('.item-icon');
+                            const iconUrl = ITEM_ICONS[itemType];
+
+                            // 아이콘 이미지 업데이트
+                            if (iconEl && iconUrl) {
+                                iconEl.innerHTML = `<img src="${iconUrl}" alt="${itemType}" style="width: 100%; height: 100%; object-fit: contain;">`;
+                            }
+                            
                             // 개수 업데이트
                             if (countEl) {
-                                countEl.textContent = needleCount;
-                                countEl.dataset.count = needleCount; // CSS 선택자용
+                                countEl.textContent = count;
+                                countEl.dataset.count = count;
                             }
 
-                            // ✨ 아이콘 업데이트 (바늘 이미지로)
-                            if (iconEl && needleSlot.dataset.itemType === ITEM_TYPES.NEEDLE) {
-                                // ITEM_ICONS에 정의된 이미지 경로 사용
-                                iconEl.innerHTML = `<img src="${ITEM_ICONS[ITEM_TYPES.NEEDLE]}" alt="needle" style="width: 100%; height: 100%; object-fit: contain;">`;
+                            // 버튼 활성화/비활성화 로직
+                            if (itemType === ITEM_TYPES.NEEDLE) {
+                                slotEl.disabled = !(isTrapped && count > 0);
+                            } else if (itemType === ITEM_TYPES.DART) {
+                                slotEl.disabled = !(isAlive && !isTrapped && count > 0);
+                            } else if (itemType === ITEM_TYPES.SHIELD) {
+                                slotEl.disabled = true; // 쉴드는 패시브이므로 항상 비활성화
                             }
-
-                            // 버튼 활성화/비활성화
-                            needleSlot.disabled = !(isTrapped && needleCount > 0);
-                        }
+                        };
+                        
+                        // 3개 슬롯 모두 업데이트
+                        updateSlot('item-slot-1', ITEM_TYPES.NEEDLE, needleCount);
+                        updateSlot('item-slot-2', ITEM_TYPES.SHIELD, shieldCount);
+                        updateSlot('item-slot-3', ITEM_TYPES.DART, dartCount);
                     }
                 }); // <-- playerIds.forEach 끝
 
@@ -1355,6 +1433,29 @@ const ITEM_ICONS = {
                             itemEl.style.fontSize = '0'; 
                         
                         // ✨ [신규] 바늘 아이템 렌더링 로직 추가
+
+                        // ✨ [신규] 쉴드 아이템 렌더링
+                        } else if (iData.type === ITEM_TYPES.SHIELD) {
+                            itemEl.style.backgroundImage = `url('${ITEM_ICONS[ITEM_TYPES.SHIELD]}')`; 
+                            itemEl.style.backgroundColor = 'transparent';
+                            itemEl.textContent = '';
+                            itemEl.style.backgroundSize = '100% 100%'; 
+                            itemEl.style.backgroundPosition = 'center';
+                            itemEl.style.backgroundRepeat = 'no-repeat';
+                            itemEl.style.display = 'block'; 
+                            itemEl.style.fontSize = '0'; 
+
+                        // ✨ [신규] 다트 아이템 렌더링
+                        } else if (iData.type === ITEM_TYPES.DART) {
+                            itemEl.style.backgroundImage = `url('${ITEM_ICONS[ITEM_TYPES.DART]}')`; 
+                            itemEl.style.backgroundColor = 'transparent';
+                            itemEl.textContent = '';
+                            itemEl.style.backgroundSize = '100% 100%'; 
+                            itemEl.style.backgroundPosition = 'center';
+                            itemEl.style.backgroundRepeat = 'no-repeat';
+                            itemEl.style.display = 'block'; 
+                            itemEl.style.fontSize = '0';
+
                         } else if (iData.type === ITEM_TYPES.NEEDLE) {
                             itemEl.style.backgroundImage = `url('${ITEM_ICONS[ITEM_TYPES.NEEDLE]}')`; // 정의된 아이콘 사용
                             itemEl.style.backgroundColor = 'transparent';
@@ -1641,8 +1742,8 @@ if (!bombEl && document.body.contains(gameBoard)) {
                                 }
                             }
                             if (!revealedItem && Math.random() < 0.3) { // 30% 확률로 아이템 드랍
-                                // ✨ [수정] 아이템 드랍 풀에 바늘 추가 (25% 확률로 섞임)
-                                const itemDropPool = [ITEM_TYPES.BOMB_COUNT, ITEM_TYPES.BOMB_RANGE, ITEM_TYPES.SPEED, ITEM_TYPES.NEEDLE];
+                                // ✨ [수정] 아이템 드랍 풀에 쉴드, 다트 추가
+                                const itemDropPool = [ITEM_TYPES.BOMB_COUNT, ITEM_TYPES.BOMB_RANGE, ITEM_TYPES.SPEED, ITEM_TYPES.NEEDLE, ITEM_TYPES.SHIELD, ITEM_TYPES.DART];
                                 const randomType = itemDropPool[Math.floor(Math.random() * itemDropPool.length)];
 
                                 const newItemKey = roomRef.child('items').push().key;
@@ -1659,9 +1760,17 @@ if (!bombEl && document.body.contains(gameBoard)) {
                             const pData = currentRoomData.players[playerId];
                             // ✨ [수정] 살아있고, 아직 안 갇힌 플레이어가 맞았을 때
                             if (pData?.stats?.isAlive === true && pData?.stats?.isTrapped !== true && pData.r === tile.r && pData.c === tile.c) {
-                                // ✨ [수정] 즉시 사망 대신 '갇힘' 상태로 변경
-                                updates[`players/${playerId}/stats/isTrapped`] = true;
-                                updates[`players/${playerId}/stats/trapTime`] = firebase.database.ServerValue.TIMESTAMP;
+                                
+                                // ✨ [신규] 쉴드 체크
+                                if ((pData.stats.shields || 0) > 0) {
+                                    // 쉴드가 있으면 1개 소모하고 갇힘 상태 방지
+                                    updates[`players/${playerId}/stats/shields`] = pData.stats.shields - 1;
+                                    // (TODO: 쉴드 파괴 사운드/효과)
+                                } else {
+                                    // 쉴드가 없으면 갇힘 상태로 변경
+                                    updates[`players/${playerId}/stats/isTrapped`] = true;
+                                    updates[`players/${playerId}/stats/trapTime`] = firebase.database.ServerValue.TIMESTAMP;
+                                }
                             }
                         }
                         
@@ -1757,43 +1866,59 @@ if (!bombEl && document.body.contains(gameBoard)) {
 
 
            // 승리 조건 확인 함수 (방장 전용)
-            function checkWinCondition(isTimeUp = false) { // ✨ isTimeUp 파라미터 추가
+            // 승리 조건 확인 함수 (방장 전용)
+            function checkWinCondition(isTimeUp = false) { // isTimeUp 파라미터
                 // 방장 아니거나 플레이어 데이터 없으면 중단
                 if (!isHost || !currentRoomData?.players) return;
 
                 let winnerId = null;
 
-                // ✨ [신규] 시간 종료로 인한 판정
+                // --- 1. 시간 종료로 인한 판정 (isTimeUp = true) ---
                 if (isTimeUp && currentRoomData.status === 'playing') {
                     console.log("시간 종료! 스탯으로 승패 판정.");
-                    const playerIds = Object.keys(currentRoomData.players);
-                    const p1Id = playerIds[0];
-                    const p2Id = playerIds[1];
-                    const p1Stats = currentRoomData.players[p1Id]?.stats;
-                    const p2Stats = currentRoomData.players[p2Id]?.stats;
-
-                    // 둘 다 살아있을 때만 스탯 비교
-                    if (p1Stats?.isAlive && p2Stats?.isAlive) {
-                        const p1Score = (p1Stats.maxBombs || 1) + (p1Stats.bombRange || 1);
-                        const p2Score = (p2Stats.maxBombs || 1) + (p2Stats.bombRange || 1);
-
-                        if (p1Score > p2Score) winnerId = p1Id;
-                        else if (p2Score > p1Score) winnerId = p2Id;
-                        else winnerId = null; // 스탯 같으면 무승부
-                    } else {
-                        // 시간 종료 시점에 한 명만 살아있으면 그 사람이 승자
-                        const alivePlayers = playerIds.filter(id => currentRoomData.players[id]?.stats?.isAlive);
-                        if (alivePlayers.length === 1) winnerId = alivePlayers[0];
-                        else winnerId = null; // 둘 다 죽었으면 무승부
-                    }
                     
+                    const playerIds = Object.keys(currentRoomData.players);
+                    const alivePlayerIds = playerIds.filter(id => currentRoomData.players[id]?.stats?.isAlive === true);
+
+                    // 1-1. 살아남은 플레이어가 1명 초과일 때 (스탯 비교)
+                    if (alivePlayerIds.length > 1) {
+                        let bestScore = -1;
+                        let winners = []; // 최고 스탯 플레이어 목록 (동점자 처리)
+
+                        alivePlayerIds.forEach(id => {
+                            const stats = currentRoomData.players[id].stats;
+                            // 스탯 합산 (폭탄 + 사거리 + 속도)
+                            const score = (stats?.maxBombs || 1) + (stats?.bombRange || 1) + (stats?.speed || 1);
+                            
+                            if (score > bestScore) {
+                                bestScore = score;
+                                winners = [id]; // 새 최고 점수자
+                            } else if (score === bestScore) {
+                                winners.push(id); // 동점자 추가
+                            }
+                        });
+
+                        // 최고 스탯 보유자가 1명이면 그 사람이 승자, 동점이면 무승부
+                        winnerId = (winners.length === 1) ? winners[0] : null;
+
+                    // 1-2. 살아남은 플레이어가 1명일 때
+                    } else if (alivePlayerIds.length === 1) {
+                        winnerId = alivePlayerIds[0]; // 그 1명이 승자
+
+                    // 1-3. 살아남은 플레이어가 0명일 때
+                    } else {
+                        winnerId = null; // 무승부
+                    }
+
+                    // Firebase에 게임 상태 및 승자 업데이트
                     roomRef.update({ status: 'gameOver', winner: winnerId });
                     return; // 시간 종료 판정 끝
                 }
 
-                // ✨ [기존] 일반 사망으로 인한 판정
+                // --- 2. 일반 사망으로 인한 판정 (isTimeUp = false) ---
                 const alivePlayers = Object.entries(currentRoomData.players)
-                                         .filter(([id, pData]) => pData?.stats?.isAlive); // 데이터 유효성 검사 추가
+                                         .filter(([id, pData]) => pData?.stats?.isAlive === true);
+                
                 // 살아있는 플레이어가 1명 이하이고, 아직 게임 종료 상태가 아니면
                 if (alivePlayers.length <= 1 && currentRoomData.status === 'playing') {
                     // 승자 ID 결정 (1명이면 그 ID, 0명이면 null(무승부))
@@ -1837,10 +1962,18 @@ if (!bombEl && document.body.contains(gameBoard)) {
 
             // ✨ [신규] 게임 타이머 시작 함수 (모든 클라이언트)
             function startGameTimer() {
-                if (gameTimerInterval) clearInterval(gameTimerInterval); // 중복 방지
+                // ✨ [수정] 타이머가 이미 실행 중이면 중복 실행 방지
+                if (gameTimerInterval) return;
 
-                const startTime = currentRoomData.gameStartTime || (Date.now() + serverTimeOffset);
-                
+                // ✨ [수정] gameStartTime이 없으면(드문 경우), 시작 불가.
+                // listenToRoomChanges가 설정할 때까지 기다려야 함.
+                if (!currentRoomData.gameStartTime) {
+                    console.warn("gameStartTime 없이 타이머 시작 시도. 대기...");
+                    return; 
+                }
+
+                const startTime = currentRoomData.gameStartTime; // 이제 null이 아님
+
                 gameTimerInterval = setInterval(() => {
                     const now = Date.now() + serverTimeOffset;
                     const elapsed = Math.floor((now - startTime) / 1000);
@@ -2001,6 +2134,52 @@ function useNeedle() {
                 }
             }
 
+            function useDart() {
+                // 내 플레이어 데이터, 스탯 없으면 중단
+                const myStats = currentRoomData?.players?.[myPlayerId]?.stats;
+                if (!myStats) return;
+
+                // 살아있고, 안 갇혔고, 다트가 1개 이상 있을 때
+                if (myStats.isAlive === true && myStats.isTrapped !== true && (myStats.darts || 0) > 0) {
+                    
+                    // 1. 맵에서 가장 오래된 폭탄 찾기
+                    const bombs = currentRoomData.bombs || {};
+                    let oldestBombId = null;
+                    let oldestTime = Infinity;
+
+                    for (const bombId in bombs) {
+                        // 터지는 중인 폭탄 제외
+                        if (bombs[bombId].placedAt < oldestTime && !explodingBombs.has(bombId)) {
+                            oldestTime = bombs[bombId].placedAt;
+                            oldestBombId = bombId;
+                        }
+                    }
+
+                    // 2. 터트릴 폭탄이 있으면 방장에게 요청
+                    if (oldestBombId) {
+                        // (사운드)
+                        // playSound('sound-dart-throw'); 
+                        
+                        // 3. Firebase에 요청 생성
+                        const reqId = roomRef.child('dartRequests').push().key;
+                        roomRef.child('dartRequests/' + reqId).set({
+                            playerId: myPlayerId,
+                            targetBombId: oldestBombId
+                        });
+
+                        // 4. (선택적) 로컬에서 즉시 다트 개수 1개 차감 (UI 반응속도)
+                        // 어차피 renderPlayers가 서버 데이터 기준으로 다시 그림
+                        const dartSlot = document.getElementById('item-slot-3');
+                        if (dartSlot) {
+                             dartSlot.disabled = true; // 중복 클릭 방지
+                             const countEl = dartSlot.querySelector('.item-count');
+                             if(countEl) countEl.textContent = myStats.darts - 1;
+                        }
+
+                    }
+                }
+            }
+
             // 조작 버튼/키 설정 함수
             function setupControls() {
                 // D-Pad 버튼 정보 객체
@@ -2075,6 +2254,26 @@ const needleSlotButton = document.getElementById('item-slot-1');
                          }
                      });
                  }
+
+                 }
+
+                 // ✨ [신규] 다트 버튼 설정
+                 const dartSlotButton = document.getElementById('item-slot-3');
+                 if (dartSlotButton) {
+                     // 터치 시작 이벤트
+                     dartSlotButton.addEventListener('touchstart', (e) => {
+                         e.preventDefault(); 
+                         if (!dartSlotButton.disabled) {
+                             useDart();
+                         }
+                     }, { passive: false });
+
+                     // 마우스 클릭 이벤트
+                     dartSlotButton.addEventListener('click', (e) => {
+                         if (!dartSlotButton.disabled) {
+                             useDart();
+                         }
+                     });
 
                 // PC 키보드 누르기 이벤트
                 document.addEventListener('keydown', (e) => {
@@ -2200,6 +2399,10 @@ const needleSlotButton = document.getElementById('item-slot-1');
                         } else if (collectedItemType === ITEM_TYPES.SPEED) {
                             myStats.speed = Math.min(3, (myStats.speed || 1) + 1);
                         // ✨ [신규] 바늘 아이템 획득 (최대 3개)
+                        } else if (collectedItemType === ITEM_TYPES.SHIELD) {
+                            myStats.shields = Math.min(3, (myStats.shields || 0) + 1);
+                        } else if (collectedItemType === ITEM_TYPES.DART) {
+                            myStats.darts = Math.min(3, (myStats.darts || 0) + 1);
                         } else if (collectedItemType === ITEM_TYPES.NEEDLE) {
                             myStats.needles = Math.min(3, (myStats.needles || 0) + 1);
                         }
