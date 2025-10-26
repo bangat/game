@@ -3,7 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>크레이지 봄버</title>
+
     <link rel="manifest" href="manifest.json">
     <link href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff" as="font" type="font/woff" crossorigin>
     <style>
@@ -226,25 +229,36 @@
         }
 
          /* --- 컨트롤러, 모달 CSS (변경 없음) --- */
-        #controls-container { position: fixed; bottom: 30px; left: 30px; z-index: 100;}
-         #d-pad { position: relative; width: 120px; height: 120px; }
-         .d-pad-btn { 
-            position: absolute; 
-            width: 40px; 
-            height: 40px; 
-            background-color: rgba(255, 255, 255, 0.3); /* ✨ 원래 색으로 */
-            border: 1px solid rgba(255, 255, 255, 0.5); /* ✨ 원래 테두리 */
-            border-radius: 8px; /* ✨ 둥근 사각형으로 변경 */
-            display: flex; justify-content: center; align-items: center; 
-            font-size: 1.5em; 
-            color: white; 
-            cursor: pointer; 
+        /* --- 컨트롤러, 모달 CSS --- */
+        #controls-container {
+            position: fixed;
+            bottom: 45px; /* ✨ 30px -> 45px (위로 올림) */
+            left: 30px;
+            z-index: 100;
+        }
+         #d-pad {
+            position: relative;
+            width: 140px; /* ✨ 120px -> 140px (전체 크기 증가) */
+            height: 140px; /* ✨ 120px -> 140px */
          }
-         .d-pad-btn.active { background-color: rgba(255, 255, 255, 0.6); } /* ✨ 원래 활성 색으로 */
-         #btn-up { top: 0; left: 40px; }
-         #btn-left { top: 40px; left: 0; }
-         #btn-right { top: 40px; left: 80px; }
-         #btn-down { top: 80px; left: 40px; }
+         .d-pad-btn {
+            position: absolute;
+            width: 46px; /* ✨ 40px -> 46px (버튼 크기 살짝 증가) */
+            height: 46px; /* ✨ 40px -> 46px */
+            background-color: rgba(255, 255, 255, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            border-radius: 12px; /* ✨ 더 둥글게 */
+            display: flex; justify-content: center; align-items: center;
+            font-size: 1.8em; /* ✨ 아이콘 크기 증가 */
+            color: white;
+            cursor: pointer;
+         }
+         .d-pad-btn.active { background-color: rgba(255, 255, 255, 0.6); }
+         /* ✨ 버튼 위치 조정 (넓어진 간격 반영) */
+         #btn-up { top: 0; left: 47px; } /* (140-46)/2 = 47 */
+         #btn-left { top: 47px; left: 0; }
+         #btn-right { top: 47px; left: 94px; } /* 47 + 46 + 1(gap?) approx */
+         #btn-down { top: 94px; left: 47px; }
          /* ✨ [신규] 오른쪽 컨트롤러 컨테이너 */
          #action-controls-container {
             position: fixed;
@@ -264,15 +278,15 @@
             margin-bottom: 15px; /* 폭탄 버튼과의 간격 */
          }
 
-/* ✨ [신규] 폭탄/아이템 UI 전체 래퍼 */
+/* ✨ 폭탄/아이템 UI 전체 래퍼 */
         #action-ui-wrapper {
             position: fixed;
             bottom: 40px;
-            right: 40px;
-            width: 200px; /* (폭탄 80 + 아이템 60 + 여백) */
-            height: 200px; /* (폭탄 80 + 아이템 60 + 여백) */
+            right: 20px; /* ✨ 40px -> 20px (오른쪽으로 더 이동) */
+            width: 200px;
+            height: 200px;
             z-index: 100;
-            pointer-events: none; /* 래퍼는 클릭x, 버튼만 클릭o */
+            pointer-events: none;
         }
 
          /* CSS (변경코드) - #bomb-btn 스타일 전체를 교체하세요 */
@@ -1339,11 +1353,18 @@ const ITEM_ICONS = {
 
 
           function renderPlayers(players) {
+                // 플레이어 데이터 없으면 중단
                 if (!players) {
+                    // console.log("[renderPlayers] players 데이터 없음, 중단"); // 너무 자주 찍히므로 주석 처리
                     return;
                 }
-                if (TILE_WIDTH <= 0 || TILE_HEIGHT <= 0) return;
+                // 타일 크기 계산 안됐으면 중단
+                if (TILE_WIDTH <= 0 || TILE_HEIGHT <= 0) {
+                    // console.log("[renderPlayers] 타일 크기 미계산, 중단"); // 너무 자주 찍히므로 주석 처리
+                    return;
+                }
 
+                // 내 화살표 요소 생성 (아직 없으면)
                 if (!myIndicatorElement && myPlayerId && document.body.contains(gameBoard)) {
                     myIndicatorElement = document.createElement('div');
                     myIndicatorElement.className = 'player-indicator';
@@ -1351,217 +1372,185 @@ const ITEM_ICONS = {
                     gameBoard.appendChild(myIndicatorElement);
                 }
 
-                const playerIds = Object.keys(players || {}); 
-                const currentOnScreen = {}; 
+                const playerIdsFromData = Object.keys(players || {}); // Firebase에서 받은 최신 ID 목록
 
-                playerIds.forEach(playerId => {
-                    currentOnScreen[playerId] = true; 
-                    const pData = players[playerId]; 
-                    if (!pData || pData.r === undefined || pData.c === undefined || !pData.stats) return;
+                // --- 1단계: 최신 데이터 기준으로 요소 생성 및 업데이트 ---
+                playerIdsFromData.forEach(playerId => {
+                    const pData = players[playerId];
 
-                    let playerEl = playerElements[playerId]; 
-                    
-                    // ✨ [수정] 플레이어 생성 시, 자식 요소를 모두 absolute로 변경
+                    // 데이터 유효성 검사
+                    if (!pData || pData.r === undefined || pData.c === undefined || !pData.stats) {
+                        console.warn(`[renderPlayers] 플레이어 ${playerId} 데이터 누락, 렌더링 건너뜀`);
+                        return;
+                    }
+
+                    let playerEl = playerElements[playerId]; // 로컬 추적 객체에서 요소 가져오기
+
+                    // --- 요소 생성 ---
                     if (!playerEl && document.body.contains(gameBoard)) {
                         playerEl = document.createElement('div');
                         playerEl.className = 'player';
                         playerEl.id = `player-${playerId}`;
-                        
-                        const x = pData.c * TILE_WIDTH;
-                        const y = pData.r * TILE_HEIGHT;
-                        playerEl.style.left = `${x}px`;
-                        playerEl.style.top = `${y}px`;
-
-                        // ✨ 1. 아바타 이미지
-                        const avatarImg = document.createElement('img');
-                        avatarImg.className = 'player-avatar-img';
-                        avatarImg.style.display = 'none'; 
-                        avatarImg.style.position = 'absolute'; // ✨ 추가
-                        avatarImg.style.top = '50%'; // ✨ 추가
-                        avatarImg.style.left = '50%'; // ✨ 추가
-                        avatarImg.style.transform = 'translate(-50%, -50%)'; // ✨ 추가
-                        avatarImg.style.zIndex = '2'; // ✨ 추가 (물풍선보다 위)
-                        
-                        // ✨ 2. 아바타 이모지
-                        const avatarEmoji = document.createElement('span');
-                        avatarEmoji.className = 'player-avatar-emoji';
-                        avatarEmoji.style.display = 'none';
-                        avatarEmoji.style.position = 'absolute'; // ✨ 추가
-                        avatarEmoji.style.top = '50%'; // ✨ 추가
-                        avatarEmoji.style.left = '50%'; // ✨ 추가
-                        avatarEmoji.style.transform = 'translate(-50%, -50%)'; // ✨ 추가
-                        avatarEmoji.style.zIndex = '2'; // ✨ 추가 (물풍선보다 위)
-
-                        // ✨ 3. 물풍선 (CSS에 z-index: 1이 이미 설정됨)
-                        const bubbleEl = document.createElement('div');
-                        bubbleEl.className = 'player-bubble';
-                        // ✨ (bubbleEl의 position/transform/z-index는 CSS에 설정됨)
-                        
-                        // ✨ 4. 쉴드 효과 (신규 추가)
-                        const shieldEl = document.createElement('div');
-                        shieldEl.className = 'player-shield-effect';
-                        // (스타일은 CSS 파일에 정의되어 있음)
-
-                        playerEl.appendChild(avatarImg); 
-                        playerEl.appendChild(avatarEmoji); 
-                        playerEl.appendChild(bubbleEl); // ✨ 물풍선 요소 추가
-                        playerEl.appendChild(shieldEl); // ✨ [신규] 쉴드 요소 추가
-                        
+                        const initialX = (pData.c ?? 0) * TILE_WIDTH;
+                        const initialY = (pData.r ?? 0) * TILE_HEIGHT;
+                        playerEl.style.left = `${initialX}px`;
+                        playerEl.style.top = `${initialY}px`;
+                        // 자식 요소 생성 (아바타, 이모지, 버블, 쉴드)
+                        const avatarImg = document.createElement('img'); avatarImg.className = 'player-avatar-img'; Object.assign(avatarImg.style, { display: 'none', position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: '2' });
+                        const avatarEmoji = document.createElement('span'); avatarEmoji.className = 'player-avatar-emoji'; Object.assign(avatarEmoji.style, { display: 'none', position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: '2' });
+                        const bubbleEl = document.createElement('div'); bubbleEl.className = 'player-bubble';
+                        const shieldEl = document.createElement('div'); shieldEl.className = 'player-shield-effect';
+                        playerEl.appendChild(avatarImg); playerEl.appendChild(avatarEmoji); playerEl.appendChild(bubbleEl); playerEl.appendChild(shieldEl);
                         gameBoard.appendChild(playerEl);
-                        playerElements[playerId] = playerEl;
+                        playerElements[playerId] = playerEl; // 추적 객체에 저장
+                        console.log(`[renderPlayers] 플레이어 ${playerId} 요소 생성 완료.`);
                     } else if (!playerEl) {
-                        return; 
+                        // 게임 보드가 아직 준비 안됐을 수 있으므로 다음 기회에
+                        return;
                     }
+                    // --- 요소 생성 끝 ---
 
+                    // --- 자식 요소 가져오기 ---
                     const avatarImgEl = playerEl.querySelector('.player-avatar-img');
                     const avatarEmojiEl = playerEl.querySelector('.player-avatar-emoji');
                     const bubbleEl = playerEl.querySelector('.player-bubble');
-                    const shieldEl = playerEl.querySelector('.player-shield-effect'); // ✨ [신규] 쉴드 요소 가져오기
-
-                    // ✨ [수정] playerEl 자체를 지우는 대신, 각 자식 요소 존재 여부만 확인
-                    // 자식 요소가 없으면 해당 업데이트만 건너뜀
+                    const shieldEl = playerEl.querySelector('.player-shield-effect');
                     if (!avatarImgEl || !avatarEmojiEl || !bubbleEl || !shieldEl) {
-                         console.warn(`[renderPlayers] 플레이어 ${playerId}의 자식 요소 일부를 찾을 수 없습니다. (avatarImg:${!!avatarImgEl}, emoji:${!!avatarEmojiEl}, bubble:${!!bubbleEl}, shield:${!!shieldEl})`);
-                         // return; // 💥 playerEl을 삭제하거나 함수를 종료하지 않음!
+                         // console.warn(`[renderPlayers] 플레이어 ${playerId} 자식 요소 누락 (업데이트 건너뜀)`); // 너무 자주 찍힐 수 있음
                     }
 
-                    // --- 이하 플레이어 위치, 상태 업데이트 로직 ---
-                    // ✨ [수정] 각 자식 요소 업데이트 시 null 체크 추가
-
+                    // --- 아바타 업데이트 ---
                     const isImage = pData.avatar && (pData.avatar.startsWith('http') || /\.(png|jpg|jpeg|gif|webp)$/i.test(pData.avatar));
-
-                    // 아바타 이미지/이모지 업데이트 (null 체크 추가)
                     if (isImage) {
-                        if (avatarImgEl) { // ✨ null 체크
-                            if (avatarImgEl.src !== pData.avatar) {
-                               avatarImgEl.src = pData.avatar;
-                            }
-                            avatarImgEl.style.display = 'block';
-                        }
-                        if (avatarEmojiEl) avatarEmojiEl.style.display = 'none'; // ✨ null 체크
+                        if (avatarImgEl && avatarImgEl.src !== pData.avatar) avatarImgEl.src = pData.avatar;
+                        if (avatarImgEl) avatarImgEl.style.display = 'block';
+                        if (avatarEmojiEl) avatarEmojiEl.style.display = 'none';
                     } else if (pData.avatar) {
-                        if (avatarEmojiEl) { // ✨ null 체크
-                            avatarEmojiEl.textContent = pData.avatar;
-                            avatarEmojiEl.style.fontSize = `${TILE_HEIGHT * 0.7}px`;
-                            avatarEmojiEl.style.display = 'block';
-                        }
-                        if (avatarImgEl) { // ✨ null 체크
-                            avatarImgEl.style.display = 'none';
-                            avatarImgEl.src = '';
-                        }
+                        if (avatarEmojiEl) { avatarEmojiEl.textContent = pData.avatar; avatarEmojiEl.style.fontSize = `${TILE_HEIGHT * 0.7}px`; avatarEmojiEl.style.display = 'block'; }
+                        if (avatarImgEl) { avatarImgEl.style.display = 'none'; avatarImgEl.src = ''; }
                     } else {
-                         if (avatarImgEl) avatarImgEl.style.display = 'none'; // ✨ null 체크
-                         if (avatarEmojiEl) avatarEmojiEl.style.display = 'none'; // ✨ null 체크
+                         if (avatarImgEl) avatarImgEl.style.display = 'none';
+                         if (avatarEmojiEl) avatarEmojiEl.style.display = 'none';
                     }
+                    playerEl.style.backgroundColor = 'transparent';
 
-                    playerEl.style.backgroundColor = 'transparent'; // 배경은 항상 투명
-
-                    // 다른 플레이어 위치 업데이트 (기존과 동일)
+                    // --- 위치 업데이트 (다른 플레이어만 - 예측 이동 고려) ---
                     if (playerId !== myPlayerId) {
                         const x = pData.c * TILE_WIDTH;
                         const y = pData.r * TILE_HEIGHT;
-                        playerEl.style.left = `${x}px`;
-                        playerEl.style.top = `${y}px`;
+                        if (playerEl.style.left !== `${x}px` || playerEl.style.top !== `${y}px`) {
+                            playerEl.style.left = `${x}px`;
+                            playerEl.style.top = `${y}px`;
+                        }
                     }
 
-                    // 상태 업데이트 (null 체크 추가)
+                    // --- 상태 업데이트 ---
                     const isAlive = pData.stats.isAlive;
                     const isTrapped = pData.stats.isTrapped === true;
                     const now = Date.now() + serverTimeOffset;
                     const isShieldActive = pData.stats.shieldActiveUntil && pData.stats.shieldActiveUntil > now;
-
                     const wasAlreadyTrapped = playerEl.classList.contains('trapped');
                     const isNowTrapped = isTrapped && isAlive;
 
                     playerEl.classList.toggle('dead', !isAlive);
                     playerEl.classList.toggle('trapped', isNowTrapped);
 
-                    if (bubbleEl) bubbleEl.style.display = (isNowTrapped) ? 'block' : 'none'; // ✨ null 체크
-                    if (shieldEl) shieldEl.style.display = (isShieldActive && isAlive) ? 'block' : 'none'; // ✨ null 체크
+                    if (bubbleEl) {
+                        const shouldShowBubble = isNowTrapped;
+                        if ((bubbleEl.style.display === 'block') !== shouldShowBubble) {
+                            bubbleEl.style.display = shouldShowBubble ? 'block' : 'none';
+                        }
+                    }
+                    if (shieldEl) {
+                        const shouldShowShield = isShieldActive && isAlive;
+                         if ((shieldEl.style.display === 'block') !== shouldShowShield) {
+                            shieldEl.style.display = shouldShowShield ? 'block' : 'none';
+                         }
+                    }
 
                     if (isNowTrapped && !wasAlreadyTrapped) {
                         playSound('sound-trapped');
                     }
 
-                    // ... 이하 내 플레이어 표시기, 아이템 슬롯 업데이트 로직 (변경 없음) ...
-                   
+                    // --- 내 플레이어 표시기 위치 업데이트 ---
                     if (playerId === myPlayerId && myIndicatorElement) {
-                         if (!myIndicatorElement.style.left || myIndicatorElement.style.left === '0px') {
-                            const x = pData.c * TILE_WIDTH;
-                            const y = pData.r * TILE_HEIGHT;
-                            const indicatorY = y - TILE_HEIGHT * 0.6; 
-                            myIndicatorElement.style.left = `${x}px`;
-                            myIndicatorElement.style.top = `${indicatorY}px`;
+                         const x = pData.c * TILE_WIDTH;
+                         const y = pData.r * TILE_HEIGHT;
+                         const indicatorY = y - TILE_HEIGHT * 0.6;
+                         if (myIndicatorElement.style.left !== `${x}px` || myIndicatorElement.style.top !== `${indicatorY}px`) {
+                             myIndicatorElement.style.left = `${x}px`;
+                             myIndicatorElement.style.top = `${indicatorY}px`;
                          }
-                         
-                         myIndicatorElement.style.display = (isAlive && !isTrapped) ? 'block' : 'none';
+                         const shouldShowIndicator = isAlive && !isTrapped;
+                         if ((myIndicatorElement.style.display === 'block') !== shouldShowIndicator) {
+                            myIndicatorElement.style.display = shouldShowIndicator ? 'block' : 'none';
+                         }
                     }
 
-                    // ✨ [신규] 내 플레이어면 아이템 슬롯(바늘 개수) 업데이트
-                    // ✨ [수정] 내 플레이어면 모든 아이템 슬롯 업데이트
+                    // --- 내 아이템 슬롯 업데이트 ---
                     if (playerId === myPlayerId) {
                         const myStats = pData.stats || {};
                         const needleCount = myStats.needles || 0;
                         const shieldCount = myStats.shields || 0;
                         const dartCount = myStats.darts || 0;
 
+                        // ***** 여기부터가 이전에 생략되었던 부분입니다 *****
                         // 헬퍼 함수: 슬롯 UI 업데이트
                         const updateSlot = (slotId, itemType, count) => {
                             const slotEl = document.getElementById(slotId);
                             if (!slotEl) return;
-
-                            // ✨ [신규] 슬롯(버튼)은 항상 보이도록 함 (이전 제안 되돌리기)
-                            slotEl.style.display = 'flex'; 
+                            slotEl.style.display = 'flex'; // 항상 보이도록
 
                             const countEl = slotEl.querySelector('.item-count');
                             const iconEl = slotEl.querySelector('.item-icon');
                             const iconUrl = ITEM_ICONS[itemType];
 
-                            // ✨ [수정] 아이콘 이미지는 개수가 1개 이상일 때만 표시
+                            // 아이콘 (0개면 숨김)
                             if (iconEl && iconUrl) {
-                                if (count > 0) {
-                                    // 아이템 있음: 이미지 표시
-                                    iconEl.innerHTML = `<img src="${iconUrl}" alt="${itemType}" style="width: 100%; height: 100%; object-fit: contain;">`;
-                                } else {
-                                    // 아이템 없음: 이미지 삭제
-                                    iconEl.innerHTML = ''; 
-                                }
+                                iconEl.innerHTML = (count > 0) ? `<img src="${iconUrl}" alt="${itemType}" style="width: 100%; height: 100%; object-fit: contain;">` : '';
                             }
-                            
-                            // 개수 업데이트 (CSS가 0일 때 숨김)
+                            // 개수 (CSS가 0일때 숨김)
                             if (countEl) {
                                 countEl.textContent = count;
                                 countEl.dataset.count = count;
                             }
-
-                            // 버튼 활성화/비활성화 로직
-                            if (itemType === ITEM_TYPES.NEEDLE) {
-                                slotEl.disabled = !(isTrapped && count > 0);
-                            } else if (itemType === ITEM_TYPES.DART) {
-                                slotEl.disabled = !(isAlive && !isTrapped && count > 0);
-                            } else if (itemType === ITEM_TYPES.SHIELD) {
-                                // ✨ [수정] 쉴드가 활성화(isShieldActive)되지 않았을 때만 사용 가능
-                                slotEl.disabled = !(isAlive && !isTrapped && count > 0 && !isShieldActive);
-                            }
+                            // 버튼 활성화/비활성화
+                            if (itemType === ITEM_TYPES.NEEDLE) slotEl.disabled = !(isTrapped && count > 0);
+                            else if (itemType === ITEM_TYPES.DART) slotEl.disabled = !(isAlive && !isTrapped && count > 0);
+                            else if (itemType === ITEM_TYPES.SHIELD) slotEl.disabled = !(isAlive && !isTrapped && count > 0 && !isShieldActive);
                         };
-                        
                         // 3개 슬롯 모두 업데이트
                         updateSlot('item-slot-1', ITEM_TYPES.NEEDLE, needleCount);
                         updateSlot('item-slot-2', ITEM_TYPES.SHIELD, shieldCount);
                         updateSlot('item-slot-3', ITEM_TYPES.DART, dartCount);
+                        // ***** 여기까지가 이전에 생략되었던 부분입니다 *****
                     }
-                }); // <-- playerIds.forEach 끝
+                }); // <-- playerIdsFromData.forEach 끝
 
-                for(const pid in playerElements){
-                    if(!currentOnScreen[pid]){ 
-                        if(playerElements[pid]) playerElements[pid].remove(); 
-                        delete playerElements[pid]; 
-                        if(pid === myPlayerId && myIndicatorElement){
+                // --- 2단계: 로컬 추적 객체(playerElements)를 순회하며 Firebase 데이터에 없는 요소 제거 ---
+                console.log('[renderPlayers] 제거 로직 시작. Firebase IDs:', JSON.stringify(playerIdsFromData), 'Local IDs:', JSON.stringify(Object.keys(playerElements)));
+                const playerIdsSet = new Set(playerIdsFromData);
+
+                for (const pid in playerElements) {
+                    // console.log(`[renderPlayers] 제거 검사: ${pid}. Firebase Set에 존재? ${playerIdsSet.has(pid)}. playerElements[pid] 존재? ${!!playerElements[pid]}`); // 너무 자주 찍힘
+                    if (!playerIdsSet.has(pid)) {
+                        console.warn(`[renderPlayers] 제거 결정됨! ID: ${pid}. Firebase ID Set:`, playerIdsSet);
+                        // console.warn('[renderPlayers] 제거 시점의 currentRoomData.players:', currentRoomData?.players); // 너무 길어서 주석 처리
+                        if (playerElements[pid]) {
+                            playerElements[pid].remove();
+                            console.log(`[renderPlayers] 플레이어 ${pid} 요소 제거 완료`);
+                        } else {
+                            console.warn(`[renderPlayers] 제거 시도했으나 playerElements[${pid}] DOM 요소 없음`);
+                        }
+                        delete playerElements[pid];
+                        if (pid === myPlayerId && myIndicatorElement) {
                             myIndicatorElement.remove();
                             myIndicatorElement = null;
                         }
                     }
                 }
+                // console.log('[renderPlayers] 제거 로직 끝.'); // 너무 자주 찍힘
+                // --- 제거 로직 끝 ---
             }
 
 
