@@ -218,7 +218,7 @@
         const emojiPopover = document.getElementById('emoji-popover');
         const lobbyFooter = document.querySelector('.game-lobby-footer'); // ✨ UI 요소 선택 추가
 
-        let currentUser, myNickname, myAvatar, roomRef, currentRoomData, isHost;
+        let currentUser, myNickname, myAvatar, myBombSkin, roomRef, currentRoomData, isHost;
         let previousPlayerNicks = {};
 
         const availableGames = [
@@ -246,7 +246,22 @@
                 myNickname = localStorage.getItem('userNickname');
                 myAvatar = localStorage.getItem('userAvatar');
                 if (!myNickname) { auth.signOut(); return; }
-                initializeRoom();
+
+                // ✨ [신규] 방 입장 전, DB에서 bombSkin 정보를 가져옵니다.
+                usersRef.child(currentUser.uid).child('profile/bombSkin').once('value', snapshot => {
+                    // bombSkin 값이 있으면 사용하고, 없으면 기본 물풍선으로 설정
+                    myBombSkin = snapshot.val() || './봄버맨사운드/물풍선.png';
+                    
+                    // 스킨 정보 로드 후 방 초기화 시작
+                    initializeRoom();
+
+                }).catch(error => {
+                    // 오류 발생 시 기본값으로 진행
+                    console.error("bombSkin 로드 오류:", error);
+                    myBombSkin = './봄버맨사운드/물풍선.png';
+                    initializeRoom();
+                });
+
             } else {
                 window.location.href = 'index.html';
             }
@@ -299,6 +314,7 @@
                 const myPlayerData = {
                     nickname: myNickname,
                     avatar: myAvatar,
+                    bombSkin: myBombSkin, // ✨ [신규] 가져온 bombSkin 정보 추가
                     isHost: roomData.hostId === currentUser.uid
                 };
 
@@ -569,10 +585,15 @@
                 
                 playerIds.forEach(pid => {
                    players[pid] = {
-                        ...currentRoomData.players[pid], // 아바타, 닉네임 등 모든 정보 포함
-                        // ✨ [수정] 봄버맨.html의 generateMap과 동일하게 모든 스탯을 0으로 초기화
-                      stats: { maxBombs: 1, bombRange: 1, speed: 1, isAlive: true, needles: 0, shields: 0, darts: 0 }
+                        ...currentRoomData.players[pid], // 아바타, 닉네임, bombSkin 등 모든 정보 포함
+                        // ✨ [수정] 스탯 초기화
+                      stats: { maxBombs: 1, bombRange: 1, speed: 1, isAlive: true, needles: 0, shields: 0, darts: 0, shieldActiveUntil: null } // ✨ 쉴드 활성화 시간 추가
                     };
+
+                    // ✨ [신규] 혹시 bombSkin 정보가 누락되었다면 기본값 설정
+                    if (!players[pid].bombSkin) {
+                        players[pid].bombSkin = './봄버맨사운드/물풍선.png';
+                    }
                 });
                 
                 updates.status = 'playing';

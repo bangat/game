@@ -134,17 +134,17 @@
             width: calc((100% / 11) * 1.2); /* ✨ [수정] 1.2배 */
             height: calc((100% / 15) * 1.2); /* ✨ [수정] 1.2배 */
             z-index: 5; /* 길(1) < 폭탄(5) < 아이템(6) */
-            
+
             display: block; /* ✨ 이미지가 보이도록 display 속성 추가 */
 
             /* ✨ [수정] 이미지를 배경으로 설정 (원복) */
-            background-image: url('./봄버맨사운드/물풍선.png');
-            background-size: cover; /* ✨ [수정] 100% 100% -> cover (비율 맞게 채우기) */
+            background-image: url('./봄버맨사운드/물풍선.png'); /* This is just a default, JS overrides it */
+            background-size: 100% 100%; /* ✨ [FIX] Changed cover to 100% 100% for fixed size */
             background-repeat: no-repeat;
             background-position: center;
 
             /* ✨ [삭제] CSS 물방울 스타일 제거 */
-            
+
             transition: left 0.1s linear, top 0.1s linear;
             will-change: left, top;
             animation: pulse-bomb 1s infinite;
@@ -1415,36 +1415,48 @@ const ITEM_ICONS = {
 
                     const avatarImgEl = playerEl.querySelector('.player-avatar-img');
                     const avatarEmojiEl = playerEl.querySelector('.player-avatar-emoji');
-                    const bubbleEl = playerEl.querySelector('.player-bubble'); 
+                    const bubbleEl = playerEl.querySelector('.player-bubble');
                     const shieldEl = playerEl.querySelector('.player-shield-effect'); // ✨ [신규] 쉴드 요소 가져오기
 
-                    if (!avatarImgEl || !avatarEmojiEl || !bubbleEl || !shieldEl) {  // ✨ [수정] 쉴드 요소 null 체크
-                        if (playerEl) playerEl.remove();
-                        delete playerElements[playerId];
-                        return; 
+                    // ✨ [수정] playerEl 자체를 지우는 대신, 각 자식 요소 존재 여부만 확인
+                    // 자식 요소가 없으면 해당 업데이트만 건너뜀
+                    if (!avatarImgEl || !avatarEmojiEl || !bubbleEl || !shieldEl) {
+                         console.warn(`[renderPlayers] 플레이어 ${playerId}의 자식 요소 일부를 찾을 수 없습니다. (avatarImg:${!!avatarImgEl}, emoji:${!!avatarEmojiEl}, bubble:${!!bubbleEl}, shield:${!!shieldEl})`);
+                         // return; // 💥 playerEl을 삭제하거나 함수를 종료하지 않음!
                     }
+
+                    // --- 이하 플레이어 위치, 상태 업데이트 로직 ---
+                    // ✨ [수정] 각 자식 요소 업데이트 시 null 체크 추가
 
                     const isImage = pData.avatar && (pData.avatar.startsWith('http') || /\.(png|jpg|jpeg|gif|webp)$/i.test(pData.avatar));
 
+                    // 아바타 이미지/이모지 업데이트 (null 체크 추가)
                     if (isImage) {
-                        if (avatarImgEl.src !== pData.avatar) {
-                           avatarImgEl.src = pData.avatar;
+                        if (avatarImgEl) { // ✨ null 체크
+                            if (avatarImgEl.src !== pData.avatar) {
+                               avatarImgEl.src = pData.avatar;
+                            }
+                            avatarImgEl.style.display = 'block';
                         }
-                        avatarImgEl.style.display = 'block';
-                        avatarEmojiEl.style.display = 'none';
+                        if (avatarEmojiEl) avatarEmojiEl.style.display = 'none'; // ✨ null 체크
                     } else if (pData.avatar) {
-                        avatarEmojiEl.textContent = pData.avatar;
-                        avatarEmojiEl.style.fontSize = `${TILE_HEIGHT * 0.7}px`;
-                        avatarEmojiEl.style.display = 'block';
-                        avatarImgEl.style.display = 'none';
-                        avatarImgEl.src = ''; 
+                        if (avatarEmojiEl) { // ✨ null 체크
+                            avatarEmojiEl.textContent = pData.avatar;
+                            avatarEmojiEl.style.fontSize = `${TILE_HEIGHT * 0.7}px`;
+                            avatarEmojiEl.style.display = 'block';
+                        }
+                        if (avatarImgEl) { // ✨ null 체크
+                            avatarImgEl.style.display = 'none';
+                            avatarImgEl.src = '';
+                        }
                     } else {
-                         avatarImgEl.style.display = 'none';
-                         avatarEmojiEl.style.display = 'none';
+                         if (avatarImgEl) avatarImgEl.style.display = 'none'; // ✨ null 체크
+                         if (avatarEmojiEl) avatarEmojiEl.style.display = 'none'; // ✨ null 체크
                     }
-                    
-                    playerEl.style.backgroundColor = 'transparent';
 
+                    playerEl.style.backgroundColor = 'transparent'; // 배경은 항상 투명
+
+                    // 다른 플레이어 위치 업데이트 (기존과 동일)
                     if (playerId !== myPlayerId) {
                         const x = pData.c * TILE_WIDTH;
                         const y = pData.r * TILE_HEIGHT;
@@ -1452,26 +1464,26 @@ const ITEM_ICONS = {
                         playerEl.style.top = `${y}px`;
                     }
 
+                    // 상태 업데이트 (null 체크 추가)
                     const isAlive = pData.stats.isAlive;
                     const isTrapped = pData.stats.isTrapped === true;
-                    
-                    // ✨ [신규] 쉴드 활성화 상태 체크
                     const now = Date.now() + serverTimeOffset;
                     const isShieldActive = pData.stats.shieldActiveUntil && pData.stats.shieldActiveUntil > now;
 
-                    // ✨ [신규] 갇히는 순간 사운드 재생
                     const wasAlreadyTrapped = playerEl.classList.contains('trapped');
                     const isNowTrapped = isTrapped && isAlive;
-                    
-                    playerEl.classList.toggle('dead', !isAlive); 
-                    playerEl.classList.toggle('trapped', isNowTrapped); 
-                    bubbleEl.style.display = (isNowTrapped) ? 'block' : 'none'; 
-                    shieldEl.style.display = (isShieldActive && isAlive) ? 'block' : 'none'; // ✨ [신규] 쉴드 시각 효과 토글
 
-                    // ✨ [신규] 방금 갇혔다면 사운드 재생
+                    playerEl.classList.toggle('dead', !isAlive);
+                    playerEl.classList.toggle('trapped', isNowTrapped);
+
+                    if (bubbleEl) bubbleEl.style.display = (isNowTrapped) ? 'block' : 'none'; // ✨ null 체크
+                    if (shieldEl) shieldEl.style.display = (isShieldActive && isAlive) ? 'block' : 'none'; // ✨ null 체크
+
                     if (isNowTrapped && !wasAlreadyTrapped) {
                         playSound('sound-trapped');
                     }
+
+                    // ... 이하 내 플레이어 표시기, 아이템 슬롯 업데이트 로직 (변경 없음) ...
                    
                     if (playerId === myPlayerId && myIndicatorElement) {
                          if (!myIndicatorElement.style.left || myIndicatorElement.style.left === '0px') {
@@ -1662,11 +1674,12 @@ const ITEM_ICONS = {
                     itemEl.classList.toggle('visible', iData.isVisible);
 
                     // 위치 계산 및 적용 (top, left)
-                    // ✨ [수정] 1.2배 커진 것을 보정하기 위해 0.1배만큼( (1.2-1)/2 ) 빼서 중앙 정렬
-                    const bombX = (bData.c * TILE_WIDTH) - (TILE_WIDTH * 0.1); 
-                    const bombY = (bData.r * TILE_HEIGHT) - (TILE_HEIGHT * 0.1);
-                    bombEl.style.left = `${bombX}px`;
-                    bombEl.style.top = `${bombY}px`;
+                    // ✨ [수정] 변수명 수정 (bData -> iData, bombX/Y -> itemX/Y, bombEl -> itemEl)
+                    // ✨ [수정] 아이템은 크기 보정이 필요 없으므로 중앙 정렬 오프셋 제거
+                    const itemX = iData.c * TILE_WIDTH;
+                    const itemY = iData.r * TILE_HEIGHT;
+                    itemEl.style.left = `${itemX}px`;
+                    itemEl.style.top = `${itemY}px`;
                 }
                 // Firebase 데이터에는 없는데 화면에 남아있는 아이템 요소 제거
                 for (const itemId in itemElements) {
@@ -1710,11 +1723,19 @@ if (!bombEl && document.body.contains(gameBoard)) {
                     } else if (!bombEl) {
                          continue; // 보드 없으면 생성 불가
                     }
+                    
+                    // ✨ [신규] 폭탄 데이터에서 스킨 URL 읽어오기
+                    const skinUrl = bData.skinUrl || './봄버맨사운드/물풍선.png'; // 기본값
+                    // ✨ [신규] 현재 스킨과 다를 때만 DOM 업데이트
+                    if (bombEl.style.backgroundImage !== `url("${skinUrl}")`) {
+                        bombEl.style.backgroundImage = `url("${skinUrl}")`;
+                    }
 
 
                     // 위치 계산 및 적용 (top, left)
-                    const bombX = bData.c * TILE_WIDTH;
-                    const bombY = bData.r * TILE_HEIGHT;
+                    // ✨ [수정] 1.2배 커진 것을 보정하기 위해 0.1배만큼( (1.2-1)/2 ) 빼서 중앙 정렬
+                    const bombX = (bData.c * TILE_WIDTH) - (TILE_WIDTH * 0.1); 
+                    const bombY = (bData.r * TILE_HEIGHT) - (TILE_HEIGHT * 0.1);
                     bombEl.style.left = `${bombX}px`;
                     bombEl.style.top = `${bombY}px`;
                 }
@@ -1821,6 +1842,7 @@ function checkBombTimers() {
                     owner: myPlayerId,
                     r: myPos.r,
                     c: myPos.c,
+                    skinUrl: myPos.bombSkin || './봄버맨사운드/물풍선.png', // ✨ [신규] 플레이어의 스킨 URL 저장
                     placedAt: firebase.database.ServerValue.TIMESTAMP // 서버 시간 기록
                 };
                 // Firebase에 폭탄 데이터 저장 요청
