@@ -282,22 +282,23 @@
         #action-ui-wrapper {
             position: fixed;
             bottom: 40px;
-            right: 20px; /* ✨ 40px -> 20px (오른쪽으로 더 이동) */
-            width: 200px;
-            height: 200px;
+            right: 10px; /* ✨ [수정] 20px -> 10px (우측으로 더 이동) */
+            width: 140px; /* ✨ [수정] 200px -> 140px (새 레이아웃에 맞게 축소) */
+            height: 180px; /* ✨ [수정] 200px -> 180px (새 레이아웃에 맞게 축소) */
             z-index: 100;
             pointer-events: none;
         }
 
          /* CSS (변경코드) - #bomb-btn 스타일 전체를 교체하세요 */
+         /* CSS (변경코드) - #bomb-btn 스타일 전체를 교체하세요 */
          #bomb-btn { 
             position: absolute; /* ✨ [수정] fixed -> absolute */
             bottom: 0; /* ✨ [수정] 래퍼 기준 0 */
             right: 0; /* ✨ [수정] 래퍼 기준 0 */
-            width: 80px; 
-            height: 80px; 
+            width: 70px; /* ✨ [수정] 80px -> 70px (크기 축소) */
+            height: 70px; /* ✨ [수정] 80px -> 70px (크기 축소) */
             
-            background-color: rgba(20, 150, 255, 0.7);  
+            background-color: rgba(20, 150, 255, 0.7); 
             border: 3px solid rgba(255, 255, 255, 0.5); 
             border-radius: 50%; 
             z-index: 102; /* ✨ [수정] 100 -> 102 (아이템보다 위) */
@@ -458,8 +459,8 @@
         
         }
         .item-slot-btn {
-            width: 60px; /* ✨ [수정] 레이아웃에 맞게 크기 조정 */
-            height: 60px; /* ✨ [수정] 레이아웃에 맞게 크기 조정 */
+            width: 50px; /* ✨ [수정] 60px -> 50px (크기 축소) */
+            height: 50px; /* ✨ [수정] 60px -> 50px (크기 축소) */
             border-radius: 50%;
             background-color: rgba(255, 255, 255, 0.3); /* ✨ [수정] 반투명 흰색 */
             border: 3px solid rgba(255, 255, 255, 0.5); /* ✨ [수정] 반투명 테두리 */
@@ -500,20 +501,18 @@
             box-shadow: 0 1px 2px rgba(0,0,0,0.3);
         }
 
-        /* ✨ [신규] 아이템 슬롯 개별 위치 (레이아웃.png 스타일) */
 
-        /* ✨ [신규] 아이템 슬롯 개별 위치 (레이아웃.png 스타일) */
-        #item-slot-1 { /* 바늘 (왼쪽 하단 - 레이아웃.png의 다트 위치) */
-            right: 90px; /* (폭탄 80px + 갭 10px) */
-            bottom: 10px; /* ( (폭탄 80px - 아이템 60px) / 2 ) */
+        #item-slot-1 { /* 바늘 (Key 3, 좌측 상단) */
+            right: 80px; /* ✨ [수정] (폭탄 70px + 갭 10px) */
+            bottom: 120px; /* ✨ [수정] (슬롯2 60px + 슬롯3 60px) */
         }
-        #item-slot-2 { /* 쉴드 (왼쪽 상단 - 레이아웃.png의 얼음 위치) */
-            right: 90px;
-            bottom: 80px; /* (아이템1 10px + 아이템1 60px + 갭 10px) */
+        #item-slot-2 { /* 쉴드 (Key 2, 좌측 중간) */
+            right: 80px; /* ✨ [수정] (폭탄 70px + 갭 10px) */
+            bottom: 60px; /* ✨ [수정] (슬롯3 50px + 갭 10px) */
         }
-        #item-slot-3 { /* 다트 (중앙 상단 - 레이아웃.png의 타이머 위치) */
-            right: 10px; /* ( (폭탄 80px - 아이템 60px) / 2 ) */
-            bottom: 90px; /* (폭탄 80px + 갭 10px) */
+      #item-slot-3 { /* 다트 (Key 1, 좌측 하단) */
+            right: 80px; /* ✨ [수정] (폭탄 70px + 갭 10px) */
+            bottom: 0px; /* ✨ [수정] (폭탄 버튼과 하단 정렬) */
         }
 
  
@@ -1180,6 +1179,9 @@ const ITEM_ICONS = {
                         clearInterval(bombTimerInterval); // 타이머 정리
                         bombTimerInterval = null;
                         showGameOver(currentRoomData.winner); // 게임 오버 화면 표시
+                        
+                        // ✨ [FIX] 전적 갱신 로직 호출
+                        updateMyGameStats(currentRoomData.winner, currentRoomData.players);
                     }
                 });
                roomRef.child('rematchRequests').on('value', snapshot => {
@@ -1248,6 +1250,10 @@ const ITEM_ICONS = {
                  }
 
                 gameBoard.innerHTML = ''; // 기존 맵 요소 모두 제거
+                playerElements = {};
+                 bombElements = {};
+                 itemElements = {};
+                 myIndicatorElement = null; // 화살표도 재생성해야 함
                  // 내 화살표 요소 먼저 생성 및 추가
                  if (!myIndicatorElement && myPlayerId) {
                     myIndicatorElement = document.createElement('div');
@@ -1372,7 +1378,10 @@ const ITEM_ICONS = {
                 }
 
                 const playerIdsFromData = Object.keys(players || {}); // Firebase에서 받은 최신 ID 목록
-
+if (playerIdsFromData.length === 0 && currentRoomData?.status === 'playing') {
+                    console.warn("[renderPlayers] 'playing' 상태에서 0명의 player 데이터 수신. 렌더링 중단.");
+                    return;
+                }
                 // --- 1단계: 최신 데이터 기준으로 요소 생성 및 업데이트 ---
                 playerIdsFromData.forEach(playerId => {
                     const pData = players[playerId];
@@ -1532,7 +1541,7 @@ const ITEM_ICONS = {
 
                 for (const pid in playerElements) {
                     // console.log(`[renderPlayers] 제거 검사: ${pid}. Firebase Set에 존재? ${playerIdsSet.has(pid)}. playerElements[pid] 존재? ${!!playerElements[pid]}`); // 너무 자주 찍힘
-                    if (!playerIdsSet.has(pid)) {
+                    if (!playerIdsSet.has(pid) && pid !== myPlayerId) { // ✨ [FIX] 내 ID(myPlayerId)는 절대 삭제하지 않도록 수정
                         console.warn(`[renderPlayers] 제거 결정됨! ID: ${pid}. Firebase ID Set:`, playerIdsSet);
                         // console.warn('[renderPlayers] 제거 시점의 currentRoomData.players:', currentRoomData?.players); // 너무 길어서 주석 처리
                         if (playerElements[pid]) {
@@ -2107,7 +2116,7 @@ function checkBombTimers() {
 
      
             // 승리 조건 확인 함수 (방장 전용)
-            function checkWinCondition(isTimeUp = false) { // isTimeUp 파라미터
+            function checkWinCondition(isTimeUp = false) { 
                 // 방장 아니거나 플레이어 데이터 없으면 중단
                 if (!isHost || !currentRoomData?.players) return;
 
@@ -2169,7 +2178,79 @@ function checkBombTimers() {
                 }
             }
 
-// ✨ [신규] 카운트다운 시작 함수
+            function updateMyGameStats(winnerId, players) {
+                // 1. usersRef가 없거나(비정상), 내 플레이어 데이터가 없으면 중단
+                if (!usersRef || !players || !players[myPlayerId]) {
+                    console.log("[Stats] 내 플레이어 데이터가 없어 전적을 기록하지 않습니다.");
+                    return;
+                }
+
+                // 2. 내 결과 판정 ('win', 'loss', 'draw')
+                let myResult;
+                if (winnerId === null) {
+                    myResult = 'draw';
+                } else if (winnerId === myPlayerId) {
+                    myResult = 'win';
+                } else {
+                    myResult = 'loss';
+                }
+                
+                console.log(`[Stats] 내 결과: ${myResult} (승자: ${winnerId})`);
+
+                // 3. 내 전적 DB 경로 참조
+                const myStatsRef = usersRef.child(myPlayerId).child('gameStats/bomber');
+
+                // 4. 트랜잭션으로 안전하게 전적 업데이트
+                myStatsRef.transaction(currentStats => {
+                    if (currentStats === null) {
+                        // 기존 전적이 없으면 새로 생성
+                        currentStats = { wins: 0, losses: 0, plays: 0 };
+                    }
+
+                    // 전적 카운트
+                    currentStats.plays = (currentStats.plays || 0) + 1;
+                    if (myResult === 'win') {
+                        currentStats.wins = (currentStats.wins || 0) + 1;
+                    } else if (myResult === 'loss') {
+                        currentStats.losses = (currentStats.losses || 0) + 1;
+                    }
+                    // 무승부(draw)는 'plays'만 1 증가시킵니다.
+                    
+                    return currentStats; // 새 전적 데이터 반환
+                }, (error, committed, snapshot) => {
+                    if (error) {
+                        console.error("[Stats] 전적 업데이트 트랜잭션 실패:", error);
+                    } else if (committed) {
+                        console.log("[Stats] 전적 업데이트 성공:", snapshot.val());
+                        
+                        // 5. [보너스] 경험치 및 포인트 지급 (사용자 요청 로직)
+                        let expGained, pointsGained;
+
+                        if (myResult === 'win') {
+                            // 승리
+                            expGained = 120;
+                            pointsGained = 200;
+                        } else {
+                            // 패배 또는 무승부 (무승부도 패배와 동일한 기본 보상 적용)
+                            expGained = 30;
+                            pointsGained = 100;
+                        }
+
+                        // 5-1. 경험치(exp) 업데이트
+                        const expRef = usersRef.child(myPlayerId).child('profile/exp');
+                        expRef.transaction(currentExp => {
+                            return (currentExp || 0) + expGained;
+                        });
+
+                        // 5-2. 포인트(points) 업데이트
+                        const pointsRef = usersRef.child(myPlayerId).child('profile/points');
+                        pointsRef.transaction(currentPoints => {
+                            return (currentPoints || 0) + pointsGained;
+                        });
+                    }
+                });
+            }
+
             // 약 1052행 'startCountdown' 함수 (전체 교체)
             function startCountdown() {
                 if (!countdownOverlayEl || !countdownNumberEl) return;
