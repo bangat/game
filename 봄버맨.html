@@ -12,6 +12,7 @@
     <style>
         :root {
             --bg-color: #2c3e50;
+            --accent-color: #FFC84A; /* ✨ [FIX] 기본 강조색 (노랑) */
              /* 이미지 URL 변수 */
             /* --board-bg-url 은 JS에서 직접 설정 */
             /* ✨ --wall-image-url: url('./봄버맨이미지/파괴불가.png');  <-- 이 줄을 삭제합니다. */
@@ -321,12 +322,36 @@
          }
          .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: none; flex-direction: column; justify-content: center; align-items: center; background-color: rgba(0,0,0,0.7); z-index: 1000; }
          .overlay.active { display: flex; }
-         .modal-content { background: #ecf0f1; color: #333; padding: 30px; border-radius: 20px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.4); }
+         .modal-content { 
+            background: var(--bg-color); /* ✨ [FIX] #2c3e50 (어두운 배경) */
+            color: white; /* ✨ [FIX] 흰색 텍스트 */
+            padding: 30px 25px; /* ✨ [FIX] 내부 패딩 설정 */
+            border-radius: 20px; 
+            text-align: center; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.4); 
+            width: 90%; /* ✨ [신규] 너비 추가 */
+            max-width: 350px; /* ✨ [신규] 최대 너비 추가 */
+         }
          .modal-content h2 { font-size: 2em; margin-bottom: 20px; color: var(--primary-color); }
-         .modal-btn { padding: 12px 25px; font-size: 1.1em; font-weight: 700; border-radius: 10px; border: none; cursor: pointer; margin: 10px; }
+         .modal-btn { 
+            padding: 15px; /* ✨ [FIX] 12px 25px -> 15px */
+            font-size: 1.2em; /* ✨ [FIX] 1.1em -> 1.2em */
+            font-weight: 700; 
+            border-radius: 12px; /* ✨ [FIX] 10px -> 12px */
+            border: none; 
+            cursor: pointer; 
+            margin: 0; /* ✨ [FIX] 10px -> 0 (innerHTML에서 gap으로 제어) */
+            width: 100%; /* ✨ [신규] 너비 100% */
+         }
         /* 약 324행 */
-         .modal-btn.primary { background-color: var(--primary-color); color: white; }
-          .modal-btn.secondary { background-color: #bdc3c7; color: #333; }
+         .modal-btn.primary { 
+            background-color: var(--accent-color); /* ✨ [FIX] #FFC84A (노란색) */
+            color: #333D4B; /* ✨ [FIX] 어두운 텍스트 */
+         }
+          .modal-btn.secondary { 
+            background-color: var(--wall-color); /* ✨ [FIX] #7f8c8d (중간 회색) */
+            color: white; /* ✨ [FIX] 흰색 텍스트 */
+          }
 
 /* --- 3분 타이머 스타일 --- */
         #game-timer {
@@ -547,6 +572,13 @@
         /* 개수가 0이면 숨김 */
         .item-slot-btn .item-count[data-count="0"] {
             display: none;
+        }
+
+.modal-content .modal-btn:disabled {
+            background-color: var(--wall-color) !important; /* secondary와 동일한 배경 */
+            color: #333D4B !important; /* 어두운 텍스트색 */
+            opacity: 0.6 !important; /* 연하게 처리 */
+            cursor: not-allowed;
         }
 
     </style>
@@ -791,11 +823,7 @@ const AVATAR_SETS = {
                         return;
                     }
 
-                    // ✨ [신규] '다시하기' 무한 루프 버그 수정
-                    // 방장이 새로고침 후, 'restarting' 플래그를 여기서 제거합니다.
-                    if (isHost && currentRoomData.status === 'waiting' && currentRoomData.gameState === 'restarting') {
-                        roomRef.child('gameState').set(null); // 플래그 제거
-                    }
+            
 
                     // 타일 크기 계산
                     TILE_WIDTH = gameBoard.clientWidth / GRID_COLS;
@@ -1010,7 +1038,15 @@ const AVATAR_SETS = {
 
                     const oldStatus = currentRoomData.status; // 이전 게임 상태 저장
                     const oldMapDataString = JSON.stringify(currentRoomData.map); // 이전 맵 데이터 문자열로 저장
-                    currentRoomData = snapshot.val(); // 최신 방 데이터 저장
+                   currentRoomData = snapshot.val(); // 최신 방 데이터 저장
+
+                    // ✨ [FIX] '다시하기' 무한 루프 버그 수정
+                    // on('value')가 실행되는 즉시 방장이 플래그를 제거해야 합니다.
+                    if (isHost && currentRoomData.status === 'playing' && currentRoomData.gameState === 'restarting') {
+                        roomRef.child('gameState').set(null); // 플래그 즉시 제거
+                        currentRoomData.gameState = null; // 로컬 데이터도 즉시 반영
+                    }
+                    
 
                     // ✨ [신규] 첫 로드일 때만 실행 (기존 roomRef.once 로직)
                     if (isFirstLoad) {
@@ -1240,15 +1276,23 @@ const AVATAR_SETS = {
                     }
                 });
 
-                // ✨ [신규] '재시작' 신호 감지 리스너 (알까기.html 참조)
+            // ✨ [신규] '재시작' 신호 감지 리스너 (알까기.html 참조)
                 roomRef.child('gameState').on('value', snapshot => {
                     if (snapshot.val() === 'restarting') {
+                        
+                        // ✨ [FIX] 새로고침 전 onDisconnect 핸들러를 취소합니다. (방 폭파/이탈 방지)
+                        if (isHost) {
+                            roomRef.onDisconnect().cancel(); // (호스트는 이미 했지만 확인차)
+                        } else {
+                            roomRef.child('players/' + myPlayerId).onDisconnect().cancel();
+                        }
+
                         // 재시작 신호를 받으면 0.5초 후 새로고침하여 게임을 다시 시작합니다.
                         setTimeout(() => {
                             location.reload();
                         }, 500);
                     }
-                }); 
+                });
   
             }
 
@@ -2374,6 +2418,7 @@ function checkBombTimers() {
             }
 
             // 약 1052행 'startCountdown' 함수 (전체 교체)
+            // 약 1052행 'startCountdown' 함수 (전체 교체)
             function startCountdown() {
                 if (!countdownOverlayEl || !countdownNumberEl) return;
                 
@@ -2400,7 +2445,9 @@ function checkBombTimers() {
                         }, 1000); // "1"이 사라지는 시간
                     }
                 }
-                runCount(); // 카운트 시작
+                
+                // ✨ [FIX] 오버레이가 켜질 시간(1프레임)을 번 후 카운트 시작
+                setTimeout(runCount, 50); // 50ms 지연
             }
 
             // ✨ [신규] 게임 타이머 시작 함수 (모든 클라이언트)
@@ -2478,12 +2525,17 @@ function checkBombTimers() {
                 }
                 gameOverMessage.textContent = message; // 모달 메시지 설정
 
-                // ✨ [신규] '다시 하기' 버튼 HTML 추가 (알까기.html 참조)
+               // ✨ [신규] '다시 하기' 버튼 HTML 추가 (알까기.html 참조)
                 const modalContent = gameOverModal.querySelector('.modal-content');
-                modalContent.innerHTML = `
-                    <h2 id="game-over-message">${message}</h2>
-                    <button id="rematch-btn" class="modal-btn primary">다시 하기</button>
-                    <button id="lobby-btn" class="modal-btn secondary">대기실로</button>
+                
+modalContent.innerHTML = `
+                    <h2 style="font-size: 1.8em; margin-bottom: 10px; font-weight: 700;">게임 종료!</h2>
+                    <p id="game-over-message" style="font-size: 1.2em; margin-bottom: 30px; color: white;">${message}</p>
+                    
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                        <button id="rematch-btn" class="modal-btn primary">다시 하기</button>
+                        <button id="lobby-btn" class="modal-btn secondary">대기실로</button>
+                    </div>
                 `;
                 gameOverModal.classList.add('active'); // 모달 보이게
 
