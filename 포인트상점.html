@@ -144,15 +144,12 @@
 
         // ✨ [수정] type: 'avatar' 속성 추가
         const avatarShopItems = [
-            { id: 'avatar_1', emoji: '🧑‍🚀', price: 100, type: 'avatar' }, { id: 'avatar_2', emoji: '🦸', price: 100, type: 'avatar' },
-            { id: 'avatar_3', emoji: '👨‍🎤', price: 100, type: 'avatar' }, { id: 'avatar_4', emoji: '🧑‍💻', price: 100, type: 'avatar' },
-            { id: 'avatar_5', emoji: '👩‍🎨', price: 200, type: 'avatar' }, { id: 'avatar_6', emoji: '🧑‍🚒', price: 200, type: 'avatar' },
-            { id: 'avatar_7', emoji: '👮', price: 200, type: 'avatar' }, { id: 'avatar_8', emoji: '🕵️', price: 200, type: 'avatar' },
-            { id: 'avatar_9', emoji: '🤴', price: 500, type: 'avatar' }, { id: 'avatar_10', emoji: '🧛', price: 500, type: 'avatar' },
-            { id: 'avatar_11', emoji: '🧟', price: 500, type: 'avatar' }, { id: 'avatar_12', emoji: '🧞', price: 500, type: 'avatar' },
-            { id: 'avatar_13', emoji: '🤡', price: 1000, type: 'avatar' }, { id: 'avatar_14', emoji: '👽', price: 1000, type: 'avatar' },
-            { id: 'avatar_15', emoji: '🤖', price: 1000, type: 'avatar' }, 
-            { id: 'avatar_bazzi', emoji: './아바타폴더/배찌.png', price: 1000, type: 'avatar' }
+            { id: 'avatar_11', emoji: '🧟', price: 100, type: 'avatar' }, { id: 'avatar_12', emoji: '🧞', price: 100, type: 'avatar' },
+            { id: 'avatar_13', emoji: '🤡', price: 500, type: 'avatar' }, { id: 'avatar_14', emoji: '👽', price: 100, type: 'avatar' },
+            { id: 'avatar_15', emoji: '🤖', price: 500, type: 'avatar' }, 
+            { id: 'avatar_bazzi', emoji: './아바타폴더/배찌.png', price: 500, type: 'avatar' },
+            { id: 'penguin_parka', emoji: './아바타폴더/펭귄정면.png', price: 1000, type: 'avatar' },
+            { id: 'puppy_set', emoji: './아바타폴더/강아지정면.png', price: 1000, type: 'avatar' }
         ];
 
         // ✨ [신규] 봄버맨 스킨 아이템 목록
@@ -166,6 +163,17 @@
             { id: 'bomb_heart', emoji: './봄버맨스킨/하트풍선.png', price: 500, type: 'bombSkin' },
                       { id: 'bomb_heartangel', emoji: './봄버맨스킨/하트천사.png', price: 500, type: 'bombSkin' }
         ];
+
+const AVATAR_SETS = {
+            'penguin_parka': { // Firebase profile/avatar에 저장될 고유 ID
+                front: './아바타폴더/펭귄정면.png'
+                // (이 파일에서는 front만 필요합니다)
+            },
+            // ✨ [신규] 강아지 세트 추가
+            'puppy_set': { 
+                front: './아바타폴더/강아지정면.png'
+            }
+        };
 
         auth.onAuthStateChanged(user => {
             if (user) {
@@ -309,15 +317,21 @@
                 isOwned = profile.ownedBombSkins && profile.ownedBombSkins[selectedItem.id];
             }
 
+            // ✨ [수정] 4방향 아바타 세트(ID)와 일반 아바타(emoji)를 구분하여 저장할 값을 결정합니다.
+            const valueToSet = (selectedItem.type === 'avatar' && AVATAR_SETS[selectedItem.id])
+                                ? selectedItem.id      // 'penguin_parka' (ID)
+                                : selectedItem.emoji;  // '🧑‍🚀' 또는 './아바타폴더/배찌.png' (경로/이모지)
+
             // 1. 이미 소유한 아이템 (적용)
             if (isOwned) {
                 if (selectedItem.type === 'avatar') {
-                    usersRef.child(currentUser.uid).child('profile/avatar').set(selectedItem.emoji)
+                    usersRef.child(currentUser.uid).child('profile/avatar').set(valueToSet) // ✨ valueToSet 사용
                         .then(() => {
-                            localStorage.setItem('userAvatar', selectedItem.emoji); 
+                            localStorage.setItem('userAvatar', valueToSet); // ✨ valueToSet 사용
                             alert('아바타가 변경되었습니다.');
                         });
                 } else if (selectedItem.type === 'bombSkin') {
+                    // (bombSkin은 valueToSet을 사용하지 않음, 기존 로직 유지)
                     usersRef.child(currentUser.uid).child('profile/bombSkin').set(selectedItem.emoji)
                         .then(() => {
                             alert('물풍선 스킨이 변경되었습니다.');
@@ -328,20 +342,18 @@
             else {
                 const newPoints = (profile.points || 0) - selectedItem.price;
                 const updates = {};
-                // ✨ [수정] 경로를 'users/UID'가 아닌 'profile/points'로 변경
                 updates['profile/points'] = newPoints;
 
                 if (selectedItem.type === 'avatar') {
-                    updates['profile/avatar'] = selectedItem.emoji; // ✨ 경로 수정
-                    updates[`profile/ownedAvatars/${selectedItem.id}`] = true; // ✨ 경로 수정
-                    localStorage.setItem('userAvatar', selectedItem.emoji); // 로컬스토리지 (아바타만)
+                    updates['profile/avatar'] = valueToSet; // ✨ valueToSet 사용
+                    updates[`profile/ownedAvatars/${selectedItem.id}`] = true; 
+                    localStorage.setItem('userAvatar', valueToSet); // ✨ valueToSet 사용
                 
                 } else if (selectedItem.type === 'bombSkin') {
-                    updates['profile/bombSkin'] = selectedItem.emoji; // ✨ 경로 수정
-                    updates[`profile/ownedBombSkins/${selectedItem.id}`] = true; // ✨ 경로 수정
+                    updates['profile/bombSkin'] = selectedItem.emoji;
+                    updates[`profile/ownedBombSkins/${selectedItem.id}`] = true;
                 }
 
-                // ✨ [수정] db.ref() (루트)가 아닌 usersRef.child(currentUser.uid) (내 노드)에서 업데이트
                 usersRef.child(currentUser.uid).update(updates)
                   .then(() => {
                       alert('아이템을 구매하고 적용했습니다!');

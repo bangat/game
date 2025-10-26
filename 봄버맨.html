@@ -691,6 +691,24 @@ const ITEM_ICONS = {
                  [ITEM_TYPES.SHIELD]: './봄버맨사운드/쉴드.png',
                  [ITEM_TYPES.DART]: './봄버맨사운드/다트.png', 
              };
+
+const AVATAR_SETS = {
+                'penguin_parka': { // Firebase profile/avatar에 저장될 고유 ID
+                    front: './아바타폴더/펭귄정면.png',
+                    back: './아바타폴더/펭귄뒷면.png',
+                    left: './아바타폴더/펭귄좌측.png',
+                    right: './아바타폴더/펭귄우측.png'
+                },
+                // ✨ [신규] 강아지 세트 추가
+                'puppy_set': { 
+                    front: './아바타폴더/강아지정면.png',
+                    back: './아바타폴더/강아지뒷면.png',
+                    left: './아바타폴더/강아지좌측.png',
+                    right: './아바타폴더/강아지우측.png'
+                }
+            };
+
+
              // ✨ [신규] 사운드 재생 함수 (오류 방지 포함)
              function playSound(id) {
                 try {
@@ -1403,12 +1421,63 @@ if (playerIdsFromData.length === 0 && currentRoomData?.status === 'playing') {
                         const initialY = (pData.r ?? 0) * TILE_HEIGHT;
                         playerEl.style.left = `${initialX}px`;
                         playerEl.style.top = `${initialY}px`;
-                        // 자식 요소 생성 (아바타, 이모지, 버블, 쉴드)
-                        const avatarImg = document.createElement('img'); avatarImg.className = 'player-avatar-img'; Object.assign(avatarImg.style, { display: 'none', position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: '2' });
-                        const avatarEmoji = document.createElement('span'); avatarEmoji.className = 'player-avatar-emoji'; Object.assign(avatarEmoji.style, { display: 'none', position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: '2' });
+
+                        // ✨ [수정] 아바타/이모지/4방향 이미지용 컨테이너 생성
+                        const avatarContainer = document.createElement('div');
+                        avatarContainer.className = 'player-avatar-container';
+                        // (기존 .player-avatar-img의 스타일과 유사하게 설정)
+                        Object.assign(avatarContainer.style, { 
+                            display: 'block', 
+                            position: 'absolute', 
+                            top: '50%', 
+                            left: '50%', 
+                            transform: 'translate(-50%, -50%)', 
+                            zIndex: '2', 
+                            width: '120%', // 기존 .player-avatar-img 스타일
+                            height: '120%' // 기존 .player-avatar-img 스타일
+                        });
+                        
+                        // 1. 단일 이미지용 (기존)
+                        const avatarImg = document.createElement('img'); 
+                        avatarImg.className = 'player-avatar-img'; 
+                        Object.assign(avatarImg.style, { display: 'none', width: '100%', height: '100%', objectFit: 'contain', borderRadius: '50%' });
+                        
+                        // 2. 이모지용 (기존)
+                        const avatarEmoji = document.createElement('span'); 
+                        avatarEmoji.className = 'player-avatar-emoji'; 
+                        Object.assign(avatarEmoji.style, { display: 'none' }); // (font-size 등은 업데이트 로직에서)
+                        
+                        // 3. 4방향 이미지용 (신규)
+                        const avatarDirFront = document.createElement('img'); avatarDirFront.className = 'player-avatar-dir front';
+                        const avatarDirBack = document.createElement('img'); avatarDirBack.className = 'player-avatar-dir back';
+                        const avatarDirLeft = document.createElement('img'); avatarDirLeft.className = 'player-avatar-dir left';
+                        const avatarDirRight = document.createElement('img'); avatarDirRight.className = 'player-avatar-dir right';
+                        
+                        // 4방향 이미지 공통 스타일 적용 및 컨테이너에 추가
+                        [avatarDirFront, avatarDirBack, avatarDirLeft, avatarDirRight].forEach(img => {
+                            Object.assign(img.style, { 
+                                display: 'none', 
+                                width: '100%', 
+                                height: '100%', 
+                                objectFit: 'contain', 
+                                position: 'absolute', // 겹치도록
+                                top: '0', 
+                                left: '0' 
+                            });
+                            avatarContainer.appendChild(img); // 컨테이너에 추가
+                        });
+
+                        // 버블, 쉴드 (기존)
                         const bubbleEl = document.createElement('div'); bubbleEl.className = 'player-bubble';
                         const shieldEl = document.createElement('div'); shieldEl.className = 'player-shield-effect';
-                        playerEl.appendChild(avatarImg); playerEl.appendChild(avatarEmoji); playerEl.appendChild(bubbleEl); playerEl.appendChild(shieldEl);
+                        
+                        // 컨테이너 및 부모에 추가
+                        avatarContainer.appendChild(avatarImg); // 단일 이미지
+                        avatarContainer.appendChild(avatarEmoji); // 이모지
+                        playerEl.appendChild(avatarContainer); // ✨ 아바타 컨테이너를 playerEl에 추가
+                        playerEl.appendChild(bubbleEl);
+                        playerEl.appendChild(shieldEl);
+
                         gameBoard.appendChild(playerEl);
                         playerElements[playerId] = playerEl; // 추적 객체에 저장
                         console.log(`[renderPlayers] 플레이어 ${playerId} 요소 생성 완료.`);
@@ -1428,17 +1497,59 @@ if (playerIdsFromData.length === 0 && currentRoomData?.status === 'playing') {
                     }
 
                     // --- 아바타 업데이트 ---
-                    const isImage = pData.avatar && (pData.avatar.startsWith('http') || /\.(png|jpg|jpeg|gif|webp)$/i.test(pData.avatar));
-                    if (isImage) {
-                        if (avatarImgEl && avatarImgEl.src !== pData.avatar) avatarImgEl.src = pData.avatar;
-                        if (avatarImgEl) avatarImgEl.style.display = 'block';
-                        if (avatarEmojiEl) avatarEmojiEl.style.display = 'none';
-                    } else if (pData.avatar) {
-                        if (avatarEmojiEl) { avatarEmojiEl.textContent = pData.avatar; avatarEmojiEl.style.fontSize = `${TILE_HEIGHT * 0.7}px`; avatarEmojiEl.style.display = 'block'; }
-                        if (avatarImgEl) { avatarImgEl.style.display = 'none'; avatarImgEl.src = ''; }
-                    } else {
-                         if (avatarImgEl) avatarImgEl.style.display = 'none';
-                         if (avatarEmojiEl) avatarEmojiEl.style.display = 'none';
+                    // ✨ [수정] 4방향 세트인지, 단일 이미지인지, 이모지인지 확인
+                    const avatarSet = AVATAR_SETS[pData.avatar]; // 4방향 세트 확인 (예: 'penguin_parka')
+                    const isImage = !avatarSet && pData.avatar && (pData.avatar.startsWith('http') || /\.(png|jpg|jpeg|gif|webp)$/i.test(pData.avatar));
+                    
+                    const avatarContainer = playerEl.querySelector('.player-avatar-container');
+                    
+                    if (avatarContainer) { // 컨테이너가 있어야 실행
+                        // 자식 요소들 가져오기
+                        const avatarImgEl = avatarContainer.querySelector('.player-avatar-img');
+                        const avatarEmojiEl = avatarContainer.querySelector('.player-avatar-emoji');
+                        const dirImgs = {
+                            front: avatarContainer.querySelector('.player-avatar-dir.front'),
+                            back: avatarContainer.querySelector('.player-avatar-dir.back'),
+                            left: avatarContainer.querySelector('.player-avatar-dir.left'),
+                            right: avatarContainer.querySelector('.player-avatar-dir.right')
+                        };
+
+                        // 1. 4방향 세트 아바타 (펭귄)
+                        if (avatarSet) {
+                            // 단일/이모지 숨김
+                            if (avatarImgEl) avatarImgEl.style.display = 'none';
+                            if (avatarEmojiEl) avatarEmojiEl.style.display = 'none';
+                            
+                            // 4방향 이미지 소스 설정 (이미지 경로가 다를 때만 업데이트)
+                            if (dirImgs.front && dirImgs.front.src !== avatarSet.front) dirImgs.front.src = avatarSet.front;
+                            if (dirImgs.back && dirImgs.back.src !== avatarSet.back) dirImgs.back.src = avatarSet.back;
+                            if (dirImgs.left && dirImgs.left.src !== avatarSet.left) dirImgs.left.src = avatarSet.left;
+                            if (dirImgs.right && dirImgs.right.src !== avatarSet.right) dirImgs.right.src = avatarSet.right;
+
+                            // ✨ Firebase에 저장된 pData.direction 값에 따라 이미지 표시
+                            // (pData.direction은 4번 수정에서 Firebase에 저장할 예정)
+                            const currentDir = pData.direction || 'down'; // 기본값 'down' (정면)
+                            
+                            if (dirImgs.front) dirImgs.front.style.display = (currentDir === 'down') ? 'block' : 'none';
+                            if (dirImgs.back) dirImgs.back.style.display = (currentDir === 'up') ? 'block' : 'none';
+                            if (dirImgs.left) dirImgs.left.style.display = (currentDir === 'left') ? 'block' : 'none';
+                            if (dirImgs.right) dirImgs.right.style.display = (currentDir === 'right') ? 'block' : 'none';
+
+                        // 2. 단일 이미지 아바타 (기존 로직)
+                        } else if (isImage) {
+                            if (avatarImgEl && avatarImgEl.src !== pData.avatar) avatarImgEl.src = pData.avatar;
+                            if (avatarImgEl) avatarImgEl.style.display = 'block';
+                            if (avatarEmojiEl) avatarEmojiEl.style.display = 'none';
+                            // 4방향 숨김
+                            Object.values(dirImgs).forEach(img => { if(img) img.style.display = 'none'; });
+
+                        // 3. 이모지 아바타 (기존 로직)
+                        } else if (pData.avatar) {
+                            if (avatarEmojiEl) { avatarEmojiEl.textContent = pData.avatar; avatarEmojiEl.style.fontSize = `${TILE_HEIGHT * 0.7}px`; avatarEmojiEl.style.display = 'block'; }
+                            if (avatarImgEl) avatarImgEl.style.display = 'none';
+                            // 4방향 숨김
+                            Object.values(dirImgs).forEach(img => { if(img) img.style.display = 'none'; });
+                        }
                     }
                     playerEl.style.backgroundColor = 'transparent';
 
@@ -2403,12 +2514,14 @@ function checkBombTimers() {
                     const avatarEl = document.createElement('div');
                     avatarEl.className = 'player-avatar';
                     
-                    // ✨ [수정] http 또는 로컬 이미지(.png 등)를 모두 <img>로 처리
-                    const isImage = pData.avatar && (pData.avatar.startsWith('http') || /\.(png|jpg|jpeg|gif|webp)$/i.test(pData.avatar));
-                    if (isImage) {
+                    // ✨ [수정] 4방향 아바타 세트(ID), 이미지, 이모지 순으로 확인
+                    const avatarSet = AVATAR_SETS[pData.avatar]; // 예: 'penguin_parka'
+                    if (avatarSet) {
+                        avatarEl.innerHTML = `<img src="${avatarSet.front}" alt="av">`;
+                    } else if (pData.avatar && (pData.avatar.startsWith('http') || /\.(png|jpg|jpeg|gif|webp)$/i.test(pData.avatar))) {
                         avatarEl.innerHTML = `<img src="${pData.avatar}" alt="av">`;
                     } else {
-                        avatarEl.textContent = pData.avatar;
+                        avatarEl.textContent = pData.avatar; // 이모지 또는 ID(실패 시)
                     }
 
                     // 스탯 표시 영역 생성
@@ -2785,7 +2898,8 @@ function useNeedle() {
                 // 이동 가능한 위치인지 확인
                 if (isWalkable(newR, newC)) {
                     // Firebase 업데이트 내용 객체 (기본: 새 위치)
-                    const updates = { r: newR, c: newC };
+                    // ✨ [수정] 4방향 아바타: 현재 이동 방향(moveDirection.current)도 업데이트에 포함
+                    const updates = { r: newR, c: newC, direction: moveDirection.current };
                     const items = currentRoomData.items || {}; // 현재 아이템 목록
                     let collectedItemId = null; // 획득한 아이템 ID
                     let collectedItemType = null; // 획득한 아이템 타입
