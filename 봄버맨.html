@@ -1180,7 +1180,7 @@ const AVATAR_SETS = {
                             });
                         }
                         
-                       // ✨ [신규] 다트 시각 효과 리스너 (모든 클라이언트)
+                      // ✨ [신규] 다트 시각 효과 리스너 (모든 클라이언트)
                         roomRef.child('dartVisuals').on('child_added', snapshot => {
                             const data = snapshot.val();
                             if (data) {
@@ -1192,6 +1192,20 @@ const AVATAR_SETS = {
                                 snapshot.ref.remove();
                             }
                         });
+                        
+                        // ✨ [신규] 플레이어 팝(pop)으로 인한 승리 조건 확인 요청 리스너 (방장 전용)
+                        // (isFirstLoad 블록 안에, isHost가 정의된 후에 추가)
+                        if (isHost) {
+                            roomRef.child('checkWinRequest').on('value', snapshot => {
+                                // 데이터가 존재하고 (null/false 아님), 게임이 'playing' 상태일 때만
+                                if (snapshot.val() && currentRoomData?.status === 'playing') {
+                                    console.log("[방장] 승리 조건 확인 요청(checkWinRequest) 수신.");
+                                    checkWinCondition(); // 승리 조건 확인
+                                    snapshot.ref.remove(); // 요청 삭제
+                                }
+                            });
+                        }
+
 
                         // ✨ [신규] 폭발 시각 효과 리스너 (모든 클라이언트)
                         roomRef.child('explosionVisuals').on('child_added', snapshot => {
@@ -3126,6 +3140,7 @@ function useNeedle() {
                 const myStats = { ...(myPos.stats || { maxBombs: 1, bombRange: 1, speed: 1, isAlive: true, needles: 0, shields: 0, darts: 0, shieldActiveUntil: null }) };
                 
                 // 3a. ✨ [수정] 갇힌 플레이어와 충돌 (내가 터트림)
+                // 3a. ✨ [수정] 갇힌 플레이어와 충돌 (내가 터트림)
                 if (collidedTrappedPlayerId) {
                     // (사운드는 사망 시 checkWinCondition -> showGameOver에서 처리)
                     // playSound('sound-trapped'); // (터트리는 소리가 있다면 여기서 재생)
@@ -3165,10 +3180,10 @@ function useNeedle() {
                     roomRef.child('players/' + collidedTrappedPlayerId).update(trappedUpdates)
                         .catch(error => console.error("플레이어 사망(충돌) 업데이트 오류:", error));
                     
-                    // ✨ [중요] 방장은 즉시 승리 조건을 확인해야 함
-                    if (isHost) {
-                        checkWinCondition();
-                    }
+                    // ✨ [수정] 방장이 아니더라도, 방장에게 승리 확인 요청을 보냄
+                    // (기존 if (isHost) { ... } 블록 삭제)
+                    roomRef.child('checkWinRequest').set(firebase.database.ServerValue.TIMESTAMP);
+
 
                 // 3b. 아이템 획득
                 } else if (collectedItemId && collectedItemType) {
