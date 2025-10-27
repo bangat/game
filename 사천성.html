@@ -223,6 +223,26 @@
             return newArray; // 항상 'null'을 포함한 'dense' 배열을 반환
         }
 
+        // --- [신규] 배열 섞기 헬퍼 ---
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        // --- [신규] 빈 칸 인덱스 찾기 헬퍼 ---
+        function findEmptySpots(boardArray) {
+            const emptyIndices = [];
+            boardArray.forEach((tile, index) => {
+                if (tile === null) {
+                    emptyIndices.push(index);
+                }
+            });
+            return emptyIndices;
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             // --- 개발자 도구 방지 ---
              document.addEventListener('contextmenu', event => event.preventDefault());
@@ -404,17 +424,31 @@
                          return;
                     }
 
-                   // 게임 상태에 따른 처리
+                 // 게임 상태에 따른 처리
             if (currentRoomData.status === 'playing') {
                 
                 // ✨ [수정] 방장이 게임판(board)을 생성해야 하는지 확인
                 if (isHost && !currentRoomData.board) {
                     // status가 'playing'이지만 board가 없으면, 방장이 지금 생성합니다.
                     // (게임방.html에서 'launching' 신호를 받고 넘어온 직후)
+                    
+                    // ▼▼▼ [신규] 맵 생성 중... 로딩 표시 ▼▼▼
+                    infoOverlay.innerHTML = `<div class="spinner"></div><p style="color: white; margin-top: 15px; font-size: 1.1em;">풀 수 있는 맵 생성 중...</p>`;
+                    infoOverlay.style.display = 'flex';
+                    // ▲▲▲ [신규] 맵 생성 중... 로딩 표시 ▲▲▲
+
                     console.log("방장 감지: board가 없으므로 게임판을 생성합니다.");
                     initializeShisenShoGame(); 
                     return; // board 생성 후, 다음 on('value') 이벤트를 기다립니다.
                 }
+
+                // ▼▼▼ [신규] 게스트가 방장의 맵 생성을 기다리는 상태 ▼▼▼
+                if (!isHost && !currentRoomData.board) {
+                    infoOverlay.innerHTML = `<div class="spinner"></div><p style="color: white; margin-top: 15px; font-size: 1.1em;">방장이 맵을 생성 중입니다...</p>`;
+                    infoOverlay.style.display = 'flex';
+                    return; // 방장이 맵을 만들고 board가 생길 때까지 대기
+                }
+                // ▲▲▲ [신규] 게스트가 방장의 맵 생성을 기다리는 상태 ▲▲▲
 
                 // 게임판 데이터가 있고, 카운트다운이 시작되지 않았다면 시작
                 if (currentRoomData.board && !countdownStarted) {
@@ -454,42 +488,177 @@
                 });
             }
 
-             function initializeShisenShoGame() {
-                 if (!isHost) return; // 방장만 실행
+          // --- [개선] 재귀 백트래킹 헬퍼 함수 ---
+function _generateBoardRecursive(board, tilesToPlace, depth = 0) {
+    // 깊이 제한 (무한 재귀 방지)
+    if (depth > TILE_COUNT * 2) {
+        return null;
+    }
 
-                 // 1. 타일 쌍 생성 및 섞기
+    // 1. 모든 타일을 배치했으면 성공
+    if (tilesToPlace.length === 0) {
+        return board;
+    }
+
+    // 2. 배치할 타일과 빈 칸 목록 준비
+    const tile = tilesToPlace[0];
+    const emptyIndices = findEmptySpots(board);
+
+    if (emptyIndices.length < 2) {
+        return null;
+    }
+
+    // 3. 빈 칸을 섞어서 무작위성 확보
+    const shuffledEmptyIndices = shuffleArray([...emptyIndices]);
+
+    // 4. 연결 가능한 빈 칸 쌍 찾기 (최적화: 거리순 정렬)
+    const pairs = [];
+    for (let i = 0; i < shuffledEmptyIndices.length - 1; i++) {
+        const index1 = shuffledEmptyIndices[i];
+        const row1 = Math.floor(index1 / BOARD_COLS);
+        const col1 = index1 % BOARD_COLS;
+
+        for (let j = i + 1; j < shuffledEmptyIndices.length; j++) {
+            const index2 = shuffledEmptyIndices[j];
+            const row2 = Math.floor(index2 / BOARD_COLS);
+            const col2 = index2 % BOARD_COLS;
+
+            // 거리 계산 (맨해튼 거리)
+            const distance = Math.abs(row1 - row2) + Math.abs(col1 - col2);
+            
+            pairs.push({ index1, index2, distance });
+        }
+    }
+
+    // 거리순 정렬 (가까운 쌍부터 시도 - 성공률 향상)
+    pairs.sort((a, b) => a.distance - b.distance);
+
+    // 5. 각 쌍에 대해 연결 가능 여부 확인 및 배치 시도
+    for (const { index1, index2 } of pairs) {
+        if (findPath_BFS(board, index1, index2)) {
+            // 6. 배치
+            board[index1] = tile;
+            board[index2] = tile;
+
+            // 7. 재귀 호출
+            const remainingTiles = tilesToPlace.slice(1);
+            const result = _generateBoardRecursive(board, remainingTiles, depth + 1);
+
+            if (result) {
+                return result;
+            }
+
+            // 8. 백트래킹
+            board[index1] = null;
+            board[index2] = null;
+        }
+    }
+
+    // 10. 모든 쌍 시도했지만 실패
+    return null;
+}
+
+
+            // --- [신규] 풀이 가능한 보드 생성 (역순 배치 방식) ---
+             function initializeShisenShoGame(retryCount = 0) {
+                 if (!isHost) return;
+
+                 console.log("풀 수 있는 사천성 보드 생성 시작...");
+
+                 // 1. 타일 준비
                  const iconsNeeded = TILE_COUNT / 2;
                  if (TILE_ICONS.length < iconsNeeded) {
                      console.error("타일 아이콘/이미지 개수가 부족합니다!");
-                     // TODO: 사용자에게 알림 또는 기본 아이콘 사용 등의 처리
+                     alert("타일이 부족합니다!");
                      return;
                  }
-                 // 필요한 개수만큼 아이콘/경로 선택
-                 const selectedIcons = TILE_ICONS.slice(0, iconsNeeded);
-                 let boardTiles = [...selectedIcons, ...selectedIcons]; // 쌍 만들기
-                 boardTiles.sort(() => Math.random() - 0.5); // 섞기
 
-                 // 2. 초기 데이터 구성
+                 // 2. 보드 생성 (역순 제거 방식)
+                 const board = createSolvableBoard(iconsNeeded);
+                 
+                 if (!board) {
+                     console.error("보드 생성 실패!");
+                     alert("맵 생성에 실패했습니다.");
+                     roomRef.update({ status: 'waiting', board: null });
+                     return;
+                 }
+
+                 console.log("✅ 풀 수 있는 보드 생성 완료!");
+
+                 // 3. 초기 게임 데이터 구성
                  const playerIds = Object.keys(currentRoomData.players);
-                 // 플레이어 순서 섞기 (선택 사항)
-                 // playerIds.sort(() => Math.random() - 0.5);
                  const initialScores = {};
                  playerIds.forEach(id => initialScores[id] = 0);
                  const initialSelectedTiles = {};
                  playerIds.forEach(id => initialSelectedTiles[id] = null);
 
-                 // 3. Firebase 업데이트
+                 // 4. Firebase 업데이트
                  roomRef.update({
                      status: 'playing',
-                     board: boardTiles, // 1D 배열로 저장
+                     board: board,
                      scores: initialScores,
                      selectedTiles: initialSelectedTiles,
-                     // turn: playerIds[0], // ◀◀◀ [삭제] 턴제 아니므로 턴 삭제
-                     readyPlayers: null // 준비 상태 초기화
+                     readyPlayers: null
                  }).catch(error => {
                      console.error("게임 시작 데이터 업데이트 실패:", error);
-                     // TODO: 오류 처리 (예: 방 상태를 다시 waiting으로 돌리기)
                  });
+             }
+
+             // --- [신규] 풀이 가능 보드 생성 핵심 함수 ---
+             function createSolvableBoard(iconsNeeded) {
+                 const board = new Array(TILE_COUNT).fill(null);
+                 const selectedIcons = TILE_ICONS.slice(0, iconsNeeded);
+                 
+                 // 타일 쌍 목록 생성 및 섞기
+                 const tilePairs = [];
+                 selectedIcons.forEach(icon => {
+                     tilePairs.push({ icon, placed: false });
+                 });
+                 shuffleArray(tilePairs);
+
+                 // 배치 기록 (역순으로 제거할 수 있게)
+                 const placementOrder = [];
+
+                 // 각 타일 쌍을 연결 가능한 위치에 배치
+                 for (const pair of tilePairs) {
+                     const emptySpots = findEmptySpots(board);
+                     
+                     if (emptySpots.length < 2) {
+                         console.error("빈 칸 부족!");
+                         return null;
+                     }
+
+                     // 연결 가능한 2개 위치 찾기
+                     let placed = false;
+                     shuffleArray(emptySpots); // 무작위성
+
+                     for (let i = 0; i < emptySpots.length && !placed; i++) {
+                         for (let j = i + 1; j < emptySpots.length && !placed; j++) {
+                             const pos1 = emptySpots[i];
+                             const pos2 = emptySpots[j];
+
+                             // 현재 보드 상태에서 연결 가능한지 확인
+                             if (findPath_BFS(board, pos1, pos2)) {
+                                 board[pos1] = pair.icon;
+                                 board[pos2] = pair.icon;
+                                 placementOrder.push({ pos1, pos2, icon: pair.icon });
+                                 placed = true;
+                             }
+                         }
+                     }
+
+                     if (!placed) {
+                         console.warn("타일 배치 실패, 랜덤 배치로 전환");
+                         // 실패 시 그냥 아무 빈 곳에 배치
+                         const pos1 = emptySpots[0];
+                         const pos2 = emptySpots[1];
+                         board[pos1] = pair.icon;
+                         board[pos2] = pair.icon;
+                     }
+                 }
+
+                 console.log(`📊 배치 완료: ${placementOrder.length}개 쌍`);
+                 return board;
              }
 
             function startCountdown() {
