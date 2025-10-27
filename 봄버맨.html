@@ -1596,46 +1596,65 @@ if (playerIdsFromData.length === 0 && currentRoomData?.status === 'playing') {
                         playerEl.appendChild(shieldEl);
 
                         gameBoard.appendChild(playerEl);
+                        
+                        // ✨ [신규] 생성 시점에 자식 요소들을 찾아 '캐시(cache)'합니다.
+                        playerEl.domCache = {
+                            avatarContainer: playerEl.querySelector('.player-avatar-container'),
+                            avatarImg: playerEl.querySelector('.player-avatar-img'),
+                            avatarEmoji: playerEl.querySelector('.player-avatar-emoji'),
+                            bubble: playerEl.querySelector('.player-bubble'),
+                            shield: playerEl.querySelector('.player-shield-effect'),
+                            dirFront: playerEl.querySelector('.player-avatar-dir.front'),
+                            dirBack: playerEl.querySelector('.player-avatar-dir.back'),
+                            dirLeft: playerEl.querySelector('.player-avatar-dir.left'),
+                            dirRight: playerEl.querySelector('.player-avatar-dir.right')
+                        };
+                        
                         playerElements[playerId] = playerEl; // 추적 객체에 저장
-                        console.log(`[renderPlayers] 플레이어 ${playerId} 요소 생성 완료.`);
+                        console.log(`[renderPlayers] 플레이어 ${playerId} 요소 생성 및 DOM 캐시 완료.`);
                     } else if (!playerEl) {
                         // 게임 보드가 아직 준비 안됐을 수 있으므로 다음 기회에
                         return;
                     }
                     // --- 요소 생성 끝 ---
 
-                    // --- 자식 요소 가져오기 ---
-                    const avatarImgEl = playerEl.querySelector('.player-avatar-img');
-                    const avatarEmojiEl = playerEl.querySelector('.player-avatar-emoji');
-                    const bubbleEl = playerEl.querySelector('.player-bubble');
-                    const shieldEl = playerEl.querySelector('.player-shield-effect');
-                    if (!avatarImgEl || !avatarEmojiEl || !bubbleEl || !shieldEl) {
-                         // console.warn(`[renderPlayers] 플레이어 ${playerId} 자식 요소 누락 (업데이트 건너뜀)`); // 너무 자주 찍힐 수 있음
+                    // --- 자식 요소 가져오기 (✨ [수정] 캐시된 DOM 사용) ---
+                    const cache = playerEl.domCache;
+                    if (!cache || !cache.avatarImg || !cache.avatarEmoji || !cache.bubble || !cache.shield) {
+                         console.warn(`[renderPlayers] 플레이어 ${playerId} DOM 캐시 누락`);
+                         return; // 캐시가 없으면 렌더링 불가
                     }
+                    
+                    // ✨ [삭제] 기존 querySelector 4줄 삭제
+                    // const avatarImgEl = playerEl.querySelector('.player-avatar-img');
+                    // const avatarEmojiEl = playerEl.querySelector('.player-avatar-emoji');
+                    // const bubbleEl = playerEl.querySelector('.player-bubble');
+                    // const shieldEl = playerEl.querySelector('.player-shield-effect');
+                    
 
                    // ✨ [수정] 4방향 아바타 세트(ID), 이미지, 이모지 순으로 확인
                     // ✨ [FIX] 4방향 세트(펭귄, 강아지 등)가 있으면 그것을 사용, 없으면(이모지 등) 'default_bomber'로 강제
                     const avatarSet = AVATAR_SETS[pData.avatar] || AVATAR_SETS['default_bomber'];
                     const isImage = !avatarSet && pData.avatar && (pData.avatar.startsWith('http') || /\.(png|jpg|jpeg|gif|webp)$/i.test(pData.avatar));
                     
-                    const avatarContainer = playerEl.querySelector('.player-avatar-container');
+                    const avatarContainer = cache.avatarContainer; // ✨ [수정] 캐시 사용
                     
                     if (avatarContainer) { // 컨테이너가 있어야 실행
-                        // 자식 요소들 가져오기
-                        const avatarImgEl = avatarContainer.querySelector('.player-avatar-img');
-                        const avatarEmojiEl = avatarContainer.querySelector('.player-avatar-emoji');
+                        // 자식 요소들 가져오기 (✨ [수정] 캐시 사용)
+                        const avatarImgEl = cache.avatarImg;
+                        const avatarEmojiEl = cache.avatarEmoji;
                         const dirImgs = {
-                            front: avatarContainer.querySelector('.player-avatar-dir.front'),
-                            back: avatarContainer.querySelector('.player-avatar-dir.back'),
-                            left: avatarContainer.querySelector('.player-avatar-dir.left'),
-                            right: avatarContainer.querySelector('.player-avatar-dir.right')
+                            front: cache.dirFront,
+                            back: cache.dirBack,
+                            left: cache.dirLeft,
+                            right: cache.dirRight
                         };
 
                         // 1. 4방향 세트 아바타 (펭귄)
                         if (avatarSet) {
-                            // 단일/이모지 숨김
-                            if (avatarImgEl) avatarImgEl.style.display = 'none';
-                            if (avatarEmojiEl) avatarEmojiEl.style.display = 'none';
+                            // 단일/이모지 숨김 (✨ [수정] 상태가 다를 때만 변경)
+                            if (avatarImgEl && avatarImgEl.style.display !== 'none') avatarImgEl.style.display = 'none';
+                            if (avatarEmojiEl && avatarEmojiEl.style.display !== 'none') avatarEmojiEl.style.display = 'none';
                             
                             // 4방향 이미지 소스 설정 (이미지 경로가 다를 때만 업데이트)
                             if (dirImgs.front && dirImgs.front.src !== avatarSet.front) dirImgs.front.src = avatarSet.front;
@@ -1644,28 +1663,37 @@ if (playerIdsFromData.length === 0 && currentRoomData?.status === 'playing') {
                             if (dirImgs.right && dirImgs.right.src !== avatarSet.right) dirImgs.right.src = avatarSet.right;
 
                             // ✨ Firebase에 저장된 pData.direction 값에 따라 이미지 표시
-                            // (pData.direction은 4번 수정에서 Firebase에 저장할 예정)
                             const currentDir = pData.direction || 'down'; // 기본값 'down' (정면)
                             
-                            if (dirImgs.front) dirImgs.front.style.display = (currentDir === 'down') ? 'block' : 'none';
-                            if (dirImgs.back) dirImgs.back.style.display = (currentDir === 'up') ? 'block' : 'none';
-                            if (dirImgs.left) dirImgs.left.style.display = (currentDir === 'left') ? 'block' : 'none';
-                            if (dirImgs.right) dirImgs.right.style.display = (currentDir === 'right') ? 'block' : 'none';
+                            // ✨ [수정] 상태가 다를 때만 display 속성 변경 (렉 핵심 수정)
+                            const showFront = (currentDir === 'down');
+                            const showBack = (currentDir === 'up');
+                            const showLeft = (currentDir === 'left');
+                            const showRight = (currentDir === 'right');
+
+                            if (dirImgs.front && (dirImgs.front.style.display === 'block') !== showFront) dirImgs.front.style.display = showFront ? 'block' : 'none';
+                            if (dirImgs.back && (dirImgs.back.style.display === 'block') !== showBack) dirImgs.back.style.display = showBack ? 'block' : 'none';
+                            if (dirImgs.left && (dirImgs.left.style.display === 'block') !== showLeft) dirImgs.left.style.display = showLeft ? 'block' : 'none';
+                            if (dirImgs.right && (dirImgs.right.style.display === 'block') !== showRight) dirImgs.right.style.display = showRight ? 'block' : 'none';
 
                         // 2. 단일 이미지 아바타 (기존 로직)
                         } else if (isImage) {
                             if (avatarImgEl && avatarImgEl.src !== pData.avatar) avatarImgEl.src = pData.avatar;
-                            if (avatarImgEl) avatarImgEl.style.display = 'block';
-                            if (avatarEmojiEl) avatarEmojiEl.style.display = 'none';
+                            if (avatarImgEl && avatarImgEl.style.display !== 'block') avatarImgEl.style.display = 'block'; // ✨ 상태 체크
+                            if (avatarEmojiEl && avatarEmojiEl.style.display !== 'none') avatarEmojiEl.style.display = 'none'; // ✨ 상태 체크
                             // 4방향 숨김
-                            Object.values(dirImgs).forEach(img => { if(img) img.style.display = 'none'; });
+                            Object.values(dirImgs).forEach(img => { if(img && img.style.display !== 'none') img.style.display = 'none'; }); // ✨ 상태 체크
 
                         // 3. 이모지 아바타 (기존 로직)
                         } else if (pData.avatar) {
-                            if (avatarEmojiEl) { avatarEmojiEl.textContent = pData.avatar; avatarEmojiEl.style.fontSize = `${TILE_HEIGHT * 0.7}px`; avatarEmojiEl.style.display = 'block'; }
-                            if (avatarImgEl) avatarImgEl.style.display = 'none';
+                            if (avatarEmojiEl) { 
+                                if (avatarEmojiEl.textContent !== pData.avatar) avatarEmojiEl.textContent = pData.avatar; // ✨ 텍스트 체크
+                                avatarEmojiEl.style.fontSize = `${TILE_HEIGHT * 0.7}px`; 
+                                if (avatarEmojiEl.style.display !== 'block') avatarEmojiEl.style.display = 'block'; // ✨ 상태 체크
+                            }
+                            if (avatarImgEl && avatarImgEl.style.display !== 'none') avatarImgEl.style.display = 'none'; // ✨ 상태 체크
                             // 4방향 숨김
-                            Object.values(dirImgs).forEach(img => { if(img) img.style.display = 'none'; });
+                            Object.values(dirImgs).forEach(img => { if(img && img.style.display !== 'none') img.style.display = 'none'; }); // ✨ 상태 체크
                         }
                     }
                     playerEl.style.backgroundColor = 'transparent';
@@ -1680,7 +1708,7 @@ if (playerIdsFromData.length === 0 && currentRoomData?.status === 'playing') {
                         }
                     }
 
-                    // --- 상태 업데이트 ---
+                   // --- 상태 업데이트 ---
                     const isAlive = pData.stats.isAlive;
                     const isTrapped = pData.stats.isTrapped === true;
                     const now = Date.now() + serverTimeOffset;
@@ -1690,6 +1718,10 @@ if (playerIdsFromData.length === 0 && currentRoomData?.status === 'playing') {
 
                     playerEl.classList.toggle('dead', !isAlive);
                     playerEl.classList.toggle('trapped', isNowTrapped);
+                    
+                    // ✨ [수정] bubbleEl, shieldEl 캐시 사용
+                    const bubbleEl = cache.bubble; 
+                    const shieldEl = cache.shield;
 
                     if (bubbleEl) {
                         const shouldShowBubble = isNowTrapped;
@@ -1708,15 +1740,19 @@ if (playerIdsFromData.length === 0 && currentRoomData?.status === 'playing') {
                         playSound('sound-trapped');
                     }
 
-                    // --- 내 플레이어 표시기 위치 업데이트 ---
+                   // --- 내 플레이어 표시기 위치 업데이트 ---
                     if (playerId === myPlayerId && myIndicatorElement) {
-                         // const x = pData.c * TILE_WIDTH;  // <-- [삭제] (클라이언트 예측과 충돌)
-                         // const y = pData.r * TILE_HEIGHT; // <-- [삭제]
-                         // const indicatorY = y - TILE_HEIGHT * 0.6; // <-- [삭제]
-                         // if (myIndicatorElement.style.left !== `${x}px` || myIndicatorElement.style.top !== `${indicatorY}px`) { // <-- [삭제]
-                         //     myIndicatorElement.style.left = `${x}px`; // <-- [삭제]
-                         //     myIndicatorElement.style.top = `${indicatorY}px`; // <-- [삭제]
-                         // } // <-- [삭제]
+                         
+                         // ✨ [신규] '최초' 위치 설정 로직
+                         // style.left가 비어있으면(초기 로드), 서버 데이터로 위치를 한 번 설정합니다.
+                         // 이후에는 tryMove가 위치를 전담합니다. (렉 방지)
+                         if (myIndicatorElement.style.left === '') {
+                             const x = pData.c * TILE_WIDTH;
+                             const y = pData.r * TILE_HEIGHT;
+                             const indicatorY = y - TILE_HEIGHT * 0.6;
+                             myIndicatorElement.style.left = `${x}px`;
+                             myIndicatorElement.style.top = `${indicatorY}px`;
+                         }
                          
                          // ✨ [수정] 위치 업데이트는 tryMove가 전담. 여기서는 '표시/숨김' 상태만 업데이트
                          const shouldShowIndicator = isAlive && !isTrapped;
