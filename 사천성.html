@@ -1,0 +1,1057 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>사천성 (멀티플레이)</title>
+    <link rel="manifest" href="manifest.json">
+    <link href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff" as="font" type="font/woff" crossorigin>
+    <style>
+        /* --- 기본 스타일 (알까기/리버시 참고) --- */
+        :root {
+            --bg-color: #f0f0f0; /* 밝은 배경 */
+            --board-bg: #ffffff;
+            --border-color: #cccccc;
+            --tile-bg: #e0e0e0;
+            --tile-bg-hover: #d0d0d0;
+            --tile-selected-bg: #FFC84A; /* 강조색 */
+            --tile-selected-border: #4A8DFF; /* Primary Color */
+            --primary-color: #4A8DFF;
+            --accent-color: #FFC84A;
+            --text-color-dark: #333D4B;
+            --text-color-light: #ffffff;
+            --danger-color: #F76363;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%; height: 100%; overflow: hidden;
+            font-family: 'GmarketSans', sans-serif;
+            background-color: var(--bg-color); color: var(--text-color-dark);
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            -webkit-user-select: none; user-select: none;
+            touch-action: manipulation;
+        }
+
+        #game-wrapper { width: 100%; height: 100%; display: flex; flex-direction: column; background-color: #e9eef2; }
+        #game-header {
+            flex-shrink: 0; display: flex; justify-content: space-around; align-items: center;
+            padding: 10px 15px; background-color: rgba(0,0,0,0.05); gap: 15px; border-bottom: 1px solid var(--border-color);
+        }
+        .player-info {
+            display: flex; align-items: center; gap: 8px;
+            background-color: rgba(255,255,255,0.7);
+            padding: 8px 12px; border-radius: 20px; /* 더 둥글게 */
+            transition: all 0.3s ease;
+            flex: 1; min-width: 0; /* 내용 넘칠 때 줄어들도록 */
+            border: 2px solid transparent;
+        }
+        .player-info.my-turn {
+            border-color: var(--accent-color);
+            background-color: var(--accent-color);
+            color: var(--text-color-dark);
+            transform: scale(1.03);
+            box-shadow: 0 0 10px rgba(255, 200, 74, 0.5);
+        }
+        .player-info .avatar {
+            font-size: 1.8em; width: 36px; height: 36px;
+            display: flex; justify-content: center; align-items: center;
+            flex-shrink: 0; background-color: #eee; border-radius: 50%;
+        }
+        .player-info .avatar img { width: 100%; height: 100%; object-fit: contain; border-radius: 50%; }
+        .player-info .info-text { display: flex; flex-direction: column; min-width: 0; flex-grow: 1;}
+        .player-info .nickname { font-weight: 700; font-size: 0.9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .player-info .score { font-size: 0.8em; color: #555; }
+        .player-info.my-turn .score { color: #333; }
+
+        #game-container {
+            width: 100%; flex-grow: 1; display: flex; justify-content: center; align-items: center;
+            position: relative; overflow: hidden; padding: 10px; /* 패딩 약간 줄임 */
+        }
+        #game-board {
+            position: relative; background-color: var(--board-bg);
+            border: 1px solid var(--border-color);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            display: grid; /* JS에서 columns/rows 설정 */
+            gap: 3px; /* 타일 간격 약간 줄임 */
+            padding: 8px; /* 보드 내부 여백 약간 줄임 */
+            /* 크기는 JS에서 설정 */
+            /* 터치 시 확대 방지 */
+            touch-action: none;
+            -webkit-touch-callout: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .tile {
+            background-color: var(--tile-bg);
+            border-radius: 5px; /* 약간 덜 둥글게 */
+            display: flex; justify-content: center; align-items: center;
+            font-size: 1.8em; /* 아이콘 크기 (JS에서 조절) */
+            cursor: pointer;
+            transition: background-color 0.15s, transform 0.15s, border-color 0.15s;
+            border: 2px solid transparent; /* 기본 테두리 투명 */
+            box-shadow: inset 0 -2px 3px rgba(0,0,0,0.1); /* 입체감 */
+            aspect-ratio: 1 / 1; /* 정사각형 유지 */
+        }
+        .tile:hover { background-color: var(--tile-bg-hover); }
+        .tile.selected {
+            background-color: var(--tile-selected-bg);
+            border-color: var(--tile-selected-border);
+            transform: scale(1.08); /* 선택 시 약간 더 크게 */
+            box-shadow: 0 0 10px var(--tile-selected-border);
+        }
+        .tile.hidden { /* 매칭되어 사라질 때 */
+            opacity: 0;
+            transform: scale(0.5);
+            pointer-events: none;
+            transition: opacity 0.3s ease-out, transform 0.3s ease-out;
+            background-color: transparent !important; /* 배경 투명하게 */
+            box-shadow: none;
+            cursor: default;
+        }
+        .tile img { /* 이미지 타일용 */
+             width: 75%; height: 75%; object-fit: contain;
+             pointer-events: none; /* 이미지 클릭 방지 */
+        }
+
+        /* --- 오버레이/모달 스타일 (리버시.html 참고, 약간 수정) --- */
+        .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 200; text-align: center; background-color: rgba(0,0,0,0.7); }
+        .modal-content { background: var(--panel-bg); color: var(--text-color-dark); padding: 0; border-radius: 16px; width: 90%; max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); overflow: hidden; }
+        .modal-header { background-color: var(--primary-color); color: white; padding: 15px; border-radius: 16px 16px 0 0; }
+        .modal-header h2 { font-size: 1.6em; }
+        .modal-body { padding: 25px; }
+        .modal-buttons { display: flex; flex-direction: column; gap: 12px; align-items: center; margin-top: 25px; }
+        .spinner { border: 4px solid rgba(0,0,0,0.1); border-radius: 50%; border-top: 4px solid var(--primary-color); width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        #countdown-number { font-size: 7em; font-weight: 700; color: white; text-shadow: 0 0 20px rgba(255,255,255,0.7); animation: countdown-pop 1s; }
+        @keyframes countdown-pop { from { transform: scale(0.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+        /* 게임 종료 점수판 */
+        #score-board { margin: 20px 0; display: flex; flex-direction: column; gap: 8px; }
+        .score-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 15px; border-radius: 8px; font-size: 1.1em; font-weight: 700; }
+        .score-row.winner { background-color: var(--accent-color); color: var(--text-color-dark); transform: scale(1.03); }
+        .score-row.loser, .score-row.draw { background-color: #e9ecef; color: var(--text-color-dark); }
+        .score-avatar { display: inline-flex; align-items: center; gap: 10px; }
+        .score-avatar img { width: 32px; height: 32px; object-fit: contain; border-radius: 50%; }
+
+        /* 버튼 스타일 */
+        .menu-btn { width: 100%; padding: 15px; font-size: 1.1em; font-weight: bold; border-radius: 12px; border: none; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.1s; margin: 5px 0; }
+        .menu-btn.primary { background-color: var(--primary-color); color: white; }
+        .menu-btn.secondary { background-color: #e9eff8; color: var(--text-color-dark); }
+        .menu-btn:active { transform: scale(0.98); }
+        .menu-btn:disabled { background-color: #ccc; color: #888; cursor: not-allowed; }
+
+        /* 나가기 확인 모달 스타일 */
+       #confirm-exit-modal .modal-content { max-width: 350px; background-color: #fff; }
+       #confirm-exit-modal .modal-body { padding: 30px; text-align: center; }
+       #confirm-exit-modal .modal-body h3 { font-size: 1.4em; margin-bottom: 15px; color: var(--text-color-dark); }
+       #confirm-exit-modal .modal-body p { font-size: 0.9em; color: #666; }
+       #confirm-exit-modal .modal-footer { display: flex; gap: 10px; padding: 15px; background-color: #f8f9fa; border-top: 1px solid #eee; }
+
+    </style>
+</head>
+<body>
+    <div id="game-wrapper">
+        <div id="game-header">
+            </div>
+        <div id="game-container">
+            <div id="game-board">
+                </div>
+        </div>
+    </div>
+
+    <div id="game-over-overlay" class="overlay" style="display: none;">
+        </div>
+    <div id="info-overlay" class="overlay">
+         <div class="spinner"></div>
+         <p style="color: white; margin-top: 15px; font-size: 1.1em;">게임 준비 중...</p>
+    </div>
+    <div id="confirm-exit-modal" class="overlay" style="display: none;">
+         <div class="modal-content">
+             <div class="modal-body">
+                 <h3>정말 게임에서 나가시겠습니까?</h3>
+                 <p>게임은 패배 처리됩니다.</p>
+             </div>
+             <div class="modal-footer">
+                 <button id="exit-cancel-btn" class="menu-btn secondary">취소</button>
+                 <button id="exit-confirm-btn" class="menu-btn primary" style="background-color: var(--danger-color);">확인</button>
+             </div>
+         </div>
+    </div>
+
+    <audio id="tile-select-sound" src="./sounds/select.mp3" preload="auto"></audio>
+    <audio id="tile-match-sound" src="./sounds/match.mp3" preload="auto"></audio>
+    <audio id="win-sound" src="https://blog.kakaocdn.net/dna/kC4is/dJMb8WZJowA/AAAAAAAAAAAAAAAAAAAAAIQeZhVDJf0ZGAWyyMr_hsc6TMe3BFUVXd0FNTl5VDcY/%EA%B2%8C%EC%9D%B4%EC%8A%B9%EB%A6%AC.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=qZKwGj5NQeAFNrOvCPAMXc6aX9I%3D&attach=1&knm=tfile.mp3" preload="auto"></audio>
+    <audio id="loss-sound" src="https://blog.kakaocdn.net/dna/Zqr4u/dJMb9V0NWlD/AAAAAAAAAAAAAAAAAAAAANQFEr99iVFS25T5ZW3Q2dixeZXsbUzh7OWB40uYQMu9/%EC%95%8C%EA%B9%8C%EA%B8%B0%ED%8C%A8%EB%B0%B0.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=2xNnbSadPzs2ZZi1BssfyCye8jI%3D&attach=1&knm=tfile.mp3" preload="auto"></audio>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+
+    <script>
+        // --- HTML Escape 함수 ---
+        function escapeHTML(str) {
+            if (typeof str !== 'string') return '';
+            const map = {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'};
+            return str.replace(/[&<>"']/g, m => map[m]);
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- 개발자 도구 방지 ---
+             document.addEventListener('contextmenu', event => event.preventDefault());
+             document.addEventListener('keydown', event => {
+                 if (event.key === 'F12' ||
+                   (event.ctrlKey && event.shiftKey && ['I', 'J', 'C'].includes(event.key.toUpperCase())) ||
+                    (event.ctrlKey && event.key.toUpperCase() === 'U')) {
+                     event.preventDefault();
+                 }
+             });
+            // setInterval(() => { try { debugger; } catch (e) {} }, 1000); // 필요시 주석 해제
+
+            // --- Firebase 설정 ---
+            const firebaseConfig = {
+                apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
+                authDomain: "goodluck-7c14b.firebaseapp.com",
+                databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com",
+                projectId: "goodluck-7c14b",
+                storageBucket: "goodluck-7c14b.appspot.com",
+                messagingSenderId: "858281658455",
+                appId: "1:858281658455:web:9131280a459be983933b12"
+            };
+            firebase.initializeApp(firebaseConfig);
+            const db = firebase.database();
+            const auth = firebase.auth();
+            const roomsRef = db.ref('rooms');
+            const usersRef = db.ref('users');
+
+            // --- HTML 요소 ---
+            const gameBoard = document.getElementById('game-board');
+            const gameHeader = document.getElementById('game-header');
+            const gameContainer = document.getElementById('game-container');
+            const infoOverlay = document.getElementById('info-overlay');
+            const gameOverOverlay = document.getElementById('game-over-overlay');
+            const confirmExitModal = document.getElementById('confirm-exit-modal');
+            const exitConfirmBtn = document.getElementById('exit-confirm-btn');
+            const exitCancelBtn = document.getElementById('exit-cancel-btn');
+
+            // --- 게임 상태 변수 ---
+            let myPlayerId, myNickname, myAvatar;
+            let roomRef, currentRoomData, isHost;
+            let isGameLive = false, gameOverFlag = false, isExiting = false;
+            let selectedTileElement = null; // 현재 내가 선택한 타일 DOM 요소
+            let firstSelection = null; // Firebase 'selectedTiles'에 저장된 내 첫 선택 정보
+
+            // --- 게임 설정 ---
+            const BOARD_ROWS = 8; // 행 (조절 가능)
+            const BOARD_COLS = 10; // 열 (조절 가능)
+            const TILE_COUNT = BOARD_ROWS * BOARD_COLS;
+            // 사용할 타일 아이콘/이미지 경로 (짝수 개수, TILE_COUNT 이상)
+            // 아이콘과 이미지 경로를 섞어서 사용할 수 있습니다.
+             const TILE_ICONS = [
+                '🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯',
+                '🦁', '🐮', '🐷', '🐸', '🐵', '🐔', '🐧', '🐦', '🐤', '🦆',
+                '🍔', '🍕', '🍟', '🌭', '🍿', '🧂', '🥓', '🥚', '🧇', '🥞',
+                '🍎', '🍋', '🍉', '🍇', '🍓', '🍑', '🥝', '🥥', '🍍', '🥭',
+                // 이미지 예시 (경로 확인 필요)
+                 './tiles/cake.png', './tiles/candy.png', './tiles/cherry.png', './tiles/donut.png',
+                 './tiles/icecream.png', './tiles/lollipop.png', './tiles/pudding.png', './tiles/star.png'
+             ]; // TILE_COUNT / 2 개의 *고유한* 아이콘/경로 필요
+
+            // 아바타 세트 정의 (대기실.html 에서 복사)
+             const AVATAR_SETS = {
+                 'penguin_parka': { front: './아바타폴더/펭귄정면.png' },
+                 'puppy_set': { front: './아바타폴더/강아지정면.png' }
+             };
+
+            // --- 사운드 재생 함수 ---
+            function playSound(id) {
+                try {
+                    const sound = document.getElementById(id);
+                    if (sound) { sound.currentTime = 0; sound.play().catch(e => {}); }
+                } catch(e) { console.warn("Sound play error:", e); }
+            }
+
+            // --- 초기화 및 방 참가 로직 ---
+            function initialize() {
+                auth.onAuthStateChanged(user => {
+                    if (user) {
+                        myPlayerId = user.uid;
+                        myNickname = localStorage.getItem('userNickname') || 'Player';
+                        myAvatar = localStorage.getItem('userAvatar') || '😊';
+                        if (!myNickname) { auth.signOut(); window.location.replace('index.html'); return; }
+
+                        const urlParams = new URLSearchParams(window.location.search);
+                        const roomId = urlParams.get('roomId');
+                        if (roomId) {
+                             // 로딩 오버레이 표시
+                            infoOverlay.innerHTML = `<div class="spinner"></div><p style="color: white; margin-top: 15px; font-size: 1.1em;">방에 참가하는 중...</p>`;
+                            infoOverlay.style.display = 'flex';
+                            joinRoom(roomId);
+                        } else {
+                            alert("잘못된 접근입니다."); window.location.replace('대기실.html');
+                        }
+                    } else {
+                        window.location.replace('index.html');
+                    }
+                });
+
+                // 뒤로가기 이벤트 처리
+                history.pushState(null, '', location.href);
+                window.addEventListener('popstate', (e) => {
+                     history.pushState(null, '', location.href);
+                     confirmExitModal.style.display = 'flex';
+                });
+                exitConfirmBtn.addEventListener('click', cleanupAndExit);
+                exitCancelBtn.addEventListener('click', () => { confirmExitModal.style.display = 'none'; });
+            }
+
+            function joinRoom(roomId) {
+                roomRef = roomsRef.child(roomId);
+                roomRef.once('value', snapshot => {
+                    if (!snapshot.exists()) { alert("방을 찾을 수 없습니다."); window.location.replace('대기실.html'); return; }
+
+                    currentRoomData = snapshot.val();
+                    isHost = currentRoomData.hostId === myPlayerId;
+
+                    // 방 참가 처리 (플레이어 정보 추가 등 - 게임방.html 참고)
+                    const myPlayerData = {
+                        nickname: myNickname,
+                        avatar: myAvatar,
+                        isHost: isHost
+                    };
+
+                     // 이미 방에 있고, 상태가 'playing'이면 바로 게임 시작 (재접속 처리)
+                     if (currentRoomData.players && currentRoomData.players[myPlayerId] && currentRoomData.status === 'playing') {
+                         console.log("재접속 감지됨, 게임 데이터 리스닝 시작");
+                         listenToRoomChanges();
+                         return; // setupGameLayout 불필요
+                     }
+
+                    // onDisconnect 설정
+                    if (isHost) { roomRef.onDisconnect().remove(); }
+                    else { roomRef.child('players/' + myPlayerId).onDisconnect().remove(); }
+
+                    // 플레이어 정보 업데이트/추가
+                    roomRef.child('players/' + myPlayerId).set(myPlayerData).then(() => {
+                         listenToRoomChanges();
+                         // 방장이 아니고, 게임판이 아직 없으면 준비 완료 신호
+                         if (!isHost && !currentRoomData.board) {
+                             roomRef.child('readyPlayers/' + myPlayerId).set(true);
+                         }
+                    }).catch(error => {
+                        console.error("방 참가 오류:", error);
+                        alert("방 입장에 실패했습니다."); window.location.replace('대기실.html');
+                    });
+
+                }).catch(error => {
+                     console.error("Firebase read error:", error);
+                     alert("방 정보를 읽어오는데 실패했습니다."); window.location.replace('대기실.html');
+                });
+            }
+
+            function listenToRoomChanges() {
+                let countdownStarted = false; // 카운트다운 중복 실행 방지 플래그
+
+                roomRef.on('value', snapshot => {
+                    if (isExiting) return; // 퇴장 중이면 업데이트 무시
+                    if (!snapshot.exists()) {
+                         if (!gameOverFlag) alert("방장이 나가 방이 사라졌습니다."); // 게임 종료가 아닐 때만 알림
+                         cleanupAndExit();
+                         return;
+                    }
+
+                    currentRoomData = snapshot.val();
+
+                    // 내가 방에서 제외되었는지 확인
+                    if (!currentRoomData.players || !currentRoomData.players[myPlayerId]) {
+                         if (!gameOverFlag) alert("방에서 제외되었습니다.");
+                         cleanupAndExit();
+                         return;
+                    }
+
+                   // 게임 상태에 따른 처리
+            if (currentRoomData.status === 'playing') {
+                
+                // ✨ [수정] 방장이 게임판(board)을 생성해야 하는지 확인
+                if (isHost && !currentRoomData.board) {
+                    // status가 'playing'이지만 board가 없으면, 방장이 지금 생성합니다.
+                    // (게임방.html에서 'launching' 신호를 받고 넘어온 직후)
+                    console.log("방장 감지: board가 없으므로 게임판을 생성합니다.");
+                    initializeShisenShoGame(); 
+                    return; // board 생성 후, 다음 on('value') 이벤트를 기다립니다.
+                }
+
+                // 게임판 데이터가 있고, 카운트다운이 시작되지 않았다면 시작
+                if (currentRoomData.board && !countdownStarted) {
+                    countdownStarted = true;
+                    startCountdown();
+                }
+                // 게임이 이미 라이브 상태이면 UI 업데이트
+                else if (isGameLive) {
+                    updateHeaderUI();
+                    renderBoard();
+                    updateMySelection(); // 내 선택 상태 UI 반영
+                }
+            } else if (currentRoomData.status === 'gameOver' && !gameOverFlag) {
+                        gameOverFlag = true; // 게임 종료 플래그 설정
+                        renderBoard(); // 최종 보드 상태 렌더링
+                        showGameOverScreen(); // 게임 종료 화면 표시
+                    } else if (currentRoomData.status === 'waiting') {
+                        // 방장인 경우, 모든 플레이어가 준비되었는지 확인하고 게임 시작
+                        if (isHost) {
+                            const readyPlayers = currentRoomData.readyPlayers || {};
+                            const readyCount = Object.keys(readyPlayers).length;
+                            const totalPlayers = Object.keys(currentRoomData.players).length;
+                             // 최소 2명 이상이고 모두 준비 완료 시 게임 시작
+                            if (totalPlayers >= 2 && readyCount === totalPlayers) {
+                                initializeShisenShoGame(); // 방장이 게임 데이터 생성
+                            } else {
+                                // 대기 중 UI 업데이트
+                                infoOverlay.innerHTML = `<div class="spinner"></div><p style="color: white; margin-top: 15px; font-size: 1.1em;">상대방 기다리는 중 (${readyCount}/${totalPlayers})...</p>`;
+                                infoOverlay.style.display = 'flex';
+                            }
+                        } else {
+                            // 게스트는 대기 중 UI 표시
+                             infoOverlay.innerHTML = `<div class="spinner"></div><p style="color: white; margin-top: 15px; font-size: 1.1em;">게임 시작 대기 중...</p>`;
+                            infoOverlay.style.display = 'flex';
+                        }
+                    }
+                });
+            }
+
+             function initializeShisenShoGame() {
+                 if (!isHost) return; // 방장만 실행
+
+                 // 1. 타일 쌍 생성 및 섞기
+                 const iconsNeeded = TILE_COUNT / 2;
+                 if (TILE_ICONS.length < iconsNeeded) {
+                     console.error("타일 아이콘/이미지 개수가 부족합니다!");
+                     // TODO: 사용자에게 알림 또는 기본 아이콘 사용 등의 처리
+                     return;
+                 }
+                 // 필요한 개수만큼 아이콘/경로 선택
+                 const selectedIcons = TILE_ICONS.slice(0, iconsNeeded);
+                 let boardTiles = [...selectedIcons, ...selectedIcons]; // 쌍 만들기
+                 boardTiles.sort(() => Math.random() - 0.5); // 섞기
+
+                 // 2. 초기 데이터 구성
+                 const playerIds = Object.keys(currentRoomData.players);
+                 // 플레이어 순서 섞기 (선택 사항)
+                 // playerIds.sort(() => Math.random() - 0.5);
+                 const initialScores = {};
+                 playerIds.forEach(id => initialScores[id] = 0);
+                 const initialSelectedTiles = {};
+                 playerIds.forEach(id => initialSelectedTiles[id] = null);
+
+                 // 3. Firebase 업데이트
+                 roomRef.update({
+                     status: 'playing',
+                     board: boardTiles, // 1D 배열로 저장
+                     scores: initialScores,
+                     selectedTiles: initialSelectedTiles,
+                     turn: playerIds[0], // 첫 턴 플레이어 (여기서는 방장)
+                     readyPlayers: null // 준비 상태 초기화
+                 }).catch(error => {
+                     console.error("게임 시작 데이터 업데이트 실패:", error);
+                     // TODO: 오류 처리 (예: 방 상태를 다시 waiting으로 돌리기)
+                 });
+             }
+
+            function startCountdown() {
+                infoOverlay.style.display = 'flex';
+                let count = 3;
+                infoOverlay.innerHTML = `<div id="countdown-number">${count}</div>`;
+
+                const interval = setInterval(() => {
+                    count--;
+                    const el = document.getElementById('countdown-number');
+                    if (el) {
+                        // 애니메이션 재시작 트릭
+                        el.style.animation = 'none';
+                        el.offsetHeight; // Reflow 유도
+                        el.style.animation = ''; // 애니메이션 다시 적용
+                        el.style.animationName = 'countdown-pop';
+                        el.style.animationDuration = '1s';
+                        el.textContent = count > 0 ? count : 'GO!'; // 마지막은 GO!
+                    }
+
+                    if (count <= -1) { // GO! 보여주고 1초 뒤
+                        clearInterval(interval);
+                        infoOverlay.style.display = 'none';
+                        isGameLive = true;
+                        updateHeaderUI();
+                        renderBoard(); // 게임 보드 렌더링
+                    }
+                }, 1000);
+            }
+
+            // --- 게임판 렌더링 ---
+            function renderBoard() {
+                if (!currentRoomData || !currentRoomData.board) {
+                     console.warn("renderBoard 호출되었으나 board 데이터 없음");
+                     gameBoard.innerHTML = '<p style="color: #555;">보드 데이터 로딩 중...</p>'; // 로딩 표시
+                     return;
+                 }
+                 const boardData = currentRoomData.board;
+                 const boardArray = Array.isArray(boardData) ? boardData : Object.values(boardData);
+
+                 // 보드 크기 계산 (화면 크기에 맞게)
+                 const containerW = gameContainer.clientWidth;
+                 const containerH = gameContainer.clientHeight; // 헤더 제외됨
+                 const maxBoardW = containerW * 0.98; // 여백 조금 더 줄임
+                 const maxBoardH = containerH * 0.98;
+
+                 let boardSizeW, boardSizeH, tileSize;
+                 // 가로/세로 비율 유지하며 최대 크기 계산
+                 const cellAspectRatio = 1; // 타일 비율 (정사각형)
+                 const boardAspectRatio = (BOARD_COLS * cellAspectRatio) / BOARD_ROWS;
+
+                 if (maxBoardW / boardAspectRatio < maxBoardH) {
+                     boardSizeW = maxBoardW;
+                     boardSizeH = maxBoardW / boardAspectRatio;
+                 } else {
+                     boardSizeH = maxBoardH;
+                     boardSizeW = maxBoardH * boardAspectRatio;
+                 }
+
+                 gameBoard.style.width = `${boardSizeW}px`;
+                 gameBoard.style.height = `${boardSizeH}px`;
+                 gameBoard.style.gridTemplateColumns = `repeat(${BOARD_COLS}, 1fr)`;
+                 gameBoard.style.gridTemplateRows = `repeat(${BOARD_ROWS}, 1fr)`;
+
+                 // 타일 크기에 따른 폰트/이미지 크기 계산 (갭 고려)
+                 const gapSize = 3; // CSS의 gap 값과 일치
+                 tileSize = (boardSizeW - (BOARD_COLS - 1) * gapSize - 16) / BOARD_COLS; // 16은 padding 값 (8*2)
+
+                 // 기존 타일 유지 및 업데이트 로직 (성능 향상)
+                 const existingTiles = new Map();
+                 gameBoard.querySelectorAll('.tile').forEach(tile => {
+                     existingTiles.set(parseInt(tile.dataset.index, 10), tile);
+                 });
+
+                 const fragment = document.createDocumentFragment(); // DocumentFragment 사용
+
+                boardArray.forEach((tileIcon, index) => {
+                    let tileEl = existingTiles.get(index);
+                    const isEmpty = tileIcon === null;
+
+                    if (!tileEl) { // 새 타일 생성
+                        tileEl = document.createElement('div');
+                        tileEl.className = 'tile';
+                        tileEl.dataset.index = index;
+                        fragment.appendChild(tileEl); // 프래그먼트에 추가
+                    }
+
+                    // 클래스 업데이트 (hidden)
+                    tileEl.classList.toggle('hidden', isEmpty);
+
+                    // 내용 업데이트 (빈 칸 아니면)
+                    if (!isEmpty) {
+                         // 이미지 경로인지, 이모지인지 확인
+                         const isImage = tileIcon.startsWith('.') || tileIcon.startsWith('http') || tileIcon.includes('/');
+                         const currentContent = tileEl.firstChild; // 현재 내용 (img 또는 text node)
+
+                         if (isImage) {
+                             if (!currentContent || currentContent.tagName !== 'IMG' || currentContent.src !== tileIcon) {
+                                 tileEl.innerHTML = `<img src="${escapeHTML(tileIcon)}" alt="tile">`;
+                             }
+                             // 이미지 크기는 CSS에서 %로 관리하므로 JS 설정 불필요
+                         } else {
+                             if (!currentContent || currentContent.nodeType !== Node.TEXT_NODE || currentContent.textContent !== tileIcon) {
+                                 tileEl.textContent = tileIcon;
+                             }
+                             // 폰트 크기 동적 조절
+                             tileEl.style.fontSize = `${tileSize * 0.55}px`; // 타일 크기에 비례
+                         }
+
+                         // 클릭 리스너 추가/제거 (내 턴일 때만 활성화)
+                         const isMyTurnNow = isGameLive && currentRoomData.turn === myPlayerId;
+                         if (isMyTurnNow && !tileEl.onclick) {
+                             tileEl.onclick = handleTileClick; // 핸들러 직접 할당
+                         } else if (!isMyTurnNow && tileEl.onclick) {
+                             tileEl.onclick = null; // 핸들러 제거
+                         }
+                    } else {
+                        // 빈 칸이면 내용 지우고 리스너 제거
+                        tileEl.innerHTML = '';
+                        tileEl.onclick = null;
+                    }
+
+                    // 기존 맵에서 제거 (처리된 타일)
+                    existingTiles.delete(index);
+                });
+
+                 // 사라진 타일 DOM 제거 (이미 매칭된 후 데이터가 null로 바뀐 경우 등)
+                 existingTiles.forEach(tile => tile.remove());
+
+                 // 프래그먼트를 실제 DOM에 추가 (한 번의 reflow)
+                 gameBoard.appendChild(fragment);
+            }
+
+            // --- 타일 클릭 처리 ---
+            function handleTileClick(event) {
+                if (!isGameLive || currentRoomData.turn !== myPlayerId) return;
+
+                const clickedEl = event.currentTarget;
+                const clickedIndex = parseInt(clickedEl.dataset.index, 10);
+                const boardArray = Array.isArray(currentRoomData.board) ? currentRoomData.board : Object.values(currentRoomData.board);
+                const clickedIcon = boardArray[clickedIndex];
+
+                // 이미 hidden 상태거나 아이콘 없으면 무시
+                if (clickedIcon === null || clickedEl.classList.contains('hidden')) return;
+
+                playSound('tile-select-sound'); // 선택 사운드
+
+                // 현재 Firebase에 저장된 내 첫 번째 선택 가져오기
+                const currentFirstSelection = currentRoomData.selectedTiles ? currentRoomData.selectedTiles[myPlayerId] : null;
+
+                // 이미 선택된 타일 다시 클릭 (선택 취소)
+                if (currentFirstSelection && currentFirstSelection.index === clickedIndex) {
+                    roomRef.child('selectedTiles').child(myPlayerId).set(null); // Firebase 선택 취소
+                    // UI 업데이트는 listenToRoomChanges가 처리
+                    return;
+                }
+
+                // 첫 번째 타일 선택
+                if (!currentFirstSelection) {
+                    const selectionData = { index: clickedIndex, icon: clickedIcon };
+                    roomRef.child('selectedTiles').child(myPlayerId).set(selectionData);
+                    // UI 업데이트는 listenToRoomChanges가 처리
+                }
+                // 두 번째 타일 선택
+                else {
+                    // 1. 아이콘이 같은지 확인
+                    if (currentFirstSelection.icon === clickedIcon) {
+                        // 2. 경로 탐색 (BFS)
+                         const pathExists = findPath_BFS(boardArray, currentFirstSelection.index, clickedIndex);
+
+                        if (pathExists) {
+                            // 3. 매칭 성공! -> Transaction으로 타일 제거 시도
+                            attemptTileRemoval(currentFirstSelection.index, clickedIndex);
+                        } else {
+                            // 4. 경로 없음 -> 두 번째 타일을 새로운 첫 선택으로 변경
+                             const newSelectionData = { index: clickedIndex, icon: clickedIcon };
+                             roomRef.child('selectedTiles').child(myPlayerId).set(newSelectionData);
+                        }
+                    } else {
+                        // 5. 아이콘 다름 -> 두 번째 타일을 새로운 첫 선택으로 변경
+                         const newSelectionData = { index: clickedIndex, icon: clickedIcon };
+                         roomRef.child('selectedTiles').child(myPlayerId).set(newSelectionData);
+                    }
+                }
+            }
+
+            // --- 내 선택 상태 UI 반영 ---
+            function updateMySelection() {
+                if (!currentRoomData || !currentRoomData.selectedTiles) return;
+                firstSelection = currentRoomData.selectedTiles[myPlayerId] || null;
+
+                // 기존 선택 UI 제거
+                const previouslySelected = gameBoard.querySelector('.tile.selected');
+                if (previouslySelected) {
+                    previouslySelected.classList.remove('selected');
+                }
+                selectedTileElement = null; // 로컬 참조 초기화
+
+                // 새 선택 UI 적용
+                if (firstSelection) {
+                    const selectedIndex = firstSelection.index;
+                    selectedTileElement = gameBoard.querySelector(`.tile[data-index="${selectedIndex}"]`);
+                    if (selectedTileElement && !selectedTileElement.classList.contains('hidden')) { // hidden 아닌 타일만
+                        selectedTileElement.classList.add('selected');
+                    } else {
+                        // 선택된 타일이 hidden 상태면 로컬 선택 정보도 초기화
+                        firstSelection = null;
+                         // Firebase에도 반영 (선택 사항 - 다른 플레이어가 먼저 제거한 경우 등)
+                         // roomRef.child('selectedTiles').child(myPlayerId).set(null);
+                    }
+                }
+            }
+
+           // --- 경로 탐색 함수 (BFS 구현) ---
+            function findPath_BFS(board, startIndex, endIndex) {
+                // 0. 가상 테두리 추가 (1칸)
+                const V_ROWS = BOARD_ROWS + 2;
+                const V_COLS = BOARD_COLS + 2;
+                const virtualBoard = Array(V_ROWS * V_COLS).fill(null); // null: 빈칸, 1: 타일 있음
+
+                 // 실제 보드 데이터를 가상 보드로 복사 (인덱스 변환)
+                 for (let r = 0; r < BOARD_ROWS; r++) {
+                     for (let c = 0; c < BOARD_COLS; c++) {
+                         const boardIndex = r * BOARD_COLS + c;
+                         const virtualIndex = (r + 1) * V_COLS + (c + 1);
+                         if (board[boardIndex] !== null) {
+                             virtualBoard[virtualIndex] = 1; // 타일이 있으면 1로 표시
+                         }
+                     }
+                 }
+
+                 // 시작점과 끝점도 가상 인덱스로 변환
+                 const startR = Math.floor(startIndex / BOARD_COLS) + 1;
+                 const startC = startIndex % BOARD_COLS + 1;
+                 const vStartIndex = startR * V_COLS + startC;
+
+                 const endR = Math.floor(endIndex / BOARD_COLS) + 1;
+                 const endC = endIndex % BOARD_COLS + 1;
+                 const vEndIndex = endR * V_COLS + endC;
+
+                 // BFS 큐: { index: 현재 위치, turns: 꺾인 횟수, dir: 이전 방향 (0:초기, 1:상, 2:하, 3:좌, 4:우) }
+                 const queue = [{ index: vStartIndex, turns: 0, dir: 0 }];
+                 // 방문 기록: visited[인덱스] = 최소 꺾임 횟수 (Infinity로 초기화)
+                 const visited = Array(V_ROWS * V_COLS).fill(Infinity);
+                 visited[vStartIndex] = 0;
+
+                 const directions = [
+                     { dr: -1, dc: 0, d: 1 }, // 상
+                     { dr: 1, dc: 0, d: 2 },  // 하
+                     { dr: 0, dc: -1, d: 3 }, // 좌
+                     { dr: 0, dc: 1, d: 4 }   // 우
+                 ];
+
+                 while (queue.length > 0) {
+                     const { index, turns, dir } = queue.shift();
+
+                     // 목표 도달 체크 (여기서 해야 최단 꺾임 보장)
+                     if (index === vEndIndex) {
+                         return true; // 경로 찾음!
+                     }
+
+                     // 4방향 탐색
+                     for (const move of directions) {
+                         const nextR = Math.floor(index / V_COLS) + move.dr;
+                         const nextC = index % V_COLS + move.dc;
+                         const nextIndex = nextR * V_COLS + nextC;
+
+                         // 경계 체크
+                         if (nextR < 0 || nextR >= V_ROWS || nextC < 0 || nextC >= V_COLS) continue;
+
+                         // 다음 위치가 빈칸(null)이거나 목표 지점이어야 함
+                         // (주의: virtualBoard에서 1은 타일이 *있음*을 의미, null이 빈칸)
+                         if (virtualBoard[nextIndex] !== null && nextIndex !== vEndIndex) continue;
+
+                         // 꺾임 횟수 계산
+                         const nextTurns = (dir !== 0 && dir !== move.d) ? turns + 1 : turns;
+
+                         // 최대 꺾임 횟수(2번) 초과 체크
+                         if (nextTurns > 2) continue;
+
+                         // 방문 기록 확인 및 갱신 (더 적은 꺾임으로 도달 가능하면 갱신)
+                         if (visited[nextIndex] >= nextTurns) {
+                              visited[nextIndex] = nextTurns;
+                              queue.push({ index: nextIndex, turns: nextTurns, dir: move.d });
+                         }
+                     }
+                 }
+
+                 return false; // 경로 없음
+            }
+
+            // --- 타일 제거 시도 (Transaction) ---
+            function attemptTileRemoval(index1, index2) {
+                roomRef.transaction(currentRoom => {
+                    if (!currentRoom || !currentRoom.board || !currentRoom.selectedTiles) {
+                        // 필요한 데이터 없으면 트랜잭션 취소 (null 반환)
+                        return; // Abort transaction
+                    }
+
+                    const board = Array.isArray(currentRoom.board) ? currentRoom.board : Object.values(currentRoom.board);
+                    const icon1 = board[index1];
+                    const icon2 = board[index2];
+
+                    // 트랜잭션 시점 확인:
+                    // 1. 두 타일이 여전히 존재하는가 (null이 아닌가)?
+                    // 2. 두 타일의 아이콘이 여전히 같은가?
+                    if (icon1 === null || icon2 === null || icon1 !== icon2) {
+                        // 조건 불일치 -> 내 선택만 초기화하고 트랜잭션 종료
+                        if (currentRoom.selectedTiles[myPlayerId] && currentRoom.selectedTiles[myPlayerId].index === index1) {
+                             currentRoom.selectedTiles[myPlayerId] = null;
+                        }
+                        return currentRoom; // 변경된 선택 상태만 반환 (트랜잭션 성공 처리됨)
+                    }
+
+                    // 선점 성공: 타일 제거
+                    board[index1] = null;
+                    board[index2] = null;
+                    currentRoom.board = board; // 변경된 board로 업데이트
+
+                    // 점수 획득
+                    if (!currentRoom.scores) currentRoom.scores = {}; // scores 객체 없을 경우 대비
+                    currentRoom.scores[myPlayerId] = (currentRoom.scores[myPlayerId] || 0) + 1;
+
+                    // 내 선택 초기화
+                    currentRoom.selectedTiles[myPlayerId] = null;
+                    // 상대방 선택도 초기화 (혹시 같은 타일 노렸을 경우 방지)
+                     const playerIds = Object.keys(currentRoom.players);
+                     const opponentId = playerIds.find(id => id !== myPlayerId);
+                     if (opponentId && currentRoom.selectedTiles[opponentId]) {
+                          const oppSelection = currentRoom.selectedTiles[opponentId];
+                          if (oppSelection.index === index1 || oppSelection.index === index2) {
+                               currentRoom.selectedTiles[opponentId] = null;
+                          }
+                     }
+
+                    // 다음 턴 플레이어 결정 (여기서는 상대방으로 넘김)
+                    if (opponentId) {
+                         currentRoom.turn = opponentId;
+                    } // 혼자하기 모드 대비 (AI 턴 로직은 별도 구현)
+
+                    // 남은 타일 확인 (게임 종료 조건)
+                    const remainingTiles = board.filter(tile => tile !== null).length;
+                    if (remainingTiles === 0) {
+                        currentRoom.status = 'gameOver';
+                    }
+
+                    return currentRoom; // 변경된 전체 방 데이터 반환
+
+                }, (error, committed, snapshot) => {
+                    if (error) {
+                        console.error("타일 제거 Transaction 실패:", error);
+                        // 오류 발생 시 사용자에게 알림 등 처리 필요
+                    } else if (!committed) {
+                        console.log("타일 선점 실패 (다른 유저가 먼저 가져가거나 데이터 변경됨)");
+                        // UI 갱신 (선택 해제 등) - listenToRoomChanges가 처리할 것임
+                    } else {
+                        // 성공 시 사운드 재생
+                        playSound('tile-match-sound');
+                         // console.log("타일 제거 성공:", snapshot.val()); // 디버깅용
+                    }
+                });
+            }
+
+
+            // --- 헤더 UI 업데이트 ---
+            function updateHeaderUI() {
+                if (!currentRoomData || !currentRoomData.players) return;
+                const { players, scores = {}, turn } = currentRoomData;
+                gameHeader.innerHTML = ''; // 헤더 초기화
+
+                // 플레이어 ID 정렬 (예: 방장 우선 또는 ID 순)
+                 const playerIds = Object.keys(players).sort((a, b) => {
+                     if (a === currentRoomData.hostId) return -1;
+                     if (b === currentRoomData.hostId) return 1;
+                     return a.localeCompare(b); // ID 문자열 순
+                 });
+
+                 playerIds.forEach(playerId => {
+                    const player = players[playerId];
+                    if (!player) return; // 혹시 모를 데이터 누락 방지
+
+                    const score = scores[playerId] || 0;
+                    const isMyTurnNow = isGameLive && (turn === playerId);
+
+                    // 아바타 HTML 생성 (대기실.html 참고)
+                     const avatarSet = AVATAR_SETS[player.avatar];
+                     let avatarHTML = '';
+                     if (avatarSet) {
+                         avatarHTML = `<img src="${avatarSet.front}" alt="avatar">`;
+                     } else if (player.avatar && (player.avatar.startsWith('http') || player.avatar.includes('.'))) {
+                         avatarHTML = `<img src="${escapeHTML(player.avatar)}" alt="avatar">`;
+                     } else {
+                         avatarHTML = escapeHTML(player.avatar || '❓'); // 기본값 추가
+                     }
+
+                    const infoEl = document.createElement('div');
+                    infoEl.className = `player-info ${isMyTurnNow ? 'my-turn' : ''}`;
+                    infoEl.innerHTML = `
+                        <div class="avatar">${avatarHTML}</div>
+                        <div class="info-text">
+                            <div class="nickname">${escapeHTML(player.nickname || 'Unknown')}</div>
+                            <div class="score">점수: ${score}</div>
+                        </div>
+                    `;
+                    gameHeader.appendChild(infoEl);
+                });
+            }
+
+            // --- 게임 종료 처리 ---
+            function showGameOverScreen() {
+                 if (!currentRoomData) return;
+                 const { players, scores = {} } = currentRoomData;
+                 const playerIds = Object.keys(players);
+
+                 // 점수 계산 및 승자 판정
+                 let winnerId = null;
+                 let highScore = -1;
+                 let isDraw = false;
+                 playerIds.forEach(id => {
+                     const score = scores[id] || 0;
+                     if (score > highScore) {
+                         highScore = score;
+                         winnerId = id;
+                         isDraw = false;
+                     } else if (score === highScore) {
+                         isDraw = true;
+                     }
+                 });
+                 if (isDraw) winnerId = null; // 동점이면 무승부
+
+                 const iWon = winnerId === myPlayerId;
+                 const resultText = isDraw ? "무승부!" : (iWon ? "🎉 승리!" : "😢 패배...");
+
+                 // 사운드 재생
+                 playSound(isDraw ? 'loss-sound' : (iWon ? 'win-sound' : 'loss-sound'));
+
+                 // 전적 업데이트
+                 if (playerIds.length > 1) { // 혼자하기 모드 제외
+                    updatePlayerStats(isDraw ? 'draw' : (iWon ? 'win' : 'loss'));
+                 }
+
+                 // 점수판 HTML 생성
+                 const scoresHTML = playerIds.map(id => {
+                     const player = players[id];
+                     const score = scores[id] || 0;
+                     const isWinner = !isDraw && id === winnerId;
+                     const scoreClass = isDraw ? 'draw' : (isWinner ? 'winner' : 'loser');
+
+                      // 아바타 HTML (updateHeaderUI와 동일 로직)
+                      const avatarSet = AVATAR_SETS[player.avatar];
+                      let avatarHTML = '';
+                      if (avatarSet) avatarHTML = `<img src="${avatarSet.front}" alt="avatar">`;
+                      else if (player.avatar && (player.avatar.startsWith('http') || player.avatar.includes('.'))) avatarHTML = `<img src="${escapeHTML(player.avatar)}" alt="avatar">`;
+                      else avatarHTML = escapeHTML(player.avatar || '❓');
+
+                     return `<div class="score-row ${scoreClass}">
+                                 <span class="score-avatar">${avatarHTML} ${escapeHTML(player.nickname || 'Unknown')}</span>
+                                 <span>${score} 점</span>
+                             </div>`;
+                 }).join('');
+
+                 // 게임 오버 모달 내용 구성 및 표시
+                 gameOverOverlay.innerHTML = `
+                     <div class="modal-content">
+                         <div class="modal-header"><h2>${resultText}</h2></div>
+                         <div class="modal-body">
+                             <div id="score-board">${scoresHTML}</div>
+                             <div class="modal-buttons">
+                                 <button id="rematch-btn" class="menu-btn primary">다시 하기</button>
+                                 <button id="lobby-btn" class="menu-btn secondary">대기실로</button>
+                             </div>
+                         </div>
+                     </div>`;
+                 gameOverOverlay.style.display = 'flex';
+
+                 // 버튼 이벤트 리스너 설정
+                 const rematchBtn = document.getElementById('rematch-btn');
+                 rematchBtn.addEventListener('click', () => {
+                     rematchBtn.textContent = '상대방 기다리는 중...';
+                     rematchBtn.disabled = true;
+                     roomRef.child('rematchRequests/' + myPlayerId).set(true);
+                 });
+                 document.getElementById('lobby-btn').addEventListener('click', cleanupAndExit);
+
+                 // 다시하기 요청 리스너 (방장이 게임 재시작 처리)
+                 listenForRematch();
+            }
+
+            function listenForRematch() {
+                 const rematchRef = roomRef.child('rematchRequests');
+                 rematchRef.on('value', snapshot => {
+                      if (!snapshot.exists() || !currentRoomData || !currentRoomData.players) return;
+
+                      const requests = snapshot.val();
+                      const requestCount = Object.keys(requests).length;
+                      const playerCount = Object.keys(currentRoomData.players).length;
+
+                      // 모든 플레이어가 동의하면 방장이 게임 재설정
+                      if (requestCount === playerCount && isHost) {
+                            rematchRef.off(); // 리스너 제거
+                            // 게임 상태 초기화 및 재시작 신호 (게임방.html 참고)
+                            roomRef.update({
+                                gameState: 'restarting', // 재시작 트리거
+                                rematchRequests: null,
+                                gameOver: null, // 필요 시 추가
+                                status: 'waiting', // 대기 상태로 변경
+                                board: null, // 게임판 초기화
+                                scores: null,
+                                selectedTiles: null,
+                                turn: null,
+                                readyPlayers: null // 준비 상태 초기화
+                                // players는 유지
+                            });
+                      }
+                 });
+
+                 // 재시작 신호 감지 (모든 클라이언트)
+                 roomRef.child('gameState').on('value', snapshot => {
+                     if (snapshot.val() === 'restarting') {
+                          // onDisconnect 핸들러 취소 (방 폭파/이탈 방지)
+                          if (roomRef) {
+                               if (isHost) roomRef.onDisconnect().cancel();
+                               else roomRef.child('players/' + myPlayerId).onDisconnect().cancel();
+                          }
+                          // 잠시 후 새로고침
+                          setTimeout(() => { location.reload(); }, 500);
+                     }
+                 });
+            }
+
+            // --- 전적 업데이트 ---
+             function updatePlayerStats(result) { // 'win', 'loss', 'draw'
+                 if (!myPlayerId || myPlayerId.startsWith('guest_')) return; // 게스트는 제외
+
+                 const userStatsRef = usersRef.child(myPlayerId).child('gameStats/shisenSho'); // 게임 ID 사용
+
+                 userStatsRef.transaction(currentStats => {
+                     if (currentStats === null) {
+                         currentStats = { wins: 0, losses: 0, draws: 0, plays: 0 };
+                     }
+
+                     currentStats.plays = (currentStats.plays || 0) + 1;
+                     if (result === 'win') {
+                         currentStats.wins = (currentStats.wins || 0) + 1;
+                     } else if (result === 'loss') {
+                         currentStats.losses = (currentStats.losses || 0) + 1;
+                     } else if (result === 'draw') {
+                         currentStats.draws = (currentStats.draws || 0) + 1; // 무승부 카운트 추가
+                     }
+                     return currentStats;
+                 }, (error, committed, snapshot) => {
+                     if (error) { console.error("전적 업데이트 실패:", error); }
+                     else if (committed) { console.log("전적 업데이트 성공:", snapshot.val()); }
+
+                     // 경험치/포인트 업데이트 (알까기.html 참고, 값 조절 필요)
+                      if (committed) {
+                           let expGained = 0, pointsGained = 0;
+                           if (result === 'win') { expGained = 100; pointsGained = 150; }
+                           else if (result === 'loss') { expGained = 20; pointsGained = 50; }
+                           else { expGained = 40; pointsGained = 75; } // 무승부 보상
+
+                           usersRef.child(myPlayerId).child('profile/exp').transaction(exp => (exp || 0) + expGained);
+                           usersRef.child(myPlayerId).child('profile/points').transaction(points => (points || 0) + pointsGained);
+                      }
+                 });
+             }
+
+            // --- 방 나가기 ---
+            function cleanupAndExit() {
+                isExiting = true; // 퇴장 상태 플래그
+                if (roomRef) {
+                    roomRef.off(); // 모든 Firebase 리스너 제거
+                    if (myPlayerId) {
+                         if (isHost) {
+                             // 방장이 나가면 방 전체 삭제
+                             roomRef.remove().catch(e => console.error("방 삭제 오류", e)).finally(() => {
+                                 window.location.replace('대기실.html');
+                             });
+                         } else {
+                             // 게스트가 나가면 플레이어 목록에서 자신만 제거
+                             roomRef.child('players/' + myPlayerId).remove().catch(e => console.error("플레이어 제거 오류", e)).finally(() => {
+                                 window.location.replace('대기실.html');
+                             });
+                         }
+                    } else {
+                         // myPlayerId가 없는 비정상 상태
+                         window.location.replace('대기실.html');
+                    }
+                } else {
+                    // roomRef가 없는 경우 (초기화 실패 등)
+                    window.location.replace('대기실.html');
+                }
+            }
+
+            // --- 초기화 함수 호출 ---
+            initialize();
+        });
+    </script>
+</body>
+</html>
