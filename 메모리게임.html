@@ -92,7 +92,7 @@
     </style>
 </head>
 <body>
-    <div id="start-menu" class="view">
+    <div id="start-menu" class="view hidden">
         <div>
             <h1 class="main-title">메모리 게임</h1>
             <div id="start-menu-buttons">
@@ -119,6 +119,19 @@
                 <button id="info-confirm-btn" class="menu-btn primary" style="margin: 0; max-width: 200px;">확인</button>
             </div>
         </div>
+   </div>
+    
+    <div id="confirm-exit-modal" class="overlay" style="display: none;">
+        <div style="background: white; border-radius: 16px; width: 90%; max-width: 350px; overflow: hidden; box-shadow: 0 5px 15px rgba(0,0,0,0.2);">
+            <div style="padding: 30px 20px 20px; text-align: center;">
+                <h3 style="font-size: 1.4em; margin-bottom: 15px;">게임에서 나가시겠습니까?</h3>
+                <p style="font-size: 0.9em; color: #666;" id="exit-modal-subtext">게임이 종료됩니다.</p>
+            </div>
+            <div style="display: flex; gap: 10px; padding: 15px; background-color: #f8f9fa; border-top: 1px solid #eee;">
+                <button id="exit-cancel-btn" class="menu-btn secondary">취소</button>
+                <button id="exit-confirm-btn" class="menu-btn primary" style="background-color: var(--danger-color);">확인</button>
+            </div>
+        </div>
     </div>
     
     <audio id="flip-sound" src="https://blog.kakaocdn.net/dna/pcEQl/dJMb9LDWoy9/AAAAAAAAAAAAAAAAAAAAAPVGU4wkmgnOb3PqlOYeqvyLhYszCxnHFVpLXXwERBCq/cardsound32562-37691.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=RqFQGsIaZLVnhgC7ca5CNdmTQXc%3D&attach=1&knm=tfile.mp3" preload="auto"></audio>
@@ -140,6 +153,50 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         return str.replace(/[&<>"']/g, m => map[m]);
     }
+
+    // ✨ [신규] 뒤로가기 모달 관련 (아래 코드 추가)
+    const confirmExitModal = document.getElementById('confirm-exit-modal');
+    const exitModalSubtext = document.getElementById('exit-modal-subtext');
+    const exitConfirmBtn = document.getElementById('exit-confirm-btn');
+    const exitCancelBtn = document.getElementById('exit-cancel-btn');
+
+    history.pushState(null, '', location.href);
+    window.addEventListener('popstate', (e) => {
+        history.pushState(null, '', location.href); // 뒤로가기 방지 유지
+        
+        // 멀티플레이 중인지, 싱글플레이 중인지 확인
+        if (roomRef) { // roomRef가 있으면 멀티플레이
+            exitModalSubtext.textContent = isHost ? "방장이 나가면 방이 해체됩니다." : "게임을 포기하고 나가게 됩니다.";
+        } else { // 싱글플레이
+            exitModalSubtext.textContent = "게임을 종료하고 메인으로 나갑니다.";
+        }
+        confirmExitModal.style.display = 'flex'; // 모달 표시
+    });
+
+    exitConfirmBtn.addEventListener('click', () => {
+        // 나가기 버튼 로직
+        confirmExitModal.style.display = 'none';
+        if (roomRef) {
+            // 멀티플레이어 나가기 로직 (cleanup)
+            isGameInProgress = false; // ✨ 게임 진행 중 플래그 끄기
+            cleanupOldRoomState(); // 리스너 끄기
+            
+            // 방장이면 방 폭파, 게스트면 내 정보만 삭제
+            const promise = isHost ? roomRef.remove() : roomRef.child('players/' + myPlayerId).remove();
+            promise.finally(() => {
+                window.location.href = '대기실.html';
+            });
+        } else {
+            // 싱글플레이 나가기 로직
+            sessionStorage.setItem('returnFromGame', 'true'); 
+            window.location.href = 'index.html';
+        }
+    });
+
+    exitCancelBtn.addEventListener('click', () => {
+        confirmExitModal.style.display = 'none'; // 모달 닫기
+    });
+    // ✨ [신규] 끝
 
      (function() {
                     document.addEventListener('contextmenu', e => e.preventDefault());
