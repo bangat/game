@@ -536,63 +536,37 @@
             // 리버시 게임
             if (game.id === 'reversi') {
                 console.log('[게임방] 리버시 초기화 시작');
-                
-                // 색상 랜덤 배정
                 const shuffled = [...playerIds].sort(() => Math.random() - 0.5);
-                
-                const initialBoard = Array(64).fill('empty'); // null 대신 'empty' 사용
-                initialBoard[27] = 'white'; 
-                initialBoard[28] = 'black';
-                initialBoard[35] = 'black'; 
-                initialBoard[36] = 'white';
-
-                // ✨ 각 플레이어의 color를 개별적으로 업데이트
+                const initialBoard = Array(64).fill('empty');
+                initialBoard[27] = 'white'; initialBoard[28] = 'black';
+                initialBoard[35] = 'black'; initialBoard[36] = 'white';
                 shuffled.forEach((pid, index) => {
                     updates[`players/${pid}/color`] = index === 0 ? 'black' : 'white';
                 });
-
                 updates.status = 'playing';
                 updates.board = initialBoard;
                 updates.turn = 'black';
                 updates.passedTurn = false;
                 updates.lastMove = null;
-                
-                console.log('[게임방] 업데이트할 데이터:', updates);
             }
-
             // 메모리 게임
             else if (game.id === 'memoryGame') {
+                console.log('[게임방] 메모리게임 시작 신호 전송');
+                // ✨ [수정] 메모리게임.html이 스스로 초기화하도록 'launching' 신호만 보냄
+                // ✨ (중복되는 카드 생성, 턴 설정 등 모든 로직 삭제)
                 updates.status = 'playing';
-                updates.cards = generateCards(10);
-                updates.playerOrder = playerIds.sort(() => Math.random() - 0.5);
-                updates.turn = updates.playerOrder[0];
-                updates.flippedCards = [];
-                playerIds.forEach(pid => {
-                    updates[`players/${pid}/score`] = 0;
-                });
+                updates.gameState = 'launching'; 
             }
-                // 인디언포커 게임
+            // 인디언포커 게임
             else if (game.id === 'indianpoker') {
                 console.log('[게임방] 인디언포커 초기화 시작');
-                
                 const players = {};
                 playerIds.forEach((pid, index) => {
-                    players[pid] = {
-                        ...currentRoomData.players[pid],
-                        id: pid,
-                        chips: 250,  // 시작 칩
-                        color: index === 0 ? 'blue' : 'red',
-                        bet: 0,
-                        hasFolded: false,
-                        lastAction: null
-                    };
+                    players[pid] = { ...currentRoomData.players[pid], id: pid, chips: 250, color: index === 0 ? 'blue' : 'red', bet: 0, hasFolded: false, lastAction: null };
                 });
-                
-                // 첫 턴 플레이어 랜덤 선택
                 const firstTurnPlayerId = playerIds[Math.floor(Math.random() * playerIds.length)];
-                
                 updates.status = 'playing';
-                updates.gameState = 'launching';  // ← 핵심!
+                updates.gameState = 'launching';
                 updates.players = players;
                 updates.currentTurnPlayerId = firstTurnPlayerId;
                 updates.currentRound = 0;
@@ -601,46 +575,39 @@
                 updates.carryOverPot = 0;
                 updates.actionsThisRound = 0;
                 updates.allPlayerIds = playerIds;
-                
-                console.log('[게임방] 인디언포커 업데이트할 데이터:', updates);
             }
-            // ✨ [신규] 봄버맨 게임 (bomber)
+            // 봄버맨 게임
             else if (game.id === 'bomber') {
                 console.log('[게임방] 봄버맨 초기화 시작');
-                
                 const players = {};
-                const hostId = currentRoomData.hostId;
-                
                 playerIds.forEach(pid => {
                    players[pid] = {
-                        ...currentRoomData.players[pid], // 아바타, 닉네임, bombSkin 등 모든 정보 포함
-                        // ✨ [수정] 스탯 초기화
-                      stats: { maxBombs: 1, bombRange: 1, speed: 1, isAlive: true, needles: 0, shields: 0, darts: 0, shieldActiveUntil: null } // ✨ 쉴드 활성화 시간 추가
+                        ...currentRoomData.players[pid],
+                        stats: { maxBombs: 1, bombRange: 1, speed: 1, isAlive: true, needles: 0, shields: 0, darts: 0, shieldActiveUntil: null }
                     };
-
-                    // ✨ [신규] 혹시 bombSkin 정보가 누락되었다면 기본값 설정
                     if (!players[pid].bombSkin) {
                         players[pid].bombSkin = './봄버맨사운드/물풍선.png';
                     }
                 });
-                
                 updates.status = 'playing';
-                updates.players = players; // ✨ 완전한 players 객체를 업데이트에 포함
+                updates.players = players;
                 updates.gameStartTime = firebase.database.ServerValue.TIMESTAMP;
             }
-            // 기타 게임
+            // 기타 게임 (알까기, 크로싱나이츠, AI퀴즈 등)
             else {
+                console.log(`[게임방] ${game.id} 시작 신호 전송`);
                 updates.status = 'playing';
+                // ✨ [추가] 다른 게임들도 launching 신호를 사용하도록 통일 (선택 사항이지만 권장)
+                updates.gameState = 'launching'; 
             }
 
-            console.log('[게임방] Firebase 업데이트 실행');
+            console.log('[게임방] Firebase 업데이트 실행:', updates);
             roomRef.update(updates).then(() => {
                 console.log('[게임방] 업데이트 성공!');
             }).catch(error => {
                 console.error('[게임방] 업데이트 실패:', error);
             });
-        
-}
+        }
         
         function generateCards(pairCount) {
             const themes = [['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯'], ['🍔','🍕','🍟','🌭','🍿','🥨','🥯','🥞','🧇','🧀']];
