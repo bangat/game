@@ -616,8 +616,11 @@
                 document.getElementById('my-next-panel').style.width = `${nextCanvasWidth}px`;
                 
                 // 3. Size the Main Game Board (based on remaining space)
-                const availableHeight = gameMainContent.clientHeight - nextBarHeight - 10; // [수정] 상단 여백 10px만 제외
-                const availableWidth = gameMainContent.clientWidth; // [수정] 전체 너비 사용
+                // ▼▼▼ [수정] 하단 터치 컨트롤 높이 제외 ▼▼▼
+                const touchControlsHeight = touchControls.clientHeight || 100; // 컨트롤 높이 가져오기 (없으면 기본값 100px)
+                const availableHeight = gameMainContent.clientHeight - nextBarHeight - touchControlsHeight - 10; // 상단 여백 10px과 컨트롤 높이 제외
+                // ▲▲▲ [수정] ▲▲▲
+                const availableWidth = gameMainContent.clientWidth; // 전체 너비 사용
 
                 const widthBasedBlockSize = availableWidth / COLS;
                 const heightBasedBlockSize = availableHeight / ROWS; // 보이는 영역 기준
@@ -805,11 +808,18 @@
 
                                 console.log(`[listen] GameOver Check: iLost=${iLost}, oppLost=${oppLost}`);
 
-                                // 상태 변경 감지: Firebase에서 isGameOver가 true로 바뀌는 순간을 캐치
-                                if (iLost || oppLost) {
-                                     // showGameOver 내부에서 gameOverFlag 체크하므로 여기선 바로 호출
-                                     console.log(`[listen] Game Over detected (iLost=${iLost}, oppLost=${oppLost}). Calling showGameOver.`);
-                                     showGameOver(gameData); // didIWin 인자 제거, 내부에서 계산하도록 함
+                                // 게임 종료 조건:
+                                // 1. 내가 졌다 (iLost === true)
+                                // 2. 상대방 데이터가 있고, 상대가 졌다 (opponentData && oppLost === true)
+                                if (iLost || (opponentData && oppLost)) {
+                                     // showGameOver 내부에서 gameOverFlag를 체크하므로, 여기서 바로 호출
+                                     console.log(`[listen] Game Over condition met (iLost=${iLost}, oppLost=${oppLost}). Calling showGameOver.`);
+                                     showGameOver(gameData); // didIWin 계산은 showGameOver 내부에서
+                                }
+                                // [추가] 상대방 데이터가 없는데 내가 안 진 경우 (상대 나감) 처리
+                                else if (!iLost && !opponentData && isGameLive) { // isGameLive 추가 확인 (게임 시작 후)
+                                    console.log("[listen] Opponent data missing, assuming win. Calling showGameOver.");
+                                    showGameOver(gameData, true); // 명시적으로 승리 전달
                                 }
                             }
                             // ▲▲▲ [재수정] ▲▲▲
