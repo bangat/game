@@ -107,6 +107,29 @@
         }
         .header-btn:active { opacity: 0.7; }
         .header-btn.leave { font-size: 2.5em; width: 50px; text-align: left; }
+        .header-btn.invite {
+            font-size: 1.0em;
+            font-weight: 900;
+            background-color: var(--secondary-color); /* [수정] secondary 색상 */
+            color: var(--text-color-light);
+            border-radius: 12px;
+            padding: 10px 16px;
+            border-bottom: 4px solid #379A93; /* [수정] secondary 어두운 버전 */
+            box-shadow: none;
+            width: auto; /* 고정 폭 제거 */
+            white-space: nowrap; /* 줄바꿈 방지 */
+        }
+        .header-btn.invite:active {
+            transform: translateY(2px);
+            border-bottom-width: 2px;
+        }
+        .header-btn.invite:disabled {
+            background-color: #BDBDBD !important;
+            color: #757575 !important;
+            border-bottom-color: #8D8D8D !important;
+            cursor: not-allowed;
+            transform: none;
+        }
            
         
         .game-lobby-main { flex-grow: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
@@ -309,7 +332,7 @@
                 <h1 id="room-name-header"></h1>
                 <p id="game-type-header"></p>
             </div>
-            <div style="width: 50px; flex-shrink: 0;"></div> </div>
+            <button id="invite-btn" class="header-btn invite">친구초대</button> </div>
         
         <div class="game-lobby-main">
             <div id="player-list-wrapper">
@@ -341,6 +364,9 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.2/kakao.min.js"
+        integrity="sha384-TiCUE00h649CAMupUStPPjWRf83Jik8Uww0wBGj9naGURHiSNdG/XpDHSfKGFsTx"
+        crossorigin="anonymous"></script>
    <script>
     function escapeHTML(str) {
         if (typeof str !== 'string') return '';
@@ -404,6 +430,17 @@
         });
         // ✨ [신규] 끝
 
+        // [신규] 카카오 SDK 초기화
+        try {
+            Kakao.init('eab4e799223cb0d41b51e518546b2405'); // ✨ [필수] 본인의 카카오 JavaScript 키로 변경하세요.
+        } catch (e) {
+            console.error("카카오 SDK 초기화 실패:", e);
+        }
+
+        // [신규] onDisconnect 참조를 저장할 변수
+        let hostOnDisconnect = null;
+        let playerOnDisconnect = null;
+
         const firebaseConfig = {
             apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
             authDomain: "goodluck-7c14b.firebaseapp.com",
@@ -431,6 +468,8 @@
         const emojiToggleBtn = document.getElementById('emoji-toggle-btn');
         const emojiPopover = document.getElementById('emoji-popover');
         const lobbyFooter = document.querySelector('.game-lobby-footer'); // ✨ UI 요소 선택 추가
+        const inviteBtn = document.getElementById('invite-btn');
+        inviteBtn.disabled = true; // [추가] 방 정보 로드 전까지 비활성화
 
         let currentUser, myNickname, myAvatar, myBombSkin, roomRef, currentRoomData, isHost;
         let previousPlayerNicks = {};
@@ -456,6 +495,36 @@
         };
 
         const vibrate = () => { if ('vibrate' in navigator) navigator.vibrate(500); };
+        function kakaoInvite() {
+            if (!currentRoomData || !roomRef) return;
+            
+            const game = availableGames.find(g => g.id === currentRoomData.gameType);
+            if (!game) return;
+
+            const inviteURL = window.location.origin + window.location.pathname + `?roomId=${roomRef.key}`;
+
+            Kakao.Share.sendDefault({
+                objectType: 'feed',
+                content: {
+                    title: `[${game.name}] 같이 할 사람!`,
+                    description: `'${currentRoomData.roomName}' 방에서 당신을 기다리고 있어요!`,
+                    imageUrl: 'https://i.ibb.co/684n0XG/link-Image.png', // ✨ [선택] 게임 로고 이미지 URL로 변경
+                    link: {
+                        mobileWebUrl: inviteURL,
+                        webUrl: inviteURL,
+                    },
+                },
+                buttons: [
+                    {
+                        title: '게임 참가하기',
+                        link: {
+                            mobileWebUrl: inviteURL,
+                            webUrl: inviteURL,
+                        },
+                    },
+                ],
+            });
+        }
 
         auth.onAuthStateChanged(user => {
             if (user) {
@@ -554,6 +623,7 @@
                 }
                 const oldRoomData = currentRoomData;
                 currentRoomData = snapshot.val();
+                inviteBtn.disabled = false; // [추가] 방 정보 로드 완료, 초대 버튼 활성화
                 
                 if (currentRoomData.status === 'playing') {
                     const game = availableGames.find(g => g.id === currentRoomData.gameType);
@@ -576,10 +646,18 @@
                 }
 
                 isHost = currentRoomData.hostId === currentUser.uid;
+                
+                // [수정] onDisconnect 참조를 변수에 저장
                 if (isHost) {
-                    roomRef.onDisconnect().remove();
+                    // 이전에 플레이어 onDisconnect가 설정되었다면 취소
+                    if (playerOnDisconnect) playerOnDisconnect.cancel(); 
+                    hostOnDisconnect = roomRef.onDisconnect();
+                    hostOnDisconnect.remove();
                 } else {
-                    roomRef.child('players/' + currentUser.uid).onDisconnect().remove();
+                    // 이전에 호스트 onDisconnect가 설정되었다면 취소
+                    if (hostOnDisconnect) hostOnDisconnect.cancel(); 
+                    playerOnDisconnect = roomRef.child('players/' + currentUser.uid).onDisconnect();
+                    playerOnDisconnect.remove();
                 }
                 
                 updateUI();
@@ -858,7 +936,30 @@
 
         sendChatBtn.addEventListener('click', () => { sendMessage(chatInput.value); chatInput.value = ''; chatInput.focus(); });
         chatInput.addEventListener('keypress', e => { if (e.key === 'Enter') { sendMessage(chatInput.value); chatInput.value = ''; e.preventDefault(); }});
-        
+        inviteBtn.addEventListener('click', kakaoInvite); // [신규] 초대 버튼 리스너
+
+        // [신규] Page Visibility API 리스너 (연결 유지의 핵심)
+        document.addEventListener('visibilitychange', () => {
+            if (!roomRef || !currentUser) return;
+
+            if (document.visibilityState === 'hidden') {
+                // 페이지가 숨겨지면 (예: 카톡 이동)
+                // 설정된 onDisconnect 이벤트를 모두 임시 취소
+                if (hostOnDisconnect) hostOnDisconnect.cancel();
+                if (playerOnDisconnect) playerOnDisconnect.cancel();
+                
+            } else if (document.visibilityState === 'visible') {
+                // 페이지가 다시 보이면 (예: 게임방 복귀)
+                // onDisconnect 이벤트를 다시 설정
+                if (isHost) {
+                    hostOnDisconnect = roomRef.onDisconnect();
+                    hostOnDisconnect.remove();
+                } else {
+                    playerOnDisconnect = roomRef.child('players/' + currentUser.uid).onDisconnect();
+                    playerOnDisconnect.remove();
+                }
+            }
+        });
         startGameBtn.addEventListener('click', startGame);
         
         // [수정] 나가기 버튼 클릭 시 모달 띄우기
