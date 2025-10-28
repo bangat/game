@@ -155,12 +155,11 @@
         }
         
         #my-garbage-meter-side {
-            position: relative; 
-            width: 15px; 
-            height: 100%; 
-            margin-left: -17px; 
-            top: -2px; 
-            height: calc(100% + 4px); 
+            position: relative;
+            width: 15px; /* 고정 너비 */
+            height: 100%; /* 보드 높이와 동일하게 */
+            margin-left: 2px; /* [수정] 보드 오른쪽에 약간의 간격 */
+            /* [제거] top, height calc, 음수 margin-left */
         }
         #my-garbage-meter-side .garbage-fill {
             position: absolute;
@@ -797,31 +796,23 @@
                             // 헤더 UI 업데이트 (내 정보 + 상대 정보)
                             updateHeaderUI(myData, opponentData);
 
-                            // 게임 오버 확인
-                            if (!gameOverFlag && !gameoverOverlay.classList.contains('active')) { // gameOverFlag 추가 확인
-                                let iLost = myData && myData.isGameOver;
-                                // [수정] opponentData가 존재하는지 먼저 확인
-                                let oppLost = opponentData ? opponentData.isGameOver : false;
+                         // ▼▼▼ [수정] 게임 오버 확인 로직 단순화 및 강화 ▼▼▼
+                            if (!gameOverFlag && gameData && myPlayerKey && gameData[myPlayerKey]) { // myData 존재 확인 추가
+                                const myData = gameData[myPlayerKey];
+                                const opponentData = gameData[opponentPlayerKey]; // opponentData는 null일 수 있음
+                                const iLost = myData.isGameOver; // myData는 존재 보장됨
+                                const oppLost = opponentData && opponentData.isGameOver; // opponentData 있을 때만 체크
 
-                                console.log(`[listen] GameOver Check: iLost=${iLost}, oppLost=${oppLost}, myData exists=${!!myData}, oppData exists=${!!opponentData}`); // 로그 추가
+                                console.log(`[listen] GameOver Check: iLost=${iLost}, oppLost=${oppLost}`);
 
-                                // [수정] 상대방 데이터가 아직 없을 때는(상대가 나갔거나 시작 직후) 내가 졌을 때만 처리
-                                if (iLost && !opponentData) {
-                                    console.log("[listen] Calling showGameOver (I lost, opponent data missing)"); // 로그 추가
-                                    showGameOver(gameData, false); // 내가 짐
-                                } else if (opponentData) { // 상대방 데이터가 있을 때만 비교
-                                     if (iLost && !oppLost) {
-                                        console.log("[listen] Calling showGameOver (I lost, opponent OK)"); // 로그 추가
-                                        showGameOver(gameData, false); // 내가 짐
-                                     } else if (!iLost && oppLost) {
-                                        console.log("[listen] Calling showGameOver (I OK, opponent lost)"); // 로그 추가
-                                        showGameOver(gameData, true); // 내가 이김
-                                     } else if (iLost && oppLost) {
-                                        console.log("[listen] Calling showGameOver (Both lost - Draw)"); // 로그 추가
-                                        showGameOver(gameData, null); // 무승부 (동시 패배)
-                                     }
+                                // 내가 졌거나, 상대방 데이터가 있고 상대가 졌다면 게임 종료 처리
+                                if (iLost || (opponentData && oppLost)) {
+                                     console.log(`[listen] Game Over condition met (iLost=${iLost}, oppLost=${oppLost}). Calling showGameOver.`);
+                                     // 승패 결과는 showGameOver 내부에서 gameData를 보고 판단하도록 함 (null 전달)
+                                     showGameOver(gameData, null);
                                 }
                             }
+                            // ▲▲▲ [수정] ▲▲▲
                         }
 
                     } else if (roomData.status === 'gameOver' && !gameOverFlag) {
@@ -1032,15 +1023,17 @@
                 if(!context) return;
                 context.clearRect(0, 0, 12, 4);
 
-                nextPieceTypes.slice(0, 3).forEach((pieceType, index) => {
+               // ▼▼▼ [수정] 미리보기 순서 반전 (오른쪽이 다음 블럭) ▼▼▼
+                const piecesToDraw = nextPieceTypes.slice(0, PREVIEW_COUNT).reverse(); // 순서 뒤집기
+                piecesToDraw.forEach((pieceType, index) => {
+                // ▲▲▲ [수정] ▲▲▲
                     if (pieceType) {
                         const piece = PIECES[pieceType];
+                        // index는 이제 오른쪽부터 0, 1, 2...
                         const offsetX = (4 - piece.shape[0].length) / 2 + (index * 4);
                         const offsetY = (4 - piece.shape.length) / 2;
 
-                        // ▼▼▼ [수정] 저장된 색상 값 사용 ▼▼▼
-                        context.fillStyle = piece.color || '#FFFFFF'; // piece 객체에 저장된 color 사용
-                        // ▲▲▲ [수정] ▲▲▲
+                        context.fillStyle = piece.color || '#FFFFFF';
                         piece.shape.forEach((row, y) => {
                             row.forEach((value, x) => {
                                 if (value !== 0) {
@@ -1342,12 +1335,16 @@
                     
                     // --- 5. 상대방에게 쓰레기 전송 ---
                     if (garbageToSend > 0) {
-                        if (oppData) {
-                            oppData.incomingGarbage = (oppData.incomingGarbage || 0) + garbageToSend;
-                            console.log(`[handleLocking] Sending ${garbageToSend} garbage to opponent. New total: ${oppData.incomingGarbage}`); // 로그 추가
+                        // ▼▼▼ [수정] 상대방 키 직접 참조 및 null 체크 강화 ▼▼▼
+                        const opponentKey = myPlayerKey === 'p1' ? 'p2' : 'p1';
+                        if (gameData[opponentKey]) { // Ensure opponent data structure exists
+                             // 트랜잭션 내에서 gameData 객체를 직접 수정해야 반영됩니다.
+                             gameData[opponentKey].incomingGarbage = (gameData[opponentKey].incomingGarbage || 0) + garbageToSend;
+                             console.log(`[Transaction] Sending ${garbageToSend} garbage to ${opponentKey}. New total: ${gameData[opponentKey].incomingGarbage}`);
                         } else {
-                            console.log("[handleLocking] Tried to send garbage, but opponent data doesn't exist yet."); // 로그 추가
+                             console.log(`[Transaction] Opponent key ${opponentKey} not found in gameData. Cannot send garbage.`);
                         }
+                        // ▲▲▲ [수정] ▲▲▲
                     }
 
                     if (currentNextPieces.length === 0) {
@@ -1697,7 +1694,7 @@
 
                 listenForRematch(); // 재시작 리스너 시작
             }
-            
+
             
             function listenForRematch() {
                  const rematchRef = roomRef.child('rematchRequests');
@@ -1710,10 +1707,13 @@
 
                       if (requestCount === playerCount && isHost) {
                             rematchRef.off();
+                            // ▼▼▼ [추가] gameOverFlag 초기화 ▼▼▼
+                            gameOverFlag = false;
+                            // ▲▲▲ [추가] ▲▲▲
                             roomRef.update({
                                 rematchRequests: null,
                                 status: 'waiting',
-                                gameData: null, 
+                                gameData: null,
                             });
                       }
                  });
