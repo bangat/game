@@ -1,0 +1,1710 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>실시간 테트리스 対戦</title>
+    <link href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff" as="font" type="font/woff" crossorigin>
+    <style>
+        :root {
+            /* ▼▼▼ [수정] 원래의 다크 테마로 복원 ▼▼▼ */
+            --bg-color: #1a1a2e; /* Dark blue background */
+            --board-bg: #0c0c1e; /* Even darker board background */
+            --grid-color: #4a4a6a; /* Grid line color */
+            --text-color: #e0e0ff; /* Light purple text */
+            --text-color-dark: #333D4B;
+            --accent-color: #FFC84A; /* Accent yellow */
+            --highlight-color: #ff57a5; /* Pink highlight for effects */
+            --danger-color: #F76363;
+            --primary-color: #4A8DFF;
+            --garbage-color: #888888; /* Garbage line color */
+            --garbage-indicator-bg: rgba(136, 136, 136, 0.3);
+            --garbage-indicator-fill: #e74c3c; /* Red fill for garbage meter */
+            --ghost-opacity: 0.25;
+            --touch-control-bg: rgba(255, 255, 255, 0.15);
+            --touch-control-active-bg: rgba(255, 255, 255, 0.3);
+
+            /* Piece Colors - Standard Guideline */
+            --color-I: #00FFFF; /* Cyan */
+            --color-O: #FFFF00; /* Yellow */
+            --color-T: #800080; /* Purple */
+            --color-J: #0000FF; /* Blue */
+            --color-L: #FFA500; /* Orange */
+            --color-S: #00FF00; /* Green */
+            --color-Z: #FF0000; /* Red */
+            /* ▲▲▲ [수정] 원래의 다크 테마로 복원 ▲▲▲ */
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%; height: 100%; overflow: hidden;
+            font-family: 'GmarketSans', sans-serif;
+            background-color: var(--bg-color); color: var(--text-color);
+            display: flex; flex-direction: column; 
+            touch-action: manipulation; -webkit-user-select: none; user-select: none;
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+
+        #game-wrapper {
+            width: 100%; height: 100%;
+            display: flex; flex-direction: column;
+            justify-content: space-between; 
+        }
+
+        #game-header {
+            flex-shrink: 0; display: flex; justify-content: space-between; align-items: stretch;
+            padding: 8px;
+            background-color: rgba(0,0,0,0.2);
+            gap: 8px;
+            border-bottom: 1px solid var(--grid-color);
+            min-height: 70px; 
+        }
+        .player-info {
+            display: flex; align-items: center; gap: 8px;
+            background-color: rgba(0,0,0,0.3);
+            padding: 8px; border-radius: 8px;
+            transition: all 0.3s ease;
+            flex: 1; min-width: 0; 
+            border: 2px solid transparent;
+            position: relative; 
+        }
+        .player-info.my-turn { 
+            border-color: var(--accent-color);
+            background-color: rgba(255, 200, 74, 0.3);
+        }
+        .player-info .avatar {
+            font-size: 1.5em; width: 32px; height: 32px;
+            display: flex; justify-content: center; align-items: center;
+            flex-shrink: 0; background-color: #eee; border-radius: 50%;
+        }
+        .player-info .avatar img { width: 100%; height: 100%; object-fit: contain; border-radius: 50%; }
+        .player-info .info-text { display: flex; flex-direction: column; min-width: 0; flex-grow: 1; gap: 2px;}
+        .player-info .nickname { font-weight: 700; font-size: 0.8em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .player-info .stats { font-size: 0.75em; color: var(--text-color); display: flex; gap: 6px; } /* [수정] color 복원 */
+        .player-info .stats span { color: var(--accent-color); font-weight: bold; }
+        
+        .garbage-meter {
+            background-color: var(--garbage-indicator-bg);
+            border: 1px solid var(--grid-color);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .garbage-fill {
+            position: absolute; bottom: 0; left: 0; width: 100%;
+            height: 0%; 
+            background-color: var(--garbage-indicator-fill);
+            transition: height 0.1s linear;
+        }
+        .garbage-warning { animation: blink-warning 0.5s infinite alternate; }
+        @keyframes blink-warning {
+            from { background-color: var(--garbage-indicator-fill); }
+            to { background-color: #ffc107; }
+        }
+
+        .player-info .garbage-meter {
+            position: absolute;
+            top: 8px; right: 8px; bottom: 8px;
+            width: 10px;
+        }
+
+        /* ▼▼▼ [수정] NEXT 바 스타일 ▼▼▼ */
+        #game-next-bar {
+            flex-shrink: 0;
+            display: flex;
+            justify-content: flex-start; /* [수정] 왼쪽 정렬 */
+            align-items: center;
+            padding-left: 2px; /* [신규] 보드 테두리와 맞춤 */
+            /* width/height는 JS에서 설정 */
+        }
+        /* ▲▲▲ [수정] NEXT 바 스타일 ▲▲▲ */
+
+
+        /* ▼▼▼ [수정] 메인 컨텐츠 영역 (NEXT 바를 포함하도록) ▼▼▼ */
+        #game-main-content {
+            flex-grow: 1; /* 남은 공간 모두 차지 */
+            display: flex;
+            flex-direction: column; /* [신규] 세로 정렬 */
+            justify-content: center; 
+            align-items: center; /* [수정] 가로 중앙 정렬 */
+            overflow: hidden;
+            padding: 10px 0 0; /* [수정] 좌우 여백 제거, 하단 여백 제거 */
+        }
+        /* ▲▲▲ [수정] 메인 컨텐츠 영역 ▲▲▲ */
+        
+        #game-board-area {
+            display: flex;
+            justify-content: center;
+            align-items: flex-start; 
+            width: 100%;
+            height: 100%; 
+        }
+        
+        .board-wrapper {
+            position: relative;
+            flex-shrink: 1; 
+            display: flex; 
+        }
+        #my-board-canvas {
+            border: 2px solid var(--grid-color);
+            background-color: var(--board-bg);
+            display: block;
+            width: 100%; 
+            height: 100%; 
+        }
+        
+        #my-garbage-meter-side {
+            position: relative; 
+            width: 15px; 
+            height: 100%; 
+            margin-left: -17px; 
+            top: -2px; 
+            height: calc(100% + 4px); 
+        }
+        #my-garbage-meter-side .garbage-fill {
+            position: absolute;
+            bottom: 0; left: 0;
+            width: 100%;
+        }
+
+
+        /* ▼▼▼ [수정] NEXT 패널 캔버스 (배경/테두리 제거) ▼▼▼ */
+        .board-side-panel {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px; 
+            flex-shrink: 0; 
+        }
+        .board-side-panel canvas {
+            background-color: transparent; /* [수정] 배경 투명 */
+            border: none; /* [수정] 테두리 제거 */
+            display: block;
+        }
+        /* ▲▲▲ [수정] NEXT 패널 캔버스 ▲▲▲ */
+
+        .panel-label {
+            font-size: clamp(0.6rem, 2vw, 0.8rem); 
+            font-weight: bold;
+            text-align: center;
+            color: var(--accent-color);
+            margin-bottom: 2px; 
+        }
+
+        #touch-controls {
+            position: relative; 
+            flex-shrink: 0; 
+            height: clamp(80px, 15vh, 120px);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 max(10px, 1vw);
+            padding-bottom: max(10px, env(safe-area-inset-bottom)); 
+            z-index: 50;
+            pointer-events: none;
+            width: 100%; 
+        }
+        .touch-group { display: flex; gap: max(5px, 0.5vw); pointer-events: auto; }
+        .touch-btn {
+            width: clamp(50px, 12vw, 70px); height: clamp(50px, 12vw, 70px);
+            display: flex; justify-content: center; align-items: center;
+            font-size: clamp(1.5rem, 5vw, 2rem); font-weight: bold; color: white;
+            background-color: var(--touch-control-bg);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .touch-btn:active { background-color: var(--touch-control-active-bg); }
+
+        #particle-canvas {
+            position: absolute; top: 0; left: 0;
+            pointer-events: none; z-index: 99;
+        }
+
+        /* --- [수정] 오버레이/모달 스타일 (다크 테마 복원) --- */
+        .overlay { 
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            display: none; 
+            flex-direction: column; justify-content: center; align-items: center; 
+            z-index: 200; text-align: center; background-color: rgba(0, 0, 0, 0.85);
+            color: white;
+        }
+        .overlay.active {
+            display: flex; 
+        }
+        .modal-content { 
+            background: #2a2a4e; /* [수정] 다크 테마 */
+            color: var(--text-color);  /* [수정] 다크 테마 */
+            padding: 0; border-radius: 16px; width: 90%; max-width: 400px; 
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2); overflow: hidden;
+            border: 1px solid var(--grid-color);
+        }
+        .modal-header { 
+            background-color: #0c0c1e; /* [수정] 다크 테마 */
+            color: white; padding: 15px; border-radius: 16px 16px 0 0; 
+            border-bottom: 1px solid var(--grid-color);
+        }
+        .modal-header h2 { font-size: 1.6em; }
+        .modal-body { padding: 25px; color: var(--text-color); } /* [수정] 다크 테마 */
+        .modal-buttons { display: flex; flex-direction: column; gap: 12px; align-items: center; margin-top: 25px; }
+        .spinner { border: 4px solid rgba(255, 255, 255, 0.3); border-radius: 50%; border-top: 4px solid white; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        #countdown-number { 
+            font-size: 7em; font-weight: 700; color: white; 
+            text-shadow: 0 0 20px rgba(255,255,255,0.7); 
+            animation: countdown-pop 1s; 
+        }
+        @keyframes countdown-pop { 
+            from { transform: scale(0.5); opacity: 0; } 
+            to { transform: scale(1); opacity: 1; } 
+        }
+
+        #score-board { margin: 20px 0; display: flex; flex-direction: column; gap: 8px; }
+        .score-row { 
+            display: flex; justify-content: space-between; align-items: center; 
+            padding: 10px 15px; border-radius: 8px; font-size: 1.1em; font-weight: 700; 
+            background-color: rgba(0,0,0,0.2);
+        }
+        .score-row.winner { 
+            background-color: var(--accent-color); color: var(--text-color-dark); 
+            transform: scale(1.03); 
+            border: 1px solid #fff;
+        }
+        .score-row.loser, .score-row.draw { 
+            background-color: rgba(0,0,0,0.2); 
+            border: 1px solid var(--grid-color);
+        }
+        .score-avatar { display: inline-flex; align-items: center; gap: 10px; }
+        .score-avatar .avatar { width: 32px; height: 32px; font-size: 1.5em; } 
+        .score-avatar .avatar img { width: 100%; height: 100%; object-fit: contain; border-radius: 50%; }
+
+        .menu-btn { 
+            width: 100%; padding: 15px; font-size: 1.1em; font-weight: bold; 
+            border-radius: 12px; border: none; cursor: pointer; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
+            transition: transform 0.1s; margin: 5px 0; 
+            font-family: 'GmarketSans', sans-serif;
+        }
+        .menu-btn.primary { background-color: var(--primary-color); color: white; }
+        .menu-btn.secondary { background-color: #3a3a5e; color: var(--text-color); } /* [수정] 다크 테마 */
+        .menu-btn:active { transform: scale(0.98); }
+        .menu-btn:disabled { background-color: #ccc; color: #888; cursor: not-allowed; }
+
+       #confirm-exit-modal .modal-content { max-width: 350px; }
+       #confirm-exit-modal .modal-body { padding: 30px; text-align: center; }
+       #confirm-exit-modal .modal-body h3 { font-size: 1.4em; margin-bottom: 15px; }
+       #confirm-exit-modal .modal-body p { font-size: 0.9em; color: #ccc; }
+       #confirm-exit-modal .modal-footer { 
+           display: flex; gap: 10px; padding: 15px; 
+           background-color: #1a1a2e; /* [수정] 다크 테마 */
+           border-top: 1px solid var(--grid-color); 
+       }
+    </style>
+</head>
+<body>
+    <audio id="move-sound" src="sounds/move.wav" preload="auto"></audio>
+    <audio id="rotate-sound" src="sounds/rotate.wav" preload="auto"></audio>
+    <audio id="lock-sound" src="sounds/lock.wav" preload="auto"></audio>
+    <audio id="clear-sound" src="sounds/clear.wav" preload="auto"></audio>
+    <audio id="gameover-sound" src="sounds/gameover.wav" preload="auto"></audio>
+    <audio id="garbage-sound" src="sounds/garbage.wav" preload="auto"></audio>
+    <audio id="tspin-sound" src="sounds/tspin.wav" preload="auto"></audio>
+    <audio id="tetris-sound" src="sounds/tetris.wav" preload="auto"></audio>
+    <audio id="win-sound-new" src="./봄버맨사운드/win.mp3" preload="auto"></audio>
+    <audio id="loss-sound-new" src="./봄버맨사운드/패배.mp3" preload="auto"></audio>
+
+
+    <div id="game-wrapper">
+        
+        <div id="game-header">
+            </div>
+        
+        <div id="game-main-content">
+            <div id="game-next-bar">
+                <div class="board-side-panel" id="my-next-panel">
+                    <div class="panel-label">NEXT</div>
+                    <canvas id="my-next-canvas"></canvas>
+                </div>
+            </div>
+
+            <div id="game-board-area">
+                <div class="board-wrapper">
+                    <canvas id="my-board-canvas"></canvas>
+                    <div class="garbage-meter" id="my-garbage-meter-side">
+                        <div class="garbage-fill" id="my-garbage-fill"></div>
+                    </div>
+                    <canvas id="particle-canvas"></canvas> 
+                </div>
+            </div>
+        </div>
+        <div id="touch-controls" style="display: none;">
+            <div class="touch-group">
+                <div class="touch-btn" id="touch-left">⬅️</div>
+                <div class="touch-btn" id="touch-right">➡️</div>
+            </div>
+            <div class="touch-group">
+                <div class="touch-btn" id="touch-rotate">🔄</div>
+                <div class="touch-btn" id="touch-down">⬇️</div>
+                <div class="touch-btn" id="touch-drop">⏬</div>
+            </div>
+        </div>
+    </div>
+
+
+    <div id="info-overlay" class="overlay active"> <h2>Connecting...</h2>
+        <div class="spinner"></div>
+    </div>
+    
+    <div id="game-over-overlay" class="overlay">
+        </div>
+
+    <div id="confirm-exit-modal" class="overlay">
+         <div class="modal-content">
+             <div class="modal-body">
+                 <h3>대기실로 나가시겠습니까?</h3>
+                 <p>게임은 패배 처리됩니다.</p>
+             </div>
+             <div class="modal-footer">
+                 <button id="exit-cancel-btn" class="menu-btn secondary">취소</button>
+                 <button id="exit-confirm-btn" class="menu-btn primary" style="background-color: var(--danger-color);">확인</button>
+             </div>
+         </div>
+    </div>
+
+
+    <script src="아바타.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script>
+        // --- [신규] HTML Escape 함수 ---
+        function escapeHTML(str) {
+            if (typeof str !== 'string') return '';
+            const map = {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'};
+            return str.replace(/[&<>"']/g, m => map[m]);
+        }
+    
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- Firebase Setup ---
+            const firebaseConfig = {
+                apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
+                authDomain: "goodluck-7c14b.firebaseapp.com",
+                databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com",
+                projectId: "goodluck-7c14b",
+                storageBucket: "goodluck-7c14b.appspot.com",
+                messagingSenderId: "858281658455",
+                appId: "1:858281658455:web:9131280a459be983933b12"
+            };
+            firebase.initializeApp(firebaseConfig);
+            const db = firebase.database();
+            const auth = firebase.auth();
+            const roomsRef = db.ref('rooms');
+            const usersRef = db.ref('users');
+
+            // --- [수정] DOM Elements ---
+            const gameWrapper = document.getElementById('game-wrapper');
+            const gameHeader = document.getElementById('game-header');
+            const gameMainContent = document.getElementById('game-main-content');
+            const gameBoardArea = document.getElementById('game-board-area');
+            
+            const infoOverlay = document.getElementById('info-overlay');
+            const gameoverOverlay = document.getElementById('gameover-overlay');
+            const confirmExitModal = document.getElementById('confirm-exit-modal');
+            const exitConfirmBtn = document.getElementById('exit-confirm-btn');
+            const exitCancelBtn = document.getElementById('exit-cancel-btn');
+            
+            const touchControls = document.getElementById('touch-controls');
+            const particleCanvas = document.getElementById('particle-canvas');
+            const particleCtx = particleCanvas.getContext('2d');
+
+            // My UI (Only my elements)
+            const myCanvas = document.getElementById('my-board-canvas');
+            const myCtx = myCanvas.getContext('2d');
+            const myNextCanvas = document.getElementById('my-next-canvas');
+            const myNextCtx = myNextCanvas.getContext('2d');
+            const myGarbageMeter = document.getElementById('my-garbage-meter-side');
+            const myGarbageFill = document.getElementById('my-garbage-fill');
+            
+            // --- Game Constants ---
+            const COLS = 10;
+            const ROWS = 20;
+            const HIDDEN_ROWS = 2;
+            const PREVIEW_COUNT = 3;
+            let BLOCK_SIZE = 20; 
+
+            const PIECES = {
+                'I': { shape: [[0,0,0,0], [1,1,1,1], [0,0,0,0], [0,0,0,0]], colorVar: '--color-I', color: '#00FFFF', index: 1 }, // Cyan
+                'O': { shape: [[1,1], [1,1]], colorVar: '--color-O', color: '#FFFF00', index: 2 }, // Yellow
+                'T': { shape: [[0,1,0], [1,1,1], [0,0,0]], colorVar: '--color-T', color: '#800080', index: 3 }, // Purple
+                'J': { shape: [[1,0,0], [1,1,1], [0,0,0]], colorVar: '--color-J', color: '#0000FF', index: 4 }, // Blue
+                'L': { shape: [[0,0,1], [1,1,1], [0,0,0]], colorVar: '--color-L', color: '#FFA500', index: 5 }, // Orange
+                'S': { shape: [[0,1,1], [1,1,0], [0,0,0]], colorVar: '--color-S', color: '#00FF00', index: 6 }, // Green
+                'Z': { shape: [[1,1,0], [0,1,1], [0,0,0]], colorVar: '--color-Z', color: '#FF0000', index: 7 } // Red
+            };
+            const PIECE_TYPES = Object.keys(PIECES);
+            const GARBAGE_COLOR_VAR = '--garbage-color';
+            let GARBAGE_COLOR_VALUE = '#888888'; // Default fallback
+            const GARBAGE_INDEX = 8;
+            let GRID_COLOR_VALUE = '#4a4a6a'; // Default fallback
+            let BOARD_BG_COLOR_VALUE = '#0c0c1e'; // Default fallback
+
+            // ▼▼▼ [신규] 색상 초기화 함수 (페이지 로드 시 한 번만 호출) ▼▼▼
+            function initializeColors() {
+                const rootStyle = getComputedStyle(document.documentElement);
+                for (const type in PIECES) {
+                    const colorName = PIECES[type].colorVar; // e.g., '--color-T'
+                    PIECES[type].color = rootStyle.getPropertyValue(colorName).trim() || PIECES[type].color; // Lookup actual color, fallback to default
+                }
+                GARBAGE_COLOR_VALUE = rootStyle.getPropertyValue(GARBAGE_COLOR_VAR).trim() || GARBAGE_COLOR_VALUE;
+                GRID_COLOR_VALUE = rootStyle.getPropertyValue('--grid-color').trim() || GRID_COLOR_VALUE;
+                BOARD_BG_COLOR_VALUE = rootStyle.getPropertyValue('--board-bg').trim() || BOARD_BG_COLOR_VALUE;
+                console.log("Colors Initialized:", PIECES, GARBAGE_COLOR_VALUE, GRID_COLOR_VALUE, BOARD_BG_COLOR_VALUE); // 디버깅
+            }
+            // ▲▲▲ [신규] ▲▲▲
+
+            const BASE_DROP_INTERVAL = 1000;
+            const LEVEL_SPEED_FACTOR = 0.8;
+            const SCORE_MAP = { 1: 100, 2: 300, 3: 500, 4: 800 };
+            const T_SPIN_SCORE = { mini: 100, normal: 400 };
+            const T_SPIN_LINE_SCORE = { 1: 800, 2: 1200, 3: 1600 };
+            const COMBO_SCORE = 50;
+            const SOFT_DROP_SCORE = 1;
+            const HARD_DROP_SCORE = 2;
+            const GARBAGE_MAP = { 1: 0, 2: 1, 3: 2, 4: 4 };
+            const T_SPIN_GARBAGE = { mini_0: 0, mini_1: 1, normal_0: 0, normal_1: 2, normal_2: 4, normal_3: 6 };
+            const COMBO_GARBAGE = [0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 4, 5];
+
+            // --- Game State Variables ---
+            let myPlayerId, myNickname, myAvatar, roomRef, isHost; 
+            let myPlayerKey = null;
+            let opponentPlayerKey = null;
+            let currentRoomData = null; 
+
+            let board;
+            let currentPiece;
+            let pieceBag = [];
+            let nextPieces = [];
+
+            let score = 0;
+            let level = 1;
+            let lines = 0;
+            let combo = -1;
+            let incomingGarbage = 0;
+            let lastMoveWasRotate = false;
+
+            let gameLoopId;
+            let lastTime = 0;
+            let dropCounter = 0;
+            let dropInterval = BASE_DROP_INTERVAL;
+            let softDropActive = false;
+            let lockDelayTimer = null;
+            const LOCK_DELAY = 500;
+
+            let isGameOver = false;
+            let gameStarted = false;
+            let particles = [];
+            let sounds = {};
+
+            let isGameLive = false;
+            let gameOverFlag = false;
+            let isExiting = false;
+            let countdownStarted = false;
+
+              // --- Initialization ---
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    myPlayerId = user.uid;
+                    myNickname = localStorage.getItem('userNickname') || 'Player';
+                    myAvatar = localStorage.getItem('userAvatar') || '😊';
+                    
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const roomId = urlParams.get('roomId');
+                    if (!roomId) { alert("Invalid access"); cleanupAndExit(); return; }
+
+                    history.pushState(null, '', location.href);
+                    window.addEventListener('popstate', (e) => {
+                        history.pushState(null, '', location.href);
+                        confirmExitModal.style.display = 'flex';
+                    });
+                    exitConfirmBtn.addEventListener('click', cleanupAndExit);
+                    exitCancelBtn.addEventListener('click', () => { confirmExitModal.style.display = 'none'; });
+
+                    joinRoom(roomId);
+                    initializeColors();
+                } else {
+                    window.location.href = 'index.html';
+                }
+            });
+
+            function joinRoom(roomId) {
+                roomRef = roomsRef.child(roomId);
+                roomRef.once('value').then(snapshot => {
+                    if (!snapshot.exists()) { alert("Room not found"); cleanupAndExit(); return; }
+                    
+                    currentRoomData = snapshot.val(); 
+                    const roomData = currentRoomData; 
+                    isHost = roomData.hostId === myPlayerId;
+
+                    const playerIds = Object.keys(roomData.players || {});
+                    if (playerIds.length === 1 && playerIds[0] === myPlayerId) {
+                        myPlayerKey = 'p1'; opponentPlayerKey = 'p2';
+                    } else if (playerIds.length === 2) {
+                        myPlayerKey = (roomData.hostId === myPlayerId) ? 'p1' : 'p2';
+                        opponentPlayerKey = (myPlayerKey === 'p1') ? 'p2' : 'p1';
+                    } else if (roomData.status === 'playing' && roomData.players[myPlayerId]) {
+                        myPlayerKey = (roomData.hostId === myPlayerId) ? 'p1' : 'p2';
+                        opponentPlayerKey = (myPlayerKey === 'p1') ? 'p2' : 'p1';
+                        console.log("재접속 감지됨.");
+                    } else {
+                        alert("Invalid room data"); cleanupAndExit(); return;
+                    }
+                    
+                    if (isHost) { roomRef.onDisconnect().remove(); }
+                    else { roomRef.child('players/' + myPlayerId).onDisconnect().remove(); }
+                    
+                    roomRef.child('players/' + myPlayerId).set({
+                        nickname: myNickname,
+                        avatar: myAvatar,
+                        isHost: isHost
+                    });
+
+                    adjustLayout(); 
+                    loadSounds();
+                    setupControls();
+                    listenToRoomChanges(); 
+
+                }).catch(err => {
+                    console.error("Firebase error:", err);
+                    alert("Failed to load room"); cleanupAndExit();
+                });
+            }
+
+            function cleanupAndExit() {
+                isExiting = true;
+                cancelAnimationFrame(gameLoopId);
+                if (roomRef) {
+                    roomRef.off();
+                    if (myPlayerId) {
+                        const playerRef = roomRef.child('players/' + myPlayerId);
+                        if (isHost) {
+                            roomRef.remove().finally(() => window.location.replace('대기실.html'));
+                        } else {
+                            playerRef.remove().finally(() => window.location.replace('대기실.html'));
+                        }
+                    } else {
+                        window.location.replace('대기실.html');
+                    }
+                } else {
+                    window.location.replace('대기실.html');
+                }
+            }
+
+            // --- [대폭 수정] 레이아웃 조정 (가로 폭 최대화 및 버그 수정) ---
+            function adjustLayout() {
+                // 1. Set height for the NEXT bar
+                const nextBar = document.getElementById('game-next-bar');
+                const nextBarHeight = 45; // Fixed height in pixels
+                nextBar.style.height = `${nextBarHeight}px`;
+
+                // 2. Size the NEXT canvas inside the bar
+                const headerBlockSize = Math.floor(Math.max(1, (nextBarHeight - 10) / 4)); // 10px for label/padding
+                const nextCanvasWidth = headerBlockSize * 12; // 3 pieces (4x3)
+                const nextCanvasHeight = headerBlockSize * 4;
+                myNextCanvas.width = nextCanvasWidth;
+                myNextCanvas.height = nextCanvasHeight;
+                document.getElementById('my-next-panel').style.width = `${nextCanvasWidth}px`;
+                
+                // 3. Size the Main Game Board (based on remaining space)
+                const availableHeight = gameMainContent.clientHeight - nextBarHeight - 10; // [수정] 상단 여백 10px만 제외
+                const availableWidth = gameMainContent.clientWidth; // [수정] 전체 너비 사용
+
+                const widthBasedBlockSize = availableWidth / COLS;
+                const heightBasedBlockSize = availableHeight / ROWS; // 보이는 영역 기준
+                
+                BLOCK_SIZE = Math.floor(Math.min(widthBasedBlockSize, heightBasedBlockSize));
+
+                const boardWidth = BLOCK_SIZE * COLS;
+                const boardHeight = BLOCK_SIZE * ROWS; // 보이는 영역 높이
+                const totalCanvasHeight = BLOCK_SIZE * (ROWS + HIDDEN_ROWS); // 전체 캔버스 높이 (숨겨진 영역 포함)
+
+                // 4. Apply sizes
+                const boardWrapper = document.querySelector('.board-wrapper');
+                boardWrapper.style.width = `${boardWidth}px`;
+                boardWrapper.style.height = `${boardHeight}px`; // 보이는 영역만큼만 크기 지정
+                
+                // ▼▼▼ [수정] 캔버스 자체의 width/height는 숨겨진 영역 포함 ▼▼▼
+                myCanvas.width = boardWidth;
+                myCanvas.height = totalCanvasHeight; 
+                // ▲▲▲ [수정] ▲▲▲
+                
+                nextBar.style.width = `${boardWidth}px`;
+
+                particleCanvas.width = boardWidth;
+                particleCanvas.height = boardHeight; // 파티클은 보이는 영역에만
+                particleCanvas.style.width = `${boardWidth}px`;
+                particleCanvas.style.height = `${boardHeight}px`;
+
+                // 5. Set context scales
+                setupContextScale(BLOCK_SIZE, headerBlockSize);
+            }
+
+            function setupContextScale(mainBlockSize, headerBlockSize) {
+                if (!myCtx) return;
+
+                // ▼▼▼ [수정] 메인 보드 스케일링 (숨겨진 영역 고려) ▼▼▼
+                myCtx.resetTransform(); 
+                // 캔버스 자체 크기는 totalCanvasHeight이지만, 스케일은 BLOCK_SIZE 기준
+                myCtx.scale(mainBlockSize, mainBlockSize); 
+                // ▲▲▲ [수정] ▲▲▲
+                
+                // 파티클
+                if(particleCtx) particleCtx.resetTransform();
+
+                // 넥스트
+                if(myNextCtx) {
+                    myNextCtx.resetTransform();
+                    myNextCtx.scale(headerBlockSize, headerBlockSize);
+                }
+            }
+
+
+            function loadSounds() {
+                const soundIds = ['move', 'rotate', 'lock', 'clear', 'gameover', 'garbage', 'tspin', 'tetris', 'win-sound-new', 'loss-sound-new'];
+                soundIds.forEach(key => {
+                    const audio = document.getElementById(`${key}-sound`);
+                    if (audio) {
+                        sounds[key] = audio;
+                    } else {
+                        console.warn(`Sound element not found: ${key}-sound`);
+                    }
+                });
+            }
+
+            function playSound(id) {
+                if (sounds[id]) {
+                    sounds[id].currentTime = 0;
+                    sounds[id].play().catch(e => {});
+                }
+            }
+
+
+            // Host initializes Firebase game data (유지)
+            function initializeGameData() {
+                const initialBoard = createMatrix(COLS, ROWS + HIDDEN_ROWS);
+                let initialBag = generate7Bag();
+                const firstPieceType = initialBag.pop();
+                const secondPieceType = initialBag.pop();
+                const thirdPieceType = initialBag.pop();
+
+                const createInitialPlayerState = (pieceType, nextType) => ({
+                    board: initialBoard, score: 0, level: 1, lines: 0,
+                    currentPiece: spawnPiece(pieceType),
+                    nextPieces: [nextType, thirdPieceType],
+                    incomingGarbage: 0, combo: -1, isGameOver: false,
+                    lastMoveWasRotate: false,
+                    boardHeight: 0
+                });
+
+                const hostStartPiece = firstPieceType;
+                const guestStartPiece = secondPieceType;
+                const hostNextPiece = thirdPieceType;
+                const guestNextPiece = initialBag.length > 0 ? initialBag[initialBag.length - 1] : generate7Bag().pop();
+
+                roomRef.child('gameData').set({
+                    p1: createInitialPlayerState(hostStartPiece, hostNextPiece),
+                    p2: createInitialPlayerState(guestStartPiece, guestNextPiece),
+                    pieceBag: initialBag
+                }).catch(err => console.error("Error initializing game data:", err));
+            }
+
+
+            function listenToRoomChanges() {
+                roomRef.on('value', snapshot => {
+                    if (isExiting) return;
+                    if (!snapshot.exists()) {
+                        if (!gameOverFlag) alert("방이 사라졌습니다.");
+                        cleanupAndExit();
+                        return;
+                    }
+
+                    currentRoomData = snapshot.val();
+                    const roomData = currentRoomData;
+                    const gameData = roomData.gameData;
+
+                    if (!roomData.players || !roomData.players[myPlayerId]) {
+                        if (!gameOverFlag) alert("방에서 퇴장되었습니다.");
+                        cleanupAndExit();
+                        return;
+                    }
+                    
+                    if (roomData.status === 'playing') {
+                        if (!gameData && isHost) {
+                            console.log("GameData not found. Host initializing...");
+                            initializeGameData();
+                            return; 
+                        }
+
+                        if (gameData && !countdownStarted) {
+                            countdownStarted = true;
+                            
+                            if (gameData && myPlayerKey && opponentPlayerKey) {
+                                const myData = gameData[myPlayerKey];
+                                const opponentData = gameData[opponentPlayerKey];
+                                
+                                if (myData) {
+                                    board = myData.board || createMatrix(COLS, ROWS + HIDDEN_ROWS);
+                                    currentPiece = myData.currentPiece;
+                                    nextPieces = myData.nextPieces || [];
+                                    score = myData.score;
+                                    level = myData.level;
+                                    lines = myData.lines;
+                                    incomingGarbage = myData.incomingGarbage;
+                                    combo = myData.combo;
+                                    isGameOver = myData.isGameOver;
+                                    lastMoveWasRotate = myData.lastMoveWasRotate;
+
+                                    calculateGhostY();
+                                    drawMyBoard(); 
+                                }
+                                updateHeaderUI(myData, opponentData);
+                            }
+
+                            startCountdown(); 
+                        }
+
+                        if (isGameLive && gameData && myPlayerKey && opponentPlayerKey) {
+                            const myData = gameData[myPlayerKey];
+                            const opponentData = gameData[opponentPlayerKey];
+                            
+                            if (myData) {
+                                board = myData.board || createMatrix(COLS, ROWS + HIDDEN_ROWS);
+                                currentPiece = myData.currentPiece;
+                                nextPieces = myData.nextPieces || [];
+                                score = myData.score;
+                                level = myData.level;
+                                lines = myData.lines;
+                                incomingGarbage = myData.incomingGarbage;
+                                combo = myData.combo;
+                                isGameOver = myData.isGameOver;
+                                lastMoveWasRotate = myData.lastMoveWasRotate;
+
+                                calculateGhostY();
+                                drawMyBoard(); 
+                            }
+
+                            updateHeaderUI(myData, opponentData);
+                            
+                            if (!gameoverOverlay.classList.contains('active')) {
+                                let iLost = myData && myData.isGameOver;
+                                let oppLost = opponentData && opponentData.isGameOver;
+                                
+                                if (iLost && !oppLost) showGameOver(gameData, false);
+                                else if (!iLost && oppLost) showGameOver(gameData, true);
+                                else if (iLost && oppLost) showGameOver(gameData, null);
+                            }
+                        }
+
+                    } else if (roomData.status === 'gameOver' && !gameOverFlag) {
+                        gameOverFlag = true;
+                        isGameLive = false;
+                        cancelAnimationFrame(gameLoopId);
+                        showGameOver(gameData);
+                        
+                    } else if (roomData.status === 'waiting') {
+                        infoOverlay.innerHTML = `<h2>Waiting for opponent...</h2><div class="spinner"></div>`;
+                        infoOverlay.classList.add('active');
+                        gameoverOverlay.classList.remove('active');
+                        
+                        countdownStarted = false;
+                        isGameLive = false;
+                        gameOverFlag = false;
+                        cancelAnimationFrame(gameLoopId);
+                        
+                        if (isHost) {
+                            roomRef.child('players').once('value').then(snap => {
+                                if (snap.numChildren() === 2 && (!roomData.gameData || roomData.status === 'gameOver')) {
+                                    initializeGameData(); 
+                                    roomRef.child('status').set('playing'); 
+                                }
+                            });
+                        }
+                    }
+                });
+            }
+
+            function startCountdown() {
+                infoOverlay.style.display = 'flex';
+                infoOverlay.innerHTML = `<div id="countdown-number" style="font-size: 4.5em; animation: countdown-pop 1s;">Ready?</div>`;
+
+                let count = 3; 
+                
+                setTimeout(() => { 
+                    const el = document.getElementById('countdown-number');
+                    if (el) {
+                        el.style.fontSize = '7em'; 
+                        el.style.animation = 'countdown-pop 1s';
+                        el.textContent = count;
+                    }
+                    
+                    const interval = setInterval(() => {
+                        count--;
+                        const el = document.getElementById('countdown-number');
+                        if (el) {
+                            el.style.animation = 'none';
+                            el.offsetHeight; 
+                            el.style.animation = 'countdown-pop 1s';
+                            el.textContent = count > 0 ? count : 'GO!';
+                        }
+
+                        if (count <= -1) { 
+                            clearInterval(interval);
+                            infoOverlay.style.display = 'none';
+                            isGameLive = true;
+                            startGameLoop(); 
+                        }
+                    }, 1000);
+                }, 1000); 
+            }
+
+            function updateHeaderUI(myData, opponentData) {
+                if (!currentRoomData || !currentRoomData.players) return;
+                
+                gameHeader.innerHTML = ''; 
+                
+                const myInfo = { 
+                    player: currentRoomData.players[myPlayerId], 
+                    data: myData, 
+                    isMe: true 
+                };
+                const opponentId = Object.keys(currentRoomData.players).find(id => id !== myPlayerId);
+                const opponentInfo = {
+                    player: opponentId ? currentRoomData.players[opponentId] : {nickname: 'Opponent', avatar: '👻'},
+                    data: opponentData,
+                    isMe: false
+                };
+
+                [myInfo, opponentInfo].forEach(info => {
+                    const player = info.player;
+                    const data = info.data || { score: 0, lines: 0, incomingGarbage: 0, isGameOver: false }; 
+
+                    const avatarSet = AVATAR_SETS[player.avatar];
+                    let avatarHTML = '';
+                    if (avatarSet) {
+                        avatarHTML = `<img src="${avatarSet.front}" alt="avatar">`;
+                    } else if (player.avatar && (player.avatar.startsWith('http') || player.avatar.includes('.'))) {
+                        avatarHTML = `<img src="${escapeHTML(player.avatar)}" alt="avatar">`;
+                    } else {
+                        avatarHTML = escapeHTML(player.avatar || '❓');
+                    }
+
+                    const infoEl = document.createElement('div');
+                    infoEl.className = `player-info`;
+                    if (data.isGameOver) {
+                         infoEl.classList.add('my-turn'); 
+                    }
+                    
+                    const garbageMeterId = info.isMe ? 'my-garbage-header' : 'opponent-garbage-header';
+                    const garbageFillId = info.isMe ? 'my-garbage-fill-header' : 'opponent-garbage-fill-header';
+
+                    infoEl.innerHTML = `
+                        <div class="avatar">${avatarHTML}</div>
+                        <div class="info-text">
+                            <div class="nickname">${escapeHTML(player.nickname || 'Unknown')}</div>
+                            <div class="stats">
+                                L: <span>${data.lines}</span> S: <span>${data.score}</span>
+                            </div>
+                        </div>
+                        <div class="garbage-meter" id="${garbageMeterId}">
+                            <div class="garbage-fill" id="${garbageFillId}"></div>
+                        </div>
+                    `;
+                    
+                    gameHeader.appendChild(infoEl); 
+                    
+                    const fillEl = document.getElementById(garbageFillId);
+                    const meterEl = document.getElementById(garbageMeterId);
+                    updateGarbageMeter(meterEl, fillEl, data.incomingGarbage);
+                    
+                    if (info.isMe) {
+                        updateGarbageMeter(myGarbageMeter, myGarbageFill, data.incomingGarbage);
+                    }
+                });
+            }
+
+            // --- Drawing Functions ---
+            function drawMyBoard() {
+                if (!myCtx) return;
+                // ▼▼▼ [수정] 저장된 색상 값 사용 ▼▼▼
+                myCtx.fillStyle = BOARD_BG_COLOR_VALUE;
+                // ▲▲▲ [수정] ▲▲▲
+                myCtx.fillRect(0, 0, COLS, ROWS + HIDDEN_ROWS);
+
+                drawMatrix(myCtx, board, { x: 0, y: 0 });
+
+                if (currentPiece && !isGameOver) {
+                    drawGhostPiece(myCtx, 0);
+                    drawPiece(myCtx, currentPiece, 0);
+                }
+
+                drawGrid(myCtx, COLS, ROWS, HIDDEN_ROWS);
+
+                drawNext(myNextCtx, nextPieces);
+            }
+
+            function drawMatrix(context, matrix, offset) {
+                if (!matrix) return;
+                for (let y = 0; y < ROWS + HIDDEN_ROWS; y++) {
+                    if (!matrix[y]) continue;
+                    for (let x = 0; x < COLS; x++) {
+                        const value = matrix[y][x];
+                        if (value !== 0) {
+                            const canvasY = y + offset.y;
+                            // ▼▼▼ [수정] 저장된 색상 값 사용 ▼▼▼
+                            context.fillStyle = value === GARBAGE_INDEX ? GARBAGE_COLOR_VALUE : PIECES[PIECE_TYPES[value - 1]]?.color || '#888888';
+                            // ▲▲▲ [수정] ▲▲▲
+                            context.fillRect(x + offset.x, canvasY, 1, 1);
+                            context.strokeStyle = 'rgba(0,0,0,0.3)';
+                            context.lineWidth = 0.05;
+                            context.strokeRect(x + offset.x, canvasY, 1, 1);
+                        }
+                    }
+                }
+            }
+
+            function drawPiece(context, piece, yOffset = 0) {
+                 if (!piece || !piece.shape) return;
+                 // ▼▼▼ [수정] 저장된 색상 값 사용 ▼▼▼
+                 context.fillStyle = piece.color || '#FFFFFF'; // piece 객체에 저장된 color 사용
+                 // ▲▲▲ [수정] ▲▲▲
+                 piece.shape.forEach((row, y) => {
+                    row.forEach((value, x) => {
+                        if (value !== 0) {
+                            const canvasX = x + piece.x;
+                            const canvasY = y + piece.y + yOffset;
+                            context.fillRect(canvasX, canvasY, 1, 1);
+                            context.strokeStyle = 'rgba(0,0,0,0.3)';
+                            context.lineWidth = 0.05;
+                            context.strokeRect(canvasX, canvasY, 1, 1);
+                        }
+                    });
+                 });
+            }
+
+
+            function drawGrid(context, cols, rows, yStart = 0) {
+                // ▼▼▼ [수정] 저장된 색상 값 사용 ▼▼▼
+                context.strokeStyle = GRID_COLOR_VALUE;
+                // ▲▲▲ [수정] ▲▲▲
+                context.lineWidth = 0.02;
+                context.beginPath();
+                for (let i = 1; i < cols; i++) {
+                    context.moveTo(i, yStart);
+                    context.lineTo(i, rows + yStart);
+                }
+                for (let i = yStart + 1; i < rows + yStart; i++) {
+                    context.moveTo(0, i);
+                    context.lineTo(cols, i);
+                }
+                context.stroke();
+            }
+            
+            function drawNext(context, nextPieceTypes) {
+                if(!context) return;
+                context.clearRect(0, 0, 12, 4);
+
+                nextPieceTypes.slice(0, 3).forEach((pieceType, index) => {
+                    if (pieceType) {
+                        const piece = PIECES[pieceType];
+                        const offsetX = (4 - piece.shape[0].length) / 2 + (index * 4);
+                        const offsetY = (4 - piece.shape.length) / 2;
+
+                        // ▼▼▼ [수정] 저장된 색상 값 사용 ▼▼▼
+                        context.fillStyle = piece.color || '#FFFFFF'; // piece 객체에 저장된 color 사용
+                        // ▲▲▲ [수정] ▲▲▲
+                        piece.shape.forEach((row, y) => {
+                            row.forEach((value, x) => {
+                                if (value !== 0) {
+                                    context.fillRect(x + offsetX, y + offsetY, 1, 1);
+                                    context.strokeStyle = 'rgba(0,0,0,0.3)';
+                                    context.lineWidth = 0.05;
+                                    context.strokeRect(x + offsetX, y + offsetY, 1, 1);
+                                }
+                            });
+                        });
+                    }
+                });
+            }
+
+
+             function drawGhostPiece(context, yOffset = 0) { // yOffset은 이제 사용되지 않지만 호환성 위해 둠
+                if (!currentPiece || ghostY === undefined) return;
+                const ghostPiece = { ...currentPiece, y: ghostY };
+                context.globalAlpha = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ghost-opacity').trim());
+                drawPiece(context, ghostPiece, yOffset); // [수정]
+                context.globalAlpha = 1.0;
+             }
+
+
+            // --- Game Logic ---
+            function createMatrix(w, h) { 
+                const matrix = [];
+                while (h--) { matrix.push(new Array(w).fill(0)); }
+                return matrix;
+            }
+            function generate7Bag() { 
+                let bag = [...PIECE_TYPES];
+                for (let i = bag.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [bag[i], bag[j]] = [bag[j], bag[i]];
+                }
+                return bag;
+            }
+            function getNextPieceFromBag() { 
+                if (pieceBag.length === 0) {
+                    if (isHost) {
+                        pieceBag = generate7Bag();
+                        roomRef.child('gameData/pieceBag').set(pieceBag);
+                    } else {
+                        pieceBag = generate7Bag(); 
+                    }
+                }
+                return pieceBag.pop();
+            }
+            function spawnPiece(pieceType) { 
+                const piece = PIECES[pieceType];
+                return {
+                    type: pieceType, shape: piece.shape, color: piece.color, index: piece.index,
+                    x: Math.floor(COLS / 2) - Math.floor(piece.shape[0].length / 2),
+                    y: 0, // Y좌표 0에서 시작 (HIDDEN_ROWS 영역)
+                    rotation: 0
+                };
+            }
+
+             function movePiece(dx, dy) { 
+                if (isGameOver || !currentPiece || !isGameLive) return; 
+                const nextPos = { ...currentPiece, x: currentPiece.x + dx, y: currentPiece.y + dy };
+                if (!checkCollision(board, nextPos)) {
+                    roomRef.child(`gameData/${myPlayerKey}/currentPiece`).update({ x: nextPos.x, y: nextPos.y });
+                    roomRef.child(`gameData/${myPlayerKey}/lastMoveWasRotate`).set(false);
+                    playSound('move');
+                    clearLockDelay();
+                }
+                else if (dy > 0) {
+                    startLockDelay();
+                }
+             }
+
+            function rotatePiece() { 
+                if (isGameOver || !currentPiece || !isGameLive) return; 
+                const originalShape = currentPiece.shape;
+                const rotatedShape = rotateMatrix(originalShape);
+                let testPos = { ...currentPiece, shape: rotatedShape };
+                let kickOffset = 0;
+                while (checkCollision(board, testPos)) {
+                    kickOffset = (kickOffset >= 0) ? -(kickOffset + 1) : -(kickOffset - 1);
+                    testPos.x = currentPiece.x + kickOffset;
+                    if (Math.abs(kickOffset) > 2) {
+                        playSound('move'); return;
+                    }
+                }
+                roomRef.child(`gameData/${myPlayerKey}/currentPiece`).update({
+                    x: testPos.x, shape: rotatedShape, rotation: (currentPiece.rotation + 1) % 4
+                });
+                 roomRef.child(`gameData/${myPlayerKey}/lastMoveWasRotate`).set(true);
+                playSound('rotate');
+                clearLockDelay();
+            }
+
+            function rotateMatrix(matrix) { 
+                const N = matrix.length;
+                const result = matrix.map((row, i) =>
+                    row.map((val, j) => matrix[N - 1 - j][i])
+                );
+                return result;
+            }
+
+            function hardDrop() {
+                if (isGameOver || !currentPiece || !isGameLive) return;
+                playSound('move');
+                let dropDistance = 0;
+                let finalY = currentPiece.y;
+                // ▼▼▼ [수정] 최종 Y 위치만 계산 ▼▼▼
+                while (!checkCollision(board, { ...currentPiece, y: finalY + 1 })) {
+                    finalY++; dropDistance++;
+                }
+                // ▲▲▲ [수정] ▲▲▲
+
+                if (finalY > currentPiece.y) {
+                    const hardDropScoreToAdd = dropDistance * HARD_DROP_SCORE;
+                    // [제거] 로컬 병합 (mergePieceToBoard)
+                    // [제거] 로컬 board 업데이트 (roomRef.update)
+
+                    // ▼▼▼ [수정] handleLocking에 최종 Y 위치 전달 ▼▼▼
+                    handleLocking(true, finalY, hardDropScoreToAdd);
+                    // ▲▲▲ [수정] ▲▲▲
+
+                    clearLockDelay();
+
+                } else {
+                     // 이미 바닥이면 일반 락킹 딜레이 시작
+                     startLockDelay();
+                }
+            }
+
+             function checkCollision(boardToCheck, piece) { 
+                 if (!piece || !piece.shape || !boardToCheck) return true; 
+                 for (let y = 0; y < piece.shape.length; y++) {
+                    for (let x = 0; x < piece.shape[y].length; x++) {
+                        if (piece.shape[y][x] !== 0) {
+                            const boardX = x + piece.x;
+                            const boardY = y + piece.y;
+                            if (boardX < 0 || boardX >= COLS || boardY >= ROWS + HIDDEN_ROWS) {
+                                return true;
+                            }
+                            if (boardY >= 0 && boardToCheck[boardY] && boardToCheck[boardY][boardX] !== 0) {
+                                return true;
+                            }
+                        }
+                    }
+                 }
+                 return false;
+             }
+
+             function detectTSpin(rotatedPiece) { 
+                if (!rotatedPiece || rotatedPiece.type !== 'T' || !lastMoveWasRotate) {
+                    return null;
+                }
+                const centerOffsets = { x: 1, y: 1 };
+                const centerX = rotatedPiece.x + centerOffsets.x;
+                const centerY = rotatedPiece.y + centerOffsets.y;
+                const corners = [
+                    { x: centerX - 1, y: centerY - 1 }, { x: centerX + 1, y: centerY - 1 },
+                    { x: centerX - 1, y: centerY + 1 }, { x: centerX + 1, y: centerY + 1 },
+                ];
+                let filledCorners = 0;
+                let frontCornersFilled = 0;
+                corners.forEach((corner, index) => {
+                    if (corner.x < 0 || corner.x >= COLS || corner.y < 0 || corner.y >= ROWS + HIDDEN_ROWS ||
+                        (board[corner.y] && board[corner.y][corner.x] !== 0))
+                    {
+                        filledCorners++;
+                        if (index < 2) { frontCornersFilled++; }
+                    }
+                });
+                if (filledCorners >= 3) {
+                     if (filledCorners === 3 && frontCornersFilled < 2) { return 'mini'; }
+                    return 'normal';
+                }
+                return null;
+             }
+
+            function mergePieceToBoard(pieceToMerge = currentPiece) { 
+                if (!pieceToMerge || !pieceToMerge.shape || !board) return; 
+                const pieceIndex = pieceToMerge.index;
+                pieceToMerge.shape.forEach((row, y) => {
+                    row.forEach((value, x) => {
+                        if (value !== 0) {
+                            const boardY = y + pieceToMerge.y;
+                            const boardX = x + pieceToMerge.x;
+                            if (boardY >= 0 && boardY < ROWS + HIDDEN_ROWS && boardX >= 0 && boardX < COLS) {
+                                board[boardY][boardX] = pieceIndex;
+                            }
+                        }
+                    });
+                });
+            }
+
+            // --- [대폭 수정] handleLocking (Transaction으로 변경) ---
+            function handleLocking(isHardDrop = false, finalY = null, hardDropScore = 0) { // [수정] 파라미터 추가
+                if (!currentPiece) return;
+
+                // ▼▼▼ [수정] 하드드롭 시 pieceToMerge의 Y좌표를 finalY로 설정 ▼▼▼
+                const pieceToMerge = isHardDrop && finalY !== null ? { ...currentPiece, y: finalY } : { ...currentPiece };
+                // ▲▲▲ [수정] ▲▲▲
+
+                clearLockDelay();
+
+                roomRef.child('gameData').transaction(gameData => {
+                    if (!gameData || !gameData[myPlayerKey] || !gameData[myPlayerKey].currentPiece) {
+                        return; 
+                    }
+                    
+                    const myData = gameData[myPlayerKey];
+                    const oppData = gameData[opponentPlayerKey];
+                    let currentBoard = myData.board;
+                    let currentScore = myData.score;
+                    let currentLines = myData.lines;
+                    let currentLevel = myData.level;
+                    let currentCombo = myData.combo;
+                    let currentIncomingGarbage = myData.incomingGarbage;
+                    let currentPieceBag = gameData.pieceBag || [];
+                    let currentNextPieces = myData.nextPieces || [];
+                    
+                    const pieceIndex = pieceToMerge.index;
+                    pieceToMerge.shape.forEach((row, y) => {
+                        row.forEach((value, x) => {
+                            if (value !== 0) {
+                                const boardY = y + pieceToMerge.y;
+                                const boardX = x + pieceToMerge.x;
+                                if (boardY >= 0 && boardY < ROWS + HIDDEN_ROWS && boardX >= 0 && boardX < COLS) {
+                                    currentBoard[boardY][boardX] = pieceIndex;
+                                }
+                            }
+                        });
+                    });
+
+                    let linesCleared = 0;
+                    let tSpinType = detectTSpin(pieceToMerge); 
+
+                    let y = ROWS + HIDDEN_ROWS - 1;
+                    while (y >= 0) {
+                        if (currentBoard[y].every(cell => cell !== 0 && cell !== GARBAGE_INDEX)) {
+                            triggerLineClearAnimation(y); 
+                            currentBoard.splice(y, 1);
+                            currentBoard.unshift(new Array(COLS).fill(0));
+                            linesCleared++;
+                        } else {
+                            y--;
+                        }
+                    }
+
+                    let scoreToAdd = hardDropScore;
+                    let garbageToSend = 0;
+                    
+                    if (linesCleared > 0) {
+                        playSound('clear'); 
+                        currentCombo = (currentCombo < 0) ? 0 : currentCombo + 1;
+
+                        if (tSpinType) {
+                            playSound('tspin');
+                            if (tSpinType === 'mini') { scoreToAdd += T_SPIN_SCORE.mini; garbageToSend += T_SPIN_GARBAGE.mini_1; }
+                            else { scoreToAdd += T_SPIN_LINE_SCORE[linesCleared] || T_SPIN_SCORE.normal; garbageToSend += T_SPIN_GARBAGE[`normal_${linesCleared}`] || 0; }
+                        } else {
+                            scoreToAdd += SCORE_MAP[linesCleared] || 0;
+                            garbageToSend += GARBAGE_MAP[linesCleared] || 0;
+                            if (linesCleared === 4) playSound('tetris');
+                        }
+                        if (currentCombo > 0) {
+                            scoreToAdd += currentCombo * COMBO_SCORE * currentLevel;
+                            garbageToSend += COMBO_GARBAGE[Math.min(currentCombo, COMBO_GARBAGE.length - 1)] || 0;
+                        }
+                        
+                        currentScore += scoreToAdd * currentLevel;
+                        currentLines += linesCleared;
+                        currentLevel = Math.floor(currentLines / 10) + 1;
+                    } else {
+                        if (tSpinType) {
+                           playSound('tspin');
+                           scoreToAdd += (tSpinType === 'mini' ? T_SPIN_SCORE.mini : T_SPIN_SCORE.normal) * currentLevel;
+                           currentScore += scoreToAdd;
+                           garbageToSend += (tSpinType === 'mini' ? T_SPIN_GARBAGE.mini_0 : T_SPIN_GARBAGE.normal_0);
+                        }
+                        currentCombo = -1;
+                    }
+                    
+                    if (currentIncomingGarbage > 0) {
+                         let netGarbage = currentIncomingGarbage - garbageToSend;
+                         garbageToSend = Math.max(0, -netGarbage);
+                         currentIncomingGarbage = Math.max(0, netGarbage);
+
+                         if (currentIncomingGarbage > 0) {
+                            playSound('garbage');
+                            const holeCol = Math.floor(Math.random() * COLS);
+                            for (let i = 0; i < currentIncomingGarbage; i++) {
+                                currentBoard.shift();
+                                const newRow = Array(COLS).fill(GARBAGE_INDEX);
+                                newRow[holeCol] = 0;
+                                currentBoard.push(newRow);
+                            }
+                         }
+                    }
+                    myData.incomingGarbage = 0; 
+                    
+                    if (garbageToSend > 0 && oppData) {
+                        oppData.incomingGarbage = (oppData.incomingGarbage || 0) + garbageToSend;
+                    }
+
+                    if (currentNextPieces.length === 0) {
+                        if(currentPieceBag.length === 0) currentPieceBag = generate7Bag();
+                        currentNextPieces.push(currentPieceBag.pop());
+                    }
+                    const nextSpawnType = currentNextPieces.shift();
+                    const newPiece = spawnPiece(nextSpawnType);
+                    
+                    while (currentNextPieces.length < PREVIEW_COUNT) {
+                        if (currentPieceBag.length === 0) currentPieceBag = generate7Bag();
+                        currentNextPieces.push(currentPieceBag.pop());
+                    }
+                    
+                    // --- 7. 게임 오버 확인 ---
+                    // [수정] 게임 오버 조건 변경:
+                    // 1. 방금 고정된 블럭(pieceToMerge)의 가장 아랫부분이 숨겨진 영역(HIDDEN_ROWS)보다 위에 있을 경우
+                    // 2. 또는 새로 생성된 블럭(newPiece)이 등장하자마자 충돌할 경우 (쓰레기 줄 등으로 밀려 올라간 경우)
+                    let lockedPieceLowestPoint = -1;
+                    pieceToMerge.shape.forEach((row, y) => {
+                         row.forEach((value, x) => {
+                              if (value !== 0) {
+                                   lockedPieceLowestPoint = Math.max(lockedPieceLowestPoint, y + pieceToMerge.y);
+                              }
+                         });
+                    });
+
+                    // 숨겨진 영역의 Y 좌표는 0, 1 입니다. (HIDDEN_ROWS = 2)
+                    // 따라서 블럭의 가장 낮은 Y 좌표(lockedPieceLowestPoint)가 1 이하면 게임 오버입니다.
+                    if (lockedPieceLowestPoint < HIDDEN_ROWS) {
+                         myData.isGameOver = true;
+                         console.log("Game Over triggered: Piece locked too high at y=", lockedPieceLowestPoint); // 디버깅 로그
+                    } 
+                    // 위 조건에 해당 안되더라도, 새 블럭 스폰 위치가 막혀있으면 게임 오버
+                    else if (checkCollision(currentBoard, newPiece)) { 
+                        myData.isGameOver = true;
+                         console.log("Game Over triggered: New piece collision on spawn."); // 디버깅 로그
+                    }
+
+                    myData.board = currentBoard;
+                    myData.score = currentScore;
+                    myData.level = currentLevel;
+                    myData.lines = currentLines;
+                    myData.combo = currentCombo;
+                    myData.boardHeight = calculateBoardHeight(currentBoard); 
+                    myData.currentPiece = newPiece;
+                    myData.nextPieces = currentNextPieces;
+                    myData.lastMoveWasRotate = false;
+                    gameData.pieceBag = currentPieceBag; 
+
+                    return gameData; 
+
+                }, (error, committed, snapshot) => {
+                    if (error) { console.error("Locking Transaction failed: ", error); }
+                    else if (!committed) { console.warn("Locking Transaction aborted (data changed)"); }
+                    else { 
+                        playSound('lock'); 
+                    }
+                });
+            }
+
+             function calculateBoardHeight(boardToCheck) { 
+                let height = 0;
+                if (!boardToCheck) return 0;
+                for (let r = 0; r < ROWS + HIDDEN_ROWS; r++) {
+                    if (boardToCheck[r].some(cell => cell !== 0)) {
+                        height = (ROWS + HIDDEN_ROWS) - r; 
+                        break;
+                    }
+                }
+                return Math.max(0, Math.min(ROWS + HIDDEN_ROWS, height));
+            }
+            
+
+            function calculateGhostY() { 
+                if (!currentPiece || !board) { ghostY = undefined; return; };
+                ghostY = currentPiece.y;
+                while (!checkCollision(board, { ...currentPiece, y: ghostY + 1 })) {
+                    ghostY++;
+                }
+            }
+
+            function startLockDelay() { 
+                if (lockDelayTimer || !isGameLive) return;
+                lockDelayTimer = setTimeout(() => {
+                    if (!currentPiece || !board) { clearLockDelay(); return; } 
+                    if (!checkCollision(board, { ...currentPiece, y: currentPiece.y + 1 })) {
+                        clearLockDelay();
+                    } else {
+                        handleLocking(); 
+                    }
+                }, LOCK_DELAY);
+            }
+
+            function clearLockDelay() { 
+                if (lockDelayTimer) { clearTimeout(lockDelayTimer); lockDelayTimer = null; }
+            }
+
+            // --- Game Loop ---
+            function startGameLoop() {
+                if (gameLoopId) cancelAnimationFrame(gameLoopId); 
+                lastTime = performance.now();
+                dropCounter = 0;
+                gameStarted = true;
+                gameLoopId = requestAnimationFrame(gameLoop);
+                console.log("Game loop started for", myPlayerKey);
+            }
+
+            function gameLoop(timestamp) {
+                if (isGameOver || !isGameLive) { 
+                    console.log("Game loop stopped.");
+                    gameStarted = false;
+                    cancelAnimationFrame(gameLoopId);
+                    return;
+                }
+
+                const deltaTime = timestamp - lastTime;
+                lastTime = timestamp;
+                dropCounter += deltaTime;
+
+                const currentDropInterval = softDropActive ? Math.min(dropInterval, 100) : dropInterval;
+
+                if (dropCounter > currentDropInterval) {
+                    if (currentPiece && board && !checkCollision(board, { ...currentPiece, y: currentPiece.y + 1 })) {
+                         movePiece(0, 1);
+                         if (softDropActive) {
+                             score += SOFT_DROP_SCORE;
+                         }
+                    } else {
+                         startLockDelay();
+                    }
+                    dropCounter = 0;
+                }
+                
+                updateParticles(deltaTime);
+                drawParticles(); 
+                
+                gameLoopId = requestAnimationFrame(gameLoop);
+            }
+
+
+            // --- Controls ---
+            function setupControls() {
+                document.addEventListener('keydown', handleKeyPress);
+                document.addEventListener('keyup', handleKeyUp);
+
+                if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+                    touchControls.style.display = 'flex';
+                    
+                    document.getElementById('touch-left').addEventListener('touchstart', (e) => { e.preventDefault(); if(!isGameLive) return; movePiece(-1, 0); startTouchMove(-1); }, { passive: false });
+                    document.getElementById('touch-right').addEventListener('touchstart', (e) => { e.preventDefault(); if(!isGameLive) return; movePiece(1, 0); startTouchMove(1); }, { passive: false });
+                    document.getElementById('touch-rotate').addEventListener('touchstart', (e) => { e.preventDefault(); if(!isGameLive) return; rotatePiece(); }, { passive: false });
+                    document.getElementById('touch-down').addEventListener('touchstart', (e) => { e.preventDefault(); if(!isGameLive) return; softDropActive = true; }, { passive: false });
+                    document.getElementById('touch-drop').addEventListener('touchstart', (e) => { e.preventDefault(); if(!isGameLive) return; hardDrop(); }, { passive: false });
+
+                    const stopMove = () => { stopTouchMove(); softDropActive = false; };
+                    document.getElementById('touch-left').addEventListener('touchend', stopMove);
+                    document.getElementById('touch-right').addEventListener('touchend', stopMove);
+                    document.getElementById('touch-down').addEventListener('touchend', stopMove);
+                    
+                    document.getElementById('touch-left').addEventListener('touchcancel', stopMove);
+                    document.getElementById('touch-right').addEventListener('touchcancel', stopMove);
+                    document.getElementById('touch-down').addEventListener('touchcancel', stopMove);
+
+                } else {
+                    touchControls.style.display = 'none';
+                }
+            }
+
+            let touchMoveTimer = null;
+            function startTouchMove(dir) {
+                stopTouchMove();
+                touchMoveTimer = setInterval(() => {
+                    movePiece(dir, 0);
+                }, 100);
+            }
+            function stopTouchMove() {
+                clearInterval(touchMoveTimer);
+                touchMoveTimer = null;
+            }
+
+
+            function handleKeyPress(event) {
+                if (isGameOver || !isGameLive) return; 
+                switch (event.code) {
+                    case 'ArrowLeft': movePiece(-1, 0); event.preventDefault(); break;
+                    case 'ArrowRight': movePiece(1, 0); event.preventDefault(); break;
+                    case 'ArrowDown':
+                        if (!softDropActive) {
+                            softDropActive = true;
+                            dropCounter = dropInterval;
+                        }
+                         event.preventDefault();
+                         break;
+                    case 'ArrowUp': rotatePiece(); event.preventDefault(); break;
+                    case 'Space': hardDrop(); event.preventDefault(); break;
+                }
+            }
+             function handleKeyUp(event) {
+                if (event.code === 'ArrowDown') { softDropActive = false; }
+             }
+
+            function updateGarbageMeter(meterElement, fillElement, count) {
+                if (!meterElement || !fillElement) return;
+                const maxHeight = meterElement.clientHeight;
+                const fillHeight = Math.min(100, (count / 10) * 100);
+                fillElement.style.height = `${fillHeight}%`;
+                meterElement.classList.toggle('garbage-warning', count > 0);
+            }
+
+            // --- Game Over ---
+            function showGameOver(gameData, didIWin) {
+                if (gameoverOverlay.classList.contains('active')) return;
+
+                cancelAnimationFrame(gameLoopId);
+                gameStarted = false;
+                isGameLive = false;
+                gameOverFlag = true; 
+
+                if (didIWin === undefined && gameData && gameData[myPlayerKey]) {
+                    const myData = gameData[myPlayerKey];
+                    const opponentData = gameData[opponentPlayerKey];
+                    const iLost = myData && myData.isGameOver;
+                    const oppLost = opponentData && opponentData.isGameOver;
+
+                    if (iLost && !oppLost) didIWin = false;
+                    else if (!iLost && oppLost) didIWin = true;
+                    else didIWin = null; 
+                }
+
+                const resultText = (didIWin === null) ? "무승부!" : (didIWin ? "🎉 승리!" : "😭 패배...");
+                playSound((didIWin === null) ? 'loss-sound-new' : (didIWin ? 'win-sound-new' : 'loss-sound-new'));
+
+                updatePlayerStats(didIWin);
+
+                const scoresHTML = [myPlayerKey, opponentPlayerKey].map(key => {
+                    if (!key) return '';
+                    const playerId = (key === myPlayerKey) ? myPlayerId : Object.keys(currentRoomData.players).find(id => id !== myPlayerId);
+                    if (!playerId) return '';
+                    
+                    const player = currentRoomData.players[playerId];
+                    const data = (gameData && gameData[key]) ? gameData[key] : { score: 0 };
+                    const isWinner = (didIWin !== null) && (key === myPlayerKey) === didIWin;
+                    const scoreClass = (didIWin === null) ? 'draw' : (isWinner ? 'winner' : 'loser');
+
+                    const avatarSet = AVATAR_SETS[player.avatar];
+                    let avatarHTML = '';
+                    if (avatarSet) avatarHTML = `<img src="${avatarSet.front}" alt="avatar">`;
+                    else if (player.avatar && (player.avatar.startsWith('http') || player.avatar.includes('.'))) avatarHTML = `<img src="${escapeHTML(player.avatar)}" alt="avatar">`;
+                    else avatarHTML = escapeHTML(player.avatar || '❓');
+
+                    return `<div class="score-row ${scoreClass}">
+                                <span class="score-avatar"><div class="avatar">${avatarHTML}</div> ${escapeHTML(player.nickname || 'Unknown')}</span>
+                                <span>${data.score} 점</span>
+                            </div>`;
+                }).join('');
+
+                gameoverOverlay.innerHTML = `
+                     <div class="modal-content">
+                         <div class="modal-header"><h2>${resultText}</h2></div>
+                         <div class="modal-body">
+                             <div id="score-board">${scoresHTML}</div>
+                             <div class="modal-buttons">
+                                 <button id="rematch-btn" class="menu-btn primary">다시 하기</button>
+                                 <button id="lobby-btn" class="menu-btn secondary">대기실로</button>
+                             </div>
+                         </div>
+                     </div>`;
+                gameoverOverlay.classList.add('active');
+
+                const rematchBtn = document.getElementById('rematch-btn');
+                rematchBtn.addEventListener('click', () => {
+                     rematchBtn.textContent = '상대방 기다리는 중...';
+                     rematchBtn.disabled = true;
+                     roomRef.child('rematchRequests/' + myPlayerId).set(true);
+                });
+                document.getElementById('lobby-btn').addEventListener('click', cleanupAndExit);
+
+                listenForRematch();
+            }
+            
+            function listenForRematch() {
+                 const rematchRef = roomRef.child('rematchRequests');
+                 rematchRef.on('value', snapshot => {
+                      if (!snapshot.exists() || !currentRoomData || !currentRoomData.players) return;
+
+                      const requests = snapshot.val();
+                      const requestCount = Object.keys(requests).length;
+                      const playerCount = Object.keys(currentRoomData.players).length;
+
+                      if (requestCount === playerCount && isHost) {
+                            rematchRef.off();
+                            roomRef.update({
+                                rematchRequests: null,
+                                status: 'waiting',
+                                gameData: null, 
+                            });
+                      }
+                 });
+            }
+
+
+             function updatePlayerStats(didIWin) { 
+                if (!myPlayerId || myPlayerId.startsWith('guest_')) return;
+                const result = (didIWin === null) ? 'draws' : (didIWin ? 'wins' : 'losses');
+                const userStatsRef = usersRef.child(myPlayerId).child('gameStats/tetris');
+
+                userStatsRef.transaction(currentStats => {
+                    if (currentStats === null) {
+                        currentStats = { wins: 0, losses: 0, draws: 0, plays: 0, highscore: 0 };
+                    }
+                    currentStats.plays = (currentStats.plays || 0) + 1;
+                    currentStats[result] = (currentStats[result] || 0) + 1;
+                    currentStats.highscore = Math.max(currentStats.highscore || 0, score);
+                    return currentStats;
+                });
+                
+                let expGained = 50, pointsGained = 50;
+                if(didIWin === true) { expGained = 150; pointsGained = 100; }
+                else if (didIWin === null) { expGained = 75; pointsGained = 75; } 
+                usersRef.child(myPlayerId).child('profile/exp').transaction(exp => (exp || 0) + expGained);
+                usersRef.child(myPlayerId).child('profile/points').transaction(points => (points || 0) + pointsGained);
+            }
+
+            // --- Particle Effects (유지) ---
+            function triggerLineClearAnimation(clearedRowY) {
+                 const startY = (clearedRowY - HIDDEN_ROWS) * BLOCK_SIZE + BLOCK_SIZE / 2;
+                 const startX = myCanvas.width / 2;
+                 const count = 30;
+                 const color = 'var(--highlight-color)';
+                 for (let i = 0; i < count; i++) {
+                    particles.push(new Particle(startX, startY, color));
+                 }
+            }
+            class Particle {
+                constructor(x, y, color) {
+                    this.x = x; this.y = y;
+                    this.size = Math.random() * 5 + 2;
+                    this.speedX = Math.random() * 6 - 3;
+                    this.speedY = Math.random() * -8 - 2;
+                    this.color = color;
+                    this.life = 1; this.gravity = 0.2;
+                }
+                update(deltaTime) {
+                    this.x += this.speedX * (deltaTime / 16);
+                    this.y += this.speedY * (deltaTime / 16);
+                    this.speedY += this.gravity;
+                    this.life -= 0.02 * (deltaTime / 16);
+                }
+                draw() {
+                    particleCtx.fillStyle = this.color;
+                    particleCtx.globalAlpha = this.life;
+                    particleCtx.beginPath();
+                    particleCtx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                    particleCtx.fill();
+                    particleCtx.globalAlpha = 1;
+                }
+            }
+            function updateParticles(deltaTime) {
+                for (let i = particles.length - 1; i >= 0; i--) {
+                    particles[i].update(deltaTime);
+                    if (particles[i].life <= 0) particles.splice(i, 1);
+                }
+            }
+            function drawParticles() {
+                 if (!particleCtx || !particleCanvas) return;
+                 particleCtx.clearRect(0, 0, particleCanvas.width, particleCanvas.height);
+                 particles.forEach(p => p.draw());
+            }
+
+            // --- Window Resize Listener ---
+            window.addEventListener('resize', () => {
+                adjustLayout();
+                if (gameStarted && !isGameOver) {
+                     drawMyBoard();
+                } else if (currentRoomData && currentRoomData.gameData) {
+                     drawMyBoard();
+                }
+            });
+
+        }); // DOMContentLoaded End
+    </script>
+</body>
+</html>
