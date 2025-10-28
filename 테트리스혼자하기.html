@@ -1,0 +1,1237 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>테트리스 혼자하기</title>
+    <link href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff" as="font" type="font/woff" crossorigin>
+    <style>
+        :root {
+            --bg-color: #1a1a2e;
+            --board-bg: #0c0c1e;
+            --grid-color: #4a4a6a;
+            --text-color: #e0e0ff;
+            --text-color-dark: #333D4B;
+            --accent-color: #FFC84A;
+            --highlight-color: #ff57a5;
+            --danger-color: #F76363;
+            --primary-color: #4A8DFF;
+            --garbage-color: #888888;
+            --ghost-opacity: 0.25;
+            --touch-control-bg: rgba(255, 255, 255, 0.15);
+            --touch-control-active-bg: rgba(255, 255, 255, 0.3);
+            --color-I: #00FFFF;
+            --color-O: #FFFF00;
+            --color-T: #800080;
+            --color-J: #0000FF;
+            --color-L: #FFA500;
+            --color-S: #00FF00;
+            --color-Z: #FF0000;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%; height: 100%; overflow: hidden;
+            font-family: 'GmarketSans', sans-serif;
+            background-color: var(--bg-color); color: var(--text-color);
+            display: flex; flex-direction: column; 
+            touch-action: manipulation; -webkit-user-select: none; user-select: none;
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+
+        #game-wrapper {
+            width: 100%; height: 100%;
+            display: flex; flex-direction: column;
+            justify-content: space-between; 
+        }
+
+        /* [수정] 솔로 플레이용 헤더 */
+        #game-header {
+            flex-shrink: 0; display: flex; justify-content: center; align-items: stretch;
+            padding: 8px;
+            background-color: rgba(0,0,0,0.2);
+            gap: 8px;
+            border-bottom: 1px solid var(--grid-color);
+            min-height: 70px; 
+        }
+        .player-info {
+            display: flex; align-items: center; gap: 8px;
+            background-color: rgba(0,0,0,0.3);
+            padding: 8px; border-radius: 8px;
+            transition: all 0.3s ease;
+            flex: 1; min-width: 0; 
+            border: 2px solid transparent;
+            position: relative; 
+        }
+        .player-info.solo {
+            flex-direction: row;
+            justify-content: space-around;
+            flex: 1;
+            max-width: 400px;
+        }
+        .player-info.solo .info-text { align-items: center; }
+        .player-info.solo .stats { 
+            font-size: clamp(0.9rem, 2.5vw, 1.1rem);
+            display: flex; flex-direction: column; text-align: center; gap: 4px;
+        }
+        .player-info.solo .stats span { color: var(--accent-color); font-weight: bold; font-size: 1.2em; }
+        
+        /* [수정] NEXT 바 스타일 (유지) */
+        #game-next-bar {
+            flex-shrink: 0;
+            display: flex;
+            justify-content: flex-start;
+            align-items: center;
+            padding-left: 2px;
+        }
+
+        #game-main-content {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center; 
+            align-items: center;
+            overflow: hidden;
+            padding: 10px 0 0;
+        }
+        
+        #game-board-area {
+            display: flex;
+            justify-content: center;
+            align-items: flex-start; 
+            width: 100%;
+            height: 100%; 
+        }
+        
+        .board-wrapper {
+            position: relative;
+            flex-shrink: 1; 
+            display: flex; 
+        }
+        #my-board-canvas {
+            border: 2px solid var(--grid-color);
+            background-color: var(--board-bg);
+            display: block;
+            width: 100%; 
+            height: 100%; 
+        }
+        
+        /* [삭제] 쓰레기 미터 숨김 */
+        .garbage-meter {
+            display: none !important;
+        }
+
+        .board-side-panel {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px; 
+            flex-shrink: 0; 
+        }
+        .board-side-panel canvas {
+            background-color: transparent;
+            border: none;
+            display: block;
+        }
+
+        .panel-label {
+            font-size: clamp(0.6rem, 2vw, 0.8rem); 
+            font-weight: bold;
+            text-align: center;
+            color: var(--accent-color);
+            margin-bottom: 2px; 
+        }
+
+        #touch-controls {
+            position: relative;
+            flex-shrink: 0;
+            height: clamp(80px, 15vh, 120px);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 max(10px, 1vw);
+            padding-bottom: max(10px, env(safe-area-inset-bottom));
+            z-index: 50;
+            pointer-events: none;
+            width: 100%;
+            background-color: rgba(26, 26, 46, 0.5);
+        }
+        .touch-group { display: flex; gap: max(15px, 1.5vw); pointer-events: auto; }
+        .touch-btn {
+            width: clamp(50px, 12vw, 70px); height: clamp(50px, 12vw, 70px);
+            display: flex; justify-content: center; align-items: center;
+            font-size: clamp(1.5rem, 5vw, 2rem); font-weight: bold; color: white;
+            background-color: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 50%;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .touch-btn:active { background-color: var(--touch-control-active-bg); }
+
+        #particle-canvas {
+            position: absolute; top: 0; left: 0;
+            pointer-events: none; z-index: 99;
+        }
+
+        /* --- 오버레이/모달 스타일 --- */
+        .overlay { 
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            display: none; 
+            flex-direction: column; justify-content: center; align-items: center; 
+            z-index: 200; text-align: center; background-color: rgba(0, 0, 0, 0.85);
+            color: white;
+        }
+        .overlay.active { display: flex; }
+        .modal-content { 
+            background: #2a2a4e;
+            color: var(--text-color);
+            padding: 0; border-radius: 16px; width: 90%; max-width: 400px; 
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2); overflow: hidden;
+            border: 1px solid var(--grid-color);
+        }
+        .modal-header { 
+            background-color: #0c0c1e;
+            color: white; padding: 15px; border-radius: 16px 16px 0 0; 
+            border-bottom: 1px solid var(--grid-color);
+        }
+        .modal-header h2 { font-size: 1.6em; }
+        .modal-body { padding: 25px; color: var(--text-color); }
+        .modal-buttons { display: flex; flex-direction: column; gap: 12px; align-items: center; margin-top: 25px; }
+        .spinner { border: 4px solid rgba(255, 255, 255, 0.3); border-radius: 50%; border-top: 4px solid white; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        #countdown-number { 
+            font-size: 7em; font-weight: 700; color: white; 
+            text-shadow: 0 0 20px rgba(255,255,255,0.7); 
+            animation: countdown-pop 1s; 
+        }
+        @keyframes countdown-pop { 
+            from { transform: scale(0.5); opacity: 0; } 
+            to { transform: scale(1); opacity: 1; } 
+        }
+
+        #score-board { margin: 20px 0; display: flex; flex-direction: column; gap: 8px; }
+        .score-row { 
+            display: flex; justify-content: space-between; align-items: center; 
+            padding: 10px 15px; border-radius: 8px; font-size: 1.1em; font-weight: 700; 
+            background-color: rgba(0,0,0,0.2);
+        }
+        .score-row.winner { /* 점수 강조용 */
+            background-color: var(--accent-color); color: var(--text-color-dark); 
+            transform: scale(1.03); 
+            border: 1px solid #fff;
+        }
+        .score-row.draw { /* 일반 스탯용 */
+            background-color: rgba(0,0,0,0.2); 
+            border: 1px solid var(--grid-color);
+        }
+
+        .menu-btn { 
+            width: 100%; padding: 15px; font-size: 1.1em; font-weight: bold; 
+            border-radius: 12px; border: none; cursor: pointer; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
+            transition: transform 0.1s; margin: 5px 0; 
+            font-family: 'GmarketSans', sans-serif;
+        }
+        .menu-btn.primary { background-color: var(--primary-color); color: white; }
+        .menu-btn.secondary { background-color: #3a3a5e; color: var(--text-color); }
+        .menu-btn:active { transform: scale(0.98); }
+        .menu-btn:disabled { background-color: #ccc; color: #888; cursor: not-allowed; }
+
+       #confirm-exit-modal .modal-content { max-width: 350px; }
+       #confirm-exit-modal .modal-body { padding: 30px; text-align: center; }
+       #confirm-exit-modal .modal-body h3 { font-size: 1.4em; margin-bottom: 15px; }
+       #confirm-exit-modal .modal-body p { font-size: 0.9em; color: #ccc; }
+       #confirm-exit-modal .modal-footer { 
+           display: flex; gap: 10px; padding: 15px; 
+           background-color: #1a1a2e;
+           border-top: 1px solid var(--grid-color); 
+       }
+    </style>
+</head>
+<body>
+    <audio id="move-sound" src="sounds/move.wav" preload="auto"></audio>
+    <audio id="rotate-sound" src="sounds/rotate.wav" preload="auto"></audio>
+    <audio id="lock-sound" src="sounds/lock.wav" preload="auto"></audio>
+    <audio id="clear-sound" src="sounds/clear.wav" preload="auto"></audio>
+    <audio id="gameover-sound" src="sounds/gameover.wav" preload="auto"></audio>
+    <audio id="garbage-sound" src="sounds/garbage.wav" preload="auto"></audio>
+    <audio id="tspin-sound" src="sounds/tspin.wav" preload="auto"></audio>
+    <audio id="tetris-sound" src="sounds/tetris.wav" preload="auto"></audio>
+    <div id="game-wrapper">
+        
+        <div id="game-header">
+            </div>
+        
+        <div id="game-main-content">
+            <div id="game-next-bar">
+                <div class="board-side-panel" id="my-next-panel">
+                    <div class="panel-label">NEXT</div>
+                    <canvas id="my-next-canvas"></canvas>
+                </div>
+            </div>
+
+            <div id="game-board-area">
+                <div class="board-wrapper">
+                    <canvas id="my-board-canvas"></canvas>
+                    <div class="garbage-meter" id="my-garbage-meter-side">
+                        <div class="garbage-fill" id="my-garbage-fill"></div>
+                    </div>
+                    <canvas id="particle-canvas"></canvas> 
+                </div>
+            </div>
+        </div>
+        <div id="touch-controls" style="display: none;">
+            <div class="touch-group">
+                <div class="touch-btn" id="touch-left">⬅️</div>
+                <div class="touch-btn" id="touch-right">➡️</div>
+            </div>
+            <div class="touch-group">
+                 <div class="touch-btn" id="touch-down">⬇️</div>
+                <div class="touch-btn" id="touch-rotate">🔄</div>
+                <div class="touch-btn" id="touch-drop">⏬</div>
+            </div>
+        </div>
+    </div>
+
+
+    <div id="info-overlay" class="overlay active"> <h2>로딩 중...</h2>
+        <div class="spinner"></div>
+    </div>
+    
+    <div id="game-over-overlay" class="overlay">
+        </div>
+
+    <div id="confirm-exit-modal" class="overlay">
+         <div class="modal-content">
+             <div class="modal-body">
+                 <h3>대기실로 나가시겠습니까?</h3>
+                 <p>진행 상황은 저장되지 않습니다.</p>
+             </div>
+             <div class="modal-footer">
+                 <button id="exit-cancel-btn" class="menu-btn secondary">취소</button>
+                 <button id="exit-confirm-btn" class="menu-btn primary" style="background-color: var(--danger-color);">나가기</button>
+             </div>
+         </div>
+    </div>
+
+
+    <script src="아바타.js"></script> <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script>
+        // --- HTML Escape 함수 ---
+        function escapeHTML(str) {
+            if (typeof str !== 'string') return '';
+            const map = {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'};
+            return str.replace(/[&<>"']/g, m => map[m]);
+        }
+    
+        document.addEventListener('DOMContentLoaded', () => {
+
+            // --- iOS 당겨서 새로고침 방지 ---
+            document.body.addEventListener('touchmove', function(event) {
+                if (window.scrollY === 0) {
+                     event.preventDefault();
+                }
+            }, { passive: false });
+
+            // --- Firebase Setup (Auth, DB User Stats Only) ---
+            const firebaseConfig = {
+                apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
+                authDomain: "goodluck-7c14b.firebaseapp.com",
+                databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com",
+                projectId: "goodluck-7c14b",
+                storageBucket: "goodluck-7c14b.appspot.com",
+                messagingSenderId: "858281658455",
+                appId: "1:858281658455:web:9131280a459be983933b12"
+            };
+            firebase.initializeApp(firebaseConfig);
+            const db = firebase.database();
+            const auth = firebase.auth();
+            const usersRef = db.ref('users');
+            // [삭제] roomsRef
+
+            // --- DOM Elements ---
+            const gameWrapper = document.getElementById('game-wrapper');
+            const gameHeader = document.getElementById('game-header');
+            const gameMainContent = document.getElementById('game-main-content');
+            const gameBoardArea = document.getElementById('game-board-area');
+            
+            const infoOverlay = document.getElementById('info-overlay');
+            const gameoverOverlay = document.getElementById('game-over-overlay');
+            const confirmExitModal = document.getElementById('confirm-exit-modal');
+            const exitConfirmBtn = document.getElementById('exit-confirm-btn');
+            const exitCancelBtn = document.getElementById('exit-cancel-btn');
+            
+            const touchControls = document.getElementById('touch-controls');
+            const particleCanvas = document.getElementById('particle-canvas');
+            const particleCtx = particleCanvas.getContext('2d');
+
+            const myCanvas = document.getElementById('my-board-canvas');
+            const myCtx = myCanvas.getContext('2d');
+            const myNextCanvas = document.getElementById('my-next-canvas');
+            const myNextCtx = myNextCanvas.getContext('2d');
+            // [삭제] Garbage Meters
+            
+            // --- Game Constants ---
+            const COLS = 10;
+            const ROWS = 20;
+            const HIDDEN_ROWS = 2;
+            const PREVIEW_COUNT = 3;
+            let BLOCK_SIZE = 20; 
+
+            const PIECES = {
+                'I': { shape: [[0,0,0,0], [1,1,1,1], [0,0,0,0], [0,0,0,0]], colorVar: '--color-I', color: '#00FFFF', index: 1 },
+                'O': { shape: [[1,1], [1,1]], colorVar: '--color-O', color: '#FFFF00', index: 2 },
+                'T': { shape: [[0,1,0], [1,1,1], [0,0,0]], colorVar: '--color-T', color: '#800080', index: 3 },
+                'J': { shape: [[1,0,0], [1,1,1], [0,0,0]], colorVar: '--color-J', color: '#0000FF', index: 4 },
+                'L': { shape: [[0,0,1], [1,1,1], [0,0,0]], colorVar: '--color-L', color: '#FFA500', index: 5 },
+                'S': { shape: [[0,1,1], [1,1,0], [0,0,0]], colorVar: '--color-S', color: '#00FF00', index: 6 },
+                'Z': { shape: [[1,1,0], [0,1,1], [0,0,0]], colorVar: '--color-Z', color: '#FF0000', index: 7 }
+            };
+            const PIECE_TYPES = Object.keys(PIECES);
+            const GARBAGE_COLOR_VAR = '--garbage-color';
+            let GARBAGE_COLOR_VALUE = '#888888';
+            const GARBAGE_INDEX = 8;
+            let GRID_COLOR_VALUE = '#4a4a6a';
+            let BOARD_BG_COLOR_VALUE = '#0c0c1e';
+
+            function initializeColors() {
+                const rootStyle = getComputedStyle(document.documentElement);
+                for (const type in PIECES) {
+                    const colorName = PIECES[type].colorVar;
+                    PIECES[type].color = rootStyle.getPropertyValue(colorName).trim() || PIECES[type].color;
+                }
+                GARBAGE_COLOR_VALUE = rootStyle.getPropertyValue(GARBAGE_COLOR_VAR).trim() || GARBAGE_COLOR_VALUE;
+                GRID_COLOR_VALUE = rootStyle.getPropertyValue('--grid-color').trim() || GRID_COLOR_VALUE;
+                BOARD_BG_COLOR_VALUE = rootStyle.getPropertyValue('--board-bg').trim() || BOARD_BG_COLOR_VALUE;
+            }
+
+            const BASE_DROP_INTERVAL = 1000;
+            const LEVEL_SPEED_FACTOR = 0.8; // 레벨당 20% 빨라짐 (0.8배)
+            const SCORE_MAP = { 1: 100, 2: 300, 3: 500, 4: 800 };
+            const T_SPIN_SCORE = { mini: 100, normal: 400 };
+            const T_SPIN_LINE_SCORE = { 1: 800, 2: 1200, 3: 1600 };
+            const COMBO_SCORE = 50;
+            const SOFT_DROP_SCORE = 1;
+            const HARD_DROP_SCORE = 2;
+            // [삭제] Garbage Maps
+
+            // --- Game State Variables (Local) ---
+            let currentUser = null; 
+
+            let board;
+            let currentPiece;
+            let pieceBag = [];
+            let nextPieces = [];
+
+            let score = 0;
+            let level = 1;
+            let lines = 0;
+            let combo = -1;
+            let lastMoveWasRotate = false;
+
+            let gameLoopId;
+            let lastTime = 0;
+            let dropCounter = 0;
+            let dropInterval = BASE_DROP_INTERVAL;
+            let softDropActive = false;
+            let lockDelayTimer = null;
+            const LOCK_DELAY = 500;
+
+            let isGameOver = false;
+            let gameStarted = false;
+            let particles = [];
+            let sounds = {};
+
+            let isGameLive = false;
+            let gameOverFlag = false;
+            let isExiting = false;
+            let countdownStarted = false;
+
+            // --- Initialization ---
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    currentUser = user; // 통계 저장을 위해 유저 정보 저장
+
+                    // [수정] 뒤로가기 버튼 로직 (방 나가기 -> 대기실로)
+                    history.pushState(null, '', location.href);
+                    window.addEventListener('popstate', (e) => {
+                        history.pushState(null, '', location.href);
+                        if (isGameLive) {
+                            confirmExitModal.style.display = 'flex';
+                        } else {
+                            cleanupAndExit();
+                        }
+                    });
+                    exitConfirmBtn.addEventListener('click', cleanupAndExit);
+                    exitCancelBtn.addEventListener('click', () => { confirmExitModal.style.display = 'none'; });
+
+                    // [수정] 초기화 순서
+                    initializeColors();
+                    adjustLayout(); 
+                    loadSounds();
+                    setupControls();
+                    initializeGame(); // [수정] joinRoom -> initializeGame
+
+                } else {
+                    // 로그인이 필요하다고 가정 (통계 저장)
+                    window.location.href = 'index.html';
+                }
+            });
+
+            // [신규] 로컬 게임 초기화 함수
+            function initializeGame() {
+                board = createMatrix(COLS, ROWS + HIDDEN_ROWS);
+                pieceBag = [];
+                nextPieces = [];
+                
+                // 7-bag 시스템으로 1개 스폰, 3개 넥스트 준비
+                fillNextPieces(); // nextPieces 배열 채우기
+                currentPiece = spawnPiece(getNextPieceFromBag()); // 첫 조각 스폰
+                fillNextPieces(); // 다음 조각 1개 더 채우기
+
+                score = 0;
+                level = 1;
+                lines = 0;
+                combo = -1;
+                lastMoveWasRotate = false;
+
+                isGameOver = false;
+                gameStarted = false; // 루프 시작 플래그
+                isGameLive = false; // 조작 가능 플래그
+                gameOverFlag = false; // 게임오버 모달 플래그
+                countdownStarted = false;
+                
+                dropInterval = BASE_DROP_INTERVAL;
+                dropCounter = 0;
+                lastTime = 0;
+
+                infoOverlay.innerHTML = `<h2>Loading...</h2><div class="spinner"></div>`;
+                infoOverlay.classList.add('active');
+                gameoverOverlay.classList.remove('active');
+
+                calculateGhostY();
+                drawMyBoard();
+                updateHeaderUI();
+                
+                startCountdown();
+            }
+
+            function cleanupAndExit() {
+                isExiting = true;
+                isGameLive = false;
+                cancelAnimationFrame(gameLoopId);
+                window.location.replace('대기실.html');
+            }
+
+            // --- 레이아웃 조정 (유지, 수정됨) ---
+            function adjustLayout() {
+                const nextBar = document.getElementById('game-next-bar');
+                const nextBarHeight = 45;
+                nextBar.style.height = `${nextBarHeight}px`;
+
+                const headerBlockSize = Math.floor(Math.max(1, (nextBarHeight - 10) / 4));
+                const nextCanvasWidth = headerBlockSize * 12;
+                const nextCanvasHeight = headerBlockSize * 4;
+                myNextCanvas.width = nextCanvasWidth;
+                myNextCanvas.height = nextCanvasHeight;
+                document.getElementById('my-next-panel').style.width = `${nextCanvasWidth}px`;
+                
+                const touchControlsHeight = ('ontouchstart' in window || navigator.maxTouchPoints > 0) ? (touchControls.clientHeight || 100) : 0;
+                const availableHeight = gameMainContent.clientHeight - nextBarHeight - (touchControlsHeight > 0 ? touchControlsHeight : 10);
+                const availableWidth = gameMainContent.clientWidth;
+
+                const widthBasedBlockSize = availableWidth / COLS;
+                const heightBasedBlockSize = availableHeight / ROWS;
+                
+                BLOCK_SIZE = Math.floor(Math.min(widthBasedBlockSize, heightBasedBlockSize));
+
+                const boardWidth = BLOCK_SIZE * COLS;
+                const boardHeight = BLOCK_SIZE * ROWS;
+                const totalCanvasHeight = BLOCK_SIZE * (ROWS + HIDDEN_ROWS);
+
+                const boardWrapper = document.querySelector('.board-wrapper');
+                boardWrapper.style.width = `${boardWidth}px`;
+                boardWrapper.style.height = `${boardHeight}px`;
+                
+                myCanvas.width = boardWidth;
+                myCanvas.height = totalCanvasHeight; 
+                
+                nextBar.style.width = `${boardWidth}px`;
+
+                particleCanvas.width = boardWidth;
+                particleCanvas.height = boardHeight;
+                particleCanvas.style.width = `${boardWidth}px`;
+                particleCanvas.style.height = `${boardHeight}px`;
+
+                setupContextScale(BLOCK_SIZE, headerBlockSize);
+            }
+
+            function setupContextScale(mainBlockSize, headerBlockSize) {
+                if (!myCtx) return;
+                myCtx.resetTransform(); 
+                myCtx.scale(mainBlockSize, mainBlockSize); 
+                if(particleCtx) particleCtx.resetTransform();
+                if(myNextCtx) {
+                    myNextCtx.resetTransform();
+                    myNextCtx.scale(headerBlockSize, headerBlockSize);
+                }
+            }
+
+            function loadSounds() {
+                const soundIds = ['move', 'rotate', 'lock', 'clear', 'gameover', 'garbage', 'tspin', 'tetris'];
+                soundIds.forEach(key => {
+                    const audio = document.getElementById(`${key}-sound`);
+                    if (audio) sounds[key] = audio;
+                });
+            }
+
+            function playSound(id) {
+                if (sounds[id]) {
+                    sounds[id].currentTime = 0;
+                    sounds[id].play().catch(e => {});
+                }
+            }
+
+            // [삭제] initializeGameData
+
+            // [삭제] listenToRoomChanges
+
+            function startCountdown() {
+                infoOverlay.style.display = 'flex';
+                infoOverlay.innerHTML = `<div id="countdown-number" style="font-size: 4.5em; animation: countdown-pop 1s;">Ready?</div>`;
+
+                let count = 3; 
+                setTimeout(() => { 
+                    const el = document.getElementById('countdown-number');
+                    if (el) {
+                        el.style.fontSize = '7em'; 
+                        el.style.animation = 'countdown-pop 1s';
+                        el.textContent = count;
+                    }
+                    const interval = setInterval(() => {
+                        count--;
+                        const el = document.getElementById('countdown-number');
+                        if (el) {
+                            el.style.animation = 'none'; el.offsetHeight; 
+                            el.style.animation = 'countdown-pop 1s';
+                            el.textContent = count > 0 ? count : 'GO!';
+                        }
+                        if (count <= -1) { 
+                            clearInterval(interval);
+                            infoOverlay.style.display = 'none';
+                            isGameLive = true;
+                            startGameLoop(); 
+                        }
+                    }, 1000);
+                }, 1000); 
+            }
+
+            // [신규] 솔로 모드용 헤더 업데이트
+            function updateHeaderUI() {
+                gameHeader.innerHTML = `
+                    <div class="player-info solo">
+                        <div class="info-text">
+                            <div class="stats">점수<br><span>${score}</span></div>
+                        </div>
+                        <div class="info-text">
+                            <div class="stats">라인<br><span>${lines}</span></div>
+                        </div>
+                        <div class="info-text">
+                            <div class="stats">레벨<br><span>${level}</span></div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // --- Drawing Functions (유지) ---
+            function drawMyBoard() {
+                if (!myCtx) return;
+                myCtx.fillStyle = BOARD_BG_COLOR_VALUE;
+                myCtx.fillRect(0, 0, COLS, ROWS + HIDDEN_ROWS);
+
+                drawMatrix(myCtx, board, { x: 0, y: 0 });
+
+                if (currentPiece && !isGameOver) {
+                    drawGhostPiece(myCtx, 0);
+                    drawPiece(myCtx, currentPiece, 0);
+                }
+
+                drawGrid(myCtx, COLS, ROWS, HIDDEN_ROWS);
+                drawNext(myNextCtx, nextPieces);
+            }
+
+            function drawMatrix(context, matrix, offset) {
+                if (!matrix) return;
+                for (let y = 0; y < ROWS + HIDDEN_ROWS; y++) {
+                    if (!matrix[y]) continue;
+                    for (let x = 0; x < COLS; x++) {
+                        const value = matrix[y][x];
+                        if (value !== 0) {
+                            const canvasY = y + offset.y;
+                            context.fillStyle = value === GARBAGE_INDEX ? GARBAGE_COLOR_VALUE : PIECES[PIECE_TYPES[value - 1]]?.color || '#888888';
+                            context.fillRect(x + offset.x, canvasY, 1, 1);
+                            context.strokeStyle = 'rgba(0,0,0,0.3)';
+                            context.lineWidth = 0.05;
+                            context.strokeRect(x + offset.x, canvasY, 1, 1);
+                        }
+                    }
+                }
+            }
+
+            function drawPiece(context, piece, yOffset = 0) {
+                 if (!piece || !piece.shape) return;
+                 context.fillStyle = piece.color || '#FFFFFF';
+                 piece.shape.forEach((row, y) => {
+                    row.forEach((value, x) => {
+                        if (value !== 0) {
+                            const canvasX = x + piece.x;
+                            const canvasY = y + piece.y + yOffset;
+                            context.fillRect(canvasX, canvasY, 1, 1);
+                            context.strokeStyle = 'rgba(0,0,0,0.3)';
+                            context.lineWidth = 0.05;
+                            context.strokeRect(canvasX, canvasY, 1, 1);
+                        }
+                    });
+                 });
+            }
+
+            function drawGrid(context, cols, rows, yStart = 0) {
+                context.strokeStyle = GRID_COLOR_VALUE;
+                context.lineWidth = 0.02;
+                context.beginPath();
+                for (let i = 1; i < cols; i++) { context.moveTo(i, yStart); context.lineTo(i, rows + yStart); }
+                for (let i = yStart + 1; i < rows + yStart; i++) { context.moveTo(0, i); context.lineTo(cols, i); }
+                context.stroke();
+            }
+            
+            function drawNext(context, nextPieceTypes) {
+                if(!context) return;
+                context.clearRect(0, 0, 12, 4);
+                const piecesToDraw = nextPieceTypes.slice(0, PREVIEW_COUNT).reverse();
+                piecesToDraw.forEach((pieceType, index) => {
+                    if (pieceType) {
+                        const piece = PIECES[pieceType];
+                        const offsetX = (4 - piece.shape[0].length) / 2 + (index * 4);
+                        const offsetY = (4 - piece.shape.length) / 2;
+                        context.fillStyle = piece.color || '#FFFFFF';
+                        piece.shape.forEach((row, y) => {
+                            row.forEach((value, x) => {
+                                if (value !== 0) {
+                                    context.fillRect(x + offsetX, y + offsetY, 1, 1);
+                                    context.strokeStyle = 'rgba(0,0,0,0.3)';
+                                    context.lineWidth = 0.05;
+                                    context.strokeRect(x + offsetX, y + offsetY, 1, 1);
+                                }
+                            });
+                        });
+                    }
+                });
+            }
+
+             function drawGhostPiece(context, yOffset = 0) {
+                if (!currentPiece || ghostY === undefined) return;
+                const ghostPiece = { ...currentPiece, y: ghostY };
+                context.globalAlpha = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ghost-opacity').trim());
+                drawPiece(context, ghostPiece, yOffset);
+                context.globalAlpha = 1.0;
+             }
+
+            // --- Game Logic (Local) ---
+            function createMatrix(w, h) { 
+                const matrix = []; while (h--) { matrix.push(new Array(w).fill(0)); } return matrix;
+            }
+            function generate7Bag() { 
+                let bag = [...PIECE_TYPES];
+                for (let i = bag.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [bag[i], bag[j]] = [bag[j], bag[i]];
+                }
+                return bag;
+            }
+            // [신규] 로컬 7-bag 관리 함수
+            function getNextPieceFromBag() { 
+                if (pieceBag.length === 0) {
+                    pieceBag.push(...generate7Bag());
+                }
+                return pieceBag.pop();
+            }
+            // [신규] 로컬 nextPieces 배열 채우기 함수
+            function fillNextPieces() {
+                while (nextPieces.length < PREVIEW_COUNT) {
+                    nextPieces.push(getNextPieceFromBag());
+                }
+            }
+
+            function spawnPiece(pieceType) { 
+                const piece = PIECES[pieceType];
+                return {
+                    type: pieceType, shape: piece.shape, color: piece.color, index: piece.index,
+                    x: Math.floor(COLS / 2) - Math.floor(piece.shape[0].length / 2),
+                    y: 0,
+                    rotation: 0
+                };
+            }
+
+            // [수정] movePiece (로컬 변수 직접 수정)
+             function movePiece(dx, dy) { 
+                if (isGameOver || !currentPiece || !isGameLive) return; 
+                const nextPos = { ...currentPiece, x: currentPiece.x + dx, y: currentPiece.y + dy };
+                
+                if (!checkCollision(board, nextPos)) {
+                    currentPiece.x = nextPos.x;
+                    currentPiece.y = nextPos.y;
+                    lastMoveWasRotate = false;
+                    
+                    playSound('move');
+                    clearLockDelay();
+                    calculateGhostY();
+                    drawMyBoard();
+                }
+                else if (dy > 0) {
+                    // 바닥에 닿았을 때
+                    startLockDelay();
+                }
+             }
+
+            // [수정] rotatePiece (로컬 변수 직접 수정)
+            function rotatePiece() { 
+                if (isGameOver || !currentPiece || !isGameLive) return; 
+                const originalShape = currentPiece.shape;
+                const rotatedShape = rotateMatrix(originalShape);
+                let testPos = { ...currentPiece, shape: rotatedShape };
+                let kickOffset = 0;
+                
+                while (checkCollision(board, testPos)) {
+                    kickOffset = (kickOffset >= 0) ? -(kickOffset + 1) : -(kickOffset - 1);
+                    testPos.x = currentPiece.x + kickOffset;
+                    if (Math.abs(kickOffset) > 2) {
+                        playSound('move'); return;
+                    }
+                }
+                
+                currentPiece.x = testPos.x;
+                currentPiece.shape = rotatedShape;
+                currentPiece.rotation = (currentPiece.rotation + 1) % 4;
+                lastMoveWasRotate = true;
+
+                playSound('rotate');
+                clearLockDelay();
+                calculateGhostY();
+                drawMyBoard();
+            }
+
+            function rotateMatrix(matrix) { 
+                const N = matrix.length;
+                const result = matrix.map((row, i) =>
+                    row.map((val, j) => matrix[N - 1 - j][i])
+                );
+                return result;
+            }
+
+            // [수정] hardDrop (로컬 handleLocking 호출)
+            function hardDrop() {
+                if (isGameOver || !currentPiece || !isGameLive) return;
+                playSound('move');
+                let dropDistance = 0;
+                let finalY = currentPiece.y;
+                
+                while (!checkCollision(board, { ...currentPiece, y: finalY + 1 })) {
+                    finalY++; dropDistance++;
+                }
+
+                if (finalY > currentPiece.y) {
+                    const hardDropScoreToAdd = dropDistance * HARD_DROP_SCORE;
+                    handleLocking(true, finalY, hardDropScoreToAdd); // 로컬 함수 호출
+                    clearLockDelay();
+                } else {
+                     startLockDelay();
+                }
+            }
+
+             function checkCollision(boardToCheck, piece) { 
+                 if (!piece || !piece.shape || !boardToCheck) return true; 
+                 for (let y = 0; y < piece.shape.length; y++) {
+                    for (let x = 0; x < piece.shape[y].length; x++) {
+                        if (piece.shape[y][x] !== 0) {
+                            const boardX = x + piece.x;
+                            const boardY = y + piece.y;
+                            if (boardX < 0 || boardX >= COLS || boardY >= ROWS + HIDDEN_ROWS) return true;
+                            if (boardY >= 0 && boardToCheck[boardY] && boardToCheck[boardY][boardX] !== 0) return true;
+                        }
+                    }
+                 }
+                 return false;
+             }
+
+             function detectTSpin(rotatedPiece) { 
+                if (!rotatedPiece || rotatedPiece.type !== 'T' || !lastMoveWasRotate) return null;
+                const centerOffsets = { x: 1, y: 1 };
+                const centerX = rotatedPiece.x + centerOffsets.x;
+                const centerY = rotatedPiece.y + centerOffsets.y;
+                const corners = [
+                    { x: centerX - 1, y: centerY - 1 }, { x: centerX + 1, y: centerY - 1 },
+                    { x: centerX - 1, y: centerY + 1 }, { x: centerX + 1, y: centerY + 1 },
+                ];
+                let filledCorners = 0; let frontCornersFilled = 0;
+                corners.forEach((corner, index) => {
+                    if (corner.x < 0 || corner.x >= COLS || corner.y < 0 || corner.y >= ROWS + HIDDEN_ROWS ||
+                        (board[corner.y] && board[corner.y][corner.x] !== 0))
+                    {
+                        filledCorners++;
+                        if (index < 2) { frontCornersFilled++; }
+                    }
+                });
+                if (filledCorners >= 3) {
+                     if (filledCorners === 3 && frontCornersFilled < 2) { return 'mini'; }
+                    return 'normal';
+                }
+                return null;
+             }
+
+            function mergePieceToBoard(pieceToMerge = currentPiece) { 
+                if (!pieceToMerge || !pieceToMerge.shape || !board) return; 
+                const pieceIndex = pieceToMerge.index;
+                pieceToMerge.shape.forEach((row, y) => {
+                    row.forEach((value, x) => {
+                        if (value !== 0) {
+                            const boardY = y + pieceToMerge.y;
+                            const boardX = x + pieceToMerge.x;
+                            if (boardY >= 0 && boardY < ROWS + HIDDEN_ROWS && boardX >= 0 && boardX < COLS) {
+                                board[boardY][boardX] = pieceIndex;
+                            }
+                        }
+                    });
+                });
+            }
+
+            // --- [대폭 수정] handleLocking (Local Version) ---
+            function handleLocking(isHardDrop = false, finalY = null, hardDropScore = 0) {
+                if (!currentPiece) return;
+
+                const pieceToMerge = isHardDrop && finalY !== null ? { ...currentPiece, y: finalY } : { ...currentPiece };
+                clearLockDelay();
+
+                // 1. 로컬 보드에 조각 병합
+                mergePieceToBoard(pieceToMerge);
+                playSound('lock');
+
+                let linesCleared = 0;
+                let tSpinType = detectTSpin(pieceToMerge); 
+
+                // 2. 라인 클리어 검사
+                let y = ROWS + HIDDEN_ROWS - 1;
+                while (y >= 0) {
+                    if (board[y].every(cell => cell !== 0 && cell !== GARBAGE_INDEX)) {
+                        triggerLineClearAnimation(y); 
+                        board.splice(y, 1);
+                        board.unshift(new Array(COLS).fill(0));
+                        linesCleared++;
+                    } else {
+                        y--;
+                    }
+                }
+
+                let scoreToAdd = hardDropScore;
+                
+                // 3. 점수 및 레벨 계산
+                if (linesCleared > 0) {
+                    playSound('clear'); 
+                    currentCombo = (currentCombo < 0) ? 0 : currentCombo + 1;
+
+                    if (tSpinType) {
+                        playSound('tspin');
+                        if (tSpinType === 'mini') { scoreToAdd += T_SPIN_SCORE.mini; }
+                        else { scoreToAdd += T_SPIN_LINE_SCORE[linesCleared] || T_SPIN_SCORE.normal; }
+                    } else {
+                        scoreToAdd += SCORE_MAP[linesCleared] || 0;
+                        if (linesCleared === 4) playSound('tetris');
+                    }
+                    if (currentCombo > 0) {
+                        scoreToAdd += currentCombo * COMBO_SCORE * level;
+                    }
+                    
+                    score += scoreToAdd * level;
+                    lines += linesCleared;
+                    
+                    // [핵심] 레벨 및 속도 업데이트
+                    let newLevel = Math.floor(lines / 10) + 1;
+                    if (newLevel > level) {
+                        level = newLevel;
+                        dropInterval = BASE_DROP_INTERVAL * Math.pow(LEVEL_SPEED_FACTOR, level - 1);
+                        // TODO: 레벨업 사운드?
+                    }
+
+                } else {
+                    if (tSpinType) {
+                       playSound('tspin');
+                       scoreToAdd += (tSpinType === 'mini' ? T_SPIN_SCORE.mini : T_SPIN_SCORE.normal) * level;
+                       score += scoreToAdd;
+                    }
+                    currentCombo = -1;
+                }
+                
+                // [삭제] 쓰레기 로직
+                
+                // 4. 다음 조각 준비
+                const nextSpawnType = nextPieces.shift();
+                currentPiece = spawnPiece(nextSpawnType);
+                fillNextPieces(); // 다음 조각 채우기
+                
+                // 5. 게임 오버 확인
+                let lockedPieceLowestPoint = -1;
+                pieceToMerge.shape.forEach((row, y) => {
+                     row.forEach((value, x) => {
+                          if (value !== 0) lockedPieceLowestPoint = Math.max(lockedPieceLowestPoint, y + pieceToMerge.y);
+                     });
+                });
+
+                if (lockedPieceLowestPoint < HIDDEN_ROWS || checkCollision(board, currentPiece)) {
+                    isGameOver = true;
+                    showGameOver();
+                } else {
+                    // 6. UI 업데이트
+                    calculateGhostY();
+                    drawMyBoard();
+                    updateHeaderUI();
+                }
+            }
+
+            function calculateGhostY() { 
+                if (!currentPiece || !board) { ghostY = undefined; return; };
+                ghostY = currentPiece.y;
+                while (!checkCollision(board, { ...currentPiece, y: ghostY + 1 })) {
+                    ghostY++;
+                }
+            }
+
+            function startLockDelay() { 
+                if (lockDelayTimer || !isGameLive) return;
+                lockDelayTimer = setTimeout(() => {
+                    if (!currentPiece || !board) { clearLockDelay(); return; } 
+                    if (!checkCollision(board, { ...currentPiece, y: currentPiece.y + 1 })) {
+                        clearLockDelay();
+                    } else {
+                        handleLocking(); 
+                    }
+                }, LOCK_DELAY);
+            }
+
+            function clearLockDelay() { 
+                if (lockDelayTimer) { clearTimeout(lockDelayTimer); lockDelayTimer = null; }
+            }
+
+            // --- Game Loop (로컬 변수 사용) ---
+            function startGameLoop() {
+                if (gameLoopId) cancelAnimationFrame(gameLoopId); 
+                lastTime = performance.now();
+                dropCounter = 0;
+                gameStarted = true;
+                gameLoopId = requestAnimationFrame(gameLoop);
+            }
+
+            function gameLoop(timestamp) {
+                if (isGameOver || !isGameLive) { 
+                    gameStarted = false;
+                    cancelAnimationFrame(gameLoopId);
+                    return;
+                }
+
+                const deltaTime = timestamp - lastTime;
+                lastTime = timestamp;
+                dropCounter += deltaTime;
+
+                const currentDropInterval = softDropActive ? Math.min(dropInterval, 100) : dropInterval;
+
+                if (dropCounter > currentDropInterval) {
+                    if (currentPiece && board && !checkCollision(board, { ...currentPiece, y: currentPiece.y + 1 })) {
+                         movePiece(0, 1);
+                         if (softDropActive) {
+                             score += SOFT_DROP_SCORE;
+                             updateHeaderUI(); // 소프트드롭 점수 반영
+                         }
+                    } else {
+                         startLockDelay();
+                    }
+                    dropCounter = 0;
+                }
+                
+                updateParticles(deltaTime);
+                drawParticles(); 
+                
+                gameLoopId = requestAnimationFrame(gameLoop);
+            }
+
+            // --- Controls (유지) ---
+            function setupControls() {
+                document.addEventListener('keydown', handleKeyPress);
+                document.addEventListener('keyup', handleKeyUp);
+
+                if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+                    touchControls.style.display = 'flex';
+                    
+                    document.getElementById('touch-left').addEventListener('touchstart', (e) => { e.preventDefault(); if(!isGameLive) return; movePiece(-1, 0); startTouchMove(-1); }, { passive: false });
+                    document.getElementById('touch-right').addEventListener('touchstart', (e) => { e.preventDefault(); if(!isGameLive) return; movePiece(1, 0); startTouchMove(1); }, { passive: false });
+                    document.getElementById('touch-rotate').addEventListener('touchstart', (e) => { e.preventDefault(); if(!isGameLive) return; rotatePiece(); }, { passive: false });
+                    document.getElementById('touch-down').addEventListener('touchstart', (e) => { e.preventDefault(); if(!isGameLive) return; softDropActive = true; }, { passive: false });
+                    document.getElementById('touch-drop').addEventListener('touchstart', (e) => { e.preventDefault(); if(!isGameLive) return; hardDrop(); }, { passive: false });
+
+                    const stopMove = () => { stopTouchMove(); softDropActive = false; };
+                    document.getElementById('touch-left').addEventListener('touchend', stopMove);
+                    document.getElementById('touch-right').addEventListener('touchend', stopMove);
+                    document.getElementById('touch-down').addEventListener('touchend', stopMove);
+                    document.getElementById('touch-left').addEventListener('touchcancel', stopMove);
+                    document.getElementById('touch-right').addEventListener('touchcancel', stopMove);
+                    document.getElementById('touch-down').addEventListener('touchcancel', stopMove);
+                } else {
+                    touchControls.style.display = 'none';
+                }
+            }
+            let touchMoveTimer = null;
+            function startTouchMove(dir) {
+                stopTouchMove();
+                touchMoveTimer = setInterval(() => { movePiece(dir, 0); }, 100);
+            }
+            function stopTouchMove() {
+                clearInterval(touchMoveTimer); touchMoveTimer = null;
+            }
+
+            function handleKeyPress(event) {
+                if (isGameOver || !isGameLive) return; 
+                switch (event.code) {
+                    case 'ArrowLeft': movePiece(-1, 0); event.preventDefault(); break;
+                    case 'ArrowRight': movePiece(1, 0); event.preventDefault(); break;
+                    case 'ArrowDown':
+                        if (!softDropActive) { softDropActive = true; dropCounter = dropInterval; }
+                         event.preventDefault(); break;
+                    case 'ArrowUp': rotatePiece(); event.preventDefault(); break;
+                    case 'Space': hardDrop(); event.preventDefault(); break;
+                }
+            }
+             function handleKeyUp(event) {
+                if (event.code === 'ArrowDown') { softDropActive = false; }
+             }
+
+            // [삭제] updateGarbageMeter
+
+            // --- [대폭 수정] showGameOver (Solo Version) ---
+            function showGameOver() {
+                if (gameOverFlag) return;
+                gameOverFlag = true;
+                isGameLive = false;
+                gameStarted = false;
+                cancelAnimationFrame(gameLoopId);
+                playSound('gameover'); // 원래 게임오버 사운드 사용
+                
+                updatePlayerStats(); // 최고 점수 저장
+
+                gameoverOverlay.innerHTML = `
+                     <div class="modal-content">
+                         <div class="modal-header"><h2>GAME OVER</h2></div>
+                         <div class="modal-body">
+                             <div id="score-board">
+                                 <div class="score-row winner">
+                                     <span>FINAL SCORE</span>
+                                     <span>${score.toLocaleString()} 점</span>
+                                 </div>
+                                 <div class="score-row draw">
+                                     <span>LINES</span>
+                                     <span>${lines}</span>
+                                 </div>
+                                 <div class="score-row draw">
+                                     <span>LEVEL</span>
+                                     <span>${level}</span>
+                                 </div>
+                             </div>
+                             <div class="modal-buttons">
+                                 <button id="restart-btn" class="menu-btn primary">다시 하기</button>
+                                 <button id="lobby-btn" class="menu-btn secondary">대기실로</button>
+                             </div>
+                         </div>
+                     </div>`;
+                gameoverOverlay.classList.add('active');
+
+                document.getElementById('restart-btn').addEventListener('click', () => {
+                    gameoverOverlay.classList.remove('active');
+                    initializeGame(); // 게임 재시작
+                });
+                document.getElementById('lobby-btn').addEventListener('click', cleanupAndExit);
+            }
+
+            // [삭제] listenForRematch
+
+            // [수정] updatePlayerStats (Solo Version)
+            function updatePlayerStats() { 
+                if (!currentUser || currentUser.uid.startsWith('guest_')) return;
+                
+                const userStatsRef = usersRef.child(currentUser.uid).child('gameStats/tetris');
+                userStatsRef.transaction(currentStats => {
+                    if (currentStats === null) {
+                        currentStats = { wins: 0, losses: 0, draws: 0, plays: 0, highscore: 0 };
+                    }
+                    currentStats.plays = (currentStats.plays || 0) + 1;
+                    currentStats.highscore = Math.max(currentStats.highscore || 0, score);
+                    // 솔로 모드이므로 승/패/무는 기록하지 않음
+                    return currentStats;
+                });
+                
+                // 플레이 보상 (50 포인트)
+                usersRef.child(currentUser.uid).child('profile/points').transaction(points => (points || 0) + 50);
+            }
+
+            // --- Particle Effects (유지) ---
+            function triggerLineClearAnimation(clearedRowY) {
+                 const startY = (clearedRowY - HIDDEN_ROWS) * BLOCK_SIZE + BLOCK_SIZE / 2;
+                 const startX = myCanvas.width / 2;
+                 const count = 30;
+                 const color = 'var(--highlight-color)';
+                 for (let i = 0; i < count; i++) {
+                    particles.push(new Particle(startX, startY, color));
+                 }
+            }
+            class Particle {
+                constructor(x, y, color) {
+                    this.x = x; this.y = y; this.size = Math.random() * 5 + 2;
+                    this.speedX = Math.random() * 6 - 3; this.speedY = Math.random() * -8 - 2;
+                    this.color = color; this.life = 1; this.gravity = 0.2;
+                }
+                update(deltaTime) {
+                    this.x += this.speedX * (deltaTime / 16); this.y += this.speedY * (deltaTime / 16);
+                    this.speedY += this.gravity; this.life -= 0.02 * (deltaTime / 16);
+                }
+                draw() {
+                    particleCtx.fillStyle = this.color; particleCtx.globalAlpha = this.life;
+                    particleCtx.beginPath(); particleCtx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                    particleCtx.fill(); particleCtx.globalAlpha = 1;
+                }
+            }
+            function updateParticles(deltaTime) {
+                for (let i = particles.length - 1; i >= 0; i--) {
+                    particles[i].update(deltaTime);
+                    if (particles[i].life <= 0) particles.splice(i, 1);
+                }
+            }
+            function drawParticles() {
+                 if (!particleCtx || !particleCanvas) return;
+                 particleCtx.clearRect(0, 0, particleCanvas.width, particleCanvas.height);
+                 particles.forEach(p => p.draw());
+            }
+
+            // --- Window Resize Listener ---
+            window.addEventListener('resize', () => {
+                adjustLayout();
+                if (gameStarted && !isGameOver) {
+                     drawMyBoard();
+                } else {
+                     drawMyBoard(); // 게임오버 시에도 보드 다시 그리기
+                }
+            });
+
+        }); // DOMContentLoaded End
+    </script>
+</body>
+</html>
