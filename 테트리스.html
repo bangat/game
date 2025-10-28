@@ -796,23 +796,23 @@
                             // 헤더 UI 업데이트 (내 정보 + 상대 정보)
                             updateHeaderUI(myData, opponentData);
 
-                         // ▼▼▼ [수정] 게임 오버 확인 로직 단순화 및 강화 ▼▼▼
-                            if (!gameOverFlag && gameData && myPlayerKey && gameData[myPlayerKey]) { // myData 존재 확인 추가
+                         // ▼▼▼ [재수정] 게임 오버 확인 로직 ▼▼▼
+                            if (!gameOverFlag && gameData && myPlayerKey && gameData[myPlayerKey]) {
                                 const myData = gameData[myPlayerKey];
-                                const opponentData = gameData[opponentPlayerKey]; // opponentData는 null일 수 있음
-                                const iLost = myData.isGameOver; // myData는 존재 보장됨
-                                const oppLost = opponentData && opponentData.isGameOver; // opponentData 있을 때만 체크
+                                const opponentData = gameData[opponentPlayerKey]; // Can be null
+                                const iLost = myData.isGameOver;
+                                const oppLost = opponentData && opponentData.isGameOver;
 
                                 console.log(`[listen] GameOver Check: iLost=${iLost}, oppLost=${oppLost}`);
 
-                                // 내가 졌거나, 상대방 데이터가 있고 상대가 졌다면 게임 종료 처리
-                                if (iLost || (opponentData && oppLost)) {
-                                     console.log(`[listen] Game Over condition met (iLost=${iLost}, oppLost=${oppLost}). Calling showGameOver.`);
-                                     // 승패 결과는 showGameOver 내부에서 gameData를 보고 판단하도록 함 (null 전달)
-                                     showGameOver(gameData, null);
+                                // 상태 변경 감지: Firebase에서 isGameOver가 true로 바뀌는 순간을 캐치
+                                if (iLost || oppLost) {
+                                     // showGameOver 내부에서 gameOverFlag 체크하므로 여기선 바로 호출
+                                     console.log(`[listen] Game Over detected (iLost=${iLost}, oppLost=${oppLost}). Calling showGameOver.`);
+                                     showGameOver(gameData); // didIWin 인자 제거, 내부에서 계산하도록 함
                                 }
                             }
-                            // ▲▲▲ [수정] ▲▲▲
+                            // ▲▲▲ [재수정] ▲▲▲
                         }
 
                     } else if (roomData.status === 'gameOver' && !gameOverFlag) {
@@ -1335,16 +1335,19 @@
                     
                     // --- 5. 상대방에게 쓰레기 전송 ---
                     if (garbageToSend > 0) {
-                        // ▼▼▼ [수정] 상대방 키 직접 참조 및 null 체크 강화 ▼▼▼
                         const opponentKey = myPlayerKey === 'p1' ? 'p2' : 'p1';
-                        if (gameData[opponentKey]) { // Ensure opponent data structure exists
-                             // 트랜잭션 내에서 gameData 객체를 직접 수정해야 반영됩니다.
-                             gameData[opponentKey].incomingGarbage = (gameData[opponentKey].incomingGarbage || 0) + garbageToSend;
-                             console.log(`[Transaction] Sending ${garbageToSend} garbage to ${opponentKey}. New total: ${gameData[opponentKey].incomingGarbage}`);
+                        // ▼▼▼ [재수정] gameData 객체를 직접 수정하여 트랜잭션이 반영하도록 함 ▼▼▼
+                        if (gameData && gameData[opponentKey]) {
+                            // Ensure incomingGarbage exists before adding
+                            if (typeof gameData[opponentKey].incomingGarbage !== 'number') {
+                                gameData[opponentKey].incomingGarbage = 0;
+                            }
+                            gameData[opponentKey].incomingGarbage += garbageToSend;
+                            console.log(`[Transaction] Added ${garbageToSend} garbage to ${opponentKey}. New total will be: ${gameData[opponentKey].incomingGarbage}`);
                         } else {
-                             console.log(`[Transaction] Opponent key ${opponentKey} not found in gameData. Cannot send garbage.`);
+                             console.log(`[Transaction] Opponent key ${opponentKey} not found in gameData or gameData is null. Cannot send garbage.`);
                         }
-                        // ▲▲▲ [수정] ▲▲▲
+                         // ▲▲▲ [재수정] ▲▲▲
                     }
 
                     if (currentNextPieces.length === 0) {
@@ -1556,11 +1559,11 @@
             }
 
             // --- [대폭 수정] Game Over (사천성.html 스타일) ---
-            function showGameOver(gameData, didIWin) {
-                console.log("showGameOver called with didIWin:", didIWin, "Current gameOverFlag:", gameOverFlag); // 로그 추가
+            function showGameOver(gameData) { // [수정] didIWin 인자 제거
+                console.log("showGameOver called. Current gameOverFlag:", gameOverFlag);
                 if (gameOverFlag || gameoverOverlay.classList.contains('active')) {
-                     console.log("showGameOver execution skipped."); // 로그 추가
-                     return; // 이미 처리 중이면 중복 실행 방지
+                     console.log("showGameOver execution skipped (already game over).");
+                     return;
                 }
 
                 gameOverFlag = true; // 플래그 설정 먼저
@@ -1568,91 +1571,77 @@
                 gameStarted = false;
                 isGameLive = false;
 
-                // ▼▼▼ [추가] gameData 방어 코드 ▼▼▼
+                // ▼▼▼ [추가] gameData 방어 코드 (유지) ▼▼▼
                 if (!gameData) {
                     console.error("showGameOver called without gameData!");
-                    gameData = { // 임시 데이터 생성 (점수 등은 부정확할 수 있음)
-                        [myPlayerKey]: { score: score, isGameOver: isGameOver },
-                        [opponentPlayerKey]: null // 상대 데이터는 알 수 없음
-                    };
-                    // didIWin 재계산 시도 (최대한 정확하게)
-                     if (didIWin === undefined) {
-                         const myData = gameData[myPlayerKey];
-                         const iLost = myData && myData.isGameOver;
-                         // 상대 정보가 없으므로, 내가 게임오버가 아니면 승리, 게임오버면 패배로 간주
-                         didIWin = !iLost;
-                         console.log("Calculated didIWin without opponent data:", didIWin); // 로그 추가
-                     }
+                    // gameData가 없으면 승패 판정 불가 -> 기본 패배 처리 또는 오류 메시지
+                     gameoverOverlay.innerHTML = `<div class="modal-content"><div class="modal-body"><h2>오류 발생</h2><p>게임 결과를 처리할 수 없습니다.</p><button id="lobby-btn" class="menu-btn secondary">대기실로</button></div></div>`;
+                     gameoverOverlay.classList.add('active');
+                     document.getElementById('lobby-btn')?.addEventListener('click', cleanupAndExit); // Null 체크 추가
+                     return; // 더 이상 진행하지 않음
                 }
                 // ▲▲▲ [추가] ▲▲▲
 
-                // [수정] didIWin이 명시적으로 전달되지 않으면 (첫 진입 시) 계산
-                if (didIWin === undefined && gameData[myPlayerKey]) {
-                     const myData = gameData[myPlayerKey];
-                     const opponentData = gameData[opponentPlayerKey];
-                     const iLost = myData && myData.isGameOver;
-                     // [수정] 상대 데이터 없을 때 처리
-                     // 상대 데이터가 없으면, 내가 안 졌다면 상대가 진 것으로 간주 (내가 이김)
-                     const oppLost = opponentData ? opponentData.isGameOver : !iLost;
+                // ▼▼▼ [수정] didIWin 계산 로직 (함수 내부에서 수행) ▼▼▼
+                let didIWin = null; // 기본 무승부
+                const myData = gameData[myPlayerKey];
+                const opponentData = gameData[opponentPlayerKey]; // Can be null
+                const iLost = myData && myData.isGameOver;
+                const oppLost = opponentData && opponentData.isGameOver;
 
-                     if (iLost && !oppLost) {
-                         didIWin = false; // 내가 짐
-                     } else if (!iLost && oppLost) {
-                         didIWin = true; // 내가 이김
-                     } else if (iLost && oppLost) {
-                         didIWin = null; // 둘 다 짐 (무승부)
-                     } else {
-                         // 둘 다 안 졌는데 게임 오버? (타임아웃 등 - 일단 무승부 처리)
-                         didIWin = null;
-                         console.warn("showGameOver: Both players not game over, but called? Treating as draw."); // 경고 로그
-                     }
-                     console.log(`Calculated didIWin: iLost=${iLost}, oppLost=${oppLost} -> didIWin=${didIWin}`); // 로그 추가
+                if (iLost && !oppLost) {
+                    didIWin = false; // 내가 짐
+                } else if (!iLost && oppLost) {
+                    didIWin = true; // 내가 이김
+                } else if (iLost && oppLost) {
+                    didIWin = null; // 둘 다 짐 (무승부)
+                } else if (!iLost && !opponentData) {
+                    // 내가 안 졌고 상대 데이터가 없는 경우 (상대가 나감 등) -> 내가 이김
+                    didIWin = true;
+                     console.log("Calculated didIWin: Opponent data missing, I'm not game over -> Win");
                 }
+                 // else: 둘 다 안 졌는데 호출된 경우? 일단 무승부(null) 유지
+                 console.log(`Calculated didIWin: iLost=${iLost}, oppLost=${oppLost} -> didIWin=${didIWin}`);
+                 // ▲▲▲ [수정] ▲▲▲
 
                 const resultText = (didIWin === null) ? "무승부!" : (didIWin ? "🎉 승리!" : "😭 패배...");
                 playSound((didIWin === null) ? 'loss-sound-new' : (didIWin ? 'win-sound-new' : 'loss-sound-new'));
 
                 updatePlayerStats(didIWin);
 
-                // ▼▼▼ [추가] currentRoomData 방어 코드 ▼▼▼
                 const playerInfoSource = currentRoomData && currentRoomData.players ? currentRoomData.players : {};
-                // ▲▲▲ [추가] ▲▲▲
 
                 // 점수판 HTML 생성
                 const scoresHTML = [myPlayerKey, opponentPlayerKey].map(key => {
-                    if (!key) return ''; // opponentPlayerKey가 없을 수 있음 (시작 직후 상대 나감)
+                    if (!key) return '';
 
-                    // ▼▼▼ [수정] playerInfoSource 사용 및 상대 ID 찾기 강화 ▼▼▼
                     const isMyKey = (key === myPlayerKey);
                     const playerId = isMyKey ? myPlayerId : Object.keys(playerInfoSource).find(id => id !== myPlayerId);
-                    const player = playerId ? playerInfoSource[playerId] : null; // 플레이어 정보 가져오기
+                    const player = playerId ? playerInfoSource[playerId] : null;
 
-                    // 플레이어 정보가 없으면 (상대가 나간 경우 등) 기본값 표시
                     if (!player && !isMyKey) {
                          return `<div class="score-row loser">
                                      <span class="score-avatar"><div class="avatar">👻</div> Opponent Left</span>
                                      <span>? 점</span>
                                  </div>`;
                     }
-                    if (!player && isMyKey) { // 내 정보도 없는 극히 드문 경우 대비
+                    if (!player && isMyKey) {
                         return `<div class="score-row loser">
                                      <span class="score-avatar"><div class="avatar">❓</div> Unknown</span>
                                      <span>? 점</span>
                                  </div>`;
                     }
-                    // ▲▲▲ [수정] ▲▲▲
 
-                    const data = (gameData && gameData[key]) ? gameData[key] : { score: 0 }; // 게임 데이터 가져오기 (없으면 0점)
+                    const data = (gameData && gameData[key]) ? gameData[key] : { score: 0 };
 
-                    // [수정] 무승부/승/패 클래스 적용 로직 강화
-                     let scoreClass = 'draw'; // 기본 무승부
-                     if (didIWin !== null) { // 승패가 갈렸다면
+                    let scoreClass = 'draw';
+                    if (didIWin !== null) {
                          scoreClass = isMyKey === didIWin ? 'winner' : 'loser';
-                     }
-                     // didIWin이 null (무승부)인데, 혹시 데이터상으론 승패가 갈린 경우 (데이터 불일치 방어)
+                    }
+                     // 무승부인데 데이터상 승패 갈린 경우 방어 로직 (유지)
                      else if (gameData[myPlayerKey]?.isGameOver !== gameData[opponentPlayerKey]?.isGameOver) {
-                         const iLost = gameData[myPlayerKey]?.isGameOver;
-                         scoreClass = isMyKey === !iLost ? 'winner' : 'loser'; // 내가 안졌으면 승자
+                         const iLostCheck = gameData[myPlayerKey]?.isGameOver;
+                         scoreClass = isMyKey === !iLostCheck ? 'winner' : 'loser';
                          console.warn("showGameOver: Draw detected (didIWin=null), but isGameOver states differ. Assigning classes based on data.");
                      }
 
@@ -1683,14 +1672,20 @@
                 gameoverOverlay.classList.add('active');
                 console.log("Game over overlay activated."); // 로그 추가
 
-                // 버튼 리스너
+                // 버튼 리스너 (null 체크 추가)
                 const rematchBtn = document.getElementById('rematch-btn');
-                rematchBtn.addEventListener('click', () => {
-                     rematchBtn.textContent = '상대방 기다리는 중...';
-                     rematchBtn.disabled = true;
-                     roomRef.child('rematchRequests/' + myPlayerId).set(true);
-                });
-                document.getElementById('lobby-btn').addEventListener('click', cleanupAndExit);
+                if (rematchBtn) {
+                     rematchBtn.addEventListener('click', () => {
+                         rematchBtn.textContent = '상대방 기다리는 중...';
+                         rematchBtn.disabled = true;
+                         roomRef.child('rematchRequests/' + myPlayerId).set(true);
+                     });
+                }
+                const lobbyBtn = document.getElementById('lobby-btn');
+                 if (lobbyBtn) {
+                     lobbyBtn.addEventListener('click', cleanupAndExit);
+                 }
+
 
                 listenForRematch(); // 재시작 리스너 시작
             }
