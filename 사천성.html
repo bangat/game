@@ -475,20 +475,25 @@
                 }
                 // 게임이 이미 라이브 상태이면 UI 업데이트
                 // ✨ [수정] 재배열 상태 확인을 isGameLive 밖으로 이동
-                if (currentRoomData.isShuffling) {
-                    infoOverlay.innerHTML = `<div class="spinner"></div><p style="color: white; margin-top: 15px; font-size: 1.1em;">보드를 재배열 합니다...</p>`;
-                    infoOverlay.style.display = 'flex';
-                }
-                // 게임이 이미 라이브 상태이고, 재배열 중이 아닐 때
-                else if (isGameLive) {
-                    updateHeaderUI();
-                    renderBoard();
-                    updateMySelection(); // 내 선택 상태 UI 반영
+                if (isGameLive) {
+                    // ✨ [핵심 수정] isGameLive *내부에서* 재배열 상태를 확인합니다.
                     
-                    // isShuffling이 false이고, 카운트다운이 끝났으면 오버레이를 숨김
-                    if (infoOverlay.style.display !== 'none' && countdownStarted) {
-                         // infoOverlay.style.display = 'none'; 
-                         // -> 이 로직은 startCountdown에서 직접 처리하므로 여기선 제거
+                    if (currentRoomData.isShuffling) {
+                        // 1. 재배열 중: 오버레이 표시
+                        infoOverlay.innerHTML = `<div class="spinner"></div><p style="color: white; margin-top: 15px; font-size: 1.1em;">보드를 재배열 합니다...</p>`;
+                        infoOverlay.style.display = 'flex';
+                    } else {
+                        // 2. 재배열 중이 아님: 오버레이 숨기고 게임 UI 업데이트
+                        
+                        // ✨ [추가] 오버레이가 켜져 있으면 끈다
+                        if (infoOverlay.style.display !== 'none') {
+                             infoOverlay.style.display = 'none';
+                        }
+
+                        // 최신 게임 상태 렌더링
+                        updateHeaderUI();
+                        renderBoard();
+                        updateMySelection(); // 내 선택 상태 UI 반영
                     }
                 }
             } else if (currentRoomData.status === 'gameOver' && !gameOverFlag) {
@@ -496,38 +501,58 @@
                         infoOverlay.style.display = 'none'; // [추가] 로딩 오버레이 끄기
                         renderBoard(); // 최종 보드 상태 렌더링
                         showGameOverScreen(); // 게임 종료 화면 표시
-                   } else if (currentRoomData.status === 'waiting') {
-                        // [추가] '게임 종료' 오버레이를 끄고 플래그를 리셋합니다.
+                   (변경코드)
+                    } else if (currentRoomData.status === 'waiting') {
                         gameOverOverlay.style.display = 'none';
                         gameOverFlag = false;
-                        // ✨ [수정] 카운트다운 플래그는 *모든* 플레이어가 리셋해야 합니다.
                         countdownStarted = false; 
-                        isGameLive = false; // ✨ [추가] 게임 라이브 상태 초기화
+                        isGameLive = false; 
 
-                        // ✨ '준비' 상태가 아니면, 'readyPlayers'에 자신을 등록합니다.
                         const readyPlayers = currentRoomData.readyPlayers || {};
+                        const totalPlayers = Object.keys(currentRoomData.players).length;
+                        const readyCount = Object.keys(readyPlayers).length;
+
+                        // ✨ [수정] '준비' 상태가 아니면, 'readyPlayers'에 자신을 등록합니다.
                         if (!readyPlayers[myPlayerId]) {
                             roomRef.child('readyPlayers/' + myPlayerId).set(true);
-                            // set(true)를 하면 Firebase 'value' 이벤트가 다시 발생하므로,
-                            // 일단 대기 화면을 먼저 보여줍니다.
+                            
+                            // ✨ [핵심 수정] 
+                            // 방금 '준비' 신호를 보냈으므로, stale(오래된) 데이터로 
+                            // 게임 시작을 확인하지 말고 즉시 리턴하여 다음 이벤트를 기다립니다.
+                            // 대기 화면을 먼저 표시합니다.
+                            if (isHost) {
+                                infoOverlay.innerHTML = `<div class="spinner"></div><p style="color: white; margin-top: 15px; font-size: 1.1em;">상대방 기다리는 중 (${readyCount}/${totalPlayers})...</p>`;
+                            } else {
+                                infoOverlay.innerHTML = `<div class="spinner"></div><p style="color: white; margin-top: 15px; font-size: 1.1em;">게임 시작 대기 중...</p>`;
+                            }
+                            infoOverlay.style.display = 'flex';
+                            return; // ✨ 즉시 리턴
                         }
                         
-                        // 방장인 경우, 모든 플레이어가 준비되었는지 확인하고 게임 시작
+                        // ✨ [수정] 
+                        // 이 코드는 내가 *이미* ready 상태일 때만 실행됩니다.
+                        // (즉, 'readyPlayers'에 내가 포함된 이벤트가 다시 들어왔을 때)
                         if (isHost) {
-                            // const readyPlayers = currentRoomData.readyPlayers || {}; // (위로 이동)
-                            const readyCount = Object.keys(readyPlayers).length;
-                            const totalPlayers = Object.keys(currentRoomData.players).length;
-                             // 최소 2명 이상이고 모두 준비 완료 시 게임 시작
                             if (totalPlayers >= 2 && readyCount === totalPlayers) {
-                                // countdownStarted = false; // (위로 이동했습니다)
-                                initializeShisenShoGame(); // 방장이 게임 데이터 생성
+                                // ✨ [핵심 수정] 
+                                // 보드를 *바로* 생성하지 않고, '게임방.html'에서 보낸 것과
+                                // 동일한 '게임 시작 로딩' 신호를 보냅니다.
+                                roomRef.update({
+                                    status: 'playing',
+                                    gameState: 'launching', // '처음하기'와 동일한 신호
+                                    board: null,            // 보드를 비워서 '보드 생성중' 상태 유도
+                                    scores: null,
+                                    selectedTiles: null,
+                                    readyPlayers: null      // '준비' 상태 초기화
+                                });
+                                // initializeShisenShoGame(); // <--- 이 코드를 위 update로 대체
                             } else {
-                                // 대기 중 UI 업데이트
+                                // 아직 모두 준비되지 않음 (상대방 기다리는 중)
                                 infoOverlay.innerHTML = `<div class="spinner"></div><p style="color: white; margin-top: 15px; font-size: 1.1em;">상대방 기다리는 중 (${readyCount}/${totalPlayers})...</p>`;
                                 infoOverlay.style.display = 'flex';
                             }
                         } else {
-                            // 게스트는 대기 중 UI 표시
+                            // 게스트는 대기 중
                              infoOverlay.innerHTML = `<div class="spinner"></div><p style="color: white; margin-top: 15px; font-size: 1.1em;">게임 시작 대기 중...</p>`;
                             infoOverlay.style.display = 'flex';
                         }
