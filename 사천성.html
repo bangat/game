@@ -450,12 +450,13 @@
                     // (게임방.html에서 'launching' 신호를 받고 넘어온 직후)
                     
                     // ▼▼▼ [신규] 맵 생성 중... 로딩 표시 ▼▼▼
-                    infoOverlay.innerHTML = `<div class="spinner"></div><p style="color: white; margin-top: 15px; font-size: 1.1em;">풀 수 있는 맵 생성 중...</p>`;
+                    // ✨ [수정] 맵 생성 시도 횟수를 표시하도록 텍스트 변경
+                    infoOverlay.innerHTML = `<div class="spinner"></div><p style="color: white; margin-top: 15px; font-size: 1.1em;">풀 수 있는 맵 생성 중... (1/10)</p>`;
                     infoOverlay.style.display = 'flex';
                     // ▲▲▲ [신규] 맵 생성 중... 로딩 표시 ▲▲▲
 
                     console.log("방장 감지: board가 없으므로 게임판을 생성합니다.");
-                    initializeShisenShoGame(); 
+                    initializeShisenShoGame();
                     return; // board 생성 후, 다음 on('value') 이벤트를 기다립니다.
                 }
 
@@ -592,40 +593,65 @@ function _generateBoardRecursive(board, tilesToPlace, depth = 0) {
 }
 
 
-          // --- [신규] 풀이 가능한 보드 생성 (역순 배치 방식) ---
-             function initializeShisenShoGame(retryCount = 0) {
+         function initializeShisenShoGame(retryCount = 0) {
                  if (!isHost) return;
 
-                 console.log("풀 수 있는 사천성 보드 생성 시작...");
+                 // ✨ 1. (재시도 아닐 때만) 로그 표시
+                 if (retryCount === 0) {
+                     console.log("풀 수 있는 사천성 보드 생성 시작...");
+                     // (첫 시도 텍스트는 listenToRoomChanges에서 이미 설정됨)
+                 } else {
+                     console.warn(`맵 생성 재시도... (${retryCount}/10)`);
+                     // ✨ [추가] 재시도 시 스피너 텍스트 업데이트
+                     infoOverlay.innerHTML = `<div class="spinner"></div><p style="color: white; margin-top: 15px; font-size: 1.1em;">풀 수 있는 맵 생성 중... (${retryCount + 1}/10)</p>`;
+                     infoOverlay.style.display = 'flex';
+                 }
 
-                 // 1. 타일 준비
+                 // ✨ 2. 최대 재시도 횟수 초과 확인
+                 const MAX_RETRIES = 10;
+                 if (retryCount >= MAX_RETRIES) {
+                     console.error("보드 생성 최종 실패!");
+                     // ✨ [수정] alert 제거, 스피너 텍스트로 변경
+                     infoOverlay.innerHTML = `<div class="spinner"></div><p style="color: white; margin-top: 15px; font-size: 1.1em;">맵 생성 실패! 잠시 후 다시 시도합니다...</p>`;
+                     // ✨ [수정] 무한 루프 방지를 위해 readyPlayers: null 추가
+                     roomRef.update({ status: 'waiting', board: null, readyPlayers: null }); 
+                     return;
+                 }
+
+                 // 3. 타일 준비 (매번 확인)
                  const iconsNeeded = TILE_COUNT / 2;
                  if (TILE_ICONS.length < iconsNeeded) {
                      console.error("타일 아이콘/이미지 개수가 부족합니다!");
-                     alert("타일이 부족합니다!");
+                     // ✨ [수정] alert 제거, 스피너 텍스트로 변경
+                     infoOverlay.innerHTML = `<div class="spinner"></div><p style="color: white; margin-top: 15px; font-size: 1.1em;">게임 설정 오류 (타일 부족). 방을 재시작합니다...</p>`;
+                     // ✨ [수정] 무한 루프 방지를 위해 readyPlayers: null 추가
+                     roomRef.update({ status: 'waiting', board: null, readyPlayers: null }); 
                      return;
                  }
 
-                 // 2. 보드 생성 (역순 제거 방식)
+                 // 4. 보드 생성 (✨ 단 한 번 시도)
                  const board = createSolvableBoard(iconsNeeded);
-                 
+
+                 // 5. ✨ [핵심] 생성 결과에 따라 분기
                  if (!board) {
-                     console.error("보드 생성 실패!");
-                     alert("맵 생성에 실패했습니다.");
-                     roomRef.update({ status: 'waiting', board: null });
-                     return;
+                     // 5-1. 실패 시: 잠시 후(50ms) 재시도 (브라우저가 멈추지 않도록)
+                     setTimeout(() => {
+                         initializeShisenShoGame(retryCount + 1); // 재귀 호출
+                     }, 50); // 50ms 딜레이
+                     return; // ✨ 중요: 현재 함수는 여기서 종료
                  }
 
+                 // 5-2. 성공 시: (기존 로직 동일)
                  console.log("✅ 풀 수 있는 보드 생성 완료!");
 
-                 // 3. 초기 게임 데이터 구성
+                 // 6. 초기 게임 데이터 구성
                  const playerIds = Object.keys(currentRoomData.players);
                  const initialScores = {};
                  playerIds.forEach(id => initialScores[id] = 0);
                  const initialSelectedTiles = {};
                  playerIds.forEach(id => initialSelectedTiles[id] = null);
 
-                 // 4. Firebase 업데이트
+                 // 7. Firebase 업데이트
                  roomRef.update({
                      status: 'playing',
                      board: board,
@@ -681,12 +707,10 @@ function _generateBoardRecursive(board, tilesToPlace, depth = 0) {
                      }
 
                      if (!placed) {
-                         console.warn("타일 배치 실패, 랜덤 배치로 전환");
-                         // 실패 시 그냥 아무 빈 곳에 배치
-                         const pos1 = emptySpots[0];
-                         const pos2 = emptySpots[1];
-                         board[pos1] = pair.icon;
-                         board[pos2] = pair.icon;
+                         // 🚨 [수정] 배치 실패 시, 랜덤 배치를 하지 않고
+                         // 이 맵 생성이 실패했음을 알립니다.
+                         console.error("맵 생성 실패: 타일 쌍을 배치할 연결 가능한 위치를 찾지 못했습니다.");
+                         return null; // 실패 반환
                      }
                  }
 
