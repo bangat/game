@@ -371,6 +371,30 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     
    <script>
+    // [신규] 카카오 SDK 초기화 함수 (전역 스코프로 이동)
+    function kakaoInit() {
+        try {
+            // Kakao 객체가 존재하는지 먼저 확인
+            if (typeof Kakao !== 'undefined') {
+                Kakao.init('eab4e799223cb0d41b51e518546b2405'); // 여기에 발급받은 JavaScript 키를 입력하세요.
+                console.log('Kakao SDK 초기화 성공:', Kakao.isInitialized());
+
+                // ✨ 초기화 성공 후, 여기서 이벤트 리스너를 연결합니다.
+                const inviteBtn = document.getElementById('invite-btn');
+                if (inviteBtn) {
+                    inviteBtn.addEventListener('click', kakaoInvite);
+                    console.log('초대 버튼 이벤트 리스너 연결됨.');
+                } else {
+                    console.error('초대 버튼(invite-btn)을 찾을 수 없습니다.');
+                }
+            } else {
+                console.error('Kakao 객체를 찾을 수 없습니다. SDK 스크립트 로드 실패 가능성이 있습니다.');
+            }
+        } catch (e) {
+            console.error("카카오 SDK 초기화 또는 이벤트 리스너 연결 실패:", e);
+        }
+    }
+
     function escapeHTML(str) {
         if (typeof str !== 'string') return '';
         const map = {
@@ -391,7 +415,7 @@
      }
  });
  setInterval(() => { try { debugger; } catch (e) {} }, 1000);
- 
+
  function setScreenHeight() {
         const vh = window.innerHeight * 0.01;
         document.documentElement.style.setProperty('--vh', `${vh}px`);
@@ -404,15 +428,6 @@
     window.addEventListener('orientationchange', setScreenHeight);
     setScreenHeight(); // 페이지 로드 시 즉시 실행
 
-    // [신규] 카카오 SDK 초기화 함수 (script onload로 호출됨)
-        function kakaoInit() {
-            try {
-                Kakao.init('eab4e799223cb0d41b51e518546b2405');
-                console.log('Kakao SDK 초기화 성공');
-            } catch (e) {
-                console.error("카카오 SDK 초기화 실패:", e);
-            }
-        }
 
     document.addEventListener('DOMContentLoaded', () => {
 
@@ -423,10 +438,10 @@
         history.pushState(null, '', location.href);
         window.addEventListener('popstate', (e) => {
             history.pushState(null, '', location.href); // 뒤로가기 방지는 유지
-            
+
             // 서브 텍스트 업데이트 (방장/손님)
             exitModalSubtext.textContent = isHost ? "방장이 나가면 방이 사라집니다." : "방에서 나가게 됩니다.";
-            
+
             // 모달 표시 (대기실 스타일)
             confirmExitModal.classList.add('active'); // [수정]
         });
@@ -437,18 +452,18 @@
             confirmExitModal.classList.remove('active'); // [수정]
             cleanupAndExit(); // 기존의 방 나가기 함수 호출
         });
-        
+
         document.getElementById('exit-cancel-btn').addEventListener('click', () => {
             confirmExitModal.classList.remove('active'); // [수정]
         });
         // ✨ [신규] 끝
 
-    
+
         // [신규] onDisconnect 참조를 저장할 변수
         let hostOnDisconnect = null;
         let playerOnDisconnect = null;
 
-          
+
 
         const firebaseConfig = {
             apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
@@ -496,7 +511,7 @@
             { id: 'tetris', name: '테트리스', icon: '🧱', file: '테트리스.html', maxPlayers: 2, color: '#2980b9', canSolo: false }
         ];
 
-       
+
         const playSound = (id) => {
             const sound = document.getElementById(id);
             if(sound) { sound.currentTime = 0; sound.play().catch(e => {}); }
@@ -519,7 +534,7 @@
                 console.error('kakaoInvite: currentRoomData 또는 roomRef가 없습니다.');
                 return;
             }
-            
+
             const game = availableGames.find(g => g.id === currentRoomData.gameType);
             if (!game) {
                 alert("오류: 알 수 없는 게임입니다.");
@@ -551,7 +566,7 @@
                         },
                     },
                 ],
-            }, 
+            },
             (error) => {
                 // [수정] 4. 에러 발생 시 alert
                 if (error) {
@@ -574,7 +589,7 @@
                 usersRef.child(currentUser.uid).child('profile/bombSkin').once('value', snapshot => {
                     // bombSkin 값이 있으면 사용하고, 없으면 기본 물풍선으로 설정
                     myBombSkin = snapshot.val() || './봄버맨사운드/물풍선.png';
-                    
+
                     // 스킨 정보 로드 후 방 초기화 시작
                     initializeRoom();
 
@@ -593,13 +608,13 @@
         function initializeRoom() {
             const urlParams = new URLSearchParams(window.location.search);
             const roomId = urlParams.get('roomId');
-            
+
             // ✨ [핵심 수정] AI 퀴즈 혼자 하기 모드 확인
             const isSoloQuiz = urlParams.get('mode') === 'solo' && roomId === 'solo_quiz_temp';
-            
+
             if (isSoloQuiz) {
                 // 혼자 하기 모드는 DB 검사 없이 바로 게임 페이지로 이동합니다.
-                const game = availableGames.find(g => g.id === 'quiz'); 
+                const game = availableGames.find(g => g.id === 'quiz');
                 if (game) {
                     // window.location.replace를 사용하여 뒤로 가기를 방지합니다.
                     window.location.replace(`${game.file}?roomId=${roomId}&mode=solo`);
@@ -612,7 +627,7 @@
                 window.location.href = '대기실.html';
                 return;
             }
-            
+
             // ✨ 멀티 플레이 모드 (기존 로직)
             roomRef = roomsRef.child(roomId);
 
@@ -633,7 +648,7 @@
                     window.location.href = '대기실.html';
                     return;
                 }
-                
+
                 const myPlayerData = {
                     nickname: myNickname,
                     avatar: myAvatar,
@@ -653,14 +668,14 @@
 
         function listenToRoomChanges() {
             roomRef.on('value', snapshot => {
-                if (!snapshot.exists()) { 
-                    alert("방이 사라졌습니다."); 
-                    cleanupAndExit(); 
-                    return; 
+                if (!snapshot.exists()) {
+                    alert("방이 사라졌습니다.");
+                    cleanupAndExit();
+                    return;
                 }
                 const oldRoomData = currentRoomData;
                 currentRoomData = snapshot.val();
-                
+
                 if (currentRoomData.status === 'playing') {
                     const game = availableGames.find(g => g.id === currentRoomData.gameType);
                     if (game) {
@@ -669,8 +684,8 @@
                         } else {
                             roomRef.child('players/' + currentUser.uid).onDisconnect().cancel();
                         }
-                        if(roomRef) roomRef.off(); 
-                        window.location.href = `${game.file}?roomId=${snapshot.key}`; 
+                        if(roomRef) roomRef.off();
+                        window.location.href = `${game.file}?roomId=${snapshot.key}`;
                     }
                     return;
                 }
@@ -682,20 +697,20 @@
                 }
 
                 isHost = currentRoomData.hostId === currentUser.uid;
-                
+
                 // [수정] onDisconnect 참조를 변수에 저장
                 if (isHost) {
                     // 이전에 플레이어 onDisconnect가 설정되었다면 취소
-                    if (playerOnDisconnect) playerOnDisconnect.cancel(); 
+                    if (playerOnDisconnect) playerOnDisconnect.cancel();
                     hostOnDisconnect = roomRef.onDisconnect();
                     hostOnDisconnect.remove();
                 } else {
                     // 이전에 호스트 onDisconnect가 설정되었다면 취소
-                    if (hostOnDisconnect) hostOnDisconnect.cancel(); 
+                    if (hostOnDisconnect) hostOnDisconnect.cancel();
                     playerOnDisconnect = roomRef.child('players/' + currentUser.uid).onDisconnect();
                     playerOnDisconnect.remove();
                 }
-                
+
                 updateUI();
                 handlePlayerChanges(oldRoomData ? oldRoomData.players : {});
                 loadingOverlay.style.display = 'none';
@@ -703,7 +718,7 @@
 
             roomRef.child('chat').on('child_added', snapshot => renderChatMessage(snapshot.val()));
         }
-        
+
         function handlePlayerChanges(oldPlayers) {
             const currentPlayers = currentRoomData.players || {};
             const oldPlayerIds = Object.keys(oldPlayers);
@@ -713,7 +728,7 @@
             const left = oldPlayerIds.filter(id => !currentPlayerIds.includes(id));
 
             joined.forEach(id => {
-                if (id !== currentUser.uid && oldPlayerIds.length > 0) { 
+                if (id !== currentUser.uid && oldPlayerIds.length > 0) {
                     addSystemMessage(`${currentPlayers[id].nickname}님이 입장했습니다.`);
                     playSound('enter-sound');
                     vibrate();
@@ -739,7 +754,7 @@
 
             const playerList = document.getElementById('player-list-horizontal');
             playerList.innerHTML = '';
-            
+
             const playerIds = Object.keys(currentRoomData.players);
 
             for (let i = 0; i < (game?.maxPlayers || 0); i++) {
@@ -771,7 +786,7 @@
                 const playerCount = Object.keys(currentRoomData.players).length;
                 const minPlayers = 2; // '같이 하기'는 무조건 2명
                 const canStart = game && playerCount >= minPlayers && playerCount <= game.maxPlayers;
-                
+
                 // [수정] 버튼 표시 및 활성화 로직
                 startGameBtn.style.display = 'block'; // 버튼을 표시
                 startGameBtn.disabled = !canStart;
@@ -786,22 +801,22 @@
                 startGameBtn.style.display = 'none'; // [수정] 손님에게는 버튼을 숨김
             }
         }
-        
+
         function renderChatMessage(msg) {
             if (!msg) return;
             const msgEl = document.createElement('div');
-            
+
             if (msg.isSystem) {
                 msgEl.className = 'system-message';
                 msgEl.textContent = msg.content;
             } else {
                 const senderInfo = currentRoomData.players[msg.senderId];
                 if (!senderInfo) return;
-                
+
                 msgEl.className = 'chat-message';
                 // 약 351행 'renderChatMessage' 함수 내부
                 if (msg.senderId === currentUser.uid) msgEl.classList.add('my-message');
-                
+
                 // ✨ [수정] 4방향 아바타 세트(ID), 이미지, 이모지 순으로 확인
                 const avatarSet = AVATAR_SETS[senderInfo.avatar];
                 let avatarHTML = '';
@@ -822,7 +837,7 @@
             chatContainer.appendChild(msgEl);
             chatContainer.scrollTop = chatContainer.scrollHeight;
         }
-        
+
         function addSystemMessage(message) {
             roomRef.child('chat').push({ isSystem: true, content: message, timestamp: firebase.database.ServerValue.TIMESTAMP });
         }
@@ -843,9 +858,9 @@
             if (!isHost) return;
             const game = availableGames.find(g => g.id === currentRoomData.gameType);
             if (!game) return;
-            
+
             console.log('[게임방] 게임 시작 - gameType:', game.id);
-            
+
             const playerIds = Object.keys(currentRoomData.players);
             const updates = {};
 
@@ -871,7 +886,7 @@
                 // ✨ [수정] 메모리게임.html이 스스로 초기화하도록 'launching' 신호만 보냄
                 // ✨ (중복되는 카드 생성, 턴 설정 등 모든 로직 삭제)
                 updates.status = 'playing';
-                updates.gameState = 'launching'; 
+                updates.gameState = 'launching';
             }
             // 인디언포커 게임
             else if (game.id === 'indianpoker') {
@@ -933,12 +948,12 @@
                 console.error('[게임방] 업데이트 실패:', error);
             });
         }
-        
+
         function generateCards(pairCount) {
             const themes = [['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯'], ['🍔','🍕','🍟','🌭','🍿','🥨','🥯','🥞','🧇','🧀']];
             const selectedEmojis = themes[Math.floor(Math.random() * themes.length)];
             const cards = [...selectedEmojis.slice(0, pairCount), ...selectedEmojis.slice(0, pairCount)];
-            cards.sort(() => Math.random() - 0.5); 
+            cards.sort(() => Math.random() - 0.5);
             return cards.map(e => ({ emoji: e, matched: false }));
         }
 
@@ -961,7 +976,7 @@
                 window.location.href = '대기실.html';
             }
         }
-        
+
         // ✨ 키보드가 올라올 때 입력창이 가려지는 현상 방지
         chatInput.addEventListener('focus', () => {
             // setTimeout을 주어 키보드 애니메이션이 끝난 후 스크롤되도록 합니다.
@@ -982,7 +997,7 @@
                 // 설정된 onDisconnect 이벤트를 모두 임시 취소
                 if (hostOnDisconnect) hostOnDisconnect.cancel();
                 if (playerOnDisconnect) playerOnDisconnect.cancel();
-                
+
             } else if (document.visibilityState === 'visible') {
                 // 페이지가 다시 보이면 (예: 게임방 복귀)
                 // onDisconnect 이벤트를 다시 설정
@@ -996,13 +1011,13 @@
             }
         });
         startGameBtn.addEventListener('click', startGame);
-        
+
         // [수정] 나가기 버튼 클릭 시 모달 띄우기
         leaveRoomBtn.addEventListener('click', () => {
             // 브라우저 뒤로가기 버튼과 동일하게 작동
             history.back();
         });
-        
+
         emojiToggleBtn.addEventListener('click', e => { e.stopPropagation(); emojiPopover.classList.toggle('active'); });
         document.addEventListener('click', () => emojiPopover.classList.remove('active'));
         emojiPopover.addEventListener('click', e => {
