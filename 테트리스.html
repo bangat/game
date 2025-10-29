@@ -977,20 +977,30 @@ let nextBlockSize = 10;
                                 const opponentData = gameData[opponentPlayerKey];
                                 
                                 if (myData) {
-                                    board = myData.board || createMatrix(COLS, ROWS + HIDDEN_ROWS);
-                                    currentPiece = myData.currentPiece;
-                                    nextPieces = myData.nextPieces || [];
-                                    score = myData.score;
-                                    level = myData.level;
-                                    lines = myData.lines;
-                                    incomingGarbage = myData.incomingGarbage;
-                                    combo = myData.combo;
-                                    isGameOver = myData.isGameOver;
-                                    lastMoveWasRotate = myData.lastMoveWasRotate;
+                                // Directly update local state from Firebase data
+                                board = myData.board || createMatrix(COLS, ROWS + HIDDEN_ROWS);
+                                currentPiece = myData.currentPiece; // Receive current piece state
+                                nextPieces = myData.nextPieces || [];
+                                score = myData.score || 0;
+                                level = myData.level || 1;
+                                lines = myData.lines || 0;
+                                incomingGarbage = myData.incomingGarbage || 0;
+                                combo = myData.combo !== undefined ? myData.combo : -1; // Handle combo reset
+                                isGameOver = myData.isGameOver || false; // Ensure boolean
+                                lastMoveWasRotate = myData.lastMoveWasRotate || false; // Needed for T-Spin check
+                                pieceBag = myData.pieceBag || []; // Sync piece bag
 
-                                    calculateGhostY();
-                                    drawMyBoard(); 
+                                // Update drop interval based on Firebase data or level calculation
+                                dropInterval = myData.dropInterval || BASE_DROP_INTERVAL * Math.pow(0.85, (level || 1) - 1);
+                                // Ensure dropInterval is a number and has a minimum value
+                                if (isNaN(dropInterval) || dropInterval < 50) {
+                                    dropInterval = 50;
                                 }
+
+                                // Update local states that depend on received data
+                                calculateGhostY(); // Recalculate ghost based on currentPiece and board
+                                drawMyBoard();     // Redraw everything based on updated state
+                            }
                                 updateHeaderUI(myData, opponentData);
                             }
 
@@ -1539,22 +1549,22 @@ let nextBlockSize = 10;
                     canSwapHold = true;
                 roomRef.child('gameData').transaction(gameData => {
                     if (!gameData || !gameData[myPlayerKey]) {
-                        return; 
+                        return; // Abort if my data doesn't exist
                     }
-                    
+
                     const myData = gameData[myPlayerKey];
-                    // const oppData = gameData[opponentPlayerKey]; // [삭제] 상대방 데이터는 여기서 수정하지 않음
                     let currentBoard = myData.board;
                     let currentScore = myData.score;
                     let currentLines = myData.lines;
                     let currentLevel = myData.level;
                     let currentCombo = myData.combo;
                     let currentIncomingGarbage = myData.incomingGarbage;
-                    let currentPieceBag = myData.pieceBag || generate7Bag(); 
+                    let currentPieceBag = myData.pieceBag || generate7Bag();
                     let currentNextPieces = myData.nextPieces || [];
-                    // ▼▼▼ [수정] isGameOver 상태를 로컬 변수로 관리 ▼▼▼
-                    let currentIsGameOver = myData.isGameOver; 
-                    
+                    let currentIsGameOver = myData.isGameOver;
+                    let currentDropInterval = myData.dropInterval || BASE_DROP_INTERVAL; // Get current interval
+
+                    // Merge the locked piece into the board state within the transaction
                     const pieceIndex = pieceToMerge.index;
                     pieceToMerge.shape.forEach((row, y) => {
                         row.forEach((value, x) => {
@@ -1562,6 +1572,10 @@ let nextBlockSize = 10;
                                 const boardY = y + pieceToMerge.y;
                                 const boardX = x + pieceToMerge.x;
                                 if (boardY >= 0 && boardY < ROWS + HIDDEN_ROWS && boardX >= 0 && boardX < COLS) {
+                                    if (!currentBoard[boardY]) { // Ensure row exists
+                                        console.error(`Error: Row ${boardY} does not exist in board during merge!`);
+                                        currentBoard[boardY] = new Array(COLS).fill(0); // Create row if missing (error recovery)
+                                    }
                                     currentBoard[boardY][boardX] = pieceIndex;
                                 }
                             }
@@ -1569,12 +1583,13 @@ let nextBlockSize = 10;
                     });
 
                     let linesCleared = 0;
-                    let tSpinType = detectTSpin(pieceToMerge); 
+                    let tSpinType = detectTSpin(pieceToMerge);
 
+                    // Clear lines
                     let y = ROWS + HIDDEN_ROWS - 1;
                     while (y >= 0) {
-                        if (currentBoard[y].every(cell => cell !== 0 && cell !== GARBAGE_INDEX)) {
-                            triggerLineClearAnimation(y); 
+                        if (currentBoard[y] && currentBoard[y].every(cell => cell !== 0 && cell !== GARBAGE_INDEX)) {
+                            triggerLineClearAnimation(y);
                             currentBoard.splice(y, 1);
                             currentBoard.unshift(new Array(COLS).fill(0));
                             linesCleared++;
@@ -1585,21 +1600,23 @@ let nextBlockSize = 10;
 
                     let scoreToAdd = hardDropScore;
                     let garbageToSend = 0;
-                    
+
                     if (linesCleared > 0) {
                         playSound('clear-new-sound');
                         currentCombo = (currentCombo < 0) ? 0 : currentCombo + 1;
 
-                        // --- [신규] 텍스트 표시 로직 ---
                         let actionText = "";
                         if (tSpinType) {
                             playSound('tspin');
                             if (tSpinType === 'mini') {
                                 actionText = "T-Spin Mini!";
+                                scoreToAdd += T_SPIN_SCORE.mini; garbageToSend += T_SPIN_GARBAGE.mini_1;
                             } else {
                                 if (linesCleared === 3) actionText = "T-Spin Triple!";
                                 else if (linesCleared === 2) actionText = "T-Spin Double!";
                                 else actionText = "T-Spin Single!";
+                                scoreToAdd += T_SPIN_LINE_SCORE[linesCleared] || T_SPIN_SCORE.normal;
+                                garbageToSend += T_SPIN_GARBAGE[`normal_${linesCleared}`] || 0;
                             }
                         } else {
                             if (linesCleared === 4) {
@@ -1610,102 +1627,95 @@ let nextBlockSize = 10;
                             } else if (linesCleared === 2) {
                                 actionText = "Double!";
                             }
-                            // Single은 너무 자주 나오므로 생략
-                        }
-
-                        // 콤보 텍스트 (T-Spin이나 Tetris가 아닐 때만 표시)
-                        if (currentCombo > 0 && !tSpinType && linesCleared < 4) {
-                            actionText = `Combo ${currentCombo + 1}!`; // 콤보 인덱스 수정 (0부터 시작하므로 +1)
-                        }
-
-                        if (actionText) {
-                            showActionText(actionText); // ✨ 액션 텍스트 표시 함수 호출
-                        }
-                        // --- [신규] 로직 끝 ---
-
-                        if (tSpinType) {
-                            // (기존 스코어/정크 로직)
-                            if (tSpinType === 'mini') { scoreToAdd += T_SPIN_SCORE.mini; garbageToSend += T_SPIN_GARBAGE.mini_1; }
-                            else { scoreToAdd += T_SPIN_LINE_SCORE[linesCleared] || T_SPIN_SCORE.normal; garbageToSend += T_SPIN_GARBAGE[`normal_${linesCleared}`] || 0; }
-                        } else {
-                            // (기존 스코어/정크 로직)
                             scoreToAdd += SCORE_MAP[linesCleared] || 0;
                             garbageToSend += GARBAGE_MAP[linesCleared] || 0;
-                            // if (linesCleared === 4) playSound('tetris'); // [수정] 위로 이동됨
                         }
-                        if (currentCombo > 0) {
-                            // (기존 스코어/정크 로직)
+
+                        if (currentCombo > 0 && !tSpinType && linesCleared < 4) {
+                            actionText = `Combo ${currentCombo + 1}!`;
                             scoreToAdd += currentCombo * COMBO_SCORE * currentLevel;
                             garbageToSend += COMBO_GARBAGE[Math.min(currentCombo, COMBO_GARBAGE.length - 1)] || 0;
                         }
 
+                        if (actionText) {
+                            showActionText(actionText);
+                        }
+
                         currentScore += scoreToAdd * currentLevel;
                         currentLines += linesCleared;
+                        const previousLevel = currentLevel; // Save previous level
                         currentLevel = Math.floor(currentLines / 10) + 1;
-                    } else {
-                        // --- [수정] 라인 클리어 0 인 T-Spin ---
+
+                        // --- ▼▼▼ [신규] 레벨업 시 속도 증가 로직 ▼▼▼ ---
+                        if (currentLevel > previousLevel) { // Check if leveled up
+                            currentDropInterval = Math.max(50, BASE_DROP_INTERVAL * Math.pow(0.85, currentLevel - 1));
+                            console.log(`Level Up! New Interval: ${currentDropInterval}`);
+                        }
+                        // --- ▲▲▲ [신규] 레벨업 시 속도 증가 로직 ▲▲▲ ---
+
+                    } else { // 0 lines cleared
                         if (tSpinType) {
                            playSound('tspin');
-                           // [신규] 텍스트 표시
-                           showActionText(tSpinType === 'mini' ? "T-Spin Mini!" : "T-Spin!"); // ✨ 액션 텍스트 표시 함수 호출
-
+                           showActionText(tSpinType === 'mini' ? "T-Spin Mini!" : "T-Spin!");
                            scoreToAdd += (tSpinType === 'mini' ? T_SPIN_SCORE.mini : T_SPIN_SCORE.normal) * currentLevel;
                            currentScore += scoreToAdd;
                            garbageToSend += (tSpinType === 'mini' ? T_SPIN_GARBAGE.mini_0 : T_SPIN_GARBAGE.normal_0);
                         }
                         currentCombo = -1;
+                        // No level up check needed here, but currentDropInterval is kept from myData read
                     }
-                    
-                    // ▼▼▼ [수정] 쓰레기 상쇄 로직 (garbageToOpponent 계산) ▼▼▼
-                    let garbageToOpponent = garbageToSend; // 1. 일단 내가 보낼 쓰레기
-                    
-                    if (currentIncomingGarbage > 0) { // 2. 받아야 할 쓰레기가 있다면
+
+                    // Garbage cancelling
+                    let garbageToOpponent = garbageToSend;
+                    if (currentIncomingGarbage > 0) {
                         if (garbageToOpponent >= currentIncomingGarbage) {
-                            // 3a. 보낼 쓰레기가 더 많음 (상쇄)
-                            garbageToOpponent -= currentIncomingGarbage; // 보낼 쓰레기 감소
-                            currentIncomingGarbage = 0; // 받을 쓰레기 0
+                            garbageToOpponent -= currentIncomingGarbage;
+                            currentIncomingGarbage = 0;
                         } else {
-                            // 3b. 받을 쓰레기가 더 많음 (일부 상쇄)
-                            currentIncomingGarbage -= garbageToOpponent; // 받을 쓰레기 감소
-                            garbageToOpponent = 0; // 보낼 쓰레기 0
+                            currentIncomingGarbage -= garbageToOpponent;
+                            garbageToOpponent = 0;
                         }
                     }
 
-                    // 4. 상쇄 후에도 받아야 할 쓰레기가 남았다면 내 보드에 적용
+                    // Apply remaining incoming garbage to own board
                     if (currentIncomingGarbage > 0) {
                         playSound('junk-sound');
                         const holeCol = Math.floor(Math.random() * COLS);
                         for (let i = 0; i < currentIncomingGarbage; i++) {
-                            currentBoard.shift();
+                            if (currentBoard.length > 0) currentBoard.shift(); // Remove top row only if board has rows
                             const newRow = Array(COLS).fill(GARBAGE_INDEX);
                             newRow[holeCol] = 0;
-                            currentBoard.push(newRow);
+                            // Ensure board doesn't exceed max height
+                            if (currentBoard.length < ROWS + HIDDEN_ROWS) {
+                                currentBoard.push(newRow);
+                            } else {
+                                console.warn("Board full, cannot add more garbage.");
+                                // Optionally trigger game over here if garbage exceeds limit?
+                            }
                         }
+                        currentIncomingGarbage = 0; // Reset after applying
                     }
-                    // 5. 처리가 끝났으므로 내 받을 쓰레기는 0으로 리셋
-                    // myData.incomingGarbage = 0; // [수정] 아래쪽 할당 블럭으로 이동
-                    
-                    // --- [수정] 5. 상대방에게 쓰레기 전송 (로직 변경) ---
-                    // 트랜잭션 내부에서는 전송할 쓰레기 양만 변수에 저장합니다.
-                    garbageToSendFromTransaction = garbageToOpponent;
-                    // [삭제] 상대방의 gameData[opponentKey].incomingGarbage 를 직접 수정하는 코드 삭제
-                    // ▲▲▲ [수정] ▲▲▲
 
+                    // Prepare garbage to send after transaction succeeds
+                    garbageToSendFromTransaction = garbageToOpponent;
+
+                    // Get next piece
                     if (currentNextPieces.length === 0) {
                         if(currentPieceBag.length === 0) currentPieceBag = generate7Bag();
                         currentNextPieces.push(currentPieceBag.pop());
                     }
                     const nextSpawnType = currentNextPieces.shift();
                     const newPiece = spawnPiece(nextSpawnType);
-                    
+
+                    // Refill next queue
                     while (currentNextPieces.length < PREVIEW_COUNT) {
                         if (currentPieceBag.length === 0) currentPieceBag = generate7Bag();
                         currentNextPieces.push(currentPieceBag.pop());
                     }
-                    
-                    // --- 7. 게임 오버 확인 ---
+
+                    // Check Game Over condition
                     let lockedPieceLowestPoint = -1;
-                    pieceToMerge.shape.forEach((row, y) => {
+                     pieceToMerge.shape.forEach((row, y) => {
                          row.forEach((value, x) => {
                               if (value !== 0) {
                                    lockedPieceLowestPoint = Math.max(lockedPieceLowestPoint, y + pieceToMerge.y);
@@ -1713,50 +1723,57 @@ let nextBlockSize = 10;
                          });
                     });
 
-                    // ▼▼▼ [수정] 로컬 변수 currentIsGameOver 에 할당 ▼▼▼
                     if (lockedPieceLowestPoint < HIDDEN_ROWS) {
                          currentIsGameOver = true;
-                         console.log("Game Over triggered: Piece locked too high at y=", lockedPieceLowestPoint); 
-                    } 
-                    else if (checkCollision(currentBoard, newPiece)) { 
+                         console.log("Game Over triggered: Piece locked too high at y=", lockedPieceLowestPoint);
+                    }
+                    else if (checkCollision(currentBoard, newPiece)) {
                         currentIsGameOver = true;
                          console.log("Game Over triggered: New piece collision on spawn.");
                     }
 
-                    // ▼▼▼ [수정] 최종 데이터 할당 (isGameOver, incomingGarbage 추가) ▼▼▼
+                    // Update myData for the transaction
                     myData.board = currentBoard;
                     myData.score = currentScore;
                     myData.level = currentLevel;
                     myData.lines = currentLines;
                     myData.combo = currentCombo;
-                    myData.incomingGarbage = 0; // 5. 쓰레기 처리 완료 후 0으로 설정
-                    myData.isGameOver = currentIsGameOver; // 7. 게임 오버 상태 저장
-                    myData.boardHeight = calculateBoardHeight(currentBoard); 
+                    myData.incomingGarbage = 0; // Reset incoming garbage
+                    myData.isGameOver = currentIsGameOver;
+                    myData.boardHeight = calculateBoardHeight(currentBoard);
                     myData.currentPiece = newPiece;
                     myData.nextPieces = currentNextPieces;
                     myData.lastMoveWasRotate = false;
-                    myData.pieceBag = currentPieceBag; 
+                    myData.pieceBag = currentPieceBag;
+                    myData.dropInterval = currentDropInterval; // Save the (potentially updated) drop interval
 
-                    return gameData; 
+                    // Reset hold availability state locally for the next piece
+                    canSwapHold = true;
+
+                    return gameData; // Return the modified gameData
 
                 }, (error, committed, snapshot) => {
-                    canSwapHold = true; // Reset hold on successful lock
-                         holdPanel.classList.remove('unavailable'); // Visually enable hold
-                    if (error) { console.error("Locking Transaction failed: ", error); }
-                    else if (!committed) { console.warn("Locking Transaction aborted (data changed)"); }
-                    else { 
-                        // --- [신규] 트랜잭션 성공 시, 별도로 쓰레기 전송 ---
-                        playSound('lock-new-sound'); 
-                        
+                    // This code runs *after* the transaction attempt completes
+                    if (error) {
+                        console.error("Locking Transaction failed: ", error);
+                        // Maybe revert local state or show error?
+                    } else if (!committed) {
+                        console.warn("Locking Transaction aborted (data changed externally). Local state might be stale.");
+                        // Handle potential desync, maybe force a refresh?
+                    } else {
+                        // Transaction was successful!
+                        playSound('lock-new-sound');
+                        canSwapHold = true; // Reset hold on successful lock
+                        holdPanel.classList.remove('unavailable'); // Visually enable hold
+
+                        // Send garbage *now* using a separate transaction
                         if (garbageToSendFromTransaction > 0) {
                             const opponentKey = myPlayerKey === 'p1' ? 'p2' : 'p1';
                             const opponentGarbageRef = roomRef.child(`gameData/${opponentKey}/incomingGarbage`);
-                            
-                            // 별도의 트랜잭션으로 상대방의 쓰레기만 원자적으로 증가시킴
-                            opponentGarbageRef.transaction(currentGarbage => {
-                                return (currentGarbage || 0) + garbageToSendFromTransaction;
+
+                            opponentGarbageRef.transaction(currentOpponentGarbage => {
+                                return (currentOpponentGarbage || 0) + garbageToSendFromTransaction;
                             }, (error, committed, snapshot) => {
-                                // ▼▼▼ [수정] 쓰레기 전송 트랜잭션 에러/성공 로그 추가 ▼▼▼
                                 if (error) {
                                     console.error(`Garbage Transaction to ${opponentKey} failed:`, error);
                                 } else if (committed) {
@@ -1764,10 +1781,12 @@ let nextBlockSize = 10;
                                 } else {
                                     console.warn(`Garbage Transaction to ${opponentKey} aborted.`);
                                 }
-                                // ▲▲▲ [수정] ▲▲▲
                             });
                         }
-                        // --- [신규] ---
+                        // Local state should already match the snapshot data from the successful transaction
+                        // but you could re-read if needed:
+                        // const latestGameData = snapshot.val();
+                        // updateLocalStateFromFirebase(latestGameData[myPlayerKey]); // Example function
                     }
                 });
             }
