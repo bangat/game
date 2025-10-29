@@ -524,6 +524,10 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="아바타.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script>
         // --- [신규] HTML Escape 함수 ---
         function escapeHTML(str) {
@@ -585,7 +589,7 @@
             const COLS = 10;
             const ROWS = 20;
             const HIDDEN_ROWS = 2;
-            const PREVIEW_COUNT = 6; // [수정] 4 -> 6 (1 + 5개 표시)
+            const PREVIEW_COUNT = 6;
             let BLOCK_SIZE = 20; 
             let nextBlockSize = 10;
             const PIECES = {
@@ -621,6 +625,9 @@
                     });
                 });
             }
+            
+            // --- [신규] 3D 블록 색상 변수 ---
+            let BLOCK_HIGHLIGHT_COLOR, BLOCK_SHADOW_COLOR; 
 
             function initializeColors() {
                 const rootStyle = getComputedStyle(document.documentElement);
@@ -651,8 +658,6 @@
             const T_SPIN_GARBAGE = { mini_0: 0, mini_1: 1, normal_0: 0, normal_1: 2, normal_2: 4, normal_3: 6 };
             const COMBO_GARBAGE = [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6]; // [수정] 콤보 쓰레기 상향
 
-            // --- Game State Variables ---
-            let BLOCK_HIGHLIGHT_COLOR, BLOCK_SHADOW_COLOR; // [신규] 3D 블록 색상
             let myPlayerId, myNickname, myAvatar, roomRef, isHost; 
             let myPlayerKey = null;
             let opponentPlayerKey = null;
@@ -870,9 +875,8 @@
                 particleCanvas.style.width = `${boardWidth}px`;
                 particleCanvas.style.height = `${boardHeight}px`;
 
-                // ▼▼▼ [수정] 3개 사이드 패널 크기 조절 ▼▼▼
                 const sideBlockSize = Math.max(1, Math.floor(sidePanelWidth / 4));
-                nextBlockSize = sideBlockSize; // Update global variable
+                nextBlockSize = sideBlockSize;
 
                 // Size HOLD canvas
                 const holdCanvasSize = sideBlockSize * 4;
@@ -890,18 +894,20 @@
 
                 // Size QUEUE canvas (Tall)
                 const queueCanvasWidth = sideBlockSize * 4;
-                const queueCanvasHeight = sideBlockSize * 15; // (4 + 4 + 15)
+                
+                // ▼▼▼ [수정] 짤림 문제 해결을 위해 고정 높이로 변경 ▼▼▼
+                const queueCanvasHeight = sideBlockSize * 15;
+                // ▲▲▲ [수정] ▲▲▲
                 
                 queueCanvas.width = queueCanvasWidth;
                 queueCanvas.height = queueCanvasHeight;
                 queueCanvas.style.width = `${queueCanvasWidth}px`;
                 queueCanvas.style.height = `${queueCanvasHeight}px`;
-                // ▲▲▲ [수정] ▲▲▲
 
                 setupContextScale(BLOCK_SIZE, sideBlockSize);
             }
 
-            function setupContextScale(mainBlockSize, sideBlockSize) { // [수정] next/hold 통합
+            function setupContextScale(mainBlockSize, sideBlockSize) {
                 if (!myCtx) return;
 
                 myCtx.resetTransform();
@@ -909,7 +915,6 @@
 
                 if(particleCtx) particleCtx.resetTransform();
 
-                // [수정] 3개 캔버스 컨텍스트 설정
                 if(immediateNextCtx) {
                     immediateNextCtx.resetTransform();
                     immediateNextCtx.scale(sideBlockSize, sideBlockSize);
@@ -949,25 +954,21 @@
                 
                 let hostBag = generate7Bag();
                 const hostStartPiece = hostBag.pop();
-                // ▼▼▼ [수정] 6개 생성 ▼▼▼
                 const hostNext1 = hostBag.pop();
                 const hostNext2 = hostBag.pop();
                 const hostNext3 = hostBag.pop();
                 const hostNext4 = hostBag.pop();
                 const hostNext5 = hostBag.pop();
                 const hostNext6 = hostBag.pop();
-                // ▲▲▲ [수정] ▲▲▲
                 
                 let guestBag = generate7Bag();
                 const guestStartPiece = guestBag.pop();
-                // ▼▼▼ [수정] 6개 생성 ▼▼▼
                 const guestNext1 = guestBag.pop();
                 const guestNext2 = guestBag.pop();
                 const guestNext3 = guestBag.pop();
                 const guestNext4 = guestBag.pop();
                 const guestNext5 = guestBag.pop();
                 const guestNext6 = guestBag.pop();
-                // ▲▲▲ [수정] ▲▲▲
 
 
                 const createInitialPlayerState = (pieceType, nextPiecesArray, pieceBag) => ({
@@ -981,10 +982,8 @@
                 });
 
                 roomRef.child('gameData').set({
-                    // ▼▼▼ [수정] 6개 배열 전달 ▼▼▼
                     p1: createInitialPlayerState(hostStartPiece, [hostNext1, hostNext2, hostNext3, hostNext4, hostNext5, hostNext6], hostBag),
                     p2: createInitialPlayerState(guestStartPiece, [guestNext1, guestNext2, guestNext3, guestNext4, guestNext5, guestNext6], guestBag)
-                    // ▲▲▲ [수정] ▲▲▲
                 }).catch(err => console.error("Error initializing game data:", err));
             }
 
@@ -1231,10 +1230,8 @@
 
                 drawGrid(myCtx, COLS, ROWS, HIDDEN_ROWS);
 
-                // ▼▼▼ [수정] 새 그리기 함수 호출 ▼▼▼
                 drawImmediateNext(immediateNextCtx, nextPieces[0]);
                 drawQueue(queueCtx, nextPieces.slice(1));
-                // ▲▲▲ [수정] ▲▲▲
                 
                 drawHold(holdCtx, heldPieceType);
             }
@@ -1292,7 +1289,7 @@
 
             function drawPiece(context, piece, yOffset = 0) {
                  if (!piece || !piece.shape) return;
-                 context.fillStyle = piece.color || '#FFFFFF';
+                 // [삭제] context.fillStyle
                  piece.shape.forEach((row, y) => {
                     row.forEach((value, x) => {
                         if (value !== 0) {
@@ -1321,7 +1318,6 @@
                 context.stroke();
             }
             
-           // ▼▼▼ [수정] drawNext -> drawQueue로 이름 변경 ▼▼▼
            function drawQueue(context, nextPieceTypes) {
                 if (!context || !queueCanvas) return;
 
@@ -1331,9 +1327,9 @@
 
                 context.clearRect(0, 0, canvasScaledWidth, canvasScaledHeight);
 
-                const piecesToDraw = nextPieceTypes.slice(0, PREVIEW_COUNT - 1); // [수정] 5개
+                const piecesToDraw = nextPieceTypes.slice(0, PREVIEW_COUNT - 1);
                 let currentYOffset = 1.0;
-                const gap = 1.0; // [수정] 간격 1.0
+                const gap = 1.0;
 
                 piecesToDraw.forEach((pieceType, index) => {
                     if (pieceType) {
@@ -1358,7 +1354,7 @@
                         const offsetX = (MAX_BLOCKS_WIDE - pieceWidth) / 2;
                         const offsetY = currentYOffset;
 
-                        context.fillStyle = piece.color || '#FFFFFF';
+                        // [삭제] context.fillStyle
                         for(let y = startY; y < shape.length; y++){
                             if(!shape[y]) continue;
                             for(let x = 0; x < shape[y].length; x++){
@@ -1376,7 +1372,6 @@
                     }
                 });
             }
-            // ▲▲▲ [수정] ▲▲▲
 
              function drawGhostPiece(context, yOffset = 0) {
                 if (!currentPiece || ghostY === undefined) return;
@@ -1397,7 +1392,7 @@
                      const offsetX = (HOLD_SIZE - shape[0].length) / 2;
                      const offsetY = (HOLD_SIZE - shape.length) / 2;
 
-                     context.fillStyle = piece.color || '#FFFFFF';
+                     // [삭제] context.fillStyle
                      shape.forEach((row, y) => {
                          row.forEach((value, x) => {
                              if (value !== 0) {
@@ -1409,10 +1404,9 @@
                  }
             }
 
-            // ▼▼▼ [신규] 1개 넥스트 블록 그리기 함수 (drawHold 복사) ▼▼▼
             function drawImmediateNext(context, pieceType) {
                  if(!context || !immediateNextCanvas) return;
-                 const BOX_SIZE = 4; // 4x4 칸
+                 const BOX_SIZE = 4;
                  context.clearRect(0, 0, BOX_SIZE, BOX_SIZE);
 
                  if (pieceType) {
@@ -1421,7 +1415,7 @@
                      const offsetX = (BOX_SIZE - shape[0].length) / 2;
                      const offsetY = (BOX_SIZE - shape.length) / 2;
 
-                     context.fillStyle = piece.color || '#FFFFFF';
+                     // [삭제] context.fillStyle
                      shape.forEach((row, y) => {
                          row.forEach((value, x) => {
                              if (value !== 0) {
@@ -1432,7 +1426,7 @@
                      });
                  }
             }
-            // ▲▲▲ [신규] ▲▲▲
+
 
             function createMatrix(w, h) { 
                 const matrix = [];
@@ -1475,7 +1469,7 @@
                     currentPiece.x = nextPos.x;
                     currentPiece.y = nextPos.y;
                     
-                    if (dx !== 0) { // [수정] 수평 이동 시에만 T-Spin 플래그 초기화
+                    if (dx !== 0) { // [수정] T-Spin 버그 수정
                         lastMoveWasRotate = false;
                     }
                     
