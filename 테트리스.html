@@ -205,9 +205,9 @@
             z-index: 50;
             pointer-events: none;
             width: 100%;
-            /* ▼▼▼ 반투명 배경 추가 ▼▼▼ */
-            background-color: rgba(26, 26, 46, 0.5); /* --bg-color의 반투명 버전 */
-            /* ▲▲▲ 반투명 배경 추가 ▲▲▲ */
+            /* ▼▼▼ [수정] 배경을 투명하게 변경 ▼▼▼ */
+            background-color: transparent;
+            /* ▲▲▲ [수정] ▲▲▲ */
         }
         .touch-group { display: flex; gap: max(15px, 1.5vw); pointer-events: auto; }
         .touch-btn {
@@ -1271,8 +1271,7 @@
                 });
             }
 
-           // --- [대폭 수정] handleLocking (Transaction으로 변경) ---
-            function handleLocking(isHardDrop = false, finalY = null, hardDropScore = 0) { 
+          function handleLocking(isHardDrop = false, finalY = null, hardDropScore = 0) { 
                 if (!currentPiece) return;
 
                 const pieceToMerge = isHardDrop && finalY !== null ? { ...currentPiece, y: finalY } : { ...currentPiece };
@@ -1283,7 +1282,7 @@
                 let garbageToSendFromTransaction = 0;
 
                 roomRef.child('gameData').transaction(gameData => {
-                    if (!gameData || !gameData[myPlayerKey] || !gameData[myPlayerKey].currentPiece) {
+                    if (!gameData || !gameData[myPlayerKey]) {
                         return; 
                     }
                     
@@ -1297,6 +1296,8 @@
                     let currentIncomingGarbage = myData.incomingGarbage;
                     let currentPieceBag = myData.pieceBag || generate7Bag(); 
                     let currentNextPieces = myData.nextPieces || [];
+                    // ▼▼▼ [수정] isGameOver 상태를 로컬 변수로 관리 ▼▼▼
+                    let currentIsGameOver = myData.isGameOver; 
                     
                     const pieceIndex = pieceToMerge.index;
                     pieceToMerge.shape.forEach((row, y) => {
@@ -1387,7 +1388,7 @@
                         }
                     }
                     // 5. 처리가 끝났으므로 내 받을 쓰레기는 0으로 리셋
-                    myData.incomingGarbage = 0; 
+                    // myData.incomingGarbage = 0; // [수정] 아래쪽 할당 블럭으로 이동
                     
                     // --- [수정] 5. 상대방에게 쓰레기 전송 (로직 변경) ---
                     // 트랜잭션 내부에서는 전송할 쓰레기 양만 변수에 저장합니다.
@@ -1417,20 +1418,24 @@
                          });
                     });
 
+                    // ▼▼▼ [수정] 로컬 변수 currentIsGameOver 에 할당 ▼▼▼
                     if (lockedPieceLowestPoint < HIDDEN_ROWS) {
-                         myData.isGameOver = true;
+                         currentIsGameOver = true;
                          console.log("Game Over triggered: Piece locked too high at y=", lockedPieceLowestPoint); 
                     } 
                     else if (checkCollision(currentBoard, newPiece)) { 
-                        myData.isGameOver = true;
+                        currentIsGameOver = true;
                          console.log("Game Over triggered: New piece collision on spawn.");
                     }
 
+                    // ▼▼▼ [수정] 최종 데이터 할당 (isGameOver, incomingGarbage 추가) ▼▼▼
                     myData.board = currentBoard;
                     myData.score = currentScore;
                     myData.level = currentLevel;
                     myData.lines = currentLines;
                     myData.combo = currentCombo;
+                    myData.incomingGarbage = 0; // 5. 쓰레기 처리 완료 후 0으로 설정
+                    myData.isGameOver = currentIsGameOver; // 7. 게임 오버 상태 저장
                     myData.boardHeight = calculateBoardHeight(currentBoard); 
                     myData.currentPiece = newPiece;
                     myData.nextPieces = currentNextPieces;
@@ -1453,8 +1458,17 @@
                             // 별도의 트랜잭션으로 상대방의 쓰레기만 원자적으로 증가시킴
                             opponentGarbageRef.transaction(currentGarbage => {
                                 return (currentGarbage || 0) + garbageToSendFromTransaction;
+                            }, (error, committed, snapshot) => {
+                                // ▼▼▼ [수정] 쓰레기 전송 트랜잭션 에러/성공 로그 추가 ▼▼▼
+                                if (error) {
+                                    console.error(`Garbage Transaction to ${opponentKey} failed:`, error);
+                                } else if (committed) {
+                                    console.log(`[Transaction Success] Sent ${garbageToSendFromTransaction} garbage to ${opponentKey}`);
+                                } else {
+                                    console.warn(`Garbage Transaction to ${opponentKey} aborted.`);
+                                }
+                                // ▲▲▲ [수정] ▲▲▲
                             });
-                            console.log(`[Transaction Success] Sending ${garbageToSendFromTransaction} garbage to ${opponentKey}`);
                         }
                         // --- [신규] ---
                     }
@@ -1520,7 +1534,7 @@
                 lastTime = timestamp;
                 dropCounter += deltaTime;
 
-                const currentDropInterval = softDropActive ? Math.min(dropInterval, 100) : dropInterval;
+                const currentDropInterval = softDropActive ? Math.min(dropInterval, DAS_INTERVAL) : dropInterval;
 
                 if (dropCounter > currentDropInterval) {
                     if (currentPiece && board && !checkCollision(board, { ...currentPiece, y: currentPiece.y + 1 })) {
