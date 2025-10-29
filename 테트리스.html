@@ -306,6 +306,44 @@
            background-color: #1a1a2e; /* [수정] 다크 테마 */
            border-top: 1px solid var(--grid-color); 
        }
+
+       /* --- [수정] 액션 텍스트 (T-Spin, Combo 등) 스타일 개선 --- */
+        #my-action-text { /* ID 셀렉터로 변경 */
+            position: absolute;
+            /* ▼▼▼ 위치: 보드 상단 근처로 이동 ▼▼▼ */
+            top: 15%;
+            /* ▲▲▲ 위치 수정 ▲▲▲ */
+            left: 0;
+            width: 100%;
+            text-align: center;
+            font-size: clamp(1.8em, 6vw, 2.8em); /* 크기 살짝 키움 */
+            font-weight: 900;
+            /* ▼▼▼ 고급진 스타일 적용 ▼▼▼ */
+            background: linear-gradient(180deg, var(--accent-color) 40%, #ffd700 100%); /* 골드 그라데이션 */
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent; /* 그라데이션 적용 위해 투명 처리 */
+            filter: drop-shadow(2px 2px 3px rgba(0,0,0,0.7)); /* 그림자 효과 */
+            /* ▲▲▲ 스타일 적용 ▲▲▲ */
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(30px) scale(0.8); /* 시작 위치 조정 */
+            z-index: 100;
+        }
+        #my-action-text.show {
+            /* ▼▼▼ 애니메이션 수정 ▼▼▼ */
+            animation: elegant-action-text 1.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+            /* ▲▲▲ 애니메이션 수정 ▲▲▲ */
+        }
+        /* ▼▼▼ 새로운 키프레임 ▼▼▼ */
+        @keyframes elegant-action-text {
+            0% { opacity: 0; transform: translateY(30px) scale(0.8); }
+            25% { opacity: 1; transform: translateY(-10px) scale(1.2); } /* 더 위로 튀어오름 */
+            75% { opacity: 1; transform: translateY(0) scale(1); } /* 잠시 유지 */
+            100% { opacity: 0; transform: translateY(20px) scale(0.9); } /* 아래로 사라짐 */
+        }
+        /* ▲▲▲ 새로운 키프레임 ▲▲▲ */
+
     </style>
 </head>
 <body>
@@ -345,6 +383,7 @@
                     <div class="garbage-meter" id="my-garbage-meter-side">
                         <div class="garbage-fill" id="my-garbage-fill"></div>
                     </div>
+                    <div id="my-action-text"></div>
                     <canvas id="particle-canvas"></canvas> 
                 </div>
             </div>
@@ -443,6 +482,7 @@
             
             const touchControls = document.getElementById('touch-controls');
             const particleCanvas = document.getElementById('particle-canvas');
+            const myActionText = document.getElementById('my-action-text'); // [신규] 액션 텍스트 요소
             const particleCtx = particleCanvas.getContext('2d');
 
             // My UI (Only my elements)
@@ -475,6 +515,32 @@ let nextBlockSize = 10;
             const GARBAGE_INDEX = 8;
             let GRID_COLOR_VALUE = '#4a4a6a'; // Default fallback
             let BOARD_BG_COLOR_VALUE = '#0c0c1e'; // Default fallback
+
+            // --- [수정] T-Spin, 콤보 등 텍스트 표시 함수 (애니메이션 재시작 개선) ---
+            let actionTextTimeout; // 타임아웃 ID 저장 변수
+            function showActionText(text) {
+                if (!myActionText) return;
+
+                // 기존 애니메이션 타임아웃 취소 (연속 발생 시 부드럽게 처리)
+                clearTimeout(actionTextTimeout);
+
+                myActionText.textContent = text;
+                myActionText.classList.remove('show'); // 이전 클래스 제거
+
+                // requestAnimationFrame을 사용하여 DOM 업데이트 후 클래스 추가
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => { // 한 프레임 더 기다려 확실하게 적용
+                         myActionText.classList.add('show');
+
+                         // 애니메이션 지속 시간 후 클래스 자동 제거 (선택 사항)
+                         actionTextTimeout = setTimeout(() => {
+                            if (myActionText.textContent === text) { // 다른 텍스트가 중간에 안 떴으면
+                                 myActionText.classList.remove('show');
+                            }
+                         }, 1500); // 애니메이션 시간(1.5s)과 일치
+                    });
+                });
+            }
 
             // ▼▼▼ [신규] 색상 초기화 함수 (페이지 로드 시 한 번만 호출) ▼▼▼
             function initializeColors() {
