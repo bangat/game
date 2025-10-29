@@ -1137,14 +1137,24 @@
                 };
             }
 
-             function movePiece(dx, dy) { 
+             function movePiece(dx, dy, isUserMove = false) { 
                 if (isGameOver || !currentPiece || !isGameLive) return; 
                 const nextPos = { ...currentPiece, x: currentPiece.x + dx, y: currentPiece.y + dy };
                 if (!checkCollision(board, nextPos)) {
-                    roomRef.child(`gameData/${myPlayerKey}/currentPiece`).update({ x: nextPos.x, y: nextPos.y });
-                    roomRef.child(`gameData/${myPlayerKey}/lastMoveWasRotate`).set(false);
+                    
+                    currentPiece.x = nextPos.x;
+                    currentPiece.y = nextPos.y;
+                    
+                    if (isUserMove) { 
+                        roomRef.child(`gameData/${myPlayerKey}/currentPiece`).update({ x: nextPos.x, y: nextPos.y });
+                        roomRef.child(`gameData/${myPlayerKey}/lastMoveWasRotate`).set(false);
+                    }
+                    
                     playSound('move');
                     clearLockDelay();
+                    
+                    calculateGhostY();
+                    drawMyBoard();
                 }
                 else if (dy > 0) {
                     startLockDelay();
@@ -1164,12 +1174,21 @@
                         playSound('move'); return;
                     }
                 }
+                
+                currentPiece.x = testPos.x;
+                currentPiece.shape = rotatedShape;
+                currentPiece.rotation = (currentPiece.rotation + 1) % 4;
+                lastMoveWasRotate = true; 
+                
                 roomRef.child(`gameData/${myPlayerKey}/currentPiece`).update({
                     x: testPos.x, shape: rotatedShape, rotation: (currentPiece.rotation + 1) % 4
                 });
                  roomRef.child(`gameData/${myPlayerKey}/lastMoveWasRotate`).set(true);
                 playSound('rotate');
                 clearLockDelay();
+                
+                calculateGhostY();
+                drawMyBoard();
             }
 
             function rotateMatrix(matrix) { 
@@ -1538,7 +1557,7 @@
 
                 if (dropCounter > currentDropInterval) {
                     if (currentPiece && board && !checkCollision(board, { ...currentPiece, y: currentPiece.y + 1 })) {
-                         movePiece(0, 1);
+                         movePiece(0, 1, softDropActive); 
                          if (softDropActive) {
                              score += SOFT_DROP_SCORE;
                          }
@@ -1600,12 +1619,12 @@
             // [수정] DAS 로직으로 변경
             function startTouchMove(dir) {
                 stopTouchMove(); // 기존 타이머 모두 제거
-                movePiece(dir, 0); // 즉시 1회 이동
+                movePiece(dir, 0, true); // [MODIFIED CALL] 즉시 1회 이동 (true)
                 
                 // DAS_DELAY 이후에 DAS_INTERVAL 반복 시작
                 moveDelay = setTimeout(() => {
                     moveInterval = setInterval(() => {
-                        movePiece(dir, 0);
+                        movePiece(dir, 0, true); // [MODIFIED CALL] (true)
                     }, DAS_INTERVAL); 
                 }, DAS_DELAY);
             }
