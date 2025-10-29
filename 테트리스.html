@@ -44,13 +44,15 @@
             display: flex; flex-direction: column; 
             touch-action: manipulation; -webkit-user-select: none; user-select: none;
             padding-top: env(safe-area-inset-top);
-            padding-bottom: env(safe-area-inset-bottom);
+            /* padding-bottom: env(safe-area-inset-bottom); */ /* [삭제] */
         }
 
         #game-wrapper {
             width: 100%; height: 100%;
             display: flex; flex-direction: column;
             justify-content: space-between; 
+            /* [추가] wrapper가 safe-area를 직접 처리 */
+            padding-bottom: env(safe-area-inset-bottom);
         }
 
         #game-header {
@@ -531,6 +533,13 @@
             let gameOverFlag = false;
             let isExiting = false;
             let countdownStarted = false;
+            let moveDirection = 0; // 0: none, -1: left, 1: right
+            // --- [신규] DAS(컨트롤 속도) 관련 변수 ---
+            let moveInterval = null;
+            let moveDelay = null;
+            const DAS_DELAY = 120; // [수정] 120ms 후 반복 시작 (더 빠르게)
+            const DAS_INTERVAL = 50; // 50ms 마다 반복 (유지)
+            // --- [신규] ---
 
               // --- Initialization ---
             auth.onAuthStateChanged(user => {
@@ -717,29 +726,33 @@
             // Host initializes Firebase game data (유지)
             function initializeGameData() {
                 const initialBoard = createMatrix(COLS, ROWS + HIDDEN_ROWS);
-                let initialBag = generate7Bag();
-                const firstPieceType = initialBag.pop();
-                const secondPieceType = initialBag.pop();
-                const thirdPieceType = initialBag.pop();
+                
+                // [수정] 각 플레이어별로 별도의 7-bag 생성
+                let hostBag = generate7Bag();
+                const hostStartPiece = hostBag.pop();
+                const hostNext1 = hostBag.pop();
+                const hostNext2 = hostBag.pop();
+                
+                let guestBag = generate7Bag();
+                const guestStartPiece = guestBag.pop();
+                const guestNext1 = guestBag.pop();
+                const guestNext2 = guestBag.pop();
 
-                const createInitialPlayerState = (pieceType, nextType) => ({
+
+                const createInitialPlayerState = (pieceType, next1, next2, pieceBag) => ({ // [수정] pieceBag 인자 추가
                     board: initialBoard, score: 0, level: 1, lines: 0,
                     currentPiece: spawnPiece(pieceType),
-                    nextPieces: [nextType, thirdPieceType],
+                    nextPieces: [next1, next2], // [수정]
                     incomingGarbage: 0, combo: -1, isGameOver: false,
                     lastMoveWasRotate: false,
-                    boardHeight: 0
+                    boardHeight: 0,
+                    pieceBag: pieceBag // [신규] 플레이어별 pieceBag 저장
                 });
 
-                const hostStartPiece = firstPieceType;
-                const guestStartPiece = secondPieceType;
-                const hostNextPiece = thirdPieceType;
-                const guestNextPiece = initialBag.length > 0 ? initialBag[initialBag.length - 1] : generate7Bag().pop();
-
                 roomRef.child('gameData').set({
-                    p1: createInitialPlayerState(hostStartPiece, hostNextPiece),
-                    p2: createInitialPlayerState(guestStartPiece, guestNextPiece),
-                    pieceBag: initialBag
+                    p1: createInitialPlayerState(hostStartPiece, hostNext1, hostNext2, hostBag),
+                    p2: createInitialPlayerState(guestStartPiece, guestNext1, guestNext2, guestBag)
+                    // [삭제] pieceBag: initialBag (공유 pieceBag 제거)
                 }).catch(err => console.error("Error initializing game data:", err));
             }
 
@@ -822,29 +835,28 @@
                             updateHeaderUI(myData, opponentData);
 
                          // ▼▼▼ [재수정] 게임 오버 확인 로직 ▼▼▼
-                            if (!gameOverFlag && gameData && myPlayerKey && gameData[myPlayerKey]) {
-                                const myData = gameData[myPlayerKey];
-                                const opponentData = gameData[opponentPlayerKey]; // Can be null
-                                const iLost = myData.isGameOver;
-                                const oppLost = opponentData && opponentData.isGameOver;
+                            if (!gameOverFlag && isGameLive && gameData && myPlayerKey) { // isGameLive 조건 추가
+                                const myCurrentData = gameData[myPlayerKey];
+                                const opponentCurrentData = gameData[opponentPlayerKey]; // Could be null
+                                
+                                // [수정] isGameOver 상태를 명확히 boolean으로 확인
+                                const iAmGameOver = myCurrentData?.isGameOver === true; 
+                                const opponentIsGameOver = opponentCurrentData?.isGameOver === true;
+                                
+                                // [수정] 상대방 존재 여부 확인 (플레이어 목록 기준)
+                                const opponentExistsInRoom = Object.keys(currentRoomData.players || {}).length > 1; 
 
-                                console.log(`[listen] GameOver Check: iLost=${iLost}, oppLost=${oppLost}`);
+                                console.log(`[Listen Check] iAmGameOver=${iAmGameOver}, opponentIsGameOver=${opponentIsGameOver}, opponentExistsInRoom=${opponentExistsInRoom}`);
 
                                 // 게임 종료 조건:
-                                // 1. 내가 졌다 (iLost === true)
-                                // 2. 상대방 데이터가 있고, 상대가 졌다 (opponentData && oppLost === true)
-                                if (iLost || (opponentData && oppLost)) {
-                                     // showGameOver 내부에서 gameOverFlag를 체크하므로, 여기서 바로 호출
-                                     console.log(`[listen] Game Over condition met (iLost=${iLost}, oppLost=${oppLost}). Calling showGameOver.`);
-                                     showGameOver(gameData); // didIWin 계산은 showGameOver 내부에서
-                                }
-                                // [추가] 상대방 데이터가 없는데 내가 안 진 경우 (상대 나감) 처리
-                                else if (!iLost && !opponentData && isGameLive) { // isGameLive 추가 확인 (게임 시작 후)
-                                    console.log("[listen] Opponent data missing, assuming win. Calling showGameOver.");
-                                    showGameOver(gameData, true); // 명시적으로 승리 전달
+                                // 1. 내가 게임오버됨
+                                // 2. 상대방이 게임오버됨
+                                // 3. 내가 게임오버 안됐는데, 상대방이 방에 없음 (나감)
+                                if (iAmGameOver || opponentIsGameOver || (!iAmGameOver && !opponentExistsInRoom)) {
+                                     console.log(`[Listen Check] 게임 오버 조건 충족 -> showGameOver(${JSON.stringify(gameData)}) 호출`);
+                                     showGameOver(gameData); // gameData를 전달하여 showGameOver가 최종 승패 판정
                                 }
                             }
-                            // ▲▲▲ [재수정] ▲▲▲
                         }
 
                     } else if (roomData.status === 'gameOver' && !gameOverFlag) {
@@ -1259,15 +1271,16 @@
                 });
             }
 
-            // --- [대폭 수정] handleLocking (Transaction으로 변경) ---
-            function handleLocking(isHardDrop = false, finalY = null, hardDropScore = 0) { // [수정] 파라미터 추가
+           // --- [대폭 수정] handleLocking (Transaction으로 변경) ---
+            function handleLocking(isHardDrop = false, finalY = null, hardDropScore = 0) { 
                 if (!currentPiece) return;
 
-                // ▼▼▼ [수정] 하드드롭 시 pieceToMerge의 Y좌표를 finalY로 설정 ▼▼▼
                 const pieceToMerge = isHardDrop && finalY !== null ? { ...currentPiece, y: finalY } : { ...currentPiece };
-                // ▲▲▲ [수정] ▲▲▲
 
                 clearLockDelay();
+
+                // [신규] 트랜잭션이 성공한 후에 전송할 쓰레기 양을 저장할 변수
+                let garbageToSendFromTransaction = 0;
 
                 roomRef.child('gameData').transaction(gameData => {
                     if (!gameData || !gameData[myPlayerKey] || !gameData[myPlayerKey].currentPiece) {
@@ -1275,14 +1288,14 @@
                     }
                     
                     const myData = gameData[myPlayerKey];
-                    const oppData = gameData[opponentPlayerKey];
+                    // const oppData = gameData[opponentPlayerKey]; // [삭제] 상대방 데이터는 여기서 수정하지 않음
                     let currentBoard = myData.board;
                     let currentScore = myData.score;
                     let currentLines = myData.lines;
                     let currentLevel = myData.level;
                     let currentCombo = myData.combo;
                     let currentIncomingGarbage = myData.incomingGarbage;
-                    let currentPieceBag = gameData.pieceBag || [];
+                    let currentPieceBag = myData.pieceBag || generate7Bag(); 
                     let currentNextPieces = myData.nextPieces || [];
                     
                     const pieceIndex = pieceToMerge.index;
@@ -1347,40 +1360,40 @@
                         currentCombo = -1;
                     }
                     
-                    if (currentIncomingGarbage > 0) {
-                         let netGarbage = currentIncomingGarbage - garbageToSend;
-                         garbageToSend = Math.max(0, -netGarbage);
-                         currentIncomingGarbage = Math.max(0, netGarbage);
-
-                         if (currentIncomingGarbage > 0) {
-                            playSound('garbage');
-                            const holeCol = Math.floor(Math.random() * COLS);
-                            for (let i = 0; i < currentIncomingGarbage; i++) {
-                                currentBoard.shift();
-                                const newRow = Array(COLS).fill(GARBAGE_INDEX);
-                                newRow[holeCol] = 0;
-                                currentBoard.push(newRow);
-                            }
-                         }
+                    // ▼▼▼ [수정] 쓰레기 상쇄 로직 (garbageToOpponent 계산) ▼▼▼
+                    let garbageToOpponent = garbageToSend; // 1. 일단 내가 보낼 쓰레기
+                    
+                    if (currentIncomingGarbage > 0) { // 2. 받아야 할 쓰레기가 있다면
+                        if (garbageToOpponent >= currentIncomingGarbage) {
+                            // 3a. 보낼 쓰레기가 더 많음 (상쇄)
+                            garbageToOpponent -= currentIncomingGarbage; // 보낼 쓰레기 감소
+                            currentIncomingGarbage = 0; // 받을 쓰레기 0
+                        } else {
+                            // 3b. 받을 쓰레기가 더 많음 (일부 상쇄)
+                            currentIncomingGarbage -= garbageToOpponent; // 받을 쓰레기 감소
+                            garbageToOpponent = 0; // 보낼 쓰레기 0
+                        }
                     }
+
+                    // 4. 상쇄 후에도 받아야 할 쓰레기가 남았다면 내 보드에 적용
+                    if (currentIncomingGarbage > 0) {
+                        playSound('garbage');
+                        const holeCol = Math.floor(Math.random() * COLS);
+                        for (let i = 0; i < currentIncomingGarbage; i++) {
+                            currentBoard.shift();
+                            const newRow = Array(COLS).fill(GARBAGE_INDEX);
+                            newRow[holeCol] = 0;
+                            currentBoard.push(newRow);
+                        }
+                    }
+                    // 5. 처리가 끝났으므로 내 받을 쓰레기는 0으로 리셋
                     myData.incomingGarbage = 0; 
                     
-                    // --- 5. 상대방에게 쓰레기 전송 ---
-                    if (garbageToSend > 0) {
-                        const opponentKey = myPlayerKey === 'p1' ? 'p2' : 'p1';
-                        // ▼▼▼ [재수정] gameData 객체를 직접 수정하여 트랜잭션이 반영하도록 함 ▼▼▼
-                        if (gameData && gameData[opponentKey]) {
-                            // Ensure incomingGarbage exists before adding
-                            if (typeof gameData[opponentKey].incomingGarbage !== 'number') {
-                                gameData[opponentKey].incomingGarbage = 0;
-                            }
-                            gameData[opponentKey].incomingGarbage += garbageToSend;
-                            console.log(`[Transaction] Added ${garbageToSend} garbage to ${opponentKey}. New total will be: ${gameData[opponentKey].incomingGarbage}`);
-                        } else {
-                             console.log(`[Transaction] Opponent key ${opponentKey} not found in gameData or gameData is null. Cannot send garbage.`);
-                        }
-                         // ▲▲▲ [재수정] ▲▲▲
-                    }
+                    // --- [수정] 5. 상대방에게 쓰레기 전송 (로직 변경) ---
+                    // 트랜잭션 내부에서는 전송할 쓰레기 양만 변수에 저장합니다.
+                    garbageToSendFromTransaction = garbageToOpponent;
+                    // [삭제] 상대방의 gameData[opponentKey].incomingGarbage 를 직접 수정하는 코드 삭제
+                    // ▲▲▲ [수정] ▲▲▲
 
                     if (currentNextPieces.length === 0) {
                         if(currentPieceBag.length === 0) currentPieceBag = generate7Bag();
@@ -1395,9 +1408,6 @@
                     }
                     
                     // --- 7. 게임 오버 확인 ---
-                    // [수정] 게임 오버 조건 변경:
-                    // 1. 방금 고정된 블럭(pieceToMerge)의 가장 아랫부분이 숨겨진 영역(HIDDEN_ROWS)보다 위에 있을 경우
-                    // 2. 또는 새로 생성된 블럭(newPiece)이 등장하자마자 충돌할 경우 (쓰레기 줄 등으로 밀려 올라간 경우)
                     let lockedPieceLowestPoint = -1;
                     pieceToMerge.shape.forEach((row, y) => {
                          row.forEach((value, x) => {
@@ -1407,16 +1417,13 @@
                          });
                     });
 
-                    // 숨겨진 영역의 Y 좌표는 0, 1 입니다. (HIDDEN_ROWS = 2)
-                    // 따라서 블럭의 가장 낮은 Y 좌표(lockedPieceLowestPoint)가 1 이하면 게임 오버입니다.
                     if (lockedPieceLowestPoint < HIDDEN_ROWS) {
                          myData.isGameOver = true;
-                         console.log("Game Over triggered: Piece locked too high at y=", lockedPieceLowestPoint); // 디버깅 로그
+                         console.log("Game Over triggered: Piece locked too high at y=", lockedPieceLowestPoint); 
                     } 
-                    // 위 조건에 해당 안되더라도, 새 블럭 스폰 위치가 막혀있으면 게임 오버
                     else if (checkCollision(currentBoard, newPiece)) { 
                         myData.isGameOver = true;
-                         console.log("Game Over triggered: New piece collision on spawn."); // 디버깅 로그
+                         console.log("Game Over triggered: New piece collision on spawn.");
                     }
 
                     myData.board = currentBoard;
@@ -1428,7 +1435,7 @@
                     myData.currentPiece = newPiece;
                     myData.nextPieces = currentNextPieces;
                     myData.lastMoveWasRotate = false;
-                    gameData.pieceBag = currentPieceBag; 
+                    myData.pieceBag = currentPieceBag; 
 
                     return gameData; 
 
@@ -1436,7 +1443,20 @@
                     if (error) { console.error("Locking Transaction failed: ", error); }
                     else if (!committed) { console.warn("Locking Transaction aborted (data changed)"); }
                     else { 
+                        // --- [신규] 트랜잭션 성공 시, 별도로 쓰레기 전송 ---
                         playSound('lock'); 
+                        
+                        if (garbageToSendFromTransaction > 0) {
+                            const opponentKey = myPlayerKey === 'p1' ? 'p2' : 'p1';
+                            const opponentGarbageRef = roomRef.child(`gameData/${opponentKey}/incomingGarbage`);
+                            
+                            // 별도의 트랜잭션으로 상대방의 쓰레기만 원자적으로 증가시킴
+                            opponentGarbageRef.transaction(currentGarbage => {
+                                return (currentGarbage || 0) + garbageToSendFromTransaction;
+                            });
+                            console.log(`[Transaction Success] Sending ${garbageToSendFromTransaction} garbage to ${opponentKey}`);
+                        }
+                        // --- [신규] ---
                     }
                 });
             }
@@ -1522,6 +1542,7 @@
 
 
             // --- Controls ---
+            // --- Controls ---
             function setupControls() {
                 document.addEventListener('keydown', handleKeyPress);
                 document.addEventListener('keyup', handleKeyUp);
@@ -1529,13 +1550,26 @@
                 if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
                     touchControls.style.display = 'flex';
                     
-                    document.getElementById('touch-left').addEventListener('touchstart', (e) => { e.preventDefault(); if(!isGameLive) return; movePiece(-1, 0); startTouchMove(-1); }, { passive: false });
-                    document.getElementById('touch-right').addEventListener('touchstart', (e) => { e.preventDefault(); if(!isGameLive) return; movePiece(1, 0); startTouchMove(1); }, { passive: false });
+                    // [수정] movePiece() 직접 호출 제거, startTouchMove가 첫 이동을 담당
+                    document.getElementById('touch-left').addEventListener('touchstart', (e) => { 
+                        e.preventDefault(); if(!isGameLive) return; 
+                        moveDirection = -1; startTouchMove(-1); 
+                    }, { passive: false });
+                    document.getElementById('touch-right').addEventListener('touchstart', (e) => { 
+                        e.preventDefault(); if(!isGameLive) return; 
+                        moveDirection = 1; startTouchMove(1); 
+                    }, { passive: false });
+                    
                     document.getElementById('touch-rotate').addEventListener('touchstart', (e) => { e.preventDefault(); if(!isGameLive) return; rotatePiece(); }, { passive: false });
                     document.getElementById('touch-down').addEventListener('touchstart', (e) => { e.preventDefault(); if(!isGameLive) return; softDropActive = true; }, { passive: false });
                     document.getElementById('touch-drop').addEventListener('touchstart', (e) => { e.preventDefault(); if(!isGameLive) return; hardDrop(); }, { passive: false });
 
-                    const stopMove = () => { stopTouchMove(); softDropActive = false; };
+                    // [수정] stopMove에 moveDirection 초기화 추가
+                    const stopMove = () => { 
+                        stopTouchMove(); 
+                        softDropActive = false; 
+                        if (moveDirection !== 0) moveDirection = 0; // 좌우 이동 중이었으면 정지
+                    };
                     document.getElementById('touch-left').addEventListener('touchend', stopMove);
                     document.getElementById('touch-right').addEventListener('touchend', stopMove);
                     document.getElementById('touch-down').addEventListener('touchend', stopMove);
@@ -1549,37 +1583,85 @@
                 }
             }
 
-            let touchMoveTimer = null;
+            // [수정] DAS 로직으로 변경
             function startTouchMove(dir) {
-                stopTouchMove();
-                touchMoveTimer = setInterval(() => {
-                    movePiece(dir, 0);
-                }, 100);
+                stopTouchMove(); // 기존 타이머 모두 제거
+                movePiece(dir, 0); // 즉시 1회 이동
+                
+                // DAS_DELAY 이후에 DAS_INTERVAL 반복 시작
+                moveDelay = setTimeout(() => {
+                    moveInterval = setInterval(() => {
+                        movePiece(dir, 0);
+                    }, DAS_INTERVAL); 
+                }, DAS_DELAY);
             }
+            
             function stopTouchMove() {
-                clearInterval(touchMoveTimer);
-                touchMoveTimer = null;
+                clearTimeout(moveDelay);
+                clearInterval(moveInterval);
+                moveDelay = null;
+                moveInterval = null;
             }
 
 
             function handleKeyPress(event) {
                 if (isGameOver || !isGameLive) return; 
+                
                 switch (event.code) {
-                    case 'ArrowLeft': movePiece(-1, 0); event.preventDefault(); break;
-                    case 'ArrowRight': movePiece(1, 0); event.preventDefault(); break;
+                    case 'ArrowLeft':
+                        event.preventDefault();
+                        // [수정] 이미 왼쪽 이동 중이거나 키 반복이면 무시, 아니면 즉시 왼쪽 이동 시작
+                        if (moveDirection === -1 || event.repeat) return; 
+                        moveDirection = -1;
+                        startTouchMove(-1); // startTouchMove가 기존 타이머를 멈추고 새로 시작
+                        break;
+                    case 'ArrowRight':
+                        event.preventDefault();
+                        // [수정] 이미 오른쪽 이동 중이거나 키 반복이면 무시, 아니면 즉시 오른쪽 이동 시작
+                        if (moveDirection === 1 || event.repeat) return;
+                        moveDirection = 1;
+                        startTouchMove(1); // startTouchMove가 기존 타이머를 멈추고 새로 시작
+                        break;
                     case 'ArrowDown':
+                        event.preventDefault();
                         if (!softDropActive) {
                             softDropActive = true;
-                            dropCounter = dropInterval;
+                            dropCounter = dropInterval; // 즉시 반응
                         }
-                         event.preventDefault();
                          break;
-                    case 'ArrowUp': rotatePiece(); event.preventDefault(); break;
-                    case 'Space': hardDrop(); event.preventDefault(); break;
+                    case 'ArrowUp': 
+                        if (event.repeat) return; // 키 반복 방지
+                        rotatePiece(); 
+                        event.preventDefault(); 
+                        break;
+                    case 'Space': 
+                        if (event.repeat) return; // 키 반복 방지
+                        hardDrop(); 
+                        event.preventDefault(); 
+                        break;
                 }
             }
              function handleKeyUp(event) {
-                if (event.code === 'ArrowDown') { softDropActive = false; }
+                event.preventDefault(); // [추가]
+                switch (event.code) {
+                    case 'ArrowLeft':
+                        // [수정] 내가 현재 왼쪽 이동 중이었다면 멈춤
+                        if (moveDirection === -1) { 
+                            moveDirection = 0;
+                            stopTouchMove();
+                        }
+                        break;
+                    case 'ArrowRight':
+                        // [수정] 내가 현재 오른쪽 이동 중이었다면 멈춤
+                        if (moveDirection === 1) { 
+                            moveDirection = 0;
+                            stopTouchMove();
+                        }
+                        break;
+                    case 'ArrowDown': 
+                        softDropActive = false; 
+                        break;
+                }
              }
 
             function updateGarbageMeter(meterElement, fillElement, count) {
