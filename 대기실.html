@@ -387,7 +387,69 @@
         #logout-btn {
             background-color: var(--danger-color);
             border-bottom-color: #A94442;
-       }
+        }
+
+        /* ------------------------- */
+        /* == ✨ 게임 설정 모달 (토글) == */
+        /* ------------------------- */
+        .settings-list {
+            list-style: none;
+            padding: 10px 0;
+        }
+        .setting-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 10px;
+            border-bottom: 2px dashed var(--panel-border);
+        }
+        .setting-item:last-child {
+            border-bottom: none;
+        }
+        .setting-label {
+            font-size: 1.1em;
+            font-weight: 700;
+        }
+        /* 토글 스위치 스타일 */
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 50px; /* 너비 축소 */
+            height: 28px; /* 높이 축소 */
+        }
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 28px; /* 높이에 맞춤 */
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 20px; /* 원 크기 축소 */
+            width: 20px;  /* 원 크기 축소 */
+            left: 4px;    /* 위치 조절 */
+            bottom: 4px;  /* 위치 조절 */
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        input:checked + .slider {
+            background-color: var(--secondary-color); /* 틸 색상 */
+        }
+        input:checked + .slider:before {
+            transform: translateX(22px); /* 이동 거리 축소 */
+        }
 
         /* ------------------------- */
         /* == ✨ 아바타 선택 모달 == */
@@ -649,7 +711,7 @@
                 </div>
                 <div id="profile-menu-buttons">
                     <button id="open-avatar-select-btn" class="menu-btn secondary">프로필 설정</button>
-                    <button class="menu-btn secondary" onclick="alert('게임설정은 준비중입니다.')">게임 설정</button>
+                    <button id="open-settings-btn" class="menu-btn secondary">게임 설정</button>
                 </div>
             </div>
             <div class="modal-footer">
@@ -673,6 +735,40 @@
             <div class="modal-footer">
                 <button class="menu-btn light" data-close>취소</button>
                 <button id="save-avatar-btn" class="menu-btn secondary">변경하기</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="game-settings-modal" class="overlay">
+        <div class="modal-content">
+            <div class="modal-header"><h2>게임 설정</h2></div>
+            <div class="modal-body">
+                <ul class="settings-list">
+                    <li class="setting-item">
+                        <span class="setting-label">🔔 효과음</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="sfx-toggle">
+                            <span class="slider"></span>
+                        </label>
+                    </li>
+                    <li class="setting-item">
+                        <span class="setting-label">🎵 배경음악</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="bgm-toggle">
+                            <span class="slider"></span>
+                        </label>
+                    </li>
+                    <li class="setting-item">
+                        <span class="setting-label">📳 진동</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="vibration-toggle">
+                            <span class="slider"></span>
+                        </label>
+                    </li>
+                </ul>
+            </div>
+            <div class="modal-footer">
+                <button class="menu-btn light" data-close style="width: 100%;">닫기</button>
             </div>
         </div>
     </div>
@@ -746,6 +842,17 @@
  });
  setInterval(() => { try { debugger; } catch (e) {} }, 1000);
 
+    // ✨ [신규] 게임 설정 전역 변수 (모든 페이지에서 공통으로 사용)
+    const defaultSettings = {
+        sfx: true,      // 효과음
+        bgm: true,      // 배경음악
+        vibration: true // 진동
+    };
+    // localStorage에서 설정을 불러오거나, 없으면 기본값 사용
+    let gameSettings = JSON.parse(localStorage.getItem('gameSettings')) || defaultSettings;
+    // localStorage에 최신 상태(기본값 포함)를 저장
+    localStorage.setItem('gameSettings', JSON.stringify(gameSettings));
+
     document.addEventListener('DOMContentLoaded', () => {
         const confirmExitModal = document.getElementById('confirm-exit-modal'); // ✨ 모달 선택
 
@@ -795,6 +902,14 @@
         const openAvatarSelectBtn = document.getElementById('open-avatar-select-btn');
         const saveAvatarBtn = document.getElementById('save-avatar-btn');
         const avatarSelectGrid = document.getElementById('avatar-select-grid');
+
+        // ✨ [신규] 게임 설정 모달 변수
+        const gameSettingsModal = document.getElementById('game-settings-modal');
+        const openSettingsBtn = document.getElementById('open-settings-btn');
+        const sfxToggle = document.getElementById('sfx-toggle');
+        const bgmToggle = document.getElementById('bgm-toggle');
+        const vibrationToggle = document.getElementById('vibration-toggle');
+
 
         const chatMessagesContainer = document.getElementById('chat-messages');
         const chatInput = document.getElementById('chat-input');
@@ -936,7 +1051,7 @@
                         <button class="menu-btn primary join-btn" ${isFull || isPlaying ? 'disabled' : ''}>참가</button>
                     `;
                     roomEl.querySelector('.join-btn').addEventListener('click', () => {
-                        clickSound.play();
+                       if (gameSettings.sfx) clickSound.play();
                         window.location.href = `게임방.html?roomId=${room.key}`;
                     });
                     roomListContainer.appendChild(roomEl);
@@ -946,13 +1061,13 @@
         
         // ▼▼▼ [수정] 방 만들기 버튼: 모달을 열고 'multi' 탭을 기본으로 렌더링 ▼▼▼
         createRoomBtn.addEventListener('click', () => { 
-            clickSound.play(); 
+           if (gameSettings.sfx) clickSound.play();
             showModal(gameSelectModal, () => renderGameOptions('multi')); // 'multi'를 기본값으로
         });
         // ▲▲▲ [수정] 방 만들기 버튼 ▲▲▲
 
-        document.getElementById('ranking-btn').addEventListener('click', () => { clickSound.play(); showModal(rankingModal, showRanking) });
-        document.getElementById('shop-btn').addEventListener('click', () => { clickSound.play(); window.location.href = '포인트상점.html'; });
+        document.getElementById('ranking-btn').addEventListener('click', () => { if (gameSettings.sfx) clickSound.play(); showModal(rankingModal, showRanking) });
+        document.getElementById('shop-btn').addEventListener('click', () => { if (gameSettings.sfx) clickSound.play(); window.location.href = '포인트상점.html'; });
         
         function showModal(modal, onShow) { 
             if (onShow) onShow();
@@ -962,13 +1077,13 @@
 
         document.querySelectorAll('[data-close]').forEach(btn => {
             btn.addEventListener('click', () => {
-                clickSound.play();
+              if (gameSettings.sfx) clickSound.play();
                 btn.closest('.overlay').classList.remove('active');
             });
         });
 
         myProfileBtn.addEventListener('click', () => {
-            clickSound.play();
+            if (gameSettings.sfx) clickSound.play(); // ✨ 설정 확인
             if (!currentUserData) return;
             const profile = currentUserData.profile;
             const avatarEl = document.getElementById('profile-dashboard-avatar');
@@ -992,7 +1107,7 @@
         // ▼▼▼ [수정] 게임 탭 버튼에 이벤트 리스너 추가 ▼▼▼
         document.querySelectorAll('.game-mode-tab-btn').forEach(btn => {
             btn.addEventListener('click', () => {
-                clickSound.play();
+                if (gameSettings.sfx) clickSound.play();
                 const mode = btn.dataset.mode;
                 renderGameOptions(mode);
             });
@@ -1026,7 +1141,7 @@
                 
                                 // 4. [핵심] 클릭 이벤트 변경
                 btn.onclick = () => {
-                    clickSound.play();
+                    if (gameSettings.sfx) clickSound.play();
                     // AI 스피드 퀴즈는 솔로 모드 시 게임방을 거쳐야 초기화 로직이 실행됨
                     if (game.id === 'quiz' && mode === 'solo') {
                         window.location.href = `게임방.html?roomId=solo_quiz_temp&mode=solo`; // ✨ 게임방을 경유하도록 수정
@@ -1086,7 +1201,7 @@
                 tab.textContent = game.name;
                 if (index === 0) tab.classList.add('active');
                 tab.onclick = () => {
-                    clickSound.play();
+                    if (gameSettings.sfx) clickSound.play();
                     rankingTabs.querySelector('.active')?.classList.remove('active');
                     tab.classList.add('active');
                     loadRanking(game.id);
@@ -1264,7 +1379,7 @@
             }, 300); // 키보드 애니메이션 시간
         });
         createRoomBtn.addEventListener('click', () => { 
-            clickSound.play(); 
+          if (gameSettings.sfx) clickSound.play();
             showModal(gameSelectModal, () => renderGameOptions('multi')); // 'multi'를 기본값으로
         });
 
@@ -1275,7 +1390,7 @@
         const lobbyPanel = document.querySelector('.lobby-panel');
         
         toggleChatBtn.addEventListener('click', () => {
-            clickSound.play();
+           if (gameSettings.sfx) clickSound.play();
             const isActive = lobbyPanel.classList.toggle('chat-active');
             
             if (isActive) {
@@ -1301,7 +1416,7 @@
        // ✨ [신규] 아바타 선택 모달 열기
         function showAvatarSelectModal() {
             if (!currentUserData) return;
-            clickSound.play();
+            if (gameSettings.sfx) clickSound.play();
             
             const currentAvatar = currentUserData.profile.avatar;
             selectedAvatarForChange = currentAvatar; // 임시 변수 초기화
@@ -1322,7 +1437,7 @@
                 }
 
                 charOption.addEventListener('click', () => {
-                    clickSound.play();
+                 if (gameSettings.sfx) clickSound.play();
                     // 'selected' 클래스 관리
                     avatarSelectGrid.querySelector('.selected')?.classList.remove('selected');
                     charOption.classList.add('selected');
@@ -1338,7 +1453,7 @@
 
         // ✨ [신규] 아바타 변경 사항 저장
         function handleSaveAvatar() {
-            clickSound.play();
+           if (gameSettings.sfx) clickSound.play();
             const newAvatar = selectedAvatarForChange;
             const oldAvatar = currentUserData.profile.avatar;
 
@@ -1384,9 +1499,32 @@
         openAvatarSelectBtn.addEventListener('click', showAvatarSelectModal);
         saveAvatarBtn.addEventListener('click', handleSaveAvatar);
 
+        // ✨ [신규] 게임 설정 모달 열기 리스너
+        openSettingsBtn.addEventListener('click', () => {
+           if (gameSettings.sfx) clickSound.play();
+            
+            // 현재 설정값을 토글에 반영
+            sfxToggle.checked = gameSettings.sfx;
+            bgmToggle.checked = gameSettings.bgm;
+            vibrationToggle.checked = gameSettings.vibration;
+            
+            showModal(gameSettingsModal);
+        });
+
+        // ✨ [신규] 토글 스위치 변경 리스너
+        function createToggleListener(key) {
+            return function(event) {
+                if (gameSettings.sfx) clickSound.play(); // 효과음 설정이 켜져 있을 때만 소리 재생
+                gameSettings[key] = event.target.checked;
+                localStorage.setItem('gameSettings', JSON.stringify(gameSettings));
+            };
+        }
+        sfxToggle.addEventListener('change', createToggleListener('sfx'));
+        bgmToggle.addEventListener('change', createToggleListener('bgm'));
+        vibrationToggle.addEventListener('change', createToggleListener('vibration'));
 
         logoutBtn.addEventListener('click', () => {
-            clickSound.play();
+           if (gameSettings.sfx) clickSound.play();
             auth.signOut();
             closeAllModals();
         });
