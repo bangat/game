@@ -924,13 +924,68 @@ availableGames = [
             const playerIds = Object.keys(currentRoomData.players || {}); // null 체크
             const updates = {};
 
-            // 게임별 초기화 로직 (변경 없음)
-            if (game.id === 'reversi') { /* ... */ }
-            else if (game.id === 'memoryGame') { /* ... */ }
-            else if (game.id === 'indianpoker') { /* ... */ }
-            else if (game.id === 'bomber') { /* ... */ }
-            else if (game.id === 'shisenSho') { /* ... */ }
-            else { /* ... */ }
+          if (game.id === 'reversi') {
+                // [리버시] 초기화
+                const initialBoard = Array(64).fill(null);
+                initialBoard[27] = 'white'; initialBoard[28] = 'black';
+                initialBoard[35] = 'black'; initialBoard[36] = 'white';
+
+                playerIds.sort(() => Math.random() - 0.5); // 흑/백 랜덤 배정
+                
+                updates['players/' + playerIds[0] + '/color'] = 'black';
+                updates['players/' + playerIds[1] + '/color'] = 'white';
+                
+                updates.board = initialBoard;
+                updates.turn = 'black'; // 흑돌(black)이 선공
+                updates.passedTurn = false;
+                updates.lastMove = null;
+
+            } else if (game.id === 'memoryGame') {
+                // ✨ [채움] 메모리 게임 초기화
+                const pairCount = playerIds.length <= 2 ? 8 : 10; // 2명=16장(4x4), 3~4명=20장(5x4)
+                const cards = generateCards(pairCount);
+                updates.board = cards;
+                updates.turn = playerIds[0]; // 방장부터
+                updates.scores = {};
+                playerIds.forEach(id => { updates.scores[id] = 0; });
+                updates.flippedIndices = [];
+                updates.matchedPairs = 0;
+                updates.lastPlayer = null; // [추가] 연속 턴 처리를 위한 변수
+
+            } else if (game.id === 'indianpoker') {
+                // ✨ [채움] 인디언 포커 초기화 (칩 세팅)
+                updates.gameState = {};
+                playerIds.forEach(id => {
+                    updates.gameState[id] = {
+                        chips: 30, // 1인당 기본 칩
+                        hand: null,
+                        bet: 0,
+                        status: 'ready' // 'ready', 'betting', 'folded'
+                    };
+                });
+                updates.turn = playerIds[0];
+                updates.pot = 0;
+                updates.round = 1;
+                updates.deck = null; // 덱은 인디언포커.html에서 생성
+
+            } else if (game.id === 'bomber') {
+                // ✨ [채움] 봄버맨 초기화 (플레이어 번호 할당)
+                // 봄버맨.html에서 이 번호를 보고 시작 위치를 결정합니다.
+                playerIds.forEach((id, index) => {
+                    updates['players/' + id + '/playerNum'] = index + 1; // 1, 2, 3, 4
+                });
+                updates.gameData = { status: 'ready' }; // 게임 시작 신호
+                
+            } else if (game.id === 'shisenSho') {
+                // ✨ [유지] 사천성은 shisenSho.html에서 방장이 직접 맵을 생성합니다.
+                /* ... */
+            } else if (game.id === 'tetris') {
+                // ✨ [유지] 테트리스는 tetris.html에서 방장이 직접 맵을 생성합니다.
+                /* ... */
+            } else { 
+                // ✨ [유지] 알까기, 크로싱나이츠 등 (자체 초기화 로직 가정)
+                /* ... */ 
+            }
             updates.status = 'playing'; // 공통 상태 변경
 
             console.log('[게임방] Firebase 업데이트 실행:', updates);
@@ -943,7 +998,33 @@ availableGames = [
             }
         }
 
-        function generateCards(pairCount) { /* ... */ } // (변경 없음)
+        function generateCards(pairCount) {
+            // 아이콘/이미지 등 (필요에 따라 추가)
+            const icons = [
+                '🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯',
+                '🦁', '🐮', '🐷', '🐸', '🐵', '🐔', '🐧', '🐦', '🐤', '🦅'
+            ]; // 20종류
+            
+            const pairs = [];
+            for (let i = 0; i < pairCount; i++) {
+                const icon = icons[i % icons.length];
+                pairs.push(icon, icon); // 아이콘을 2개씩 넣음
+            }
+
+            // Fisher-Yates shuffle
+            for (let i = pairs.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [pairs[i], pairs[j]] = [pairs[j], pairs[i]];
+            }
+            
+            // Firebase에 저장할 카드 객체 배열 생성
+            return pairs.map((icon, index) => ({
+                id: index,
+                icon: icon,
+                isFlipped: false,
+                isMatched: false
+            }));
+        }
 
         function cleanupAndExit() {
             console.log("Cleanup and Exit called");

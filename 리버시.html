@@ -261,7 +261,14 @@
 
             function ensureBoardArray(board) {
     if (!board) return Array(64).fill(null);
-    return Array.isArray(board) ? board : Object.values(board);
+    if (Array.isArray(board)) return board;
+    
+    // Firebase에서 객체 {0: 'white', 1: null, ...} 로 반환된 경우
+    const newBoard = Array(64).fill(null);
+    for (let i = 0; i < 64; i++) {
+        newBoard[i] = board[i] || null;
+    }
+    return newBoard;
 }
 
 // ensureBoardArray 함수 아래에 추가
@@ -622,7 +629,9 @@ function drawBoard() {
     if (!currentRoomData || !currentRoomData.board) return;
     gameBoard.innerHTML = '';
     const boardData = currentRoomData.board;
-    const board = Array.isArray(boardData) ? boardData : Object.values(boardData);
+    // ✨ [수정] Object.values 대신 안전한 배열 변환 로직 사용
+    const board = ensureBoardArray(boardData);
+    
     const { turn } = currentRoomData;
     const isMyTurn = myColor === turn && isGameLive;
       // ✨ 디버깅 로그
@@ -666,7 +675,8 @@ function handleCellClick(index) {
     playSound('place-sound');
 
     const boardData = currentRoomData.board;
-    const newBoard = Array.isArray(boardData) ? [...boardData] : [...Object.values(boardData)];
+    // ✨ [수정] Object.values 대신 안전한 배열 변환 로직 사용
+    const newBoard = ensureBoardArray(boardData);
     const flippedStones = getFlippedStones(newBoard, index, myColor);
 
     if (flippedStones.length > 0) {
@@ -677,6 +687,7 @@ function handleCellClick(index) {
         checkTurnEnd(newBoard, index);
     }
 }
+
 function checkTurnEnd(board, lastMove) {
     const opponentColor = myColor === 'black' ? 'white' : 'black';
     const oppHasMoves = findValidMoves(board, opponentColor).length > 0;
@@ -794,8 +805,8 @@ function checkTurnEnd(board, lastMove) {
     gameHeader.innerHTML = '';
 
     Object.values(players).sort((a,b)=>(a.color==='black' ? -1 : 1)).forEach(p => {
-        // ✨ board를 배열로 변환
-        const boardArray = board ? (Array.isArray(board) ? board : Object.values(board)) : [];
+        // ✨ [수정] Object.values 대신 안전한 배열 변환 로직 사용
+        const boardArray = ensureBoardArray(board);
         const count = boardArray.filter(c => c === p.color).length || 2;
         const stoneIcon = p.color === 'black' ? '⚫' : '⚪';
                     // ✨ [수정] 4방향 아바타 세트(ID), 이미지, 이모지 순으로 확인
@@ -829,7 +840,8 @@ function checkTurnEnd(board, lastMove) {
             function showGameOverScreen() {
     const { players } = currentRoomData;
     const boardData = currentRoomData.board;
-    const board = Array.isArray(boardData) ? boardData : Object.values(boardData);
+    // ✨ [수정] Object.values 대신 안전한 배열 변환 로직 사용
+    const board = ensureBoardArray(boardData);
     const blackCount = board.filter(c => c === 'black').length;
     const whiteCount = board.filter(c => c === 'white').length;
     let winnerColor = null, message;
