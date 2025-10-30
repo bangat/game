@@ -1039,6 +1039,7 @@
                         currentUserData = snapshot.val();
                         updateLobbyUI();
                         if (!roomListener) listenToRooms();
+                        checkDailyLogin(user.uid, currentUserData.profile); // ✨ [신규] 데일리 로그인 체크
                         listenToLobbyChat(); // 채팅 리스너 시작
                     }
                 });
@@ -1619,9 +1620,44 @@
 
         logoutBtn.addEventListener('click', () => {
            if (gameSettings.sfx) clickSound.play();
+           sessionStorage.removeItem('invitedRoomId'); // ✨ [추가] 로그아웃 시에도 초대장 삭제
             auth.signOut();
             closeAllModals();
         });
+
+        // ✨ [신규] 데일리 로그인 보너스 함수
+        function checkDailyLogin(uid, profile) {
+            const now = new Date();
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime(); // 오늘 날짜 0시 0분
+            
+            const lastLogin = profile.lastLogin || 0;
+            // ✨ [수정] lastLogin이 객체(ServerValue.TIMESTAMP)일 수 있으므로 getTime() 대신 직접 비교
+            const lastLoginDate = new Date(lastLogin).getTime();
+
+            if (lastLoginDate < today) { // 마지막 로그인이 오늘 이전이라면
+                console.log("[데일리 보너스] 지급 대상입니다.");
+                const bonusPoints = 100; // 보너스 포인트
+                const newPoints = (profile.points || 0) + bonusPoints;
+
+                // Firebase 업데이트
+                usersRef.child(uid).child('profile').update({
+                    points: newPoints,
+                    lastLogin: firebase.database.ServerValue.TIMESTAMP
+                })
+                .then(() => {
+                    // 로컬 데이터 및 UI 갱신
+                    currentUserData.profile.points = newPoints;
+                    currentUserData.profile.lastLogin = Date.now(); // 임시로 현재 시간 설정
+                    updateLobbyUI();
+                    showToast(`🎉접속 보상! +${bonusPoints}P`);
+                })
+                .catch(error => {
+                    console.error("데일리 로그인 보너스 지급 실패:", error);
+                });
+            } else {
+                 console.log("[데일리 보너스] 오늘 이미 지급받았습니다.");
+            }
+        }
 
         function escapeHTML(str) {
             if (typeof str !== 'string') return '';
