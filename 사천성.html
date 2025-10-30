@@ -123,6 +123,36 @@
 
         /* --- 오버레이/모달 스타일 (리버시.html 참고, 약간 수정) --- */
         .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 200; text-align: center; background-color: rgba(0,0,0,0.7); }
+        /* ✨ [수정] #info-overlay의 애니메이션 관련 CSS */
+        #info-overlay {
+            background-color: rgba(0,0,0,0.9); /* ✨ 항상 진한 배경 */
+            /* opacity는 JS에서 직접 제어. transition은 삭제 */
+            /* overflow: hidden; */ /* ✨ [추가] clip-path가 제대로 작동하도록 */
+        }
+
+        /* ✨ [신규] 화면 전환 효과 키프레임 (예: 좌->우로 닦아내듯이) */
+        @keyframes wipe-right-in {
+            from { clip-path: inset(0 100% 0 0); } /* 오른쪽에서 닫힌 상태 */
+            to { clip-path: inset(0 0 0 0); }       /* 완전히 열린 상태 */
+        }
+        @keyframes wipe-left-out {
+            from { clip-path: inset(0 0 0 0); }     /* 완전히 열린 상태 */
+            to { clip-path: inset(0 0 0 100%); }    /* 왼쪽으로 닫힌 상태 */
+        }
+        /* ✨ [신규] 화면 전환 효과 키프레임 (예: 상->하로 덮개 닫히듯이) */
+        @keyframes wipe-down-in {
+            from { clip-path: inset(0 0 100% 0); }
+            to { clip-path: inset(0 0 0 0); }
+        }
+        @keyframes wipe-up-out {
+            from { clip-path: inset(0 0 0 0); }
+            to { clip-path: inset(100% 0 0 0); }
+        }
+
+        /* ✨ [신규] 애니메이션 적용 클래스 */
+        .wipe-in { animation: wipe-down-in 0.4s ease-out forwards; } /* ✨ 기본은 아래로 덮개 닫히듯이 */
+        .wipe-out { animation: wipe-up-out 0.4s ease-in forwards; }   /* ✨ 위로 덮개 열리듯이 */
+
         .modal-content { background: var(--panel-bg); color: var(--text-color-dark); padding: 0; border-radius: 16px; width: 90%; max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); overflow: hidden; }
         .modal-header { background-color: var(--primary-color); color: white; padding: 15px; border-radius: 16px 16px 0 0; }
         .modal-header h2 { font-size: 1.6em; }
@@ -528,36 +558,42 @@
                     countdownStarted = true;
                     startCountdown();
                 }
-                // 게임이 이미 라이브 상태이면 UI 업데이트
-                // ✨ [수정] 재배열 상태 확인을 isGameLive 밖으로 이동
-                if (isGameLive) {
-                    // ✨ [핵심 수정] isGameLive *내부에서* 재배열 상태를 확인합니다.
-                    
-                    if (currentRoomData.isShuffling) {
-                        // 1. 재배열 중: 오버레이 표시
-                        infoOverlay.innerHTML = `<div class="spinner"></div><p style="color: white; margin-top: 15px; font-size: 1.1em;">보드를 재배열 합니다...</p>`;
-                        infoOverlay.style.display = 'flex';
-                    } else {
-                        // 2. 재배열 중이 아님: 오버레이 숨기고 게임 UI 업데이트
-                        
-                        // ✨ [추가] 오버레이가 켜져 있으면 끈다
-                        if (infoOverlay.style.display !== 'none') {
-                             infoOverlay.style.display = 'none';
-                        }
-
-                        // 최신 게임 상태 렌더링
-                        updateHeaderUI();
-                        renderBoard();
-                        updateMySelection(); // 내 선택 상태 UI 반영
-
-                        // ✨ [수정] 방장은 *항상* 갱신된 보드를 보고 셔플이 필요한지 검사합니다.
-                        // (게스트가 마지막 짝을 맞춘 경우를 방장이 감지하기 위함)
-                        if (isHost) {
-                            // [버그 수정] 이 코드가 무한 루프를 유발.
-                            // 검사는 'attemptTileRemoval'에서 요청(Request)하는 방식으로 변경함.
+                
+                // 게임이 이미 라이브 상태이면 UI 업데이트
+                if (isGameLive) {
+                    if (currentRoomData.isShuffling) {
+                        // 1. 재배열 중: 오버레이 표시 (✨ 애니메이션 적용)
+                        infoOverlay.innerHTML = `<p style="color: white; font-size: 1.5em; font-weight: 700;">보드를 새로 섞습니다...</p>`;
+                        infoOverlay.style.display = 'flex';
+                        infoOverlay.style.opacity = '1'; // ✨ 애니메이션을 위해 opacity도 1로 설정
+                        infoOverlay.classList.remove('wipe-out'); // 기존 아웃 애니메이션 제거
+                        infoOverlay.classList.add('wipe-in'); // ✨ 인 애니메이션 적용
+                    } else {
+                        // 2. 재배열 중이 아님: 오버레이 숨기고 게임 UI 업데이트
+                        
+                        // ✨ [수정] 오버레이가 활성화 상태였다면 (isShuffling -> false 전환)
+                        if (infoOverlay.style.display === 'flex' && infoOverlay.classList.contains('wipe-in')) {
+                            // (1) 보드를 즉시 새로 그림 (애니메이션 중이라 사용자는 못 봄)
+                            updateHeaderUI();
+                            renderBoard();
+                            updateMySelection();
+                            
+                            // (2) 아웃 애니메이션 적용 후 숨김
+                            infoOverlay.classList.remove('wipe-in');
+                            infoOverlay.classList.add('wipe-out'); // ✨ 아웃 애니메이션 적용
+                            setTimeout(() => {
+                                infoOverlay.style.display = 'none';
+                                infoOverlay.style.opacity = '0'; // ✨ 투명하게
+                                // infoOverlay.style.background = 'rgba(0,0,0,0.7)'; // 배경색은 CSS에서 담당
+                            }, 400); // CSS 애니메이션 시간과 일치
+                        } else {
+                            // (3) 일반적인 상황 (셔플과 무관한 업데이트)
+                            updateHeaderUI();
+                            renderBoard();
+                            updateMySelection();
                         }
-                    }
-                }
+                    }
+                }
             } else if (currentRoomData.status === 'gameOver' && !gameOverFlag) {
                         gameOverFlag = true; // 게임 종료 플래그 설정
                         infoOverlay.style.display = 'none'; // [추가] 로딩 오버레이 끄기
@@ -575,10 +611,6 @@
                         if (!readyPlayers[myPlayerId]) {
                             roomRef.child('readyPlayers/' + myPlayerId).set(true);
                             
-                            // ✨ [핵심 수정] 
-                            // 방금 '준비' 신호를 보냈으므로, stale(오래된) 데이터로 
-                            // 게임 시작을 확인하지 말고 즉시 리턴하여 다음 이벤트를 기다립니다.
-                            // 대기 화면을 먼저 표시합니다.
                             if (isHost) {
                                 infoOverlay.innerHTML = `<div class="spinner"></div><p style="color: white; margin-top: 15px; font-size: 1.1em;">상대방 기다리는 중 (${readyCount}/${totalPlayers})...</p>`;
                             } else {
@@ -588,14 +620,9 @@
                             return; // ✨ 즉시 리턴
                         }
                         
-                        // ✨ [수정] 
-                        // 이 코드는 내가 *이미* ready 상태일 때만 실행됩니다.
-                        // (즉, 'readyPlayers'에 내가 포함된 이벤트가 다시 들어왔을 때)
+                       
                         if (isHost) {
                             if (totalPlayers >= 2 && readyCount === totalPlayers) {
-                                // ✨ [핵심 수정] 
-                                // 보드를 *바로* 생성하지 않고, '게임방.html'에서 보낸 것과
-                                // 동일한 '게임 시작 로딩' 신호를 보냅니다.
                                 roomRef.update({
                                     status: 'playing',
                                     gameState: 'launching', // '처음하기'와 동일한 신호
@@ -604,7 +631,6 @@
                                     selectedTiles: null,
                                     readyPlayers: null      // '준비' 상태 초기화
                                 });
-                                // initializeShisenShoGame(); // <--- 이 코드를 위 update로 대체
                             } else {
                                 // 아직 모두 준비되지 않음 (상대방 기다리는 중)
                                 infoOverlay.innerHTML = `<div class="spinner"></div><p style="color: white; margin-top: 15px; font-size: 1.1em;">상대방 기다리는 중 (${readyCount}/${totalPlayers})...</p>`;
