@@ -97,6 +97,11 @@
         .avatar-item.owned .avatar-price { color: #28a745; }
         .avatar-item.equipped .avatar-price { color: var(--primary-color); }
 
+        .avatar-item strong { /* ✨ [추가] 아이템 이름 스타일 */
+            font-size: 0.9em; font-weight: 700; margin-top: 5px; 
+            display: block; height: 1.2em; /* 이름이 없어도 공간 차지 */
+        }
+
         .action-footer { 
             padding: 15px; 
             background-color: #FFFAE0; /* [수정] 대기실 푸터와 동일한 배경 */
@@ -155,7 +160,9 @@
 
     <div id="shop-tabs">
         <button id="avatar-tab" class="tab-btn active" data-tab="avatar">아바타</button>
+               <button id="effect-tab" class="tab-btn" data-tab="effect">이펙트</button>
         <button id="bomber-tab" class="tab-btn" data-tab="bomber">봄버맨 스킨</button>
+ 
     </div>
 
     <div class="shop-container">
@@ -201,6 +208,7 @@
         const myPointsDisplay = document.getElementById('my-points-display');
         const avatarTab = document.getElementById('avatar-tab');
         const bomberTab = document.getElementById('bomber-tab');
+        const effectTab = document.getElementById('effect-tab'); // ✨ [추가]
         
         let currentUser, currentUserData;
         let selectedItem = null;
@@ -216,6 +224,11 @@
             { id: 'avatar_duk', emoji: './아바타폴더/고라파덕.png', price: 500, type: 'avatar' },
             { id: 'penguin_parka', emoji: './아바타폴더/펭귄정면.png', price: 1000, type: 'avatar' },
             { id: 'puppy_set', emoji: './아바타폴더/강아지정면.png', price: 1000, type: 'avatar' }
+        ];
+
+const effectShopItems = [
+            { id: 'effect_sparkle', name: '반짝임', emoji: '✨', price: 1000, type: 'entryEffect' },
+            { id: 'effect_spotlight', name: '스포트라이트', emoji: '💡', price: 1500, type: 'entryEffect' }
         ];
 
         const bomberShopItems = [
@@ -255,7 +268,9 @@
 
         // ✨ [신규] 탭 클릭 리스너
         avatarTab.addEventListener('click', () => switchTab('avatar'));
+                effectTab.addEventListener('click', () => switchTab('effect')); // ✨ [추가]
         bomberTab.addEventListener('click', () => switchTab('bomber'));
+
 
         function switchTab(tabName) {
             if (currentActiveTab === tabName) return;
@@ -263,7 +278,9 @@
             
             // 탭 버튼 UI
             avatarTab.classList.toggle('active', tabName === 'avatar');
+             effectTab.classList.toggle('active', tabName === 'effect'); // ✨ [추가]
             bomberTab.classList.toggle('active', tabName === 'bomber');
+
 
             // 선택 초기화
             selectedItem = null;
@@ -275,13 +292,18 @@
         function renderShopItems() {
             itemGrid.innerHTML = '';
             
-            const itemsToRender = (currentActiveTab === 'avatar') ? avatarShopItems : bomberShopItems;
+            // ✨ [수정] 3개 탭으로 확장
+            const itemsToRender = (currentActiveTab === 'avatar') ? avatarShopItems :
+                                  (currentActiveTab === 'bomber') ? bomberShopItems :
+                                  effectShopItems;
             
             const profile = currentUserData.profile;
             const ownedAvatars = profile.ownedAvatars || {};
             const currentAvatar = profile.avatar;
             const ownedBombSkins = profile.ownedBombSkins || {};
             const currentBombSkin = profile.bombSkin;
+            const ownedEntryEffects = profile.ownedEntryEffects || {}; // ✨ [추가]
+            const currentEntryEffect = profile.equippedEntryEffect; // ✨ [추가]
 
             itemsToRender.forEach(item => {
                 const itemEl = document.createElement('div');
@@ -293,11 +315,17 @@
                 // ✨ [수정] 아이템 타입에 따라 소유/장착 여부 확인
                 if (item.type === 'avatar') {
                     isOwned = !!ownedAvatars[item.id];
-                    isEquipped = (currentAvatar === item.emoji);
+                    // ✨ [버그 수정] 아바타 장착 여부 확인 (ID 또는 emoji/URL)
+                    const avatarValue = (AVATAR_SETS[item.id]) ? item.id : item.emoji;
+                    isEquipped = (currentAvatar === avatarValue);
                 } else if (item.type === 'bombSkin') {
                     isOwned = !!ownedBombSkins[item.id];
                     isEquipped = (currentBombSkin === item.emoji);
+                } else if (item.type === 'entryEffect') { // ✨ [추가]
+                    isOwned = !!ownedEntryEffects[item.id];
+                    isEquipped = (currentEntryEffect === item.id);
                 }
+
 
                 if (isOwned) itemEl.classList.add('owned');
                 if (isEquipped) itemEl.classList.add('equipped');
@@ -310,8 +338,10 @@
                     itemEl.classList.add('selected');
                 }
                 
+                // ✨ [수정] 아이템 이름(strong) 추가
                 itemEl.innerHTML = `
                     <div class="avatar-preview">${avatarContent}</div>
+                    <strong>${item.name || ''}</strong>
                     <div class="avatar-price">${isEquipped ? '사용중' : (isOwned ? '보유중' : `${item.price.toLocaleString()} P`)}</div>
                 `;
                 
@@ -339,18 +369,27 @@
 
             if (selectedItem.type === 'avatar') {
                 isOwned = profile.ownedAvatars && profile.ownedAvatars[selectedItem.id];
-                isEquipped = profile.avatar === selectedItem.emoji;
+                // ✨ [버그 수정] 아바타 장착 여부 확인 (ID 또는 emoji/URL)
+                const avatarValue = (AVATAR_SETS[selectedItem.id]) ? selectedItem.id : selectedItem.emoji;
+                isEquipped = (profile.avatar === avatarValue);
             } else if (selectedItem.type === 'bombSkin') {
                 isOwned = profile.ownedBombSkins && profile.ownedBombSkins[selectedItem.id];
                 isEquipped = profile.bombSkin === selectedItem.emoji;
+            } else if (selectedItem.type === 'entryEffect') { // ✨ [추가]
+                isOwned = profile.ownedEntryEffects && profile.ownedEntryEffects[selectedItem.id];
+                isEquipped = profile.equippedEntryEffect === selectedItem.id;
             }
+
             
             if(isOwned) {
                 purchaseBtn.disabled = isEquipped;
                 if (isEquipped) {
                     purchaseBtn.textContent = '현재 사용중';
                 } else {
-                    purchaseBtn.textContent = (selectedItem.type === 'avatar') ? '이 아바타로 변경' : '이 스킨으로 변경';
+                    // ✨ [수정] 3개 탭으로 확장
+                    purchaseBtn.textContent = (selectedItem.type === 'avatar') ? '이 아바타로 변경' :
+                                              (selectedItem.type === 'bombSkin') ? '이 스킨으로 변경' :
+                                              '이 이펙트로 변경';
                 }
             } else {
                 purchaseBtn.disabled = (profile.points || 0) < selectedItem.price;
@@ -369,7 +408,10 @@
                 isOwned = profile.ownedAvatars && profile.ownedAvatars[selectedItem.id];
             } else if (selectedItem.type === 'bombSkin') {
                 isOwned = profile.ownedBombSkins && profile.ownedBombSkins[selectedItem.id];
+            } else if (selectedItem.type === 'entryEffect') { // ✨ [추가]
+                isOwned = profile.ownedEntryEffects && profile.ownedEntryEffects[selectedItem.id];
             }
+
 
             // ✨ [수정] 4방향 아바타 세트(ID)와 일반 아바타(emoji)를 구분하여 저장할 값을 결정합니다.
             const valueToSet = (selectedItem.type === 'avatar' && AVATAR_SETS[selectedItem.id])
@@ -390,6 +432,11 @@
                         .then(() => {
                             alert('물풍선 스킨이 변경되었습니다.');
                         });
+                } else if (selectedItem.type === 'entryEffect') { // ✨ [추가]
+                    usersRef.child(currentUser.uid).child('profile/equippedEntryEffect').set(selectedItem.id)
+                        .then(() => {
+                            alert('입장 이펙트가 변경되었습니다.');
+                        });
                 }
             } 
             // 2. 미소유 아이템 (구매)
@@ -406,7 +453,11 @@
                 } else if (selectedItem.type === 'bombSkin') {
                     updates['profile/bombSkin'] = selectedItem.emoji;
                     updates[`profile/ownedBombSkins/${selectedItem.id}`] = true;
+                } else if (selectedItem.type === 'entryEffect') { // ✨ [추가]
+                    updates['profile/equippedEntryEffect'] = selectedItem.id; // 구매 시 바로 적용
+                    updates[`profile/ownedEntryEffects/${selectedItem.id}`] = true;
                 }
+
 
                 usersRef.child(currentUser.uid).update(updates)
                   .then(() => {
