@@ -997,6 +997,39 @@ if (inviteBtn) {
         document.addEventListener('click', () => emojiPopover.classList.remove('active'));
        emojiPopover.addEventListener('click', e => { if(e.target.tagName === 'BUTTON'){ sendMessage(e.target.textContent); emojiPopover.classList.remove('active'); } });
 
+       // --- ✨ [신규] 앱 숨김/복귀 감지 (카톡 초대 문제 해결) ---
+        // 이전에 제거했던 코드를 다시 추가합니다.
+        document.addEventListener('visibilitychange', () => {
+            if (!roomRef || !currentUser) return; // 방 나가기 처리 중이거나, 아직 방 정보가 로드 안됐으면 무시
+            
+            // on('value')가 실행되기 전, 즉 currentRoomData가 없거나 내가 players에 없으면 무시
+            if (!currentRoomData || !currentRoomData.players || !currentRoomData.players[currentUser.uid]) return; 
+
+            if (document.visibilityState === 'hidden') {
+                // 앱이 숨겨지면 (카톡 전환 등), onDisconnect 핸들러를 즉시 취소
+                console.log("App hidden, onDisconnect 취소.");
+                if (hostOnDisconnect) {
+                    try { hostOnDisconnect.cancel(); } catch(e) { console.warn("Host onDisconnect cancel failed (hidden):", e); }
+                    hostOnDisconnect = null; // 핸들러 참조 제거
+                }
+                if (playerOnDisconnect) {
+                    try { playerOnDisconnect.cancel(); } catch(e) { console.warn("Player onDisconnect cancel failed (hidden):", e); }
+                    playerOnDisconnect = null; // 핸들러 참조 제거
+                }
+            } else if (document.visibilityState === 'visible') {
+                // 앱으로 돌아오면, onDisconnect 핸들러를 즉시 재설정
+                console.log("App visible, onDisconnect 재설정.");
+                if (isHost) {
+                    hostOnDisconnect = roomRef.onDisconnect();
+                    hostOnDisconnect.remove();
+                } else {
+                    playerOnDisconnect = roomRef.child('players/' + currentUser.uid).onDisconnect();
+                    playerOnDisconnect.remove();
+                }
+            }
+        });
+        // --- ✨ 코드 추가 끝 ---
+        
     }); // --- DOMContentLoaded 끝 ---
 
     // --- ✨ window.onload for SDK Initialization ---
