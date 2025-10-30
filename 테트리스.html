@@ -63,7 +63,7 @@
             align-items: center; /* [수정] 가로 중앙 정렬 */
             touch-action: manipulation; -webkit-user-select: none; user-select: none;
             overscroll-behavior-y: none;
-            padding-top: env(safe-area-inset-top);
+            /* [삭제] padding-top: env(safe-area-inset-top); */
         }
 
         #game-wrapper {
@@ -72,7 +72,7 @@
             height: 100%; /* [수정] 100%로 복원 */
             /* max-height: 100%; */ /* [삭제] */
             display: flex; flex-direction: column;
-            padding-bottom: env(safe-area-inset-bottom);
+            /* [삭제] padding-bottom: env(safe-area-inset-bottom); */
             background-color: var(--panel-bg); /* [테마] Wrapper에 배경색 적용 */
             box-shadow: 0 0 20px rgba(0,0,0,0.2); /* [테마] 그림자 효과 */
             border-radius: 8px; /* [테마] 둥근 모서리 */
@@ -85,6 +85,7 @@
             justify-content: space-between;
             align-items: stretch;
             padding: 4px;
+            padding-top: calc(4px + env(safe-area-inset-top)); /* [수정] safe-area-inset-top 적용 */
             background-color: var(--panel-bg); /* [테마] */
             gap: 4px;
             border-bottom: 1px solid var(--grid-color);
@@ -150,14 +151,14 @@
              animation: blink-warning-fill 0.5s infinite alternate;
         }
 
-        #game-main-content {
+       #game-main-content {
              flex-grow: 1; /* [복원] 남는 세로 공간 채우기 */
              min-height: 0;
              overflow: hidden;
              display: flex;
              flex-direction: row;
              justify-content: center;
-             align-items: center; /* [수정] 세로 중앙 정렬로 변경 */
+             align-items: flex-start; /* [수정] 세로 상단 정렬로 변경 */
              padding: 10px 2px; /* [수정] 좌우 여백 최소화 */
              gap: 3px; /* [수정] 갭 최소화 */
         }
@@ -173,6 +174,12 @@
         /* [수정] 캔버스 공통 스타일 */
         #hold-panel canvas,
         #immediate-next-panel canvas,
+        /* [신규] NEXT 캔버스 강조 */
+        #immediate-next-panel canvas {
+             border: 2px solid var(--accent-color);
+             box-shadow: 0 0 8px -2px var(--accent-color);
+        }
+
         #queue-panel canvas {
              background-color: rgba(0,0,0,0.2); /* Slight background */
              border: 1px solid var(--grid-color);
@@ -249,6 +256,14 @@
             flex-shrink: 0;
         }
         
+        /* [신규] NEXT 라벨 강조 */
+        #immediate-next-panel .panel-label {
+            font-size: 0.9em;
+            color: #FFFFFF;
+            text-shadow: 0 0 5px var(--accent-color);
+        }
+        /* [신규] */
+
         .panel-label {
             font-size: 0.7em;
             font-weight: bold;
@@ -263,7 +278,7 @@
             justify-content: center;
             align-items: center;
             padding: 8px max(15px, 3vw);
-            padding-bottom: max(8px, env(safe-area-inset-bottom));
+            padding-bottom: max(8px, env(safe-area-inset-bottom)); /* [수정] safe-area-inset-bottom 다시 적용 */
             background-color: var(--touch-control-bg); /* [테마] */
             border-top: 1px solid var(--grid-color);
             width: 100%;
@@ -457,16 +472,16 @@
         
         <div id="game-main-content">
             <div id="game-side-panels">
-                 <div class="board-side-panel" id="hold-panel">
-                     <div class="panel-label">HOLD</div>
-                     <canvas id="hold-canvas"></canvas>
-                </div>
                  <div class="board-side-panel" id="immediate-next-panel">
                     <div class="panel-label">NEXT</div>
                     <canvas id="immediate-next-canvas"></canvas>
                 </div>
                  <div class="board-side-panel" id="queue-panel">
                      <canvas id="queue-canvas"></canvas>
+                </div>
+                 <div class="board-side-panel" id="hold-panel">
+                     <div class="panel-label">HOLD</div>
+                     <canvas id="hold-canvas"></canvas>
                 </div>
             </div>
             <div id="game-board-area">
@@ -761,10 +776,10 @@
                         isHost: isHost
                     });
 
-                    adjustLayout(); 
                     loadSounds();
                     setupControls();
-                    listenToRoomChanges(); 
+                    adjustLayout(); /* [수정] 컨트롤이 표시된 후 크기를 계산하도록 setupControls() 뒤로 이동 */
+                    listenToRoomChanges();
 
                 }).catch(err => {
                     console.error("Firebase error:", err);
@@ -795,6 +810,8 @@
             function holdPiece() {
                 if (!isGameLive || !canSwapHold || isGameOver) return;
 
+                playSound('rotate');
+
                 const previouslyHeld = heldPieceType;
                 heldPieceType = currentPiece.type;
                 canSwapHold = false;
@@ -814,27 +831,27 @@
                        if (pieceBag.length === 0) pieceBag = generate7Bag();
                        nextPieces.push(pieceBag.pop());
                     }
-                    roomRef.child(`gameData/${myPlayerKey}/pieceBag`).set(pieceBag);
-
                 } else {
                     currentPiece = spawnPiece(previouslyHeld);
                 }
 
-                roomRef.child(`gameData/${myPlayerKey}`).update({
-                    currentPiece: currentPiece,
-                    nextPieces: nextPieces
-                });
-
+                let newIsGameOver = isGameOver;
                 if (checkCollision(board, currentPiece)) {
-                     roomRef.child(`gameData/${myPlayerKey}/isGameOver`).set(true);
-                     isGameOver = true;
+                     newIsGameOver = true;
                      console.log("Game Over triggered: Collision after hold swap.");
                 } else {
                      calculateGhostY();
-                     drawMyBoard();
+                     drawMyBoard(); 
                 }
 
-                playSound('rotate');
+                roomRef.child(`gameData/${myPlayerKey}`).update({
+                    currentPiece: currentPiece,
+                    nextPieces: nextPieces,
+                    pieceBag: pieceBag,
+                    heldPieceType: heldPieceType,
+                    canSwapHold: canSwapHold,
+                    isGameOver: newIsGameOver 
+                });
             }
 
             function adjustLayout() {
@@ -979,7 +996,9 @@
                     incomingGarbage: 0, combo: -1, isGameOver: false,
                     lastMoveWasRotate: false,
                     boardHeight: 0,
-                    pieceBag: pieceBag
+                    pieceBag: pieceBag,
+                    heldPieceType: null,
+                    canSwapHold: true
                 });
 
                 roomRef.child('gameData').set({
@@ -1062,8 +1081,12 @@
                                 lines = myData.lines;
                                 incomingGarbage = myData.incomingGarbage;
                                 combo = myData.combo;
-                                isGameOver = myData.isGameOver;
+                               isGameOver = myData.isGameOver;
                                 lastMoveWasRotate = myData.lastMoveWasRotate;
+                                heldPieceType = myData.heldPieceType || null;
+                                canSwapHold = myData.canSwapHold !== undefined ? myData.canSwapHold : true;
+
+                                holdPanel.classList.toggle('unavailable', !canSwapHold);
 
                                 calculateGhostY();
                                 drawMyBoard(); 
@@ -1792,8 +1815,7 @@
                     myData.lastMoveWasRotate = false;
                     myData.pieceBag = currentPieceBag;
                     myData.dropInterval = currentDropInterval;
-
-                    canSwapHold = true;
+                    myData.canSwapHold = true;
 
                     return gameData;
 
@@ -1804,8 +1826,6 @@
                         console.warn("Locking Transaction aborted (data changed externally). Local state might be stale.");
                     } else {
                         playSound('lock-new-sound');
-                        canSwapHold = true;
-                        holdPanel.classList.remove('unavailable');
 
                         if (garbageToSendFromTransaction > 0) {
                             const opponentKey = myPlayerKey === 'p1' ? 'p2' : 'p1';
