@@ -840,10 +840,8 @@
                      drawMyBoard(); 
                 }
 
+                // [수정] 보드/조각은 보내지 않고, UI 상태만 가볍게 보냅니다.
                 roomRef.child(`gameData/${myPlayerKey}`).update({
-                    currentPiece: currentPiece,
-                    nextPieces: nextPieces,
-                    pieceBag: pieceBag,
                     heldPieceType: heldPieceType,
                     canSwapHold: canSwapHold,
                     isGameOver: newIsGameOver 
@@ -1068,26 +1066,19 @@
                             const myData = gameData[myPlayerKey];
                             const opponentData = gameData[opponentPlayerKey];
                             
-                            if (myData) {
-                                board = myData.board || createMatrix(COLS, ROWS + HIDDEN_ROWS);
-                                currentPiece = myData.currentPiece;
-                                nextPieces = myData.nextPieces || [];
-                                score = myData.score;
-                                level = myData.level;
-                                lines = myData.lines;
+                            // [수정] 내 게임 상태는 더 이상 Firebase에서 읽지 않습니다. (로컬에서 관리)
+                            // [수정] 오직 '내가 받을 쓰레기'만 확인합니다.
+                            if (myData && incomingGarbage !== myData.incomingGarbage) {
+                                console.log(`[쓰레기 수신] ${myData.incomingGarbage}줄 받음!`);
                                 incomingGarbage = myData.incomingGarbage;
-                                combo = myData.combo;
-                               isGameOver = myData.isGameOver;
-                                lastMoveWasRotate = myData.lastMoveWasRotate;
-                                heldPieceType = myData.heldPieceType || null;
-                                canSwapHold = myData.canSwapHold !== undefined ? myData.canSwapHold : true;
-
-                                holdPanel.classList.toggle('unavailable', !canSwapHold);
-
-                                calculateGhostY();
-                                drawMyBoard(); 
+                                updateGarbageMeter(myGarbageMeter, myGarbageFill, incomingGarbage);
+                                // 헤더 UI도 업데이트
+                                const myHeaderMeter = document.getElementById('my-garbage-header');
+                                const myHeaderFill = document.getElementById('my-garbage-fill-header');
+                                updateGarbageMeter(myHeaderMeter, myHeaderFill, incomingGarbage);
                             }
 
+                            // [수정] 상대방 UI 갱신은 그대로 유지합니다.
                             updateHeaderUI(myData, opponentData);
 
                             if (!gameOverFlag && isGameLive && gameData && myPlayerKey) {
@@ -1472,6 +1463,17 @@
                 }
                 return pieceBag.pop();
             }
+            
+            // [신규] 로컬 전용 '다음 조각 채우기' 함수
+            function fillNextPiecesLocally() {
+                while (nextPieces.length < PREVIEW_COUNT) {
+                    if (pieceBag.length === 0) {
+                        pieceBag = generate7Bag();
+                    }
+                    nextPieces.push(pieceBag.pop());
+                }
+            }
+            
             function spawnPiece(pieceType) { 
                 const piece = PIECES[pieceType];
                 return {
@@ -1623,224 +1625,170 @@
                 const pieceToMerge = isHardDrop && finalY !== null ? { ...currentPiece, y: finalY } : { ...currentPiece };
 
                 clearLockDelay();
-
-                let garbageToSendFromTransaction = 0;
+                
+                // [수정] 1. 모든 로직을 로컬 변수로 즉시 처리 (트랜잭션 없음)
+                mergePieceToBoard(pieceToMerge);
+                playSound('lock-new-sound');
                 canSwapHold = true;
-                roomRef.child('gameData').transaction(gameData => {
-                    if (!gameData || !gameData[myPlayerKey]) {
-                        return;
-                    }
+                holdPanel.classList.remove('unavailable');
 
-                    const myData = gameData[myPlayerKey];
-                    let currentBoard = myData.board;
-                    let currentScore = myData.score;
-                    let currentLines = myData.lines;
-                    let currentLevel = myData.level;
-                    let currentCombo = myData.combo;
-                    let currentIncomingGarbage = myData.incomingGarbage;
-                    let currentPieceBag = myData.pieceBag || generate7Bag();
-                    let currentNextPieces = myData.nextPieces || [];
-                    let currentIsGameOver = myData.isGameOver;
-                    let currentDropInterval = myData.dropInterval || BASE_DROP_INTERVAL;
+                let linesCleared = 0;
+                let tSpinType = detectTSpin(pieceToMerge); 
 
-                    const pieceIndex = pieceToMerge.index;
-                    pieceToMerge.shape.forEach((row, y) => {
-                        row.forEach((value, x) => {
-                            if (value !== 0) {
-                                const boardY = y + pieceToMerge.y;
-                                const boardX = x + pieceToMerge.x;
-                                if (boardY >= 0 && boardY < ROWS + HIDDEN_ROWS && boardX >= 0 && boardX < COLS) {
-                                    if (!currentBoard[boardY]) {
-                                        console.error(`Error: Row ${boardY} does not exist in board during merge!`);
-                                        currentBoard[boardY] = new Array(COLS).fill(0);
-                                    }
-                                    currentBoard[boardY][boardX] = pieceIndex;
-                                }
-                            }
-                        });
-                    });
-
-                    let linesCleared = 0;
-                    let tSpinType = detectTSpin(pieceToMerge);
-
-                    let y = ROWS + HIDDEN_ROWS - 1;
-                    while (y >= 0) {
-                        if (currentBoard[y] && currentBoard[y].every(cell => cell !== 0 && cell !== GARBAGE_INDEX)) {
-                            triggerLineClearAnimation(y);
-                            currentBoard.splice(y, 1);
-                            currentBoard.unshift(new Array(COLS).fill(0));
-                            linesCleared++;
-                        } else {
-                            y--;
-                        }
-                    }
-
-                    let scoreToAdd = hardDropScore;
-                    let garbageToSend = 0;
-
-                    if (linesCleared > 0) {
-                        playSound('clear-new-sound');
-                        currentCombo = (currentCombo < 0) ? 0 : currentCombo + 1;
-
-                        let actionText = "";
-                        if (tSpinType) {
-                            playSound('tspin');
-                            if (tSpinType === 'mini') {
-                                actionText = "T-Spin Mini!";
-                                scoreToAdd += T_SPIN_SCORE.mini; garbageToSend += T_SPIN_GARBAGE.mini_1;
-                            } else {
-                                if (linesCleared === 3) actionText = "T-Spin Triple!";
-                                else if (linesCleared === 2) actionText = "T-Spin Double!";
-                                else actionText = "T-Spin Single!";
-                                scoreToAdd += T_SPIN_LINE_SCORE[linesCleared] || T_SPIN_SCORE.normal;
-                                garbageToSend += T_SPIN_GARBAGE[`normal_${linesCleared}`] || 0;
-                            }
-                        } else {
-                            if (linesCleared === 4) {
-                                playSound('tetris');
-                                actionText = "Tetris!";
-                            } else if (linesCleared === 3) {
-                                actionText = "Triple!";
-                            } else if (linesCleared === 2) {
-                                actionText = "Double!";
-                            }
-                            scoreToAdd += SCORE_MAP[linesCleared] || 0;
-                            garbageToSend += GARBAGE_MAP[linesCleared] || 0;
-                        }
-
-                        if (currentCombo > 0 && !tSpinType && linesCleared < 4) {
-                            actionText = `Combo ${currentCombo + 1}!`;
-                            scoreToAdd += currentCombo * COMBO_SCORE * currentLevel;
-                            garbageToSend += COMBO_GARBAGE[Math.min(currentCombo, COMBO_GARBAGE.length - 1)] || 0;
-                        }
-
-                        if (actionText) {
-                            showActionText(actionText);
-                        }
-
-                        currentScore += scoreToAdd * currentLevel;
-                        currentLines += linesCleared;
-                        const previousLevel = currentLevel;
-                        currentLevel = Math.floor(currentLines / 10) + 1;
-
-                        if (currentLevel > previousLevel) {
-                            currentDropInterval = Math.max(50, BASE_DROP_INTERVAL * Math.pow(0.85, currentLevel - 1));
-                            console.log(`Level Up! New Interval: ${currentDropInterval}`);
-                        }
-
+                let y = ROWS + HIDDEN_ROWS - 1;
+                while (y >= 0) {
+                    if (board[y] && board[y].every(cell => cell !== 0 && cell !== GARBAGE_INDEX)) {
+                        triggerLineClearAnimation(y); 
+                        board.splice(y, 1);
+                        board.unshift(new Array(COLS).fill(0));
+                        linesCleared++;
                     } else {
-                        if (tSpinType) {
-                           playSound('tspin');
-                           showActionText(tSpinType === 'mini' ? "T-Spin Mini!" : "T-Spin!");
-                           scoreToAdd += (tSpinType === 'mini' ? T_SPIN_SCORE.mini : T_SPIN_SCORE.normal) * currentLevel;
-                           currentScore += scoreToAdd;
-                           garbageToSend += (tSpinType === 'mini' ? T_SPIN_GARBAGE.mini_0 : T_SPIN_GARBAGE.normal_0);
-                        }
-                        currentCombo = -1;
+                        y--;
                     }
+                }
 
-                    let garbageToOpponent = garbageToSend;
-                    if (currentIncomingGarbage > 0) {
-                        if (garbageToOpponent >= currentIncomingGarbage) {
-                            garbageToOpponent -= currentIncomingGarbage;
-                            currentIncomingGarbage = 0;
+                let scoreToAdd = hardDropScore;
+                let garbageToSend = 0;
+                
+                if (linesCleared > 0) {
+                    playSound('clear-new-sound'); 
+                    combo = (combo < 0) ? 0 : combo + 1;
+
+                    let actionText = "";
+                    if (tSpinType) {
+                        playSound('tspin');
+                        if (tSpinType === 'mini') {
+                            actionText = "T-Spin Mini!";
+                            scoreToAdd += T_SPIN_SCORE.mini; garbageToSend += T_SPIN_GARBAGE.mini_1;
                         } else {
-                            currentIncomingGarbage -= garbageToOpponent;
-                            garbageToOpponent = 0;
+                            if (linesCleared === 3) actionText = "T-Spin Triple!";
+                            else if (linesCleared === 2) actionText = "T-Spin Double!";
+                            else actionText = "T-Spin Single!";
+                            scoreToAdd += T_SPIN_LINE_SCORE[linesCleared] || T_SPIN_SCORE.normal;
+                            garbageToSend += T_SPIN_GARBAGE[`normal_${linesCleared}`] || 0;
                         }
-                    }
-
-                    if (currentIncomingGarbage > 0) {
-                        playSound('junk-sound');
-                        const holeCol = Math.floor(Math.random() * COLS);
-                        for (let i = 0; i < currentIncomingGarbage; i++) {
-                            if (currentBoard.length > 0) currentBoard.shift();
-                            const newRow = Array(COLS).fill(GARBAGE_INDEX);
-                            newRow[holeCol] = 0;
-                            if (currentBoard.length < ROWS + HIDDEN_ROWS) {
-                                currentBoard.push(newRow);
-                            } else {
-                                console.warn("Board full, cannot add more garbage.");
-                            }
-                        }
-                        currentIncomingGarbage = 0;
-                    }
-
-                    garbageToSendFromTransaction = garbageToOpponent;
-
-                    if (currentNextPieces.length === 0) {
-                        if(currentPieceBag.length === 0) currentPieceBag = generate7Bag();
-                        currentNextPieces.push(currentPieceBag.pop());
-                    }
-                    const nextSpawnType = currentNextPieces.shift();
-                    const newPiece = spawnPiece(nextSpawnType);
-
-                    while (currentNextPieces.length < PREVIEW_COUNT) {
-                        if (currentPieceBag.length === 0) currentPieceBag = generate7Bag();
-                        currentNextPieces.push(currentPieceBag.pop());
-                    }
-
-                    let lockedPieceLowestPoint = -1;
-                     pieceToMerge.shape.forEach((row, y) => {
-                         row.forEach((value, x) => {
-                              if (value !== 0) {
-                                   lockedPieceLowestPoint = Math.max(lockedPieceLowestPoint, y + pieceToMerge.y);
-                              }
-                         });
-                    });
-
-                    if (lockedPieceLowestPoint < HIDDEN_ROWS) {
-                         currentIsGameOver = true;
-                         console.log("Game Over triggered: Piece locked too high at y=", lockedPieceLowestPoint);
-                    }
-                    else if (checkCollision(currentBoard, newPiece)) {
-                        currentIsGameOver = true;
-                         console.log("Game Over triggered: New piece collision on spawn.");
-                    }
-
-                    myData.board = currentBoard;
-                    myData.score = currentScore;
-                    myData.level = currentLevel;
-                    myData.lines = currentLines;
-                    myData.combo = currentCombo;
-                    myData.incomingGarbage = 0;
-                    myData.isGameOver = currentIsGameOver;
-                    myData.boardHeight = calculateBoardHeight(currentBoard);
-                    myData.currentPiece = newPiece;
-                    myData.nextPieces = currentNextPieces;
-                    myData.lastMoveWasRotate = false;
-                    myData.pieceBag = currentPieceBag;
-                    myData.dropInterval = currentDropInterval;
-                    myData.canSwapHold = true;
-
-                    return gameData;
-
-                }, (error, committed, snapshot) => {
-                    if (error) {
-                        console.error("Locking Transaction failed: ", error);
-                    } else if (!committed) {
-                        console.warn("Locking Transaction aborted (data changed externally). Local state might be stale.");
                     } else {
-                        playSound('lock-new-sound');
+                        if (linesCleared === 4) {
+                            playSound('tetris');
+                            actionText = "Tetris!";
+                        } else if (linesCleared === 3) {
+                            actionText = "Triple!";
+                        } else if (linesCleared === 2) {
+                            actionText = "Double!";
+                        }
+                        scoreToAdd += SCORE_MAP[linesCleared] || 0;
+                        garbageToSend += GARBAGE_MAP[linesCleared] || 0;
+                    }
 
-                        if (garbageToSendFromTransaction > 0) {
-                            const opponentKey = myPlayerKey === 'p1' ? 'p2' : 'p1';
-                            const opponentGarbageRef = roomRef.child(`gameData/${opponentKey}/incomingGarbage`);
+                    if (combo > 0 && !tSpinType && linesCleared < 4) {
+                        actionText = `Combo ${combo + 1}!`;
+                        scoreToAdd += combo * COMBO_SCORE * level;
+                        garbageToSend += COMBO_GARBAGE[Math.min(combo, COMBO_GARBAGE.length - 1)] || 0;
+                    }
 
-                            opponentGarbageRef.transaction(currentOpponentGarbage => {
-                                return (currentOpponentGarbage || 0) + garbageToSendFromTransaction;
-                            }, (error, committed, snapshot) => {
-                                if (error) {
-                                    console.error(`Garbage Transaction to ${opponentKey} failed:`, error);
-                                } else if (committed) {
-                                    console.log(`[Transaction Success] Sent ${garbageToSendFromTransaction} garbage to ${opponentKey}`);
-                                } else {
-                                    console.warn(`Garbage Transaction to ${opponentKey} aborted.`);
-                                }
-                            });
+                    if (actionText) {
+                        showActionText(actionText);
+                    }
+                    
+                    score += scoreToAdd * level;
+                    lines += linesCleared;
+                    
+                    let newLevel = Math.floor(lines / 10) + 1;
+                    if (newLevel > level) {
+                        level = newLevel;
+                        dropInterval = Math.max(50, BASE_DROP_INTERVAL * Math.pow(LEVEL_SPEED_FACTOR, level - 1));
+                    }
+
+                } else {
+                    if (tSpinType) {
+                       playSound('tspin');
+                       showActionText(tSpinType === 'mini' ? "T-Spin Mini!" : "T-Spin!");
+                       scoreToAdd += (tSpinType === 'mini' ? T_SPIN_SCORE.mini : T_SPIN_SCORE.normal) * level;
+                       score += scoreToAdd;
+                       garbageToSend += (tSpinType === 'mini' ? T_SPIN_GARBAGE.mini_0 : T_SPIN_GARBAGE.normal_0);
+                    }
+                    combo = -1;
+                }
+                
+                // [수정] 2. 쓰레기 상쇄 로직 (로컬)
+                let garbageToOpponent = garbageToSend;
+                if (incomingGarbage > 0) {
+                    if (garbageToOpponent >= incomingGarbage) {
+                        garbageToOpponent -= incomingGarbage;
+                        incomingGarbage = 0;
+                    } else {
+                        incomingGarbage -= garbageToOpponent;
+                        garbageToOpponent = 0;
+                    }
+                }
+
+                // [수정] 3. 받을 쓰레기 즉시 적용 (로컬)
+                if (incomingGarbage > 0) {
+                    playSound('junk-sound');
+                    const holeCol = Math.floor(Math.random() * COLS);
+                    for (let i = 0; i < incomingGarbage; i++) {
+                        if (board.length > 0) board.shift();
+                        const newRow = Array(COLS).fill(GARBAGE_INDEX);
+                        newRow[holeCol] = 0;
+                        if (board.length < ROWS + HIDDEN_ROWS) {
+                            board.push(newRow);
                         }
                     }
+                    incomingGarbage = 0; // 쓰레기 처리 완료
+                }
+                
+                // [수정] 4. 다음 조각 준비 (로컬)
+                if (nextPieces.length === 0) {
+                     if(pieceBag.length === 0) pieceBag = generate7Bag();
+                     nextPieces.push(pieceBag.pop());
+                }
+                const nextSpawnType = nextPieces.shift();
+                currentPiece = spawnPiece(nextSpawnType);
+                fillNextPiecesLocally(); // (새로 만들 함수)
+                
+                // [수정] 5. 게임 오버 확인 (로컬)
+                let lockedPieceLowestPoint = -1;
+                pieceToMerge.shape.forEach((row, y) => {
+                     row.forEach((value, x) => {
+                          if (value !== 0) lockedPieceLowestPoint = Math.max(lockedPieceLowestPoint, y + pieceToMerge.y);
+                     });
                 });
+
+                if (lockedPieceLowestPoint < HIDDEN_ROWS || checkCollision(board, currentPiece)) {
+                    isGameOver = true;
+                    console.log("Game Over triggered (Local): ", lockedPieceLowestPoint);
+                }
+
+                // [수정] 6. 가벼운 "결과"만 Firebase에 전송
+                
+                // 6-1. 내 상태 업데이트 (상대방 UI용 + 재접속 대비용)
+                roomRef.child(`gameData/${myPlayerKey}`).update({
+                    score: score,
+                    lines: lines,
+                    level: level,
+                    isGameOver: isGameOver,
+                    boardHeight: calculateBoardHeight(board), // (보드 배열 대신 높이만 전송)
+                    incomingGarbage: incomingGarbage, // (0으로 초기화된 값)
+                    combo: combo,
+                    canSwapHold: canSwapHold,
+                    dropInterval: dropInterval // [버그 수정] 레벨업 시 interval도 전송
+                });
+
+                // 6-2. 상대에게 쓰레기 전송 (이것만 트랜잭션)
+                if (garbageToOpponent > 0) {
+                    const opponentKey = myPlayerKey === 'p1' ? 'p2' : 'p1';
+                    const opponentGarbageRef = roomRef.child(`gameData/${opponentKey}/incomingGarbage`);
+
+                    opponentGarbageRef.transaction(currentOpponentGarbage => {
+                        return (currentOpponentGarbage || 0) + garbageToOpponent;
+                    });
+                }
+                
+                // [수정] 7. 로컬 UI 즉시 갱신
+                if (!isGameOver) {
+                    calculateGhostY();
+                    drawMyBoard();
+                }
             }
 
              function calculateBoardHeight(boardToCheck) { 
