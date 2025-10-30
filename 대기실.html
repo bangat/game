@@ -115,13 +115,14 @@
         }
         #my-profile-btn:active { background-color: var(--panel-border); }
 
-        #my-profile-avatar {
+       #my-profile-avatar {
             width: 52px; height: 52px; font-size: 2.6em;
             display: flex; justify-content: center; align-items: center;
-            border-radius: 50%;
+            border-radius: 12px; /* ✨ 50% -> 12px (사각형) */
             border: 3px solid var(--text-color-dark);
             background-color: var(--panel-bg);
             overflow: hidden;
+            position: relative; /* ✨ [추가] 이펙트 기준점 */
         }
         #my-profile-avatar img { width: 100%; height: 100%; object-fit: contain; }
         #my-profile-info { text-align: left; }
@@ -701,6 +702,96 @@
             border-bottom-color: #A94442;
         }
 
+
+  /* ✨ [신규] 입장 이펙트 스타일 (게임방.html에서 복사) */
+        .entry-effect-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; /* 클릭 방지 */
+            z-index: 10;
+        }
+        
+        /* 1. 반짝임 (틸(teal) 색상 깜빡임 효과) */
+        @keyframes teal-pulse-anim {
+            0%, 100% {
+                /* ✨ border-color 제거 -> box-shadow + inset shadow */
+                box-shadow: 0 0 10px 2px var(--secondary-color), inset 0 0 10px 2px var(--secondary-color);
+                opacity: 0.6;
+            }
+            50% {
+                box-shadow: 0 0 15px 5px var(--secondary-color), inset 0 0 15px 5px var(--secondary-color);
+                opacity: 1;
+            }
+        }
+        .effect-sparkle-persistent {
+            /* ✨ [수정] box-shadow 방식으로 변경 (overflow:hidden 호환) */
+            top: 0; 
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 12px; /* ✨ 50% -> 12px (사각형) */
+            /* border: 3px solid transparent; */ /* 제거 */
+            animation: teal-pulse-anim 2.5s ease-in-out infinite; 
+            z-index: 10; /* ✨ '반짝임'이 '별가루'보다 위에 오도록 */
+        }
+        
+        /* 2. 스포트라이트 ('별가루 비' 스타일) */
+        @keyframes star-fall {
+            0% { 
+                transform: translateY(-20px); /* 슬롯 위에서 시작 */
+                opacity: 0; 
+            }
+            10% { opacity: 1; } /* 나타나기 */
+            90% { opacity: 1; } /* 떨어지기 */
+            100% { 
+                transform: translateY(60px); /* ✨ 슬롯 높이(52px)보다 약간 아래로 */
+                opacity: 0; 
+            }
+        }
+        .effect-spotlight-persistent {
+            /* 이 클래스 자체는 컨테이너 역할만 함 */
+            width: 100%;
+            height: 100%;
+            border-radius: 12px; /* ✨ 50% -> 12px (사각형) */
+            overflow: hidden; /* ✨ 별가루가 원 밖으로 나가지 않게 */
+            z-index: 5; /* ✨ 반짝임보다 아래에 오도록 */
+        }
+        .effect-spotlight-persistent::before {
+            content: '';
+            position: absolute;
+            top: 0; /* 상단 고정 */
+            left: 50%;
+            width: 2px; /* 입자 크기 */
+            height: 2px;
+            background: #FFF;
+            border-radius: 50%;
+            box-shadow: 
+                -20px 10px #FFF, 15px 25px #FFF, 0px 40px #FFF, 
+                -10px 55px #FFF, 25px 5px #FFF, -5px 30px #FFF;
+            animation: star-fall 1.5s linear infinite;
+            animation-delay: -0.5s; /* 즉시 시작 */
+        }
+        .effect-spotlight-persistent::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            width: 2px;
+            height: 2px;
+            background: #FFF;
+            border-radius: 50%;
+            box-shadow: 
+                10px 18px #FFF, -15px 35px #FFF, 5px 50px #FFF, 
+                -25px 8px #FFF, 20px 22px #FFF, -8px 42px #FFF;
+            animation: star-fall 2.5s linear infinite; /* ✨ 1.5s -> 2.5s (더 느리게) */
+        }
+        
+        /* 3. ✨ [신규] 스포트라이트(별가루) 장착 시 아바타 배경 변경 */
+        #my-profile-avatar.effect-spotlight-equipped-bg {
+            background-color: #341f4b; /* ✨ 어두운 밤하늘색 */
+            transition: background-color 0.5s ease;
+        }
+
     </style>
 </head>
 <body>
@@ -969,6 +1060,7 @@
 
        let currentUser, currentUserData, roomListener;
         let selectedAvatarForChange = ''; // ✨ [신규] 아바타 변경용 임시 변수
+        let myEquippedEffect = null; // ✨ [신규] 입장 이펙트 저장용
 
         // ✨ [신규] index.html에서 가져온 캐릭터 목록
         const characters = [
@@ -1053,6 +1145,11 @@
             if (!currentUserData || !currentUserData.profile) return;
             const profile = currentUserData.profile;
             const avatar = profile.avatar;
+            
+            // ✨ [수정] 이펙트 정보 갱신
+            myEquippedEffect = profile.equippedEntryEffect || null;
+            myProfileAvatar.innerHTML = ''; // ✨ 비우기 먼저
+            myProfileAvatar.classList.remove('effect-spotlight-equipped-bg'); // ✨ 배경색 초기화
 
             // ✨ [수정] 4방향 아바타 세트(ID), 이미지, 이모지 순으로 확인
             const avatarSet = AVATAR_SETS[avatar]; // 예: 'penguin_parka'
@@ -1063,6 +1160,24 @@
             } else {
                 myProfileAvatar.textContent = avatar;
             }
+
+            // ✨ [신규] 이펙트 오버레이 추가
+            if (myEquippedEffect) {
+                const effectOverlay = document.createElement('div');
+                effectOverlay.className = 'entry-effect-overlay';
+                
+                if (myEquippedEffect === 'effect_sparkle') {
+                    effectOverlay.classList.add('effect-sparkle-persistent');
+                } else if (myEquippedEffect === 'effect_spotlight') {
+                    effectOverlay.classList.add('effect-spotlight-persistent');
+                    myProfileAvatar.classList.add('effect-spotlight-equipped-bg'); // ✨ 배경색 적용
+                }
+                
+                if (effectOverlay.classList.length > 1) {
+                    myProfileAvatar.appendChild(effectOverlay);
+                }
+            }
+
             myProfileNickname.textContent = profile.nickname;
             
             const myProfilePoints = document.getElementById('my-profile-points');
