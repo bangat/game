@@ -737,6 +737,7 @@
             const gameTimerEl = document.getElementById('game-timer');
             const GAME_TIME_LIMIT = 300; // 5분
             let gameTimerInterval = null; // 게임 타이머 setInterval ID
+            let countdownStarted = false; // ✨ [신규] 카운트다운 중복 실행 방지
             let ghostSpawned = false; // 유령 스폰 여부 (미래 기능용)
             // ✨ [신규] 사운드 스로틀링
             let lastExplosionSoundTime = 0;
@@ -1233,7 +1234,9 @@ const ITEM_ICONS = {
                         }
                         
                         // gameStartTime이 설정되었다면 카운트다운 시작
-                        if (currentRoomData.gameStartTime) {
+                        // ✨ [수정] countdownStarted 플래그를 확인하고 설정
+                        if (currentRoomData.gameStartTime && !countdownStarted) {
+                            countdownStarted = true; // ✨ [신규] 플래그 설정
                             startCountdown(); // 카운트다운 시작
                         }
                         return; // 맵 렌더링 등은 카운트다운 완료 후
@@ -1242,8 +1245,13 @@ const ITEM_ICONS = {
                     // ✨ [신규] 이미 게임 중일 때 (재접속 등)
                     if (currentRoomData.status === 'playing' && oldStatus === 'playing') {
                         // ✨ [수정] 카운트다운 없이, 그리고 타이머가 아직 안 돌고 있을 때만
-                        if (!gameTimerInterval) {
-                            startGameTimer(); 
+                        // ✨ [FIX] 2번째 틱(isFirstLoad=false)일 때 카운트다운을 시작하도록 수정
+                        // ✨ [수정] countdownStarted 플래그를 확인
+                        if (!gameTimerInterval && !countdownStarted) {
+                            countdownStarted = true; // ✨ [신규] 플래그 설정
+                            // startGameTimer(); // [버그] 이 코드가 즉시 게임을 시작시킴
+                            startCountdown(); // [수정] 카운트다운을 시작
+                            return; // [수정] 카운트다운 완료 후 맵이 렌더링되도록 즉시 return
                         }
                     }
                     const newMapDataString = JSON.stringify(currentRoomData.map); // 새 맵 데이터 문자열로 저장
