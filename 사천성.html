@@ -5,7 +5,7 @@
    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>!!! 테스트 1234 !!!</title>
+    <title>사천성</title>
     <link rel="manifest" href="manifest.json">
     <link href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff" as="font" type="font/woff" crossorigin>
     <style>
@@ -555,8 +555,8 @@
                      }
 
                     // onDisconnect 설정
-                    if (isHost) { roomRef.onDisconnect().remove(); }
-                    else { roomRef.child('players/' + myPlayerId).onDisconnect().remove(); }
+                    // ✨ [수정] 호스트/게스트가 나가도 방이 삭제되지 않고, 플레이어 목록에서만 제거되도록 변경
+                    roomRef.child('players/' + myPlayerId).onDisconnect().remove();
 // (셔플 리스너는 listenToRoomChanges 함수 내부로 이동)
                     // 플레이어 정보 업데이트/추가
                    roomRef.child('players/' + myPlayerId).set(myPlayerData).then(() => {
@@ -608,11 +608,74 @@
                     }
 
                     currentRoomData = snapshot.val();
-                    // ▼▼▼ [신규] 플레이어 수에 따라 보드 크기 동적 설정 ▼▼▼
+
+                    // ▼▼▼ [신규] 호스트 마이그레이션 로직 (팅김 현상 1단계) ▼▼▼
+                    const playerIds = Object.keys(currentRoomData.players || {});
+                    
+                    // 1. 플레이어가 1명 이상 남아있고,
+                    // 2. 기존 호스트ID가 없거나, 또는 기존 호스트가 'players' 목록에 없으면
+                    if (playerIds.length > 0 && (!currentRoomData.hostId || !currentRoomData.players[currentRoomData.hostId])) {
+                        
+                        // 3. 새 호스트 선출 (ID 정렬 후 첫 번째 플레이어)
+                        const newHostId = playerIds.sort()[0];
+                        const iAmTheNewHost = (newHostId === myPlayerId);
+                        
+                        // 4. 오직 새 호스트만 DB 업데이트 수행
+                        if (iAmTheNewHost) {
+                            console.log(`[호스트 마이그레이션] 내가 새 호스트(${myPlayerId})로 선출됨. DB 업데이트 시도.`);
+                            const updates = {};
+                            updates['hostId'] = newHostId;
+                            playerIds.forEach(id => {
+                                updates['players/' + id + '/isHost'] = (id === newHostId);
+                            });
+                            roomRef.update(updates).catch(err => console.error("[호스트 마이그레이션] DB 업데이트 실패:", err));
+                        }
+                        
+                        // 5. 로컬 'currentRoomData'를 즉시 수정하여 이 onValue 사이클이 정상 작동하도록 함
+                        currentRoomData.hostId = newHostId;
+                        playerIds.forEach(id => {
+                            if (currentRoomData.players[id]) { // (방금 나간 플레이어 제외)
+                                currentRoomData.players[id].isHost = (id === newHostId);
+                            }
+                        });
+                        console.log(`[호스트 마이그레이션] 로컬 hostId를 ${newHostId}로 설정함.`);
+                    }
+                    // ▲▲▲ [신규] 호스트 마이그레이션 로직 (팅김 현상 1단계) ▲▲▲
+
+
+                    // ▼▼▼ [수정] 보드 크기 재설정 방지 (팅김 현상 2단계) ▼▼▼
                     // (이 함수가 실행된 후 TILE_COUNT, BOARD_ROWS, BOARD_COLS가 확정됨)
-                    const playerCount = Object.keys(currentRoomData.players || {}).length;
-                    setBoardDimensions(playerCount);
-                    // ▲▲▲ [신규] 플레이어 수에 따라 보드 크기 동적 설정 ▲▲▲
+                    if (currentRoomData.status !== 'playing') {
+                        // 'playing' 상태가 아닐 때만 (waiting, gameOver) 보드 크기를 재설정
+                        const playerCount = playerIds.length;
+                        setBoardDimensions(playerCount);
+                        console.log(`[게임 설정] 'playing' 아님. 플레이어 수(${playerCount}) 기준으로 보드 크기 설정.`);
+                    } else {
+                        // 'playing' 상태일 때는, 보드가 이미 생성된 상태이므로,
+                        // TILE_COUNT가 엉뚱하게 2인 기준으로 바뀌는 것을 막아야 함.
+                        // (기존 TILE_COUNT, BOARD_ROWS, BOARD_COLS 전역 변수 유지)
+                         console.log(`[게임 설정] 'playing' 중. 기존 보드 크기(타일 ${TILE_COUNT}개) 유지.`);
+                    }
+                    // ▲▲▲ [수정] 보드 크기 재설정 방지 (팅김 현상 2단계) ▲▲▲
+// ▼▼▼ [신규] 2인 게임 중 1명이 나갔을 때 즉시 승리 처리 ▼▼▼
+                    const currentLivePlayerCount = playerIds.length;
+                    
+                    // TILE_COUNT가 48개(2인용 맵)이고, 'playing' 중이며, 
+                    // 현재 플레이어가 1명만 남았는지 확인
+                    if (TILE_COUNT === 48 && currentRoomData.status === 'playing' && currentLivePlayerCount === 1) {
+                        
+                        // 1명 남은 플레이어가 '나'인지 확인
+                        if (playerIds[0] === myPlayerId) {
+                            console.log("[게임 종료] 2인 게임 중 상대방이 나갔습니다. 즉시 승리 처리.");
+                            // 방장/게스트 상관없이 남은 사람이 'gameOver'로 상태 변경
+                            // (onValue가 다시 호출되며 showGameOverScreen()이 실행될 것임)
+                            roomRef.update({ status: 'gameOver' }); 
+                        }
+                        
+                        // 이 onValue 사이클은 여기서 중단 (다음 onValue('gameOver')를 기다림)
+                        return; 
+                    }
+                    // ▲▲▲ [신규] 2인 게임 중 1명이 나갔을 때 즉시 승리 처리 ▲▲▲
 
                     // 내가 방에서 제외되었는지 확인
                     if (!currentRoomData.players || !currentRoomData.players[myPlayerId]) {
