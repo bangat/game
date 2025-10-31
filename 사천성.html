@@ -769,6 +769,20 @@
                              updateHeaderUI();
                              renderBoard();
                              updateMySelection();
+
+// ✨ [핵심 수정] 셔플 검사 로직을 메인 on('value') 핸들러 내부로 이동
+                                // (레이스 컨디션 방지)
+                                // 이 시점의 currentRoomData.board는 항상 최신 상태입니다.
+                                if (isHost && isGameLive && currentRoomData.checkShuffleRequest === true) {
+                                    console.log("[Host] 셔플 검사 요청 수신 (onValue). checkAndShuffleIfNeeded(0) 호출.");
+                                    
+                                    // 1. 요청 플래그를 즉시 null로 되돌립니다.
+                                   // (checkAndShuffleIfNeeded가 isShuffling=true를 설정하기 전에 실행)
+                                    roomRef.child('checkShuffleRequest').set(null);
+                                    
+                                    // 2. 최신 currentRoomData를 기반으로 검사를 시작합니다.
+                                    checkAndShuffleIfNeeded(0);
+                                }
                         }
                     }
                 }
@@ -822,23 +836,7 @@
                         }
                     }
 
-                    // ✨ [수정] 셔플 리스너를 이곳에 연결 (재접속 시에도 리스너가 유지되도록)
-                    if (isHost && !shuffleListenerAttached) {
-                        shuffleListenerAttached = true; // 플래그를 true로 설정
-                        console.log("[Host] 셔플 검사 요청 리스너를 (재)연결합니다.");
-                        
-                        roomRef.child('checkShuffleRequest').on('value', snapshot => {
-                            // 리스너가 실행될 때, isGameLive와 isHost 상태를 다시 확인 (안전장치)
-                            if (snapshot.val() === true && isGameLive && isHost) {
-                                console.log("[Host] 셔플 검사 요청 수신. checkAndShuffleIfNeeded(0) 호출.");
-                                roomRef.child('checkShuffleRequest').set(null); // 요청 즉시 삭제
-                                checkAndShuffleIfNeeded(0); // 검사 시작
-                            } else if (snapshot.val() === true) {
-                                // 게임 중이 아닐 때 요청이 오면, 요청만 삭제
-                                roomRef.child('checkShuffleRequest').set(null);
-                            }
-                        });
-                    }
+                   
                 });
             }
 
