@@ -190,8 +190,8 @@
     align-items: center;
     gap: 10px;
     flex-shrink: 0;
-    width: 60px; /* JS에서 덮어쓸 기본 너비 */
-    justify-content: space-between; /* [신규] 상단/하단 그룹 분리 */
+    width: clamp(45px, 13vw, 55px); /* [수정] 너비를 줄여서 보드 공간 확보 */
+    
 }
 
 /* [신규] 사이드 패널 내부 그룹 (상단) */
@@ -201,6 +201,8 @@
     align-items: center;
     width: 100%;
     gap: 10px; /* 기존 래퍼의 gap과 동일하게 */
+    flex-grow: 1; /* [신규] 남는 세로 공간을 모두 차지하여 하단 버튼을 밀어냄 */
+    justify-content: center; /* [신규] 홀드/상대보드를 세로 중앙 정렬 (그룹 내에서) */
 }
 
 /* [신규] 사이드 패널 내부 그룹 (하단 컨트롤) */
@@ -211,7 +213,7 @@
     width: 100%;
     gap: 30px; /* 기존 side-control-panel의 gap */
     /* [신규] 하단 여백 (푸터 영역 대신) */
-    padding-bottom: max(10px, env(safe-area-inset-bottom));
+    padding-bottom: max(8px, env(safe-area-inset-bottom)); /* [수정] 10px -> 8px */
 }
 
 /* [신규] 상대 보드 캔버스 (자리만) */
@@ -275,6 +277,7 @@
             display: flex;
             flex-direction: row;
             /* [삭제] height: 100%; */
+            overflow: hidden; /* [신규] 상단 2줄(스폰 영역)을 숨깁니다. */
         }
         
        #my-board-canvas {
@@ -563,9 +566,6 @@
             <div id="game-board-area">
                 <div class="board-wrapper">
                     <canvas id="my-board-canvas"></canvas>
-                    <div class="garbage-meter" id="my-garbage-meter-side">
-                        <div class="garbage-fill" id="my-garbage-fill"></div>
-                    </div>
                     <div id="my-action-text"></div>
                     <canvas id="particle-canvas"></canvas> 
                 </div>
@@ -953,14 +953,14 @@
                 // [수정] 양쪽 패널 너비와 갭(2개)을 뺍니다.
                 const boardAreaAvailableWidth = gameMainContent.clientWidth - leftPanelWidth - rightPanelWidth - (mainContentGap * 2);
                 const boardAreaAvailableHeight = gameMainContent.clientHeight - mainContentPaddingY;
-                const garbageMeterWidth = 15 + 2 + 2; // 쓰레기 게이지 너비
+                // [삭제] const garbageMeterWidth = 15 + 2 + 2; 
 
                  if (boardAreaAvailableHeight <= 0 || boardAreaAvailableWidth <= 0 || !isFinite(boardAreaAvailableHeight) || !isFinite(boardAreaAvailableWidth) ) {
                      console.warn("adjustLayout: Invalid dimensions, using fallback. H/W:", boardAreaAvailableHeight, boardAreaAvailableWidth);
                      BLOCK_SIZE = 10;
                  } else {
-                    // [수정] 사용 가능한 너비에서 쓰레기 게이지 너비를 제외한 후 블록 크기 계산
-                    const widthBasedBlockSize = (boardAreaAvailableWidth - garbageMeterWidth) / COLS; 
+                    // [수정] 쓰레기 게이지 너비 계산 제거
+                    const widthBasedBlockSize = boardAreaAvailableWidth / COLS; 
                     const heightBasedBlockSize = boardAreaAvailableHeight / ROWS;
                     BLOCK_SIZE = Math.max(1, Math.floor(Math.min(widthBasedBlockSize, heightBasedBlockSize)));
                  }
@@ -969,10 +969,16 @@
                 const boardHeight = BLOCK_SIZE * ROWS;
                 const totalCanvasHeight = BLOCK_SIZE * (ROWS + HIDDEN_ROWS);
 
-                const boardWrapper = document.querySelector('.board-wrapper');
-                boardWrapper.style.width = `${boardWidth + garbageMeterWidth}px`;
+               const boardWrapper = document.querySelector('.board-wrapper');
+                boardWrapper.style.width = `${boardWidth}px`; /* [수정] garbageMeterWidth 제거 */
                 boardWrapper.style.height = `${boardHeight}px`; // [복원] JS가 높이를 직접 제어
-                 boardWrapper.style.marginTop = `calc(-2 * ${BLOCK_SIZE}px)`;
+                 
+                 const topMargin = `calc(-2 * ${BLOCK_SIZE}px)`;
+                 boardWrapper.style.marginTop = topMargin;
+
+                 // [신규] 좌우 패널에도 동일한 margin-top을 적용해 상단선을 맞춥니다.
+                 if (leftPanel) leftPanel.style.marginTop = topMargin;
+                 if (rightPanel) rightPanel.style.marginTop = topMargin;
 
                 myCanvas.width = boardWidth;
                 myCanvas.height = totalCanvasHeight;
@@ -1174,8 +1180,8 @@
                             if (myData && incomingGarbage !== myData.incomingGarbage) {
                                 console.log(`[쓰레기 수신] ${myData.incomingGarbage}줄 받음!`);
                                 incomingGarbage = myData.incomingGarbage;
-                                // [수정] 모든 내 게이지바 업데이트
-                                updateGarbageMeter(myGarbageMeter, myGarbageFill, incomingGarbage);
+                              // [수정] 모든 내 게이지바 업데이트
+                                /* [삭제] updateGarbageMeter(myGarbageMeter, myGarbageFill, incomingGarbage); */
                                 updateGarbageMeter(horizontalGarbageMeter, horizontalGarbageFill, incomingGarbage, true); // 가로 게이지
                                 const myHeaderMeter = document.getElementById('my-garbage-header');
                                 const myHeaderFill = document.getElementById('my-garbage-fill-header');
@@ -1326,7 +1332,7 @@
                     
                     if (info.isMe) {
                         // [수정] 내 모든 게이지바 업데이트
-                        updateGarbageMeter(myGarbageMeter, myGarbageFill, data.incomingGarbage);
+                        /* [삭제] updateGarbageMeter(myGarbageMeter, myGarbageFill, data.incomingGarbage); */
                         updateGarbageMeter(horizontalGarbageMeter, horizontalGarbageFill, data.incomingGarbage, true); // 가로 게이지
                     } else {
                         // [신규] 상대방 ID 라벨 및 미니보드 갱신
@@ -2378,10 +2384,10 @@
 
                 // [수정] opponentBlockSize를 JS에서 다시 계산 (adjustLayout과 동일한 로직)
                 const leftPanel = document.getElementById('left-panel-wrapper');
-                let panelWidth = 60;
+                let panelWidth = 50; // CSS의 clamp(45, 13vw, 55)의 중간값으로 기본값 설정
                 if (leftPanel) {
-                    const panelStyle = window.getComputedStyle(leftPanel);
-                    panelWidth = parseFloat(panelStyle.width) || 60;
+                    // [수정] clientWidth를 읽어와서 CSS에 의해 동적으로 계산된 너비를 사용
+                    panelWidth = leftPanel.clientWidth || 50;
                 }
                 const opponentBlockSize = panelWidth / COLS;
                 
