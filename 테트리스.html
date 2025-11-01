@@ -118,6 +118,29 @@
         .player-info .stats { font-size: clamp(0.7em, 2vw, 0.85em); color: var(--text-color-light); display: flex; gap: 4px; } /* [테마] */
         .player-info .stats span { color: var(--accent-color); font-weight: bold; }
         
+        /* --- [신규] 키패드 토글 버튼 --- */
+        .player-info .keypad-toggle-btn {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 2px 6px;
+            font-size: 0.7em;
+            font-weight: bold;
+            color: var(--text-color);
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid var(--grid-color);
+            border-radius: 4px;
+            cursor: pointer;
+            z-index: 5;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .player-info .keypad-toggle-btn:active {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        /* --- [신규] --- */
+
+
         .garbage-meter {
             background-color: var(--garbage-indicator-bg);
             border: 1px solid var(--grid-color);
@@ -331,12 +354,24 @@
              .controls-row {
             display: flex;
             align-items: center; /* [수정] flex-end -> center */
-            justify-content: space-around; /* [수정] space-between -> space-around */
+            justify-content: space-around; /* [수정] PAD 1을 위해 space-around로 복원 */
             width: 100%;
             max-width: 400px; /* [수정] 500px -> 400px (푸터 버튼 간격 조정) */
+            gap: 10px; /* [신규] 3개 버튼 배치를 위한 gap */
         }
-         /* [삭제] .controls-column 및 하위 규칙 삭제됨 */
-       /* [삭제] .action-buttons 삭제됨 */
+        /* [신규] PAD 2일 때만 양쪽 정렬 적용 */
+        .pad2-layout .controls-row {
+            justify-content: flex-start; /* [수정] ◀/▶ 그룹과 ▼ 버튼을 모두 왼쪽 정렬 */
+            max-width: none;             /* [추가] 중앙 정렬(400px)을 해제하여 HOLD와 세로열 맞춤 */
+        }
+        /* --- [신규] 푸터 버튼 그룹 --- */
+        .footer-btn-group {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 35px; /* [수정] 10px -> 20px */
+        }
+        /* --- [신규] --- */
 
 
         #particle-canvas {
@@ -475,6 +510,32 @@
             z-index: 10;
             -webkit-tap-highlight-color: transparent;
         }
+
+         /* --- [신규] PAD 2 전용 소프트드롭 간격 --- */
+        .pad2-layout #touch-down.move-gap-left {
+            margin-left: 80px; /* ◀/▶ 그룹과의 간격 (버튼 1개 정도의 폭) */
+        }
+        
+        /* [신규] PAD 2 전용 왼쪽/오른쪽 버튼 그룹 왼쪽 정렬 */
+        .pad2-layout .footer-btn-group {
+            margin-left: 0 !important;
+            padding-left: 0 !important;
+        }
+        /* --- [신규] --- */
+
+       /* [신규] PAD 2일 때만 사이드 버튼 높이 기준점 설정 (DROP/회전 위치) */
+        .pad2-layout #side-controls-left,
+        .pad2-layout #side-controls-right {
+            /* 250px로 증가하여 버튼들을 더 위로 올립니다 */
+            padding-bottom: calc(max(80px, env(safe-area-inset-bottom)) + 250px);
+        }
+
+/* [추가] HOLD 버튼만 DROP보다 더 올리고 싶을 때 사용 */
+        .pad2-layout #side-controls-left {
+            /* 기준 250px보다 150px 더 올리기 위해 400px로 설정합니다. */
+            padding-bottom: calc(max(80px, env(safe-area-inset-bottom)) + 400px); 
+        }
+
         #side-controls-left {
             left: 0;
         }
@@ -535,6 +596,7 @@
         </div>
            <div id="touch-controls" style="display: none;">
             <div class="controls-row">
+                 <!-- [수정] 버튼들은 JS에 의해 동적으로 배치됩니다 -->
                  <div class="touch-btn soft-drop" id="touch-down">▼</div>
                  <div class="touch-btn hold" id="touch-hold">HOLD</div>
             </div>
@@ -622,7 +684,7 @@
             
             const myGarbageMeter = document.getElementById('my-garbage-meter-side');
             
-    const myGarbageFill = document.getElementById('my-garbage-fill');
+            const myGarbageFill = document.getElementById('my-garbage-fill');
             
             // [신규] 상대 보드 캔버스
             const opponentCanvas = document.getElementById('opponent-board-canvas');
@@ -752,6 +814,117 @@
             let moveDelay = null;
             const DAS_DELAY = 120;
             const DAS_INTERVAL = 50;
+
+            // --- [신규] 키패드 토글 상태 ---
+            let keypadType = 1; // 1 = Default, 2 = Custom
+            const KEYPAD_PREF_KEY = 'tetrisKeypadType';
+
+            // --- [신규] 버튼 및 패널 DOM 캐시 ---
+            let btnRotate, btnLeft, btnDrop, btnRight, btnDown, btnHold;
+            let panelLeft, panelRight, panelFooterRow;
+
+            // --- [신규] 버튼 및 패널 DOM 캐시 함수 ---
+            function cacheDOMElements() {
+                btnRotate = document.getElementById('touch-rotate-side');
+                btnLeft = document.getElementById('touch-left-side');
+                btnDrop = document.getElementById('touch-drop-side');
+                btnRight = document.getElementById('touch-right-side');
+                btnDown = document.getElementById('touch-down');
+                btnHold = document.getElementById('touch-hold');
+                
+                panelLeft = document.getElementById('side-controls-left');
+                panelRight = document.getElementById('side-controls-right');
+                panelFooterRow = document.querySelector('#touch-controls .controls-row');
+                
+                // [신규] 캐시 후 푸터 버튼 초기화 (JS가 제어하므로)
+                if (panelFooterRow) {
+                    panelFooterRow.innerHTML = '';
+                }
+            }
+
+            // --- [신규] 버튼 레이아웃 업데이트 함수 ---
+            function updateButtonLayout() {
+                if (!panelLeft || !panelRight || !panelFooterRow || !btnRotate || !btnLeft || !btnDrop || !btnRight || !btnDown || !btnHold) {
+                    console.warn("Button elements not cached, layout change skipped.");
+                    return;
+                }
+                
+                // [수정] panelFooterRow 초기화
+                panelFooterRow.innerHTML = '';
+
+                // 모든 버튼을 부모로부터 분리
+                [btnRotate, btnLeft, btnDrop, btnRight, btnDown, btnHold].forEach(btn => {
+                    if (btn) btn.remove();
+                });
+
+                // [추가] ▽ 버튼에서 간격 클래스 제거
+                btnDown.classList.remove('move-gap-left');
+
+             if (keypadType === 2) {
+    touchControls.classList.add('pad2-layout');
+    
+    // 1. 하단 푸터: ◀...▶ 그룹
+    const leftGroup = document.createElement('div');
+    leftGroup.className = 'footer-btn-group';
+    leftGroup.style.marginLeft = '0';
+    leftGroup.appendChild(btnLeft);
+    leftGroup.appendChild(btnRight);
+    
+    btnDown.classList.add('move-gap-left');
+    
+    panelFooterRow.appendChild(leftGroup);
+    panelFooterRow.appendChild(btnDown);
+    
+    // 2. 왼쪽 패널: HOLD 하나만 배치
+    panelLeft.style.paddingBottom = 'calc(max(80px, env(safe-area-inset-bottom)) + 30px)'; // ← 이 줄
+    panelLeft.appendChild(btnHold);
+    
+    // 3. 오른쪽 패널: 회전, 드롭
+    panelRight.style.paddingBottom = 'calc(max(80px, env(safe-area-inset-bottom)) + 30px)'; // ← 이 줄
+    panelRight.appendChild(btnRotate);
+    panelRight.appendChild(btnDrop);
+
+                } else {
+                    touchControls.classList.remove('pad2-layout'); // PAD 2 클래스 제거
+                    // Type 1 Layout (Default)
+                    // panelLeft: Rotate, Left
+                    panelLeft.appendChild(btnRotate);
+                    panelLeft.appendChild(btnLeft);
+
+                    // panelRight: Drop, Right
+                    panelRight.appendChild(btnDrop);
+                    panelRight.appendChild(btnRight);
+
+                    // panelFooterRow: Down, Hold
+                    panelFooterRow.appendChild(btnDown);
+                    panelFooterRow.appendChild(btnHold);
+                }
+            }
+
+            // --- [신규] 키패드 토글 함수 ---
+            function toggleKeypadType() {
+                keypadType = (keypadType === 1) ? 2 : 1;
+                localStorage.setItem(KEYPAD_PREF_KEY, keypadType);
+                
+                // 토글 버튼 텍스트 업데이트
+                const toggleBtn = document.getElementById('keypad-toggle-btn');
+                if (toggleBtn) {
+                    toggleBtn.textContent = `PAD ${keypadType}`;
+                }
+                
+                updateButtonLayout();
+            }
+
+            // --- [신규] DOM 로드 시 즉시 실행 ---
+            cacheDOMElements(); // 버튼/패널 DOM 캐시
+            
+            // 저장된 키패드 설정 로드
+            const savedKeypadType = localStorage.getItem(KEYPAD_PREF_KEY);
+            keypadType = (savedKeypadType === '2') ? 2 : 1;
+            
+            updateButtonLayout(); // 페이지 로드 시 레이아웃 적용
+            // --- [신규] 끝 ---
+
 
               auth.onAuthStateChanged(user => {
                 if (user) {
@@ -1251,6 +1424,11 @@
                     const garbageMeterId = info.isMe ? 'my-garbage-header' : 'opponent-garbage-header';
                     const garbageFillId = info.isMe ? 'my-garbage-fill-header' : 'opponent-garbage-fill-header';
 
+                    // [수정] 토글 버튼 HTML 추가 (isMe 일 때만)
+                    const toggleButtonHTML = info.isMe 
+                        ? `<button class="keypad-toggle-btn" id="keypad-toggle-btn">PAD ${keypadType}</button>` 
+                        : '';
+
                     infoEl.innerHTML = `
                         <div class="avatar">${avatarHTML}</div>
                         <div class="info-text">
@@ -1259,6 +1437,7 @@
                                 L: <span>${data.lines}</span> S: <span>${data.score}</span>
                             </div>
                         </div>
+                        ${toggleButtonHTML}
                         <div class="garbage-meter" id="${garbageMeterId}">
                             <div class="garbage-fill" id="${garbageFillId}"></div>
                         </div>
@@ -1272,6 +1451,15 @@
                     
                     if (info.isMe) {
                         updateGarbageMeter(myGarbageMeter, myGarbageFill, data.incomingGarbage);
+                        
+                        // [신규] 토글 버튼 이벤트 리스너 추가
+                        const toggleBtn = document.getElementById('keypad-toggle-btn');
+                        if (toggleBtn) {
+                            toggleBtn.addEventListener('click', (e) => {
+                                e.stopPropagation(); // 헤더의 다른 이벤트 방지
+                                toggleKeypadType();
+                            });
+                        }
                     } else {
                         // [신규] 상대방 ID 라벨 및 미니보드 갱신
                         const opponentLabel = document.getElementById('opponent-label');
@@ -2394,10 +2582,13 @@
     </script>
 
     <div id="side-controls-left" class="side-control-panel">
+        <!-- [수정] 버튼들은 JS에 의해 동적으로 배치됩니다 -->
         <div class="touch-btn rotate" id="touch-rotate-side">↻</div>
         <div class="touch-btn move-left" id="touch-left-side">◀</div>
     </div>
-    <div id="side-controls-right" class="side-control-panel"> <div class="touch-btn hard-drop" id="touch-drop-side">DROP</div>
+    <div id="side-controls-right" class="side-control-panel">
+        <!-- [수정] 버튼들은 JS에 의해 동적으로 배치됩니다 -->
+        <div class="touch-btn hard-drop" id="touch-drop-side">DROP</div>
         <div class="touch-btn move-right" id="touch-right-side">▶</div>
     </div>
 
