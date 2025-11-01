@@ -633,6 +633,51 @@
                 'Z': { shape: [[1,1,0], [0,1,1], [0,0,0]], colorVar: '--color-Z', color: '#FF0000', index: 7 } // Red
             };
             const PIECE_TYPES = Object.keys(PIECES);
+            // --- [신규] SRS (Super Rotation System) 킥 데이터 ---
+            // [테스트 1, 테스트 2, 테스트 3, 테스트 4, 테스트 5]
+            // 각 테스트는 [xOffset, yOffset]
+            // yOffset은 테트리스 표준(위쪽이 +)과 반대이므로, 여기서는 (아래쪽이 +) y값을 사용합니다.
+            const SRS_KICK_DATA = {
+                // J, L, S, T, Z 조각
+                JLSTZ: {
+                    // 0 -> 1 (시계 방향)
+                    '0-1': [[0, 0], [-1, 0], [-1, -1], [0, 2], [-1, 2]],
+                    // 1 -> 0 (반시계 방향)
+                    '1-0': [[0, 0], [1, 0], [1, 1], [0, -2], [1, -2]],
+                    // 1 -> 2 (시계 방향)
+                    '1-2': [[0, 0], [1, 0], [1, 1], [0, -2], [1, -2]],
+                    // 2 -> 1 (반시계 방향)
+                    '2-1': [[0, 0], [-1, 0], [-1, -1], [0, 2], [-1, 2]],
+                    // 2 -> 3 (시계 방향)
+                    '2-3': [[0, 0], [1, 0], [1, -1], [0, 2], [1, 2]],
+                    // 3 -> 2 (반시계 방향)
+                    '3-2': [[0, 0], [-1, 0], [-1, 1], [0, -2], [-1, -2]],
+                    // 3 -> 0 (시계 방향)
+                    '3-0': [[0, 0], [-1, 0], [-1, 1], [0, -2], [-1, -2]],
+                    // 0 -> 3 (반시계 방향)
+                    '0-3': [[0, 0], [1, 0], [1, -1], [0, 2], [1, 2]]
+                },
+                // I 조각
+                I: {
+                    // 0 -> 1 (시계 방향)
+                    '0-1': [[0, 0], [-2, 0], [1, 0], [-2, 1], [1, -2]],
+                    // 1 -> 0 (반시계 방향)
+                    '1-0': [[0, 0], [2, 0], [-1, 0], [2, -1], [-1, 2]],
+                    // 1 -> 2 (시계 방향)
+                    '1-2': [[0, 0], [-1, 0], [2, 0], [-1, -2], [2, 1]],
+                    // 2 -> 1 (반시계 방향)
+                    '2-1': [[0, 0], [1, 0], [-2, 0], [1, 2], [-2, -1]],
+                    // 2 -> 3 (시계 방향)
+                    '2-3': [[0, 0], [2, 0], [-1, 0], [2, -1], [-1, 2]],
+                    // 3 -> 2 (반시계 방향)
+                    '3-2': [[0, 0], [-2, 0], [1, 0], [-2, 1], [1, -2]],
+                    // 3 -> 0 (시계 방향)
+                    '3-0': [[0, 0], [1, 0], [-2, 0], [1, 2], [-2, -1]],
+                    // 0 -> 3 (반시계 방향)
+                    '0-3': [[0, 0], [-1, 0], [2, 0], [-1, -2], [2, 1]]
+                }
+            };
+            // --- [신규] ---
             const GARBAGE_COLOR_VAR = '--garbage-color';
             let GARBAGE_COLOR_VALUE = '#888888';
             const GARBAGE_INDEX = 8;
@@ -1403,29 +1448,60 @@
                 }
              }
 
-            function rotatePiece() { 
-                if (isGameOver || !currentPiece || !isGameLive) return; 
+            function rotatePiece() { // [수정] SRS 로직으로 변경 (시계 방향)
+                if (isGameOver || !currentPiece || !isGameLive || currentPiece.type === 'O') {
+                    // O 조각은 회전 안 함
+                    return;
+                }
+
+                const clockwise = true; // [수정] 시계 방향 회전만 구현 (기존 로직과 동일)
                 const originalShape = currentPiece.shape;
-                const rotatedShape = rotateMatrix(originalShape);
-                let testPos = { ...currentPiece, shape: rotatedShape };
-                let kickOffset = 0;
-                while (checkCollision(board, testPos)) {
-                    kickOffset = (kickOffset >= 0) ? -(kickOffset + 1) : -(kickOffset - 1);
-                    testPos.x = currentPiece.x + kickOffset;
-                    if (Math.abs(kickOffset) > 2) {
-                        playSound('move'); return;
+                const rotatedShape = rotateMatrix(originalShape); // 헬퍼 함수는 시계 방향 회전을 반환함
+                
+                const oldRotation = currentPiece.rotation;
+                const newRotation = (oldRotation + 1) % 4;
+                
+                const kickDataKey = `${oldRotation}-${newRotation}`;
+                const kickTable = (currentPiece.type === 'I') ? SRS_KICK_DATA.I[kickDataKey] : SRS_KICK_DATA.JLSTZ[kickDataKey];
+                
+                if (!kickTable) {
+                    console.error("Invalid kick data key:", kickDataKey);
+                    return;
+                }
+
+                for (let i = 0; i < kickTable.length; i++) {
+                    const kick = kickTable[i];
+                    const kickX = kick[0];
+                    const kickY = kick[1] * -1; // SRS 데이터는 Y+가 위쪽, 우리 보드는 Y+가 아래쪽이므로 반전
+                    
+                    const testPos = {
+                        ...currentPiece,
+                        shape: rotatedShape,
+                        x: currentPiece.x + kickX,
+                        y: currentPiece.y + kickY
+                    };
+
+                    if (!checkCollision(board, testPos)) {
+                        // 회전 성공
+                        currentPiece.x = testPos.x;
+                        currentPiece.y = testPos.y;
+                        currentPiece.shape = rotatedShape;
+                        currentPiece.rotation = newRotation;
+                        
+                        // [수정] T-Spin 감지를 위해 마지막 동작이 회전이었음을 기록
+                        lastMoveWasRotate = true; 
+                        
+                        playSound('rotate');
+                        clearLockDelay();
+                        calculateGhostY();
+                        drawMyBoard();
+                        return; // 테스트 성공 시 함수 종료
                     }
                 }
                 
-                currentPiece.x = testPos.x;
-                currentPiece.shape = rotatedShape;
-                currentPiece.rotation = (currentPiece.rotation + 1) % 4;
-                lastMoveWasRotate = true; 
-                
-                playSound('rotate');
-                clearLockDelay();
-                calculateGhostY();
-                drawMyBoard();
+                // 5가지 테스트 모두 실패하면 회전 안 함
+                // (필요시 회전 실패 사운드 재생)
+                playSound('move'); // 회전 실패 시 효과음 (기존 로직과 유사하게)
             }
 
             function rotateMatrix(matrix) { 
