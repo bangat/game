@@ -937,6 +937,61 @@
             word-break: break-all; /* 닉네임 길면 줄바꿈 */
         }
 
+.user-list-nickname {
+            font-weight: 700;
+            font-size: 1.1em;
+            word-break: break-all; /* 닉네임 길면 줄바꿈 */
+            flex-grow: 1; /* ✨ 닉네임이 남은 공간 차지 */
+            min-width: 0;
+        }
+
+        /* ✨ [신규] '나' 자신을 강조하는 스타일 */
+        .user-list-item.is-me {
+            background-color: #FFF8E1; /* 연한 노란색 배경 */
+        }
+        .user-list-item.is-me .user-list-nickname {
+            color: var(--primary-color); /* 강조색 */
+        }
+
+        /* ✨ [신규] 버튼 영역 스타일 */
+        .user-item-actions {
+            display: flex;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+        .user-action-btn {
+            width: 40px;
+            height: 40px;
+            border: none;
+            border-radius: 12px;
+            font-size: 1.5em;
+            cursor: pointer;
+            transition: all 0.1s ease;
+            border-bottom: 3px solid;
+            padding: 0; /* 아이콘 중앙 정렬 */
+            display: flex; /* 아이콘 중앙 정렬 */
+            justify-content: center; /* 아이콘 중앙 정렬 */
+            align-items: center; /* 아이콘 중앙 정렬 */
+        }
+        .user-action-btn:active {
+            transform: translateY(2px);
+            border-bottom-width: 1px;
+        }
+        
+        /* '친구 추가' 버튼 (보조) */
+        .user-action-btn.add-friend {
+            background-color: var(--secondary-color);
+            color: white;
+            border-bottom-color: #379A93;
+        }
+        
+        /* '쪽지' 버튼 (강조) */
+        .user-action-btn.send-message {
+            background-color: var(--accent-color);
+            color: var(--text-color-dark);
+            border-bottom-color: #D1B030;
+        }
+
     </style>
 </head>
 
@@ -1382,7 +1437,7 @@ let presenceTimeout = null; // 세션 타임아웃 타이머
                                     const profile = profileSnap.val();
                                     if (!profile) return ''; // 프로필 없는 유저(오류)는 건너뛰기
 
-                                    // 아바타 HTML 생성 (대기실 UI 로직 재사용)
+                                    // 아바타 HTML 생성 (공통)
                                     const avatarSet = AVATAR_SETS[profile.avatar];
                                     let avatarHTML = '';
                                     if (avatarSet) {
@@ -1392,16 +1447,64 @@ let presenceTimeout = null; // 세션 타임아웃 타이머
                                     } else {
                                         avatarHTML = escapeHTML(profile.avatar || '❓');
                                     }
+                                    
+                                    // ✨ [수정] 자기 자신은 버튼을 표시하지 않음
+                                    if (profileSnap.key === currentUser.uid) {
+                                        // (자기 자신 UI - 버튼 없음)
+                                        return `
+                                            <div class="user-list-item is-me">
+                                                <div class="user-list-avatar">${avatarHTML}</div>
+                                                <span class="user-list-nickname">${escapeHTML(profile.nickname || '...')} (나)</span>
+                                            </div>
+                                        `;
+                                    }
 
+                                    // (다른 사용자 UI - 버튼 포함)
                                     return `
-                                        <div class="user-list-item">
+                                        <div class="user-list-item" data-uid="${profileSnap.key}" data-nickname="${escapeHTML(profile.nickname || '...')}">
                                             <div class="user-list-avatar">${avatarHTML}</div>
                                             <span class="user-list-nickname">${escapeHTML(profile.nickname || '...')}</span>
+                                            <div class="user-item-actions">
+                                                <button class="user-action-btn add-friend">➕</button>
+                                                <button class="user-action-btn send-message">✉️</button>
+                                            </div>
                                         </div>
                                     `;
                                 }).join('');
 
                                 onlineUsersList.innerHTML = listHtml || '<p style="text-align: center;">접속 정보를 불러올 수 없습니다.</p>';
+
+                                // ✨ [신규] 생성된 버튼들에 이벤트 리스너 추가
+                                onlineUsersList.querySelectorAll('.user-action-btn').forEach(btn => {
+                                    btn.addEventListener('click', (e) => {
+                                        if (gameSettings.sfx) clickSound.play();
+                                        e.stopPropagation(); // 모달 닫힘 방지
+
+                                        const item = e.currentTarget.closest('.user-list-item');
+                                        const targetUid = item.dataset.uid;
+                                        const targetNickname = item.dataset.nickname;
+
+                                        if (e.currentTarget.classList.contains('add-friend')) {
+                                            // (UI) 버튼 비활성화 (임시)
+                                            e.currentTarget.disabled = true;
+                                            e.currentTarget.textContent = '...';
+                                            
+                                            // TODO: (기능) Firebase에 친구 요청 로직 구현
+                                            alert(`${targetNickname} (UID: ${targetUid}) 님에게 친구 요청을 보냅니다. (구현중)`);
+                                            
+                                            // (UI) 1초 뒤에 원래대로 복구 (테스트용)
+                                            setTimeout(() => {
+                                                e.currentTarget.disabled = false;
+                                                e.currentTarget.textContent = '➕';
+                                            }, 1000);
+
+                                        } else if (e.currentTarget.classList.contains('send-message')) {
+                                            
+                                            // TODO: (기능) 1:1 쪽지 모달 열기 로직 구현
+                                            alert(`${targetNickname} (UID: ${targetUid}) 님에게 쪽지를 보냅니다. (구현중)`);
+                                        }
+                                    });
+                                });
 
                             } catch (error) {
                                 console.error("접속자 프로필 로드 실패:", error);
