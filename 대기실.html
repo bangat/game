@@ -1644,8 +1644,66 @@ let presenceTimeout = null; // 세션 타임아웃 타이머
                         }
                     }
 
-                    currentFriendRequests = newRequests; // 현재 상태 갱신
+                   currentFriendRequests = newRequests; // 현재 상태 갱신
                 });
+
+                // ✨ [수정] 1:1 쪽지 수신 알림 리스너 (once -> on 패턴으로 변경)
+                const myInboxRef = db.ref(`user_inboxes/${user.uid}`);
+                let lastMessageTimestamp = 0; // 마지막으로 본 메시지 시간 (중복 방지)
+
+                // 알림을 처리하는 공통 함수
+                const handleNewMessageAlert = async (snapshot) => {
+                    const messageData = snapshot.val();
+                    const senderUid = snapshot.key;
+
+                    // (isFirstMessageLoad 체크 제거됨)
+
+                    // 2. 이미 알림을 띄운 메시지(timestamp가 이전과 같거나 작음)면 무시
+                    // (child_changed 이벤트가 중복 발생할 경우를 대비)
+                    if (messageData.timestamp <= lastMessageTimestamp) {
+                        return;
+                    }
+                    lastMessageTimestamp = messageData.timestamp; // 최신 시간으로 업데이트
+
+                    // 3. 현재 쪽지 모달이 열려있고, 그 대상이 이 보낸 사람(senderUid)인지 확인
+                    if (messageModal.classList.contains('active') && messageModal.dataset.chattingWith === senderUid) {
+                        return; 
+                    }
+
+                    // 4. 알림 표시 (프로필 조회)
+                    try {
+                        const profileSnap = await usersRef.child(senderUid).child('profile').once('value');
+                        if (profileSnap.exists()) {
+                            const nickname = escapeHTML(profileSnap.val().nickname);
+                            showToast(`✉️ ${nickname}님에게 메시지가 도착했습니다!`);
+                        }
+                    } catch (error) {
+                        console.error("쪽지 발신자 프로필 조회 실패:", error);
+                    }
+                };
+                
+                // [수정] 1. 'once'로 초기 데이터를 먼저 로드하고 lastMessageTimestamp를 설정
+                myInboxRef.once('value', (snapshot) => {
+                    const data = snapshot.val();
+                    if (data) {
+                        // 가장 마지막 메시지의 타임스탬프 저장 (초기 로드 시 중복 알림 방지)
+                        Object.values(data).forEach(msg => {
+                            if (msg.timestamp > lastMessageTimestamp) {
+                                lastMessageTimestamp = msg.timestamp;
+                            }
+                        });
+                    }
+                    
+                    console.log("[Inbox] 쪽지 알림 리스너 초기화 완료.");
+
+                    // [수정] 2. 'once'가 완료된 후, *이후에 추가되는* 자식들만 감지
+                    // (lastMessageTimestamp가 0이면 모든 메시지를, 아니면 +1 값부터 감지)
+                    const startTimestamp = lastMessageTimestamp === 0 ? 0 : lastMessageTimestamp + 1;
+                    myInboxRef.orderByChild('timestamp').startAt(startTimestamp).on('child_added', handleNewMessageAlert);
+                    
+                    // [수정] 3. 'child_changed'는 항상 감지 (내부 timestamp로 중복 방지)
+                    myInboxRef.on('child_changed', handleNewMessageAlert);
+                });
 
                 // ✨ [신규] 접속자 수 버튼 클릭 이벤트
                 // ✨ [신규] 접속자 목록을 로드하고 렌더링하는 함수
@@ -2079,6 +2137,7 @@ async function loadOnlineUsersList() {
                     currentMessagesRef = null;
                     currentMessageListener = null;
                     messagesLoaded = false; // 플래그 초기화
+                    delete messageModal.dataset.chattingWith; // ✨ [신규] 대화 상대 태그 제거
                 }
             });
         });
@@ -2470,7 +2529,7 @@ return `
                     const profileSnapshots = await Promise.all(profilePromises);
                     
                     let listHtml = profileSnapshots.map((profileSnap, index) => {
-                        const uid = friendUids[index]; // ✨ [수정] uid를 배열에서 가져옵니다.
+                        const uid = friendUids[index];
                         const profile = profileSnap.val();
                         if (!profile) return ''; // 탈퇴했거나 없는 유저
 
@@ -2484,12 +2543,13 @@ return `
                             avatarHTML = escapeHTML(profile.avatar || '❓');
                         }
 
-                        // [삭제] 버튼 추가
+                        // [수정] 쪽지 버튼 추가, data-nickname 추가
 return `
-    <div class="user-list-item" data-uid="${uid}">
+    <div class="user-list-item" data-uid="${uid}" data-nickname="${escapeHTML(profile.nickname || '...')}">
         <div class="user-list-avatar">${avatarHTML}</div>
         <span class="user-list-nickname">${escapeHTML(profile.nickname || '...')}</span>
         <div class="user-item-actions">
+            <button class="user-action-btn send-message" style="background-color: var(--primary-color); border-bottom-color: #C04A4A; color: white;">✉️</button>
             <button class="user-action-btn delete-friend" style="background-color: var(--danger-color); border-bottom-color: #A94442; color: white;">삭제</button>
         </div>
     </div>
@@ -2498,30 +2558,37 @@ return `
                     
                     content.innerHTML = listHtml;
                     
-                    // [삭제] 버튼에 이벤트 리스너 추가
-                    content.querySelectorAll('.delete-friend').forEach(btn => {
+                    // [수정] '.user-action-btn'에 리스너 연결
+                    content.querySelectorAll('.user-action-btn').forEach(btn => {
                         btn.addEventListener('click', (e) => {
                             if (gameSettings.sfx) clickSound.play();
                             const item = e.currentTarget.closest('.user-list-item');
                             const friendUid = item.dataset.uid;
-                            const friendNickname = item.querySelector('.user-list-nickname').textContent;
                             
-                            if (confirm(`${friendNickname}님을 친구에서 삭제하시겠습니까?`)) {
-                                e.currentTarget.disabled = true;
-                                // [삭제] 로직: 양방향 삭제
-                                const updates = {};
-                                updates[`friends/${currentUser.uid}/${friendUid}`] = null;
-                                updates[`friends/${friendUid}/${currentUser.uid}`] = null;
-                                
-                                db.ref().update(updates).then(() => {
-                                    showToast('친구를 삭제했습니다.');
-                                }).catch(err => {
-                                    showToast('삭제 중 오류 발생: ' + err.message);
-                                    e.currentTarget.disabled = false;
-                                });
+                            if (e.currentTarget.classList.contains('delete-friend')) {
+                                // [삭제] 로직
+                                const friendNickname = item.querySelector('.user-list-nickname').textContent;
+                                if (confirm(`${friendNickname}님을 친구에서 삭제하시겠습니까?`)) {
+                                    e.currentTarget.disabled = true;
+                                    const updates = {};
+                                    updates[`friends/${currentUser.uid}/${friendUid}`] = null;
+                                    updates[`friends/${friendUid}/${currentUser.uid}`] = null;
+                                    
+                                    db.ref().update(updates).then(() => {
+                                        showToast('친구를 삭제했습니다.');
+                                    }).catch(err => {
+                                        showToast('삭제 중 오류 발생: ' + err.message);
+                                        e.currentTarget.disabled = false;
+                                    });
+                                }
+                            } else if (e.currentTarget.classList.contains('send-message')) {
+                                // [쪽지] 로직
+                                const friendNickname = item.dataset.nickname;
+                                friendModal.classList.remove('active'); // 친구 모달 닫기
+                            	openMessageModal(friendUid, friendNickname); // 쪽지 모달 열기
                             }
                         });
-                    });
+              _     });
                 });
             }
         }
@@ -2530,6 +2597,7 @@ return `
 
         // ✨ [수정] 1:1 쪽지 모달 열기 함수 (Firebase DB 연동)
         function openMessageModal(targetUid, targetNickname) {
+            messageModal.dataset.chattingWith = targetUid; // ✨ [신규] 현재 대화 상대를 모달에 저장
             // 0. (Cleanup) 만약 이전 리스너가 남아있다면 제거 (안전 장치)
             if (currentMessagesRef && currentMessageListener) {
                 currentMessagesRef.off('child_added', currentMessageListener);
@@ -2540,6 +2608,16 @@ return `
             const messageInput = messageModal.querySelector('#message-input');
             const messageSendBtn = messageModal.querySelector('#message-send-btn');
             const messageHistory = messageModal.querySelector('#message-history');
+            messageInput.value = '';
+            messagesLoaded = false; // 로드 플래그 초기화
+
+            // [신규] 1:1 쪽지 엔터키 전송
+            messageInput.onkeydown = (e) => {
+                if (e.key === 'Enter' && !e.isComposing) {
+                    e.preventDefault();
+                    messageSendBtn.click(); // 정의된 send 버튼 클릭 이벤트 실행
+                }
+            };
             
             messageHistory.innerHTML = '<div class="spinner" style="margin: 20px auto;"></div>';
             messageInput.value = '';
@@ -2559,15 +2637,27 @@ return `
                 messageInput.focus();
                 
                 // ✨ [수정] Firebase DB에 메시지 PUSH
-                currentMessagesRef.push({
+                const messageData = {
                     senderUid: myUid,
                     message: message,
                     timestamp: firebase.database.ServerValue.TIMESTAMP
-                }).catch(error => {
-                    console.error("쪽지 전송 실패:", error);
-                    showToast("쪽지 전송에 실패했습니다.");
-                    messageInput.value = message; // 실패 시 텍스트 복원
-                });
+                };
+
+                // 1. 채팅방에 메시지 저장
+                currentMessagesRef.push(messageData)
+                    .then(() => {
+                        // 2. 상대방의 '인박스(user_inboxes)'에도 마지막 메시지 업데이트 (알림용)
+                        db.ref(`user_inboxes/${targetUid}/${myUid}`).set({
+                            lastMessage: message,
+                            timestamp: firebase.database.ServerValue.TIMESTAMP
+                            // read: false // (참고: 읽음/안읽음 상태도 관리 가능)
+                        });
+                    })
+                    .catch(error => {
+                        console.error("쪽지 전송 실패:", error);
+                        showToast("쪽지 전송에 실패했습니다.");
+                        messageInput.value = message; // 실패 시 텍스트 복원
+                    });
             };
 
             // 4. 메시지 내역 로드 (Load)
