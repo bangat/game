@@ -1017,8 +1017,8 @@
             </div>
         </button>
          <div class="header-actions">
+                     <button id="friend-btn" class="header-btn primary">👥</button>
                     <button id="ranking-btn" class="header-btn secondary">🏆</button>
-                    <button id="friend-btn" class="header-btn primary">👥</button>
                     <button id="shop-btn" class="header-btn accent">💎</button>
                 </div>
             </div>
@@ -1507,74 +1507,81 @@ let presenceTimeout = null; // 세션 타임아웃 타이머
 
                                 onlineUsersList.innerHTML = listHtml || '<p style="text-align: center;">접속 정보를 불러올 수 없습니다.</p>';
 
-                                // ✨ [신규] 생성된 버튼들에 이벤트 리스너 추가
-                                onlineUsersList.querySelectorAll('.user-action-btn').forEach(btn => {
-                                    btn.addEventListener('click', (e) => {
-                                        if (gameSettings.sfx) clickSound.play();
-                                        e.stopPropagation(); // 모달 닫힘 방지
+                              // ✨ [신규] 생성된 버튼들에 이벤트 리스너 추가
+                                onlineUsersList.querySelectorAll('.user-action-btn').forEach(btn => {
+                                    btn.addEventListener('click', (e) => {
+                                        if (gameSettings.sfx) clickSound.play();
+                                        e.stopPropagation(); // 모달 닫힘 방지
 
-                                        const item = e.currentTarget.closest('.user-list-item');
-                                        const targetUid = item.dataset.uid;
-                                        const targetNickname = item.dataset.nickname;
+                                        // ✨ [수정] e.currentTarget을 clickedButton 변수에 저장
+                                        const clickedButton = e.currentTarget; 
+                                        const item = clickedButton.closest('.user-list-item');
+                                        const targetUid = item.dataset.uid;
+                                        const targetNickname = item.dataset.nickname;
 
-                                        if (e.currentTarget.classList.contains('add-friend')) {
-                                            // (UI) 버튼 비활성화
-                                            e.currentTarget.disabled = true;
-                                            e.currentTarget.textContent = '...';
+                                        // ✨ [수정] e.currentTarget 대신 clickedButton 변수 사용
+                                        if (clickedButton.classList.contains('add-friend')) {
+                                            // (UI) 버튼 비활성화
+                                            clickedButton.disabled = true;
+                                            clickedButton.textContent = '...';
+                                            
+                                            // 경로: friend_requests / [요청 받은 사람 UID]
+                                            const friendRequestRef = db.ref(`friend_requests/${targetUid}`);
+                                            
+                                            // update를 사용해 [요청 보낸 사람 UID]를 키로 타임스탬프 저장
+                                            const updates = {};
+                                            updates[currentUser.uid] = firebase.database.ServerValue.TIMESTAMP;
 
-                                            // ✨ [변경] Firebase에 친구 요청 로직 구현
-                                            // 경로: friend_requests / [요청 받은 사람 UID] / [요청 보낸 사람 UID]
-                                            const friendRequestRef = db.ref(`friend_requests/${targetUid}/${currentUser.uid}`);
-                                            
-                                            // 요청 보낸 시간을 타임스탬프로 저장
-                                            friendRequestRef.set(firebase.database.ServerValue.TIMESTAMP)
-                                                .then(() => {
-                                                    // UI를 '요청 보냄' 상태로 변경
-                                                    e.currentTarget.textContent = '✔️';
-                                                    showToast(`${targetNickname}님에게 친구 요청을 보냈습니다.`);
-                                                    // 이 버튼은 모달이 닫힐 때까지 비활성화 상태('✔️')로 둡니다.
-                                                })
-                                                .catch((error) => {
-                                                    console.error("친구 요청 실패:", error);
-                                                    showToast("친구 요청에 실패했습니다.", 3000);
-                                                    // 실패 시 버튼 원래대로 복구
-                                                    e.currentTarget.disabled = false;
-                                                    e.currentTarget.textContent = '➕';
-                                                });
-                                            
-                                        } else if (e.currentTarget.classList.contains('send-message')) {
-                                            
-                                            // TODO: (기능) 1:1 쪽지 모달 열기 로직 구현
-                                            alert(`${targetNickname} (UID: ${targetUid}) 님에게 쪽지를 보냅니다. (구현중)`);
-                                        }
-                                    });
-                                });
+                                            friendRequestRef.update(updates)
+                                                .then(() => {
+                                                    // UI를 '요청 보냄' 상태로 변경
+                                                    // ✨ [수정] 변수 사용
+                                                    clickedButton.textContent = '✔️';
+                                                    showToast(`${targetNickname}님에게 친구 요청을 보냈습니다.`);
+                                                    // 이 버튼은 모달이 닫힐 때까지 비활성화 상태('✔️')로 둡니다.
+                                                })
+                                                .catch((error) => {
+                                                    console.error("친구 요청 실패:", error);
+                                                    showToast("친구 요청에 실패했습니다: " + error.message, 3000); // 에러 메시지 표시
+                                                    // 실패 시 버튼 원래대로 복구
+                                                    // ✨ [수정] 변수 사용
+                                                    clickedButton.disabled = false;
+                                                clickedButton.textContent = '➕';
+                                                });
+                                        
+                                        // ✨ [수정] e.currentTarget 대신 clickedButton 변수 사용
+                                        } else if (clickedButton.classList.contains('send-message')) {
+                                            
+                                          _ // TODO: (기능) 1:1 쪽지 모달 열기 로직 구현
+                                        alert(`${targetNickname} (UID: ${targetUid}) 님에게 쪽지를 보냅니다. (구현중)`);
+                                        }
+                                    });
+                            });
 
-                            } catch (error) {
-                                console.error("접속자 프로필 로드 실패:", error);
-                                onlineUsersList.innerHTML = '<p style="text-align: center;">정보를 불러오는 중 오류가 발생했습니다.</p>';
-                            }
-                        });
-                    });
-                    onlineUsersBtn._listenerAttached = true; // 중복 방지
-                }
+                            } catch (error) {
+                                console.error("접속자 프로필 로드 실패:", error);
+                                onlineUsersList.innerHTML = '<p style="text-align: center;">정보를 불러오는 중 오류가 발생했습니다.</p>';
+                       }
+                        });
+                    });
+                    onlineUsersBtn._listenerAttached = true; // 중복 방지
+                }
 
-                currentUser = user;
-                cleanupMyGhostRooms(user.uid);
-                usersRef.child(user.uid).on('value', snapshot => {
-                    if (snapshot.exists()) {
-                        currentUserData = snapshot.val();
-                        updateLobbyUI();
-                        if (!roomListener) listenToRooms();
-                        checkDailyLogin(user.uid, currentUserData.profile); // ✨ [신규] 데일리 로그인 체크
-                        listenToLobbyChat(); // 채팅 리스너 시작
-                    }
-                });
-            } else {
-                window.location.replace('index.html');
-            }
-        });
-
+                currentUser = user;
+                cleanupMyGhostRooms(user.uid);
+                usersRef.child(user.uid).on('value', snapshot => {
+                    if (snapshot.exists()) {
+                       currentUserData = snapshot.val();
+                        updateLobbyUI();
+                        if (!roomListener) listenToRooms();
+                        checkDailyLogin(user.uid, currentUserData.profile); // ✨ [신규] 데일리 로그인 체크
+                       listenToLobbyChat(); // 채팅 리스너 시작
+                    }
+                });
+           } else {
+                window.location.replace('index.html');
+            }
+        });
         // ✨ [신규] 접속 인원 UI 업데이트 함수
         function updateConcurrentUsers(count) {
             const userCountEl = document.getElementById('concurrent-users');
@@ -1982,29 +1989,183 @@ let presenceTimeout = null; // 세션 타임아웃 타이머
         }
 
         // ✨ [신규] 친구 탭 내용 로드 함수
-        function loadFriendTabContent(tabName) {
-            const content = document.getElementById('friend-content');
-            content.innerHTML = '<div class="spinner" style="margin: 20px auto;"></div>';
+        // ✨ [수정] 친구 탭 내용 로드 함수 (Firebase 연동)
+        function loadFriendTabContent(tabName) {
+            const content = document.getElementById('friend-content');
+            content.innerHTML = '<div class="spinner" style="margin: 20px auto;"></div>';
+            
+            // 기존 리스너가 있다면 제거 (탭 전환 시 중복 방지)
+            const requestsRef = db.ref(`friend_requests/${currentUser.uid}`);
+            const friendsRef = db.ref(`friends/${currentUser.uid}`);
+            requestsRef.off();
+            friendsRef.off();
 
-            if (tabName === 'requests') {
-                // TODO: Firebase에서 `friend_requests / {내 UID}` 경로의 데이터를 읽어옵니다.
-                
-                // (임시) 1초 후 '요청 없음' 표시
-                setTimeout(() => {
-                    content.innerHTML = '<p style="text-align:center; color:#888; padding: 40px;">받은 친구 요청이 없습니다.</p>';
-                    document.querySelector('#friend-tabs [data-tab="requests"]').textContent = '받은 요청 (0)';
-                }, 1000);
+            if (tabName === 'requests') {
+                // [받은 요청] 탭
+                requestsRef.on('value', async (snapshot) => {
+                    const requestsTabBtn = document.querySelector('#friend-tabs [data-tab="requests"]');
 
-            } else if (tabName === 'my-friends') {
-                // TODO: Firebase에서 `friends / {내 UID}` 경로의 데이터를 읽어옵니다.
-                
-                // (임시) 1초 후 '친구 없음' 표시
-                setTimeout(() => {
-                    content.innerHTML = '<p style="text-align:center; color:#888; padding: 40px;">친구가 없습니다.</p>';
-                    document.querySelector('#friend-tabs [data-tab="my-friends"]').textContent = '내 친구 (0)';
-                }, 1000);
-            }
-        }
+                    if (!snapshot.exists()) {
+                        content.innerHTML = '<p style="text-align:center; color:#888; padding: 40px;">받은 친구 요청이 없습니다.</p>';
+                        if (requestsTabBtn) requestsTabBtn.textContent = '받은 요청 (0)';
+                        return;
+                    }
+
+                    const requestsData = snapshot.val();
+                    const senderUids = Object.keys(requestsData);
+                    
+                    if (requestsTabBtn) requestsTabBtn.textContent = `받은 요청 (${senderUids.length})`;
+
+                    // 보낸 사람들의 프로필 정보를 가져옵니다.
+                    const profilePromises = senderUids.map(uid => 
+                        usersRef.child(uid).child('profile').once('value')
+                    );
+                    
+                    const profileSnapshots = await Promise.all(profilePromises);
+                    
+                    // HTML 목록을 생성합니다. (접속자 목록 HTML 재사용)
+                    let listHtml = profileSnapshots.map(profileSnap => {
+                        const profile = profileSnap.val();
+                        if (!profile) return '';
+
+                        const avatarSet = AVATAR_SETS[profile.avatar];
+                        let avatarHTML = '';
+                        if (avatarSet) {
+                            avatarHTML = `<img src="${avatarSet.front}" alt="avatar">`;
+                        } else if (profile.avatar && (profile.avatar.startsWith('http') || profile.avatar.includes('.'))) {
+                            avatarHTML = `<img src="${profile.avatar}" alt="avatar">`;
+                        } else {
+                            avatarHTML = escapeHTML(profile.avatar || '❓');
+                        }
+
+                        // [수락] / [거절] 버튼 추가
+                        return `
+                            <div class="user-list-item" data-uid="${profileSnap.key}">
+                                <div class="user-list-avatar">${avatarHTML}</div>
+                                <span class="user-list-nickname">${escapeHTML(profile.nickname || '...')}</span>
+                                <div class="user-item-actions">
+                                    <button class="user-action-btn decline" style="background-color: var(--danger-color); border-bottom-color: #A94442; color: white;">✖</button>
+                                    <button class="user-action-btn accept" style="background-color: var(--secondary-color); border-bottom-color: #379A93; color: white;">✔</button>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                    
+                    content.innerHTML = listHtml;
+                    
+                    // [수락] / [거절] 버튼에 이벤트 리스너 추가
+                    content.querySelectorAll('.user-action-btn').forEach(btn => {
+                        btn.addEventListener('click', (e) => {
+                            if (gameSettings.sfx) clickSound.play();
+                            const item = e.currentTarget.closest('.user-list-item');
+                            const friendUid = item.dataset.uid;
+                            
+                            // 버튼 비활성화
+                            item.querySelectorAll('.user-action-btn').forEach(b => b.disabled = true);
+
+                            if (e.currentTarget.classList.contains('accept')) {
+                                // [수락] 로직: friends에 양방향 추가 + request 삭제
+                                const updates = {};
+                                updates[`friends/${currentUser.uid}/${friendUid}`] = true;
+                                updates[`friends/${friendUid}/${currentUser.uid}`] = true; // 상호 친구
+                                updates[`friend_requests/${currentUser.uid}/${friendUid}`] = null; // 요청 삭제
+                                
+                                db.ref().update(updates).then(() => {
+                                    showToast('친구를 수락했습니다.');
+                                }).catch(err => {
+                                    showToast('수락 중 오류 발생: ' + err.message);
+                                    item.querySelectorAll('.user-action-btn').forEach(b => b.disabled = false);
+                                });
+                            } else {
+                                // [거절] 로직: request만 삭제
+                                requestsRef.child(friendUid).remove().then(() => {
+                                    showToast('요청을 거절했습니다.');
+                                }).catch(err => {
+                                    showToast('거절 중 오류 발생: ' + err.message);
+                                    item.querySelectorAll('.user-action-btn').forEach(b => b.disabled = false);
+                                });
+                            }
+                        });
+              _     });
+                });
+
+            } else if (tabName === 'my-friends') {
+                // [내 친구] 탭
+                friendsRef.on('value', async (snapshot) => {
+                    const friendsTabBtn = document.querySelector('#friend-tabs [data-tab="my-friends"]');
+
+                    if (!snapshot.exists()) {
+                        content.innerHTML = '<p style="text-align:center; color:#888; padding: 40px;">친구가 없습니다.</p>';
+                        if (friendsTabBtn) friendsTabBtn.textContent = '내 친구 (0)';
+                        return;
+                    }
+
+                    const friendsData = snapshot.val();
+                    const friendUids = Object.keys(friendsData);
+
+                    if (friendsTabBtn) friendsTabBtn.textContent = `내 친구 (${friendUids.length})`;
+
+                    const profilePromises = friendUids.map(uid => 
+                        usersRef.child(uid).child('profile').once('value')
+                    );
+                    
+                    const profileSnapshots = await Promise.all(profilePromises);
+                    
+                    let listHtml = profileSnapshots.map(profileSnap => {
+                        const profile = profileSnap.val();
+                        if (!profile) return ''; // 탈퇴했거나 없는 유저
+
+                        const avatarSet = AVATAR_SETS[profile.avatar];
+                        let avatarHTML = '';
+                        if (avatarSet) {
+                            avatarHTML = `<img src="${avatarSet.front}" alt="avatar">`;
+                        } else if (profile.avatar && (profile.avatar.startsWith('http') || profile.avatar.includes('.'))) {
+                            avatarHTML = `<img src="${profile.avatar}" alt="avatar">`;
+                        } else {
+                            avatarHTML = escapeHTML(profile.avatar || '❓');
+                        }
+
+                        // [삭제] 버튼 추가
+                        return `
+                            <div class="user-list-item" data-uid="${profileSnap.key}">
+                                <div class="user-list-avatar">${avatarHTML}</div>
+                                <span class="user-list-nickname">${escapeHTML(profile.nickname || '...')}</span>
+                                <div class="user-item-actions">
+                                    <button class="user-action-btn delete-friend" style="background-color: var(--danger-color); border-bottom-color: #A94442; color: white;">삭제</button>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                    
+                    content.innerHTML = listHtml;
+                    
+                    // [삭제] 버튼에 이벤트 리스너 추가
+                    content.querySelectorAll('.delete-friend').forEach(btn => {
+                        btn.addEventListener('click', (e) => {
+                            if (gameSettings.sfx) clickSound.play();
+                            const item = e.currentTarget.closest('.user-list-item');
+                            const friendUid = item.dataset.uid;
+                            const friendNickname = item.querySelector('.user-list-nickname').textContent;
+                            
+                            if (confirm(`${friendNickname}님을 친구에서 삭제하시겠습니까?`)) {
+                                e.currentTarget.disabled = true;
+                                // [삭제] 로직: 양방향 삭제
+                                const updates = {};
+                                updates[`friends/${currentUser.uid}/${friendUid}`] = null;
+                                updates[`friends/${friendUid}/${currentUser.uid}`] = null;
+                                
+                                db.ref().update(updates).then(() => {
+                                    showToast('친구를 삭제했습니다.');
+                                }).catch(err => {
+                                    showToast('삭제 중 오류 발생: ' + err.message);
+                                    e.currentTarget.disabled = false;
+                                });
+                            }
+                        });
+                    });
+                });
+            }
+        }
 
         // -------------------------
 
