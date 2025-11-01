@@ -233,10 +233,30 @@
         /* ------------------------- */
         /* == 헤더 액션 버튼 == */
         /* ------------------------- */
+        /* ✨ [신규] 헤더 버튼 뱃지 스타일 */
+        .header-btn .badge {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            background-color: var(--danger-color);
+            color: white;
+            border-radius: 50%;
+            width: 22px;
+            height: 22px;
+            font-size: 0.7em;
+            font-weight: 700;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border: 2px solid white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
+
         .header-actions {
             display: flex; gap: 8px; flex-shrink: 0;
         }
         .header-btn {
+            position: relative; /* 뱃지 기준점 */
             width: 52px; height: 52px; /* ✨ [수정] 크기 42px -> 52px (원래 크기로 복구) */
             font-size: 1.8em; /* ✨ [수정] 폰트 크기 복구 */
             display: flex; justify-content: center; align-items: center;
@@ -939,16 +959,15 @@
         }
         .user-list-nickname {
             font-weight: 700;
-            font-size: 1.1em;
-            word-break: break-all; /* 닉네임 길면 줄바꿈 */
-        }
-
-.user-list-nickname {
-            font-weight: 700;
-            font-size: 1.1em;
-            word-break: break-all; /* 닉네임 길면 줄바꿈 */
+            font-size: 1.0em; /* [수정] 1.1em -> 1.0em */
+            /* word-break: break-all; */ /* [삭제] 닉네임 길면 줄바꿈 */
             flex-grow: 1; /* ✨ 닉네임이 남은 공간 차지 */
             min-width: 0;
+            
+            /* ✨ [추가] 한 줄로 고정하고 ... 처리 */
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         /* ✨ [신규] '나' 자신을 강조하는 스타일 */
@@ -958,6 +977,32 @@
         .user-list-item.is-me .user-list-nickname {
             color: var(--primary-color); /* 강조색 */
         }
+
+        /* ------------------------- */
+/* == ✨ 친구 관리 목록 스타일 (접속자 목록 기반 수정) == */
+/* ------------------------- */
+#friend-content .user-list-item {
+    padding: 8px 10px; /* 패딩 축소 */
+}
+#friend-content .user-list-avatar {
+    width: 36px; /* 크기 축소 */
+    height: 36px;
+    font-size: 1.8em;
+}
+#friend-content .user-list-nickname {
+    font-size: 0.95em; /* 폰트 크기 축소 */
+}
+#friend-content .user-action-btn {
+    width: 36px; /* 크기 축소 */
+    height: 36px;
+    font-size: 1.3em;
+    border-bottom-width: 3px;
+}
+#friend-content .user-action-btn.delete-friend {
+    width: auto;
+    padding: 0 10px;
+    font-size: 0.9em;
+}
 
         /* ✨ [신규] 버튼 영역 스타일 */
         .user-item-actions {
@@ -992,15 +1037,14 @@
         }
         
         /* '쪽지' 버튼 (강조) */
-        .user-action-btn.send-message {
-            background-color: var(--accent-color);
-            color: var(--text-color-dark);
-            border-bottom-color: #D1B030;
+        /* ✨ [신규] '삭제' 버튼 전용 너비 스타일 */
+        .user-action-btn.delete-friend {
+            width: auto; /* 텍스트 길이에 맞게 자동 너비 */
+            padding: 0 12px; /* 좌우 여백 추가 */
+            font-size: 1em; /* 폰트 크기 아이콘보다 작게 */
         }
-
-    </style>
-</head>
-
+        
+ 
     </style>
 </head>
 <body>
@@ -1362,9 +1406,12 @@
         const chatSendBtn = document.getElementById('chat-send-btn');
 const presenceRef = db.ref('status'); // ✨ [신규] 접속 상태 ref
 let currentUser, currentUserData, roomListener, lastMessageDate = null;
+let myFriendsList = {}; // ✨ [신규] 내 친구 목록 (UID: true) 저장용
 let presenceTimeout = null; // 세션 타임아웃 타이머
         let myPresenceRef = null; // 내 접속 상태 ref
         let selectedAvatarForChange = ''; // ✨ [신규] 아바타 변경용 임시 변수
+        let currentFriendRequests = {}; // ✨ [신규] 친구 요청 상태 저장용
+        let isFirstRequestLoad = true; // ✨ [신규] 친구 요청 첫 로드 플래그
         let myEquippedEffect = null; // ✨ [신규] 입장 이펙트 저장용
 
         // ✨ [신규] index.html에서 가져온 캐릭터 목록
@@ -1427,6 +1474,24 @@ let presenceTimeout = null; // 세션 타임아웃 타이머
                 });
             });
         }
+// ✨ [신규] 친구 요청 뱃지 업데이트 함수
+        function updateFriendBadge(count) {
+            const badgeEl = friendBtn.querySelector('.badge');
+            if (count > 0) {
+                if (badgeEl) {
+                    badgeEl.textContent = count > 9 ? '9+' : count;
+                } else {
+                    const newBadge = document.createElement('span');
+                    newBadge.className = 'badge';
+                    newBadge.textContent = count > 9 ? '9+' : count;
+                    friendBtn.appendChild(newBadge);
+                }
+            } else {
+                if (badgeEl) {
+                    badgeEl.remove();
+                }
+            }
+        }
 
         auth.onAuthStateChanged(user => {
             if (user) {
@@ -1442,7 +1507,165 @@ let presenceTimeout = null; // 세션 타임아웃 타이머
                     updateConcurrentUsers(userCount);
                 });
 
+                // ✨ [신규] 친구 요청 리스너 (뱃지 + 토스트 알림)
+                const myFriendRequestsRef = db.ref(`friend_requests/${user.uid}`);
+                myFriendRequestsRef.on('value', async (snapshot) => {
+                    const newRequests = snapshot.val() || {};
+                    const newRequestCount = snapshot.numChildren();
+                    
+                    // 1. 뱃지 업데이트
+                    updateFriendBadge(newRequestCount);
+                    
+                    // 2. 토스트 알림 (첫 로드 시 제외)
+                    if (isFirstRequestLoad) {
+                        currentFriendRequests = newRequests;
+                        isFirstRequestLoad = false;
+                        return;
+                    }
+
+                    // 새로 추가된 요청 찾기
+                    const newRequestUids = Object.keys(newRequests).filter(uid => !currentFriendRequests[uid]);
+                    
+                    if (newRequestUids.length > 0) {
+                        // 새로 추가된 요청이 하나 이상 있으면 마지막 요청자의 프로필 조회 후 토스트
+                        const lastNewUid = newRequestUids[newRequestUids.length - 1];
+                        try {
+                            const profileSnap = await usersRef.child(lastNewUid).child('profile').once('value');
+                            if (profileSnap.exists()) {
+                                showToast(`💌 ${escapeHTML(profileSnap.val().nickname)}님에게 친구 요청이 도착했습니다!`);
+                            }
+                        } catch (error) {
+                            console.error("친구 요청자 프로필 조회 실패:", error);
+                        }
+                    }
+
+                    currentFriendRequests = newRequests; // 현재 상태 갱신
+                });
+
                 // ✨ [신규] 접속자 수 버튼 클릭 이벤트
+                // ✨ [신규] 접속자 목록을 로드하고 렌더링하는 함수
+async function loadOnlineUsersList() {
+    onlineUsersList.innerHTML = '<div class="spinner" style="margin: 20px auto;"></div>'; // 스피너 표시
+
+    // 1. 현재 접속 중인 UID 목록 가져오기
+    presenceRef.once('value', async (presenceSnap) => {
+        if (!presenceSnap.exists()) {
+            onlineUsersList.innerHTML = '<p style="text-align: center;">접속 중인 유저가 없습니다.</p>';
+            return;
+        }
+        
+        const uids = Object.keys(presenceSnap.val());
+        
+        // 2. 각 UID의 프로필 정보 가져오기
+        const profilePromises = uids.map(uid => 
+            usersRef.child(uid).child('profile').once('value')
+        );
+        
+        try {
+            const profileSnapshots = await Promise.all(profilePromises);
+            
+            const listHtml = profileSnapshots.map((profileSnap, index) => {
+                const profile = profileSnap.val();
+                const uid = uids[index];
+
+                if (!profile) return '';
+
+                // 아바타 HTML 생성 (공통)
+                const avatarSet = AVATAR_SETS[profile.avatar];
+                let avatarHTML = '';
+                if (avatarSet) {
+                    avatarHTML = `<img src="${avatarSet.front}" alt="avatar">`;
+                } else if (profile.avatar && (profile.avatar.startsWith('http') || profile.avatar.includes('.'))) {
+                    avatarHTML = `<img src="${profile.avatar}" alt="avatar">`;
+                } else {
+                    avatarHTML = escapeHTML(profile.avatar || '❓');
+                }
+                
+                // ✨ [수정] 자기 자신은 버튼을 표시하지 않음
+                if (uid === currentUser.uid) {
+                    return `
+                        <div class="user-list-item is-me">
+                            <div class="user-list-avatar">${avatarHTML}</div>
+                            <span class="user-list-nickname">${escapeHTML(profile.nickname || '...')} (나)</span>
+                        </div>
+                    `;
+                }
+                
+                // ✨ [신규] 친구 여부 확인
+                const isFriend = !!myFriendsList[uid];
+                
+                // (다른 사용자 UI - 버튼 포함)
+                // ✨ [수정] isFriend 여부에 따라 친구 추가 버튼을 숨깁니다.
+                const friendButtonHtml = isFriend 
+                    ? '' 
+                    : '<button class="user-action-btn add-friend">➕</button>';
+
+                return `
+                    <div class="user-list-item" data-uid="${uid}" data-nickname="${escapeHTML(profile.nickname || '...')}">
+                        <div class="user-list-avatar">${avatarHTML}</div>
+                        <span class="user-list-nickname">${escapeHTML(profile.nickname || '...')}</span>
+                        <div class="user-item-actions">
+                            ${friendButtonHtml}
+                            <button class="user-action-btn send-message">✉️</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            onlineUsersList.innerHTML = listHtml || '<p style="text-align: center;">접속 정보를 불러올 수 없습니다.</p>';
+
+            // 생성된 버튼들에 이벤트 리스너 추가
+            onlineUsersList.querySelectorAll('.user-action-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    if (gameSettings.sfx) clickSound.play();
+                    e.stopPropagation(); // 모달 닫힘 방지
+
+                    const clickedButton = e.currentTarget; 
+                    const item = clickedButton.closest('.user-list-item');
+                    const targetUid = item.dataset.uid;
+                    const targetNickname = item.dataset.nickname;
+
+                    if (clickedButton.classList.contains('add-friend')) {
+                        // (UI) 버튼 비활성화
+                        clickedButton.disabled = true;
+                        clickedButton.textContent = '...';
+                        
+                        // 경로: friend_requests / [요청 받은 사람 UID]
+                        const friendRequestRef = db.ref(`friend_requests/${targetUid}`);
+                        
+                        // update를 사용해 [요청 보낸 사람 UID]를 키로 타임스탬프 저장
+                        const updates = {};
+                        updates[currentUser.uid] = firebase.database.ServerValue.TIMESTAMP;
+
+                        friendRequestRef.update(updates)
+                            .then(() => {
+                                // UI를 '요청 보냄' 상태로 변경
+                                clickedButton.textContent = '✔️';
+                                showToast(`${targetNickname}님에게 친구 요청을 보냈습니다.`);
+                                // 이 버튼은 모달이 닫힐 때까지 비활성화 상태('✔️')로 둡니다.
+                            })
+                            .catch((error) => {
+                                console.error("친구 요청 실패:", error);
+                                showToast("친구 요청에 실패했습니다: " + error.message, 3000); 
+                                // 실패 시 버튼 원래대로 복구
+                                clickedButton.disabled = false;
+                                clickedButton.textContent = '➕';
+                            });
+                    } else if (clickedButton.classList.contains('send-message')) {
+                        
+                        // TODO: (기능) 1:1 쪽지 모달 열기 로직 구현
+                        alert(`${targetNickname} (UID: ${targetUid}) 님에게 쪽지를 보냅니다. (구현중)`);
+                    }
+                });
+            });
+
+        } catch (error) {
+            console.error("접속자 프로필 로드 실패:", error);
+            onlineUsersList.innerHTML = '<p style="text-align: center;">정보를 불러오는 중 오류가 발생했습니다.</p>';
+        }
+    });
+}
+
                 if (onlineUsersBtn && !onlineUsersBtn._listenerAttached) {
                     onlineUsersBtn.addEventListener('click', () => {
                         if (gameSettings.sfx) clickSound.play();
@@ -1466,8 +1689,10 @@ let presenceTimeout = null; // 세션 타임아웃 타이머
                             try {
                                 const profileSnapshots = await Promise.all(profilePromises);
                                 
-                                const listHtml = profileSnapshots.map(profileSnap => {
+                                const listHtml = profileSnapshots.map((profileSnap, index) => {
                                     const profile = profileSnap.val();
+                                    const uid = uids[index]; // ✨ [수정] uids 배열에서 올바른 uid를 가져옵니다.
+
                                     if (!profile) return ''; // 프로필 없는 유저(오류)는 건너뛰기
 
                                     // 아바타 HTML 생성 (공통)
@@ -1482,7 +1707,7 @@ let presenceTimeout = null; // 세션 타임아웃 타이머
                                     }
                                     
                                     // ✨ [수정] 자기 자신은 버튼을 표시하지 않음
-                                    if (profileSnap.key === currentUser.uid) {
+                                    if (uid === currentUser.uid) {
                                         // (자기 자신 UI - 버튼 없음)
                                         return `
                                             <div class="user-list-item is-me">
@@ -1492,13 +1717,21 @@ let presenceTimeout = null; // 세션 타임아웃 타이머
                                         `;
                                     }
 
+                                    // ✨ [신규] 친구 여부 확인
+                                    const isFriend = !!myFriendsList[uid];
+
                                     // (다른 사용자 UI - 버튼 포함)
+                                    // ✨ [수정] isFriend 여부에 따라 친구 추가 버튼을 숨깁니다.
+                                    const friendButtonHtml = isFriend 
+                                        ? '' 
+                                        : '<button class="user-action-btn add-friend">➕</button>';
+
                                     return `
-                                        <div class="user-list-item" data-uid="${profileSnap.key}" data-nickname="${escapeHTML(profile.nickname || '...')}">
+                                        <div class="user-list-item" data-uid="${uid}" data-nickname="${escapeHTML(profile.nickname || '...')}">
                                             <div class="user-list-avatar">${avatarHTML}</div>
                                             <span class="user-list-nickname">${escapeHTML(profile.nickname || '...')}</span>
                                             <div class="user-item-actions">
-                                                <button class="user-action-btn add-friend">➕</button>
+                                                ${friendButtonHtml}
                                                 <button class="user-action-btn send-message">✉️</button>
                                             </div>
                                         </div>
@@ -1552,7 +1785,7 @@ let presenceTimeout = null; // 세션 타임아웃 타이머
                                         // ✨ [수정] e.currentTarget 대신 clickedButton 변수 사용
                                         } else if (clickedButton.classList.contains('send-message')) {
                                             
-                                          _ // TODO: (기능) 1:1 쪽지 모달 열기 로직 구현
+                                          // TODO: (기능) 1:1 쪽지 모달 열기 로직 구현
                                         alert(`${targetNickname} (UID: ${targetUid}) 님에게 쪽지를 보냅니다. (구현중)`);
                                         }
                                     });
@@ -1578,6 +1811,15 @@ let presenceTimeout = null; // 세션 타임아웃 타이머
                        listenToLobbyChat(); // 채팅 리스너 시작
                     }
                 });
+// ✨ [신규] 내 친구 목록 리스너 (친구 여부 확인용)
+                db.ref(`friends/${user.uid}`).on('value', (snapshot) => {
+                    myFriendsList = snapshot.val() || {};
+                    // 친구 목록이 갱신될 때마다 접속자 모달에 영향이 갈 수 있으므로, 
+                    // 모달이 열려있다면 즉시 업데이트를 시도합니다. (선택 사항)
+                    if (onlineUsersModal.classList.contains('active')) {
+                        loadOnlineUsersList();
+                    }
+                });
            } else {
                 window.location.replace('index.html');
             }
@@ -2024,7 +2266,8 @@ let presenceTimeout = null; // 세션 타임아웃 타이머
                     const profileSnapshots = await Promise.all(profilePromises);
                     
                     // HTML 목록을 생성합니다. (접속자 목록 HTML 재사용)
-                    let listHtml = profileSnapshots.map(profileSnap => {
+                    let listHtml = profileSnapshots.map((profileSnap, index) => {
+                        const uid = senderUids[index]; // ✨ [수정] uid를 배열에서 가져옵니다.
                         const profile = profileSnap.val();
                         if (!profile) return '';
 
@@ -2039,16 +2282,16 @@ let presenceTimeout = null; // 세션 타임아웃 타이머
                         }
 
                         // [수락] / [거절] 버튼 추가
-                        return `
-                            <div class="user-list-item" data-uid="${profileSnap.key}">
-                                <div class="user-list-avatar">${avatarHTML}</div>
-                                <span class="user-list-nickname">${escapeHTML(profile.nickname || '...')}</span>
-                                <div class="user-item-actions">
-                                    <button class="user-action-btn decline" style="background-color: var(--danger-color); border-bottom-color: #A94442; color: white;">✖</button>
-                                    <button class="user-action-btn accept" style="background-color: var(--secondary-color); border-bottom-color: #379A93; color: white;">✔</button>
-                                </div>
-                            </div>
-                        `;
+return `
+    <div class="user-list-item" data-uid="${uid}">
+        <div class="user-list-avatar">${avatarHTML}</div>
+        <span class="user-list-nickname">${escapeHTML(profile.nickname || '...')}</span>
+        <div class="user-item-actions">
+            <button class="user-action-btn decline" style="background-color: var(--danger-color); border-bottom-color: #A94442; color: white;">✖</button>
+            <button class="user-action-btn accept" style="background-color: var(--secondary-color); border-bottom-color: #379A93; color: white;">✔</button>
+        </div>
+    </div>
+`;
                     }).join('');
                     
                     content.innerHTML = listHtml;
@@ -2064,10 +2307,10 @@ let presenceTimeout = null; // 세션 타임아웃 타이머
                             item.querySelectorAll('.user-action-btn').forEach(b => b.disabled = true);
 
                             if (e.currentTarget.classList.contains('accept')) {
-                                // [수락] 로직: friends에 양방향 추가 + request 삭제
+                                // [수락] 로직: 내 목록에만 추가하고, 요청을 삭제합니다.
                                 const updates = {};
                                 updates[`friends/${currentUser.uid}/${friendUid}`] = true;
-                                updates[`friends/${friendUid}/${currentUser.uid}`] = true; // 상호 친구
+                                // updates[`friends/${friendUid}/${currentUser.uid}`] = true; // <-- 다른 사람 경로는 수정 불가! (제거)
                                 updates[`friend_requests/${currentUser.uid}/${friendUid}`] = null; // 요청 삭제
                                 
                                 db.ref().update(updates).then(() => {
@@ -2086,7 +2329,7 @@ let presenceTimeout = null; // 세션 타임아웃 타이머
                                 });
                             }
                         });
-              _     });
+                    });
                 });
 
             } else if (tabName === 'my-friends') {
@@ -2111,7 +2354,8 @@ let presenceTimeout = null; // 세션 타임아웃 타이머
                     
                     const profileSnapshots = await Promise.all(profilePromises);
                     
-                    let listHtml = profileSnapshots.map(profileSnap => {
+                    let listHtml = profileSnapshots.map((profileSnap, index) => {
+                        const uid = friendUids[index]; // ✨ [수정] uid를 배열에서 가져옵니다.
                         const profile = profileSnap.val();
                         if (!profile) return ''; // 탈퇴했거나 없는 유저
 
@@ -2126,15 +2370,15 @@ let presenceTimeout = null; // 세션 타임아웃 타이머
                         }
 
                         // [삭제] 버튼 추가
-                        return `
-                            <div class="user-list-item" data-uid="${profileSnap.key}">
-                                <div class="user-list-avatar">${avatarHTML}</div>
-                                <span class="user-list-nickname">${escapeHTML(profile.nickname || '...')}</span>
-                                <div class="user-item-actions">
-                                    <button class="user-action-btn delete-friend" style="background-color: var(--danger-color); border-bottom-color: #A94442; color: white;">삭제</button>
-                                </div>
-                            </div>
-                        `;
+return `
+    <div class="user-list-item" data-uid="${uid}">
+        <div class="user-list-avatar">${avatarHTML}</div>
+        <span class="user-list-nickname">${escapeHTML(profile.nickname || '...')}</span>
+        <div class="user-item-actions">
+            <button class="user-action-btn delete-friend" style="background-color: var(--danger-color); border-bottom-color: #A94442; color: white;">삭제</button>
+        </div>
+    </div>
+`;
                     }).join('');
                     
                     content.innerHTML = listHtml;
