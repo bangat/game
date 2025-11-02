@@ -1150,15 +1150,14 @@ if (!isEmpty) {
 } else {
     // 2. 타일이 없는 경우 (isEmpty === true)
     
-    // ✨ [핵심] 즉시 hidden 클래스 추가 (1프레임 지연 없이)
+    // ✨ [추가] 즉시 클릭 리스너 제거 (hidden 애니메이션 중에도 클릭 방지)
+    tileEl.onclick = null;
+    tileEl.style.pointerEvents = 'none'; // 추가 보험
+    
     if (!wasHidden) {
-        // 방금 사라진 타일: 즉시 .hidden 추가 (애니메이션 시작)
         tileEl.classList.add('hidden');
-        tileEl.onclick = null; // 클릭 방지
     } else {
-        // 원래부터 비어있던 칸: 내용물이 없어야 함
         tileEl.innerHTML = '';
-        tileEl.onclick = null;
     }
 }
 // [수정 끝]
@@ -1195,20 +1194,25 @@ if (!isEmpty) {
 
             // --- 타일 클릭 처리 ---
             function handleTileClick(event) {
-                // ▼▼▼ [수정] 턴 체크 삭제! (실시간) ▼▼▼
-                // ✨ [추가] 게임이 라이브 중이 아니거나, "재배열 중"일 때는 클릭 비활성화
-                if (!isGameLive || (currentRoomData && currentRoomData.isShuffling)) return;
-                // ▲▲▲ [수정] 턴 체크 삭제! (실시간) ▲▲▲
+    if (!isGameLive || (currentRoomData && currentRoomData.isShuffling)) return;
 
-                const clickedEl = event.currentTarget;
-                const clickedIndex = parseInt(clickedEl.dataset.index, 10);
-                // ▼▼▼ [수정] 헬퍼 함수 사용 ▼▼▼
-                const boardArray = getBoardArray(currentRoomData.board, TILE_COUNT);
-                // ▲▲▲ [수정] 헬퍼 함수 사용 ▲▲▲
-                const clickedIcon = boardArray[clickedIndex];
+    const clickedEl = event.currentTarget;
+    
+    // ✨ [추가] DOM 상태를 먼저 체크 (가장 빠른 검증)
+    if (clickedEl.classList.contains('hidden')) {
+        console.log("이미 제거된 타일 클릭 차단 (DOM)");
+        return;
+    }
+    
+    const clickedIndex = parseInt(clickedEl.dataset.index, 10);
+    const boardArray = getBoardArray(currentRoomData.board, TILE_COUNT);
+    const clickedIcon = boardArray[clickedIndex];
 
-                // 이미 hidden 상태거나 아이콘 없으면 무시
-                if (clickedIcon === null || clickedEl.classList.contains('hidden')) return;
+    // ✨ [개선] 보드 배열 체크 (Firebase 동기화 확인)
+    if (clickedIcon === null) {
+        console.log("이미 제거된 타일 클릭 차단 (Firebase)");
+        return;
+    }
 
                 playSound('tile-select-sound'); // 선택 사운드
 
