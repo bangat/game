@@ -340,7 +340,7 @@
                 rankingContent.innerHTML = `<div class="spinner"></div>`;
                 
                 // [추가] 점수(rating) 기반 랭킹 게임 ID 목록
-                const ratingBasedGames = ['shisenSho', 'tetris'];
+                const highscoreBasedGames = ['quiz', 'tetris']; // [수정] 퀴즈와 테트리스는 highscore 기준
 
                 usersRef.once('value', snapshot => {
                     let users = [];
@@ -354,14 +354,10 @@
                     if (gameId === 'points') {
                         // 1. 통합 랭킹 (포인트)
                         users.sort((a, b) => (b.profile.points || 0) - (a.profile.points || 0));
-                    } else if (gameId === 'quiz') {
-                        // 2. 퀴즈 랭킹 (최고점수)
-                        users = users.filter(user => user.gameStats?.quiz?.plays > 0);
-                        users.sort((a, b) => (b.gameStats?.quiz?.highscore || 0) - (a.gameStats?.quiz?.highscore || 0));
-                    } else if (ratingBasedGames.includes(gameId)) {
-                        // 3. 점수(rating) 기반 게임 랭킹
-                        users = users.filter(user => user.gameStats?.[gameId]?.rating > 0);
-                        users.sort((a, b) => (b.gameStats?.[gameId]?.rating || 0) - (a.gameStats?.[gameId]?.rating || 0));
+                    } else if (highscoreBasedGames.includes(gameId)) { // [수정] highscore 기반 게임
+                        // 2. 퀴즈/테트리스 랭킹 (최고점수)
+                        users = users.filter(user => user.gameStats?.[gameId]?.plays > 0);
+                        users.sort((a, b) => (b.gameStats?.[gameId]?.highscore || 0) - (a.gameStats?.[gameId]?.highscore || 0));
                     } else {
                         // 4. 나머지 (승리) 기반 게임 랭킹
                         users = users.filter(user => user.gameStats?.[gameId]?.plays > 0);
@@ -379,19 +375,23 @@
                     users.slice(0, 100).forEach((user, i) => {
                         const profile = user.profile;
                         const gameStats = user.gameStats;
-                        const avatarSet = AVATAR_SETS[profile.avatar];
+
+                        // [수정] 아바타 값이 없는(null/undefined) 사용자에 대한 방어 코드
+                        const avatar = profile.avatar || ''; // 기본값으로 빈 문자열
+                        const avatarSet = AVATAR_SETS[avatar]; // avatar가 ''이면 avatarSet은 undefined
+
                         let avatarHTML = '';
                         if (avatarSet) {
                             avatarHTML = `<img src="${avatarSet.front}" alt="avatar">`;
-                        } else if (profile.avatar.startsWith('http') || profile.avatar.includes('.')) {
-                            avatarHTML = `<img src="${profile.avatar}" alt="avatar">`;
+                        } else if (avatar.startsWith('http') || avatar.includes('.')) { // avatar가 ''이면 이 조건은 false
+                            avatarHTML = `<img src="${avatar}" alt="avatar">`;
                         } else {
-                            avatarHTML = profile.avatar; // 이모지
+                            avatarHTML = escapeHTML(avatar || '❓'); // avatar가 ''이면 '❓' 표시
                         }
                         
                         let statsHTML = '';
                         // [추가] 점수(rating) 기반 랭킹 게임 ID 목록 (loadRanking과 동일)
-                        const ratingBasedGames = ['shisenSho', 'tetris'];
+                        const highscoreBasedGames = ['quiz', 'tetris']; // [수정] 퀴즈와 테트리스는 highscore 기준
 
                         if (gameId === 'points') {
                             const totalWins = Object.values(gameStats || {}).reduce((sum, game) => sum + (game.wins || 0), 0);
@@ -403,13 +403,18 @@
                                 <div class="stat-item losses">${totalLosses}패</div>
                                 <div class="stat-item plays">${totalDraws}무</div>
                                 <div class="stat-item points">${(profile.points || 0).toLocaleString()} P</div>`;
-                        } else if (gameId === 'quiz') {
-                            const game = gameStats?.quiz || { wins: 0, losses: 0, plays: 0, highscore: 0 };
+                        } else if (highscoreBasedGames.includes(gameId)) { // [수정] highscore 기반 게임
+                            // [수정] 점수 표시 로직 분리
+                            const game = gameStats?.[gameId] || { wins: 0, losses: 0, draws: 0, plays: 0, highscore: 0 };
+                            const highscore = game.highscore || 0;
+                            const wins = game.wins || 0;
+                            const losses = game.losses || 0;
+                            const plays = game.plays || 0;
                             statsHTML = `
-                                <div class="stat-item points">최고 ${game.highscore}점</div>
-                                <div class="stat-item wins">${game.wins}승</div>
-                                <div class="stat-item losses">${game.losses}패</div>
-                                <div class="stat-item plays">${game.plays || 0}회</div>`;
+                                <div class="stat-item points">최고 ${highscore}점</div>
+                                <div class="stat-item wins">${wins}승</div>
+                                <div class="stat-item losses">${losses}패</div>
+                                <div class="stat-item plays">${plays}회</div>`;
                         } else {
                             // [수정] 점수 표시 로직 분리
                             const game = gameStats?.[gameId] || { wins: 0, losses: 0, draws: 0, plays: 0, rating: 0 };
@@ -427,10 +432,12 @@
                                 <div class="stat-item winrate">${winRate}</div>`;
 
                             // [수정] 점수(rating) 기반 게임인 경우에만 점수 표시
+                            /* [삭제]
                             if (ratingBasedGames.includes(gameId)) {
                                 const rating = game.rating || 0;
                                 statsHTML = `<div class="stat-item points">${rating}점</div>` + statsHTML; // 점수를 맨 앞에 추가
                             }
+                            */
                         }
                         
                         const rankItem = document.createElement('div');
