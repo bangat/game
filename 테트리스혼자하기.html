@@ -437,54 +437,79 @@
         .touch-btn.hold, .touch-btn.hard-drop { font-size: clamp(1.0rem, 3vw, 1.2rem); font-weight: 900; }
         .touch-btn.rotate { font-size: clamp(1.4rem, 4.5vw, 1.8rem); }
 
-           /* --- [신규] 사이드 터치 컨트롤 --- */
+           /* --- [수정] 스플릿 게임패드 레이아웃 --- */
+        
+        /* 1. 기존 사이드 패널은 숨김 처리 */
         .side-control-panel {
-            position: fixed;
-            top: 0;
-            /* [수정] bottom: 0; -> footer 높이(약 80px)만큼 띄우기 */
-            bottom: max(80px, env(safe-area-inset-bottom));
-            width: clamp(65px, 18vw, 90px); /* 버튼 크기 + 여백 */
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-end; /* [수정] center -> flex-end (하단 정렬) */
-            align-items: center;
-            gap: 30px; /* 버튼 사이 간격 넓게 */
-            /* 헤더(약 50px) 영역만 피함 */
-            padding-top: calc(50px + env(safe-area-inset-top));
-            /* [수정] 내부 패딩바텀은 0으로 리셋 */
-            padding-bottom: 0; 
-            z-index: 10;
-            -webkit-tap-highlight-color: transparent;
+            display: none !important; /* JS가 강제로 표시할 수 없도록 !important 사용 */
         }
-        #side-controls-left {
-            left: 0;
-        }
+        #side-controls-left,
         #side-controls-right {
-            right: 0;
+            display: none !important;
         }
-        /* --- [신규] PAD 2 전용 소프트드롭 간격 --- */
-        .pad2-layout #touch-down.move-gap-left {
-            margin-left: 80px; /* ◀/▶ 그룹과의 간격 (버튼 1개 정도의 폭) */
+
+        /* 2. 하단 컨트롤 영역을 좌우로 꽉 채움 */
+        #touch-controls {
+            /* [수정] 상하 패딩만 적용, 좌우는 15px 고정 */
+            padding: 8px max(15px, env(safe-area-inset-bottom));
         }
         
-        /* [신규] PAD 2 전용 왼쪽/오른쪽 버튼 그룹 왼쪽 정렬 */
-        .pad2-layout .footer-btn-group {
-            margin-left: 0 !important;
-            padding-left: 0 !important;
+        /* 3. .controls-row가 좌우 정렬의 컨테이너가 됨 */
+        .controls-row {
+            display: flex;
+            align-items: center; 
+            justify-content: space-between; /* [핵심] 좌우로 분리 */
+            width: 100%;
+            max-width: none; /* [수정] 400px 제한 해제 */
+            gap: 10px; 
+            
+            /* [수정] PAD 2 전용 클래스 및 관련 스타일 제거 */
         }
-        /* --- [신규] --- */
-
-       /* [신규] PAD 2일 때만 사이드 버튼 높이 기준점 설정 (DROP/회전 위치) */
-        .pad2-layout #side-controls-left,
-        .pad2-layout #side-controls-right {
-            /* 250px로 증가하여 버튼들을 더 위로 올립니다 */
-            padding-bottom: calc(max(80px, env(safe-area-inset-bottom)) + 250px);
+        .pad2-layout .controls-row {
+            justify-content: space-between; /* flex-start -> space-between */
+            max-width: none;
+        }
+        .footer-btn-group {
+             /* 이 클래스 대신 keypad-cluster를 사용합니다. */
+             /* 기존 스타일이 있다면 삭제하거나 .keypad-cluster로 병합합니다. */
         }
 
-/* [추가] HOLD 버튼만 DROP보다 더 올리고 싶을 때 사용 */
-        .pad2-layout #side-controls-left {
-            /* 기준 250px보다 150px 더 올리기 위해 400px로 설정합니다. */
-            padding-bottom: calc(max(80px, env(safe-area-inset-bottom)) + 400px); 
+        /* 4. [신규] 버튼 클러스터 (L/R/Down, Rotate/Drop/Hold) */
+        .keypad-cluster {
+            display: grid;
+            gap: 10px; /* 버튼 사이 간격 */
+            width: fit-content;
+            /* 버튼 크기를 기반으로 클러스터 크기 조절 */
+            min-width: calc(clamp(55px, 15vw, 75px) * 2 + 10px); 
+        }
+
+        /* 5. [신규] 왼쪽 클러스터 (이동) */
+        .keypad-cluster.left-cluster {
+            grid-template-areas: 
+                "left right"  /* 1행: 좌/우 */
+                "down down"; /* 2행: 아래 */
+            grid-template-columns: 1fr 1fr; /* 1:1 비율 */
+        }
+        .keypad-cluster.left-cluster .pos-left { grid-area: left; }
+        .keypad-cluster.left-cluster .pos-right { grid-area: right; }
+        .keypad-cluster.left-cluster .pos-down { grid-area: down; }
+
+        /* 6. [신규] 오른쪽 클러스터 (액션) */
+        .keypad-cluster.right-cluster {
+            grid-template-areas: 
+                "hold drop"   /* 1행: 홀드/드롭 */
+                "rotate rotate"; /* 2행: 회전 */
+            grid-template-columns: 1fr 1fr; /* 1:1 비율 */
+            justify-items: stretch; /* 버튼이 꽉 차도록 */
+        }
+        .keypad-cluster.right-cluster .pos-hold { grid-area: hold; }
+        .keypad-cluster.right-cluster .pos-drop { grid-area: drop; }
+        .keypad-cluster.right-cluster .pos-rotate { grid-area: rotate; }
+
+        /* 7. [신규] 공통: 하단/상단 버튼은 2칸을 차지함 */
+        .keypad-cluster .pos-down,
+        .keypad-cluster .pos-rotate {
+             width: 100%; /* 부모 그리드에 꽉 차게 */
         }
 
 
@@ -530,8 +555,19 @@
         </div>
             <div id="touch-controls" style="display: none;">
             <div class="controls-row">
-                 <div class="touch-btn soft-drop" id="touch-down">▼</div>
-                 <div class="touch-btn hold" id="touch-hold">HOLD</div>
+                
+                <div class="keypad-cluster left-cluster">
+                    <div class="touch-btn move-left pos-left" id="touch-left-side">◀</div>
+                    <div class="touch-btn move-right pos-right" id="touch-right-side">▶</div>
+                    <div class="touch-btn soft-drop pos-down" id="touch-down">▼</div>
+                </div>
+
+                <div class="keypad-cluster right-cluster">
+                    <div class="touch-btn hold pos-hold" id="touch-hold">HOLD</div>
+                    <div class="touch-btn hard-drop pos-drop" id="touch-drop-side">DROP</div>
+                    <div class="touch-btn rotate pos-rotate" id="touch-rotate-side">↻</div>
+                </div>
+
             </div>
         </div>
 
@@ -798,12 +834,13 @@
                 
                 // [신규] 캐시 후 푸터 버튼 초기화 (JS가 제어하므로)
                 if (panelFooterRow) {
-                    panelFooterRow.innerHTML = '';
+                    // panelFooterRow.innerHTML = ''; // [수정] 이 줄을 주석 처리하여 HTML 버튼을 삭제하지 않도록 합니다.
                 }
             }
 
             // --- [신규] 버튼 레이아웃 업데이트 함수 ---
             function updateButtonLayout() {
+                return; // [수정] 스플릿 게임패드 레이아웃(정적 HTML)을 사용하므로 동적 업데이트를 중지합니다.
                 if (!panelLeft || !panelRight || !panelFooterRow || !btnRotate || !btnLeft || !btnDrop || !btnRight || !btnDown || !btnHold) {
                     console.warn("Button elements not cached, layout change skipped.");
                     return;
@@ -1154,7 +1191,7 @@
 
             function updateHeaderUI() {
                 // [신규] 토글 버튼 HTML 추가
-                const toggleButtonHTML = `<button class="keypad-toggle-btn" id="keypad-toggle-btn">PAD ${keypadType}</button>`;
+                const toggleButtonHTML = ''; // [수정] 토글 버튼 제거
 
                 gameHeader.innerHTML = `
                     <div class="player-info solo">
@@ -2053,13 +2090,9 @@
     </script>
 
     <div id="side-controls-left" class="side-control-panel">
-        <div class="touch-btn rotate" id="touch-rotate-side">↻</div>
-        <div class="touch-btn move-left" id="touch-left-side">◀</div>
-    </div>
+        </div>
     <div id="side-controls-right" class="side-control-panel">
-        <div class="touch-btn hard-drop" id="touch-drop-side">DROP</div>
-        <div class="touch-btn move-right" id="touch-right-side">▶</div>
-    </div>
+        </div>
 
 </body>
 </html>
