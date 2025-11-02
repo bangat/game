@@ -564,6 +564,14 @@
         .keypad-cluster.right-cluster .pos-drop { grid-area: drop; }
         .keypad-cluster.right-cluster .pos-rotate { grid-area: rotate; }
 
+        /* [신규] '커스텀' 모드일 때만 'Down'과 'Drop' 버튼을 넓게 만듭니다. */
+        /* (커스텀 모드 = .controls-row의 직계 자손일 때) */
+        .controls-row > #touch-down,
+        .controls-row > #touch-drop-side {
+            /* (기본 버튼 너비 * 2) + 기본 모드의 열 간격(25px) */
+            width: calc( (clamp(55px, 15vw, 75px) * 2) + 25px );
+        }
+        
         /* 7. [신규] 공통: 하단/상단 버튼은 2칸을 차지함 */
         .keypad-cluster .pos-down,
         .keypad-cluster .pos-drop { /* [수정] rotate -> drop */
@@ -2261,7 +2269,7 @@
                   function setupControls() {
                 document.addEventListener('keydown', handleKeyPress);
 
-            // --- [신규/수정] 개별 커스텀 키패드 레이아웃 적용 로직 (오버레이 방식) ---
+            // --- [신규/수정] 개별 커스텀 키패드 레이아웃 적용 로직 (하이브리드 방식) ---
                 try {
                     const settingsJSON = localStorage.getItem('tetrisKeypadSettings');
                     if (settingsJSON) {
@@ -2269,33 +2277,29 @@
                         
                         // "커스텀"이 선택되었고, 좌표 데이터가 있는지 확인
                         if (settings.layout === 'custom' && settings.custom && settings.custom.btnLeft) {
-                            console.log("개별 커스텀 키패드 레이아웃을 적용합니다. (오버레이 방식)");
+                            console.log("하이브리드 커스텀 키패드 레이아웃을 적용합니다. (고정 푸터 + 개별 좌표)");
                             
                             const touchControlsContainer = document.getElementById('touch-controls');
                             const controlsRow = document.querySelector('#touch-controls .controls-row');
                             
                             if (!touchControlsContainer || !controlsRow) return;
 
-                            // 1. [수정] #touch-controls(푸터)를 '절대 위치' 오버레이로 변경
-                            //    이렇게 하면 flex 레이아웃에서 빠져나와 보드를 밀어 올리지 않습니다.
-                            touchControlsContainer.style.position = 'absolute';
-                            touchControlsContainer.style.bottom = '0'; // #game-wrapper의 바닥에 고정
-                            touchControlsContainer.style.left = '0';
-                            touchControlsContainer.style.zIndex = '100'; // 게임 화면 위에 표시
-                            
-                            // 2. [수정] 프리뷰와 동일한 180px 높이로 고정
-                            touchControlsContainer.style.height = '170px'; /* [수정] 250px -> 180px */
-                            touchControlsContainer.style.minHeight = '0'; // flex-shrink 방지
-                            touchControlsContainer.style.padding = '0'; // (0,0) 좌표 일치
-                            
-                            // 3. [수정] 오버레이이므로 배경과 테두리 제거
-                            touchControlsContainer.style.background = 'transparent';
-                            touchControlsContainer.style.border = 'none';
-                            
-                            // 4. [수정] 기존 CSS Grid 레이아웃(.controls-row)은 숨김
-                            controlsRow.style.display = 'none';
+                            // 1. [수정] #touch-controls(푸터)를 고정 푸터로 유지하되,
+                            //    커스텀 모달과 동일한 170px 높이를 강제합니다.
+                            touchControlsContainer.style.height = '170px';
+                            touchControlsContainer.style.minHeight = '170px'; // flex-shrink 방지
 
-                            // 5. 6개의 버튼 ID와 설정 키를 매핑
+                            // 2. [수정] .controls-row를 '절대 위치' 버튼을 담을 샌드박스로 만듭니다.
+                            controlsRow.style.position = 'relative'; // 부모 기준점
+                            controlsRow.style.height = '100%';       // 부모(170px) 꽉 채움
+
+                            // 3. [신규] 기본 CSS 그리드 레이아웃(.left-cluster 등)은 숨깁니다.
+                            const leftCluster = controlsRow.querySelector('.left-cluster');
+                            const rightCluster = controlsRow.querySelector('.right-cluster');
+                            if (leftCluster) leftCluster.style.display = 'none';
+                            if (rightCluster) rightCluster.style.display = 'none';
+
+                            // 4. 6개의 버튼 ID와 설정 키를 매핑
                             const buttonKeys = {
                                 'touch-down': 'btnDown',
                                 'touch-left-side': 'btnLeft',
@@ -2305,23 +2309,23 @@
                                 'touch-drop-side': 'btnDrop'
                             };
 
-                            // 6. 각 버튼을 찾아 새 위치 적용
+                            // 5. 각 버튼을 찾아 새 위치 적용
                             for (const [elementId, settingKey] of Object.entries(buttonKeys)) {
                                 const button = document.getElementById(elementId);
                                 const pos = settings.custom[settingKey];
                                 
                                 if (button && pos) {
-                                    // 6-1. [수정] 버튼을 #touch-controls 컨테이너로 직접 이동
-                                    touchControlsContainer.appendChild(button);
+                                    // 5-1. [수정] 버튼을 .controls-row 샌드박스로 이동
+                                    controlsRow.appendChild(button);
                                     
-                                    // 6-2. 개별 좌표 적용
+                                    // 5-2. 개별 좌표 적용
                                     button.style.position = 'absolute';
                                     button.style.left = `${pos.x}%`;
                                     button.style.top = `${pos.y}%`;
                                 }
                             }
                         }
-                        // "기본" 레이아웃일 경우, 이 로직을 건너뛰고 원래 CSS가 적용됨.
+                        // "기본" 레이아웃일 경우, 이 if 블록을 건너뛰고 원래 CSS가 적용됨.
                     }
                 } catch (e) {
                     console.error("커스텀 키패드 설정 로드 실패:", e);
