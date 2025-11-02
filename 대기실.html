@@ -1068,17 +1068,33 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script>
         // --- 헬퍼 함수 ---
-        function showToast(message, duration = 3000) {
+        function showToast(message, duration = 3000, onClickCallback = null) {
             const container = document.getElementById('toast-container');
             if (!container) return;
             const toast = document.createElement('div');
             toast.className = 'toast-message';
             toast.textContent = message;
-            container.appendChild(toast);
-            setTimeout(() => {
+
+            let toastTimer = setTimeout(() => {
                 toast.style.animation = 'toast-fade-out 0.5s ease-out forwards';
                 toast.addEventListener('animationend', () => toast.remove());
             }, duration - 500);
+
+            // [신규] 클릭 콜백 기능 추가
+            if (onClickCallback) {
+                toast.style.cursor = 'pointer';
+                toast.onclick = () => {
+                    clearTimeout(toastTimer); // 자동삭제 타이머 취소
+                    onClickCallback(); // 클릭 시 콜백 실행
+                    
+                    // 즉시 페이드아웃
+                    toast.style.animation = 'toast-fade-out 0.5s ease-out forwards';
+                    toast.addEventListener('animationend', () => toast.remove());
+                };
+            }
+
+            container.appendChild(toast);
+            return toast; // toast DOM 요소를 반환
         }
 
         function escapeHTML(str) {
@@ -1307,75 +1323,81 @@
                 }
             });
 
-            // [수정] 알림 리스너 (친구 요청 + 쪽지 토스트)
+           // [수정] 알림 리스너 (뱃지 및 토스트)
             function listenToNotifications(uid) {
+                // 1. 기존 리스너 제거
                 if (friendRequestRef) friendRequestRef.off();
-                if (messageInboxRef) messageInboxRef.off(); // 토스트용 리스너는 분리
+                if (messageInboxRef) messageInboxRef.off();
+                // [신규] 뱃지용 리스너 참조
+                let friendBadgeRef = db.ref(`friend_requests/${uid}`);
+                let messageBadgeRef = db.ref(`user_inboxes/${uid}`);
 
-                // 1.1 친구 요청 리스너 (뱃지 + 토스트)
-                // [수정] 올바른 경로로 변경
-                friendRequestRef = db.ref(`friend_requests/${uid}`); 
-                friendRequestRef.on('value', async (snapshot) => {
-                    const newRequests = snapshot.val() || {};
+                // --- 1. 친구 요청 ---
+                // 1.1 뱃지용 리스너: 'value'로 항상 최신 개수 반영
+                friendRequestRef = friendBadgeRef.on('value', (snapshot) => {
                     currentRequestCount = snapshot.numChildren();
-                    
                     updateTotalBadge();
-                    
-                    if (isFirstRequestLoad) {
-                        currentFriendRequests = newRequests;
-                        isFirstRequestLoad = false;
-                        return;
-                    }
-                    
-                    const newRequestUids = Object.keys(newRequests).filter(uid => !currentFriendRequests[uid]);
-                    if (newRequestUids.length > 0) {
-                        const lastNewUid = newRequestUids[newRequestUids.length - 1];
-                        const requestProfile = newRequests[lastNewUid];
-                        if (requestProfile && requestProfile.nickname) {
-                            showToast(`💌 ${escapeHTML(requestProfile.nickname)}님에게 친구 요청이 도착했습니다!`);
-                        }
-                    }
-                    currentFriendRequests = newRequests;
                 });
 
-                // 1.2 [신규] 새 쪽지 뱃지 카운트용 리스너
-                const messageBadgeRef = db.ref(`user_inboxes/${uid}`);
-                messageBadgeRef.on('value', (snapshot) => {
+                // 1.2 토스트용 리스너: 'once'로 초기값 설정 후 'child_added'로 새 요청 감지
+                friendBadgeRef.once('value', (snapshot) => {
+                    currentFriendRequests = snapshot.val() || {};
+                    
+                    // 초기 로드 후 "새로 추가되는" 요청만 감지
+                    friendBadgeRef.on('child_added', async (childSnap) => {
+                        const newUid = childSnap.key;
+                        if (!currentFriendRequests[newUid]) { // 이전에 없던 요청이면
+                            currentFriendRequests[newUid] = childSnap.val(); // 로컬 캐시 갱신
+                            try {
+                                const profileSnap = await usersRef.child(newUid).child('profile').once('value');
+                                if (profileSnap.exists()) {
+                                    showToast(`💌 ${escapeHTML(profileSnap.val().nickname)}님에게 친구 요청이 도착했습니다!`);
+                                }
+                            } catch (e) { console.error(e); }
+                        }
+                    });
+                });
+
+
+                // --- 2. 쪽지 ---
+                // 2.1 뱃지용 리스너: 'value'로 항상 최신 개수 반영
+                messageInboxRef = messageBadgeRef.on('value', (snapshot) => {
                     currentMessageCount = snapshot.numChildren();
                     updateTotalBadge();
                 });
 
-                // 1.3 새 쪽지 리스너 (토스트 알림용)
-                messageInboxRef = db.ref(`user_inboxes/${uid}`);
-                
-                messageInboxRef.once('value', (snapshot) => {
-                    const data = snapshot.val();
-                    if (data) {
-                        Object.values(data).forEach(msg => {
-                            if (msg.timestamp > lastMessageTimestamp) {
-                                lastMessageTimestamp = msg.timestamp;
-                            }
+                // 2.2 토스트용 리스너: 'once'로 마지막 타임스탬프 설정 후 'child_added' / 'child_changed' 감지
+                messageBadgeRef.orderByChild('timestamp').limitToLast(1).once('value', (snapshot) => {
+                    if (snapshot.exists()) {
+                        snapshot.forEach(child => { // 1개만 반환됨
+                            lastMessageTimestamp = child.val().timestamp;
                         });
                     }
-                    const startTimestamp = lastMessageTimestamp === 0 ? 0 : lastMessageTimestamp + 1;
-                    messageInboxRef.orderByChild('timestamp').startAt(startTimestamp).on('child_added', (snap) => handleNewMessageAlert(snap));
-                    messageInboxRef.orderByChild('timestamp').startAt(startTimestamp).on('child_changed', (snap) => handleNewMessageAlert(snap));
+
+                    // [수정] 이전에 저장된 lastMessageTimestamp "보다 1이라도 큰" 새 메시지만 감지
+                    const startTimestamp = lastMessageTimestamp + 1;
+                    
+                    // 새 대화(child_added) 감지
+                    messageBadgeRef.orderByChild('timestamp').startAt(startTimestamp).on('child_added', (snap) => {
+                        lastMessageTimestamp = snap.val().timestamp; // 타임스탬프 갱신
+                        handleNewMessageAlert(snap.key, snap.val());
+                    });
+                    
+                    // 기존 대화(child_changed) 감지
+                    messageBadgeRef.orderByChild('timestamp').startAt(startTimestamp).on('child_changed', (snap) => {
+                        lastMessageTimestamp = snap.val().timestamp; // 타임스탬프 갱신
+                        handleNewMessageAlert(snap.key, snap.val());
+                    });
                 });
             }
 
-            // [수정] 새 쪽지 토스트 알림 핸들러
-            async function handleNewMessageAlert(snapshot) {
-                const messageData = snapshot.val();
-                const senderUid = snapshot.key;
+           // [수정] 새 쪽지 토스트 알림 핸들러
+            async function handleNewMessageAlert(senderUid, messageData) {
+                // [수정] messageData가 null일 경우를 대비한 방어 코드
+                if (!senderUid || !messageData || !messageData.lastMessage) return;
 
-                if (messageData.timestamp <= lastMessageTimestamp) return;
-                lastMessageTimestamp = messageData.timestamp;
 
                 if (messageModal.classList.contains('active') && messageModal.dataset.chattingWith === senderUid) {
-                    // [신규] 쪽지 모달이 열려있으면 해당 모달 내용 새로고침 (수동)
-                    if (currentMessageListener) {
-                         // 이미 리스너가 연결되어 있으므로 자동으로 갱신됩니다. (별도 처리 불필요)
-                    }
                     return; 
                 }
 
@@ -1383,17 +1405,16 @@
                     const profileSnap = await usersRef.child(senderUid).child('profile').once('value');
                     if (profileSnap.exists()) {
                         const nickname = escapeHTML(profileSnap.val().nickname);
-                        // [신규] 토스트 클릭 시 쪽지 모달 열기
-                        const toast = showToast(`✉️ ${nickname}님: ${escapeHTML(messageData.lastMessage)} (클릭해서 답장)`);
-                        if(toast) { // showToast가 toast element를 반환한다고 가정 (실제로는 수정 필요)
-                             // showToast 수정이 필요하지만, 일단 showToast 호출로 만족
-                        }
-                        // [임시] 토스트 클릭 이벤트는 showToast 함수 수정이 필요하므로,
-                        // 일단 토스트 알림만 띄우고, 클릭 시 팝업 기능은 openMessageModal을 수동 호출
                         
-                        // [수정] showToast는 DOM을 반환하지 않으므로, 팝업 기능은 일단 보류.
-                        // 토스트를 띄우는 것만으로 수정.
-                        showToast(`✉️ ${nickname}님: ${escapeHTML(messageData.lastMessage)}`);
+                        // [수정] 토스트 메시지 (클릭해서 답장) 하나만 남김
+                        const toastMessage = `✉️ ${nickname}님: ${escapeHTML(messageData.lastMessage)} (클릭해서 답장)`;
+                        // [수정] 클릭 시 모달을 열도록 콜백 함수 전달
+                        showToast(toastMessage, 4000, () => {
+                            openMessageModal(senderUid, nickname);
+                        });
+                        
+                        // [삭제] 중복 토스트 제거
+                        // showToast(`✉️ ${nickname}님: ${escapeHTML(messageData.lastMessage)}`);
                     }
                 } catch (error) {
                     console.error("쪽지 발신자 프로필 조회 실패:", error);
