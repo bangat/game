@@ -6,6 +6,50 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>미니게임지옥</title>
+
+    <!-- [신규] 카카오톡 인앱 브라우저 감지 및 탈출 스크립트 -->
+    <script>
+        (function() {
+            const userAgent = navigator.userAgent.toLowerCase();
+            // 'kakaotalk' 문자열이 User-Agent에 포함되어 있는지 확인
+            const isKakao = userAgent.indexOf('kakaotalk') > -1;
+
+            if (!isKakao) {
+                // 카카오톡 브라우저가 아니면 아무것도 안 함
+                return;
+            }
+
+            // A. 안드로이드인 경우 (크롬 인텐트 시도)
+            if (userAgent.indexOf('android') > -1) {
+                try {
+                    // 현재 URL을 가져와서 인텐트 URL로 만듭니다.
+                    const currentUrl = window.location.href;
+                    
+                    // 'intent:' 스킴을 사용하여 크롬(com.android.chrome)으로 열도록 시도
+                    // S.browser_fallback_url은 크롬이 없을 경우 Play Store로 보내는 예비 링크입니다.
+                    const intentUrl = 'intent:' + 
+                        currentUrl.replace(/https?:\/\//i, '') + 
+                        '#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=' + 
+                        encodeURIComponent('market://details?id=com.android.chrome') + 
+                        ';end';
+                    
+                    // 페이지를 인텐트 URL로 리다이렉트
+                    window.location.href = intentUrl;
+                } catch (e) {
+                    // 오류 발생 시 (예: 구형 안드로이드)
+                    console.warn('Android intent redirection failed:', e);
+                }
+            } 
+            // B. iOS(아이폰, 아이패드)인 경우
+            else if (userAgent.indexOf('iphone') > -1 || userAgent.indexOf('ipad') > -1) {
+                // iOS는 정책상 자동 리다이렉트가 불가능합니다.
+                // DOM이 로드된 후 "Safari로 열기" 안내 모달을 띄우도록 예약합니다.
+                window.openInSafariMessage = true;
+            }
+        })();
+    </script>
+    <!-- [신규] 스크립트 끝 -->
+
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#F3F7FD">
     <link href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff" as="font" type="font/woff" crossorigin>
@@ -217,6 +261,36 @@
             margin: 0;
             font-size: 1.1em;
         }
+
+        /* [신규] iOS 인앱 브라우저 안내 모달 스타일 */
+        #ios-inapp-modal .modal-content {
+            background: var(--panel-bg);
+            border-radius: 24px;
+            width: 90%; max-width: 350px;
+            overflow: hidden;
+            border: 4px solid var(--text-color-dark);
+            box-shadow: 8px 8px 0px 0px var(--text-color-dark);
+        }
+        #ios-inapp-modal .modal-body {
+            padding: 30px 20px 20px;
+            text-align: center;
+        }
+        #ios-inapp-modal h3 {
+            font-size: 1.4em;
+            margin-bottom: 15px;
+            color: var(--text-color-dark);
+        }
+        #ios-inapp-modal p {
+            font-size: 1em;
+            color: #333;
+            line-height: 1.5;
+        }
+        #ios-inapp-modal .modal-footer {
+            display: flex;
+            padding: 20px;
+            background-color: #FFFAE0;
+            border-top: 3px solid var(--panel-border);
+        }
     </style>
 </head>
 <body>
@@ -250,7 +324,9 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-<script src="아바타.js"></script> >
+
+    <script src="아바타.js"></script> 
+
     <div id="error-modal" class="overlay" style="display: none;">
         <div class="modal-content">
             <div class="modal-body">
@@ -259,6 +335,24 @@
             </div>
             <div class="modal-footer">
                 <button id="error-modal-close-btn" class="menu-btn primary" style="width: 100%; margin: 0;">확인</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- [신규] iOS 인앱 브라우저 안내 모달 -->
+    <div id="ios-inapp-modal" class="overlay" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-body">
+                <h3>Safari로 열어주세요</h3>
+                <p>
+                    원활한 게임 이용을 위해<br>
+                    카카오톡 브라우저가 아닌<br>
+                    Safari에서 열어야 합니다.<br><br>
+                    <strong>오른쪽 아래 '더보기(...)' 버튼을 눌러<br>'Safari로 열기'를 선택해 주세요.</strong>
+                </p>
+            </div>
+            <div class="modal-footer">
+                <!-- 이 모달은 사용자가 직접 닫을 수 없습니다. 브라우저를 옮겨야 합니다. -->
             </div>
         </div>
     </div>
@@ -288,6 +382,19 @@
 
 
     document.addEventListener('DOMContentLoaded', () => {
+
+        // [신규] iOS 인앱 브라우저 감지 시 모달 표시
+        // (head 태그 안의 스크립트에서 window.openInSafariMessage = true 로 설정한 값을 여기서 체크)
+        if (window.openInSafariMessage === true) {
+            const iosModal = document.getElementById('ios-inapp-modal');
+            if (iosModal) {
+                iosModal.style.display = 'flex';
+                // iOS 모달이 뜬 경우에는 다른 모든 게임 로직을 중단시킵니다.
+                return; 
+            }
+        }
+        // [신규] 코드 끝
+
 
         // [신규] 1. 초대장 확인: 페이지 로드 시 URL에서 'roomId'를 확인합니다.
         const urlParams = new URLSearchParams(window.location.search);
