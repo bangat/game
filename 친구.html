@@ -109,7 +109,6 @@
             gap: 8px;
         }
         .tab-btn {
-            flex: 1; /* 탭 버튼이 공간을 균등하게 차지 */
             min-width: 80px; /* [신규] 최소 너비 */
             padding: 10px 15px;
             font-size: 0.9em;
@@ -507,11 +506,6 @@
                 <div class="spinner"></div>
             </div>
         </div>
-        <div id="requests-content" class="tab-content">
-            <div class="user-list" id="friend-requests-container">
-                <div class="spinner"></div>
-            </div>
-        </div>
 
         <div id="messages-content" class="tab-content">
             <div class="message-list" id="messages-container">
@@ -660,6 +654,10 @@
             let myFriendIds = {}; // 내 친구 목록(ID)을 캐시
             let myPresenceRef = null; // [신규]
             
+            // [추가] 쪽지함 리스너 관리용
+            let messageInboxRef = null;
+            let messageInboxListener = null;
+
             // [신규] 쪽지 관련 변수
             let currentMessagesRef = null;
             let currentMessageListener = null;
@@ -877,6 +875,7 @@
                     }
                     
                     const requests = snapshot.val();
+
                     const requestUids = Object.keys(requests);
                     
                     // 뱃지에 요청 수 표시
@@ -1018,13 +1017,21 @@
                 return itemEl;
             }
             
-            // [추가] 4. 받은 쪽지함 리스너
+          // [추가] 4. 받은 쪽지함 리스너
             function listenToMessages() {
                 const messagesContainer = document.getElementById('messages-container');
                 messagesContainer.innerHTML = '<div class="spinner"></div>';
                 
-                const myInboxRef = db.ref(`user_inboxes/${currentUser.uid}`);
-                myInboxRef.orderByChild('timestamp').on('value', async (snapshot) => {
+                // [수정] 기존 리스너가 있다면 먼저 제거합니다. (중복 방지)
+                if (messageInboxRef && messageInboxListener) {
+                    messageInboxRef.off('value', messageInboxListener);
+                }
+
+                // [수정] 전역 변수에 Ref 할당
+                messageInboxRef = db.ref(`user_inboxes/${currentUser.uid}`);
+                
+                // [수정] 전역 변수에 리스너 할당
+                messageInboxListener = messageInboxRef.orderByChild('timestamp').on('value', async (snapshot) => {
                     const messageBadge = tabsContainer.querySelector('[data-tab="messages"] .badge');
                     
                     if (!snapshot.exists()) {
