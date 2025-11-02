@@ -887,12 +887,83 @@
             align-content: start;
         }
 
-        /* [삭제] .game-card 스타일 (game-list-item으로 대체됨) */
+       /* ------------------------- */
+        /* == 키패드 커스텀 모달 == */
+        /* ------------------------- */
+        #keypad-preview-area {
+            position: relative;
+            width: 100%;
+            height: 170px; 
+            background-color: #222;
+            background-image: linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
+                              linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px);
+            background-size: 20px 20px;
+            border-bottom: 3px solid var(--panel-border);
+            overflow: hidden; /* 버튼이 밖으로 나가지 않게 */
+        }
+        #tetris-keypad-clone {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+        
+        /* --- [신규] 테트리스 버튼 CSS (대기실용) --- */
+        /* (테트리스.html에서 레이아웃 부분만 가져옴) */
+        #keypad-custom-modal .touch-btn {
+            width: clamp(55px, 15vw, 70px); 
+            height: clamp(55px, 15vw, 70px);
+            display: flex; justify-content: center; align-items: center;
+            font-size: clamp(1rem, 3.5vw, 1.2rem);
+            font-weight: bold; color: var(--text-color-light);
+            background: rgba(255, 107, 107, 0.7);
+            border: 2px solid rgba(255, 255, 255, 0.4);
+            border-radius: 12px;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+            
+            /* [신규] 개별 드래그를 위해 position: absolute 추가 */
+            position: absolute;
+            cursor: move;
+            touch-action: none; /* 드래그 중 화면 스크롤 방지 */
+            z-index: 10;
+        }
+        #keypad-custom-modal .touch-btn:active {
+            background: #C04A4A;
+            z-index: 20; /* 드래그 시 최상단으로 */
+        }
+        
+        /* [삭제] .keypad-cluster 관련 CSS는 모달에서 모두 제거 */
+
+        /* [신규] game-mode-tabs가 세팅 모달에서도 잘 보이게 */
+        #game-settings-modal .game-mode-tabs {
+            display: flex;
+            gap: 6px;
+            width: 100%;
+        }
+        #game-settings-modal .game-mode-tab-btn {
+            flex: 1;
+            padding: 10px;
+            font-size: 1em;
+            font-weight: 700;
+            border-radius: 10px;
+            border: 2px solid var(--panel-border);
+            background: white;
+            color: #888;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        #game-settings-modal .game-mode-tab-btn.active {
+            background: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+        }
         
         #game-mode-tabs {
             padding-top: 10px !important; /* [수정] */
             padding-bottom: 10px !important; /* [수정] */
         }
+
+
     </style>
 </head>
 <body>
@@ -983,6 +1054,19 @@
             <div class="modal-header"><h2>게임 설정</h2></div>
             <div class="modal-body">
                 <ul class="settings-list">
+
+                    <li class="setting-item" style="flex-direction: column; align-items: flex-start;">
+                            <span class="setting-label" style="margin-bottom: 10px;">🎮 테트리스 키패드</span>
+                            <div id="keypad-layout-selector" class="game-mode-tabs" style="width:100%;">
+                                <button class="game-mode-tab-btn active" data-layout="default">기본</button>
+                                <button class="game-mode-tab-btn" data-layout="custom">커스텀</button>
+                            </div>
+                        </li>
+                        <li class="setting-item">
+                            <span class="setting-label">🔧 커스텀 레이아웃</span>
+                            <button id="open-keypad-custom-btn" class="menu-btn secondary" style="font-size: 0.9em; padding: 8px 12px; border-bottom-width: 3px; max-width: 120px;">설정하기</button>
+                        </li>
+
                     <li class="setting-item">
                         <span class="setting-label">🔔 효과음</span>
                         <label class="toggle-switch">
@@ -1212,6 +1296,178 @@
             const sfxToggle = document.getElementById('sfx-toggle');
             const bgmToggle = document.getElementById('bgm-toggle');
             const vibrationToggle = document.getElementById('vibration-toggle');
+
+          // --- [수정] 테트리스 키패드 커스텀 UI (개별 버튼 + 겹침 버그 수정) ---
+            const keypadLayoutSelector = document.getElementById('keypad-layout-selector');
+            const openKeypadCustomBtn = document.getElementById('open-keypad-custom-btn');
+            const keypadCustomModal = document.getElementById('keypad-custom-modal');
+            const saveKeypadBtn = document.getElementById('save-keypad-btn');
+            const resetKeypadBtn = document.getElementById('reset-keypad-btn');
+            const keypadPreviewArea = document.getElementById('keypad-preview-area');
+            const draggableButtons = document.querySelectorAll('#keypad-preview-area .draggable-btn'); 
+            const tetrisKeypadSettingsKey = 'tetrisKeypadSettings';
+            
+            const defaultKeypadPositions = {
+                btnDown: { x: 14, y: 70 },
+                btnLeft: { x: 5, y: 40 },
+                btnRight: { x: 25, y: 40 },
+                btnHold: { x: 55, y: 40 },
+                btnRotate: { x: 75, y: 40 },
+                btnDrop: { x: 65, y: 70 }
+            };
+
+            let tetrisKeypadSettings = {
+                layout: 'default',
+                custom: JSON.parse(JSON.stringify(defaultKeypadPositions)) 
+            };
+
+            let activeButton = null; 
+            let dragOffsetX = 0;
+            let dragOffsetY = 0;
+
+            function onDragStart(e) {
+                if (gameSettings.sfx) clickSound.play();
+                activeButton = this; 
+                activeButton.style.zIndex = 20;
+                
+                const touch = e.type === 'touchstart' ? e.touches[0] : e;
+                const buttonRect = activeButton.getBoundingClientRect(); 
+                
+                dragOffsetX = touch.clientX - buttonRect.left;
+                dragOffsetY = touch.clientY - buttonRect.top;
+            }
+
+            function onDragMove(e) {
+                if (!activeButton) return; 
+                e.preventDefault(); 
+
+                const touch = e.type === 'touchmove' ? e.touches[0] : e;
+                const previewRect = keypadPreviewArea.getBoundingClientRect();
+                
+                let x = touch.clientX - previewRect.left - dragOffsetX;
+                let y = touch.clientY - previewRect.top - dragOffsetY;
+
+                x = Math.max(0, Math.min(x, previewRect.width - activeButton.offsetWidth));
+                y = Math.max(0, Math.min(y, previewRect.height - activeButton.offsetHeight));
+
+                activeButton.style.left = `${x}px`;
+                activeButton.style.top = `${y}px`;
+            }
+
+            function onDragEnd(e) {
+                if (!activeButton) return; 
+                activeButton.style.zIndex = 10;
+                
+                const previewRect = keypadPreviewArea.getBoundingClientRect();
+                const buttonId = activeButton.dataset.key; 
+                
+                const currentX = parseFloat(activeButton.style.left);
+                const currentY = parseFloat(activeButton.style.top);
+                
+                const xPercent = (currentX / previewRect.width) * 100;
+                const yPercent = (currentY / previewRect.height) * 100;
+
+                tetrisKeypadSettings.custom[buttonId] = { x: xPercent, y: yPercent };
+                
+                activeButton = null; 
+            }
+
+            draggableButtons.forEach(btn => { 
+                btn.addEventListener('mousedown', onDragStart);
+                btn.addEventListener('touchstart', onDragStart, { passive: false });
+            });
+            document.addEventListener('mousemove', onDragMove);
+            document.addEventListener('touchmove', onDragMove, { passive: false });
+            document.addEventListener('mouseup', onDragEnd);
+            document.addEventListener('touchend', onDragEnd);
+            
+            function loadTetrisKeypadSettings() {
+                const saved = localStorage.getItem(tetrisKeypadSettingsKey);
+                if (saved) {
+                    try {
+                        const parsed = JSON.parse(saved);
+                        if (parsed.custom && parsed.custom.btnLeft && typeof parsed.custom.btnLeft.x === 'number') {
+                             tetrisKeypadSettings = parsed;
+                        } else {
+                            localStorage.removeItem(tetrisKeypadSettingsKey);
+                        }
+                    } catch(e) { 
+                        console.error("키패드 설정 로드 실패", e); 
+                        localStorage.removeItem(tetrisKeypadSettingsKey);
+                    }
+                }
+            }
+            
+            function saveTetrisKeypadSettings() {
+                localStorage.setItem(tetrisKeypadSettingsKey, JSON.stringify(tetrisKeypadSettings));
+                showToast('키패드 설정이 저장되었습니다.');
+            }
+
+            function updateKeypadSelectorUI() {
+                document.querySelectorAll('#keypad-layout-selector .game-mode-tab-btn').forEach(btn => {
+                    btn.classList.toggle('active', btn.dataset.layout === tetrisKeypadSettings.layout);
+                });
+            }
+            
+            function applyCustomLayoutToPreview() {
+                loadTetrisKeypadSettings(); // [수정] 저장된 설정을 불러옵니다.
+                
+                const previewRect = keypadPreviewArea.getBoundingClientRect();
+                
+                // [수정] showModal이 렌더링을 보장하므로,
+                // 0인지 체크하는 rAF 루프를 제거합니다.
+
+                draggableButtons.forEach(btn => {
+                    const key = btn.dataset.key;
+                    const pos = (tetrisKeypadSettings.custom && tetrisKeypadSettings.custom[key]) 
+                                ? tetrisKeypadSettings.custom[key] 
+                                : defaultKeypadPositions[key];
+                    
+                    btn.style.left = `${(pos.x / 100) * previewRect.width}px`;
+                    btn.style.top = `${(pos.y / 100) * previewRect.height}px`;
+                });
+            }
+
+            keypadLayoutSelector.addEventListener('click', (e) => {
+                if (e.target.classList.contains('game-mode-tab-btn')) {
+                    if (gameSettings.sfx) clickSound.play();
+                    const layout = e.target.dataset.layout;
+                    tetrisKeypadSettings.layout = layout;
+                    updateKeypadSelectorUI();
+                    saveTetrisKeypadSettings();
+                }
+            });
+
+            openKeypadCustomBtn.addEventListener('click', () => {
+                if (gameSettings.sfx) clickSound.play();
+                
+                showModal(keypadCustomModal, () => {
+                    // [수정] 렌더링 대기 후 좌표 적용 (겹침 버그 수정)
+                    function waitForRenderAndApply() {
+                        const previewRect = keypadPreviewArea.getBoundingClientRect();
+                        if (previewRect.width > 0) {
+                            applyCustomLayoutToPreview();
+                        } else {
+                            requestAnimationFrame(waitForRenderAndApply);
+                        }
+                    }
+                    requestAnimationFrame(waitForRenderAndApply);
+                });
+            });
+
+            saveKeypadBtn.addEventListener('click', () => {
+                if (gameSettings.sfx) clickSound.play();
+                saveTetrisKeypadSettings();
+                closeAllModals();
+                showModal(gameSettingsModal);
+            });
+            
+            resetKeypadBtn.addEventListener('click', () => {
+                if (gameSettings.sfx) clickSound.play();
+                tetrisKeypadSettings.custom = JSON.parse(JSON.stringify(defaultKeypadPositions));
+                applyCustomLayoutToPreview();
+                showToast('키패드 위치를 초기화했습니다.');
+            });
 
             const chatMessagesContainer = document.getElementById('chat-messages');
             const chatInput = document.getElementById('chat-input');
@@ -1540,14 +1796,27 @@
                 showModal(gameSelectModal, () => renderGameOptions('multi'));
             });
 
-            // [수정] <a> 태그는 클릭 리스너 불필요
-            // document.getElementById('shop-btn').addEventListener('click', ...);
-            // document.getElementById('friend-btn').addEventListener('click', ...);
-            // document.getElementById('ranking-btn').addEventListener('click', ...);
             
             function showModal(modal, onShow) { 
-                if (onShow) onShow();
                 modal.classList.add('active'); 
+                
+                if (onShow) {
+                    // [수정] 50ms 타이머 대신, 렌더링이 완료되었는지 (너비 > 0)
+                    // requestAnimationFrame으로 계속 확인합니다.
+                    function checkRender() {
+                        // 모달의 .modal-content가 렌더링되었는지 확인
+                        const content = modal.querySelector('.modal-content');
+                        if (content && content.clientWidth > 0) {
+                            // 렌더링 완료, 콜백 실행
+                            onShow();
+                        } else {
+                            // 렌더링 전, 다음 프레임에 다시 확인
+                            requestAnimationFrame(checkRender);
+                        }
+                    }
+                    // 다음 프레임에서 확인 시작
+                    requestAnimationFrame(checkRender);
+                }
             }
             function closeAllModals() { document.querySelectorAll('.overlay').forEach(m => m.classList.remove('active')); }
 
@@ -1890,6 +2159,11 @@
 
             openSettingsBtn.addEventListener('click', () => {
                 if (gameSettings.sfx) clickSound.play();
+                
+                // [신규] 키패드 설정 불러오기
+                loadTetrisKeypadSettings();
+                updateKeypadSelectorUI();
+
                 sfxToggle.checked = gameSettings.sfx;
                 bgmToggle.checked = gameSettings.bgm;
                 vibrationToggle.checked = gameSettings.vibration;
@@ -1906,6 +2180,94 @@
             sfxToggle.addEventListener('change', createToggleListener('sfx'));
             bgmToggle.addEventListener('change', createToggleListener('bgm'));
             vibrationToggle.addEventListener('change', createToggleListener('vibration'));
+
+            // --- [신규] 테트리스 키패드 로직 ---
+            function loadTetrisKeypadSettings() {
+                const saved = localStorage.getItem(tetrisKeypadSettingsKey);
+                if (saved) {
+                    try {
+                        const parsed = JSON.parse(saved);
+                        // [수정] 저장된 값이 % 좌표를 가지고 있는지 확인
+                        if (parsed.custom && parsed.custom.leftCluster && typeof parsed.custom.leftCluster.x === 'number') {
+                             tetrisKeypadSettings = parsed;
+                        } else {
+                            // 구버전이거나 형식이 다르면 초기화
+                            localStorage.removeItem(tetrisKeypadSettingsKey);
+                        }
+                    } catch(e) { 
+                        console.error("키패드 설정 로드 실패", e); 
+                        localStorage.removeItem(tetrisKeypadSettingsKey);
+                    }
+                }
+            }
+            
+            function saveTetrisKeypadSettings() {
+                localStorage.setItem(tetrisKeypadSettingsKey, JSON.stringify(tetrisKeypadSettings));
+                showToast('키패드 설정이 저장되었습니다.');
+            }
+
+            function updateKeypadSelectorUI() {
+                document.querySelectorAll('#keypad-layout-selector .game-mode-tab-btn').forEach(btn => {
+                    btn.classList.toggle('active', btn.dataset.layout === tetrisKeypadSettings.layout);
+                });
+            }
+            
+            function applyCustomLayoutToPreview() {
+                loadTetrisKeypadSettings(); // 최신 설정 로드
+                
+                const left = document.querySelector('#keypad-preview-area .left-cluster');
+                const right = document.querySelector('#keypad-preview-area .right-cluster');
+                const previewRect = keypadPreviewArea.getBoundingClientRect();
+
+                const leftPos = tetrisKeypadSettings.custom.leftCluster || { x: 5, y: 50 };
+                const rightPos = tetrisKeypadSettings.custom.rightCluster || { x: 55, y: 50 };
+
+                // [수정] %를 px로 변환하여 적용
+                left.style.left = `${(leftPos.x / 100) * previewRect.width}px`;
+                left.style.top = `${(leftPos.y / 100) * previewRect.height}px`;
+
+                right.style.left = `${(rightPos.x / 100) * previewRect.width}px`;
+                right.style.top = `${(rightPos.y / 100) * previewRect.height}px`;
+            }
+
+            keypadLayoutSelector.addEventListener('click', (e) => {
+                if (e.target.classList.contains('game-mode-tab-btn')) {
+                    if (gameSettings.sfx) clickSound.play();
+                    const layout = e.target.dataset.layout;
+                    tetrisKeypadSettings.layout = layout;
+                    updateKeypadSelectorUI();
+                    saveTetrisKeypadSettings(); // 레이아웃 선택(기본/커스텀) 즉시 저장
+                }
+            });
+
+            openKeypadCustomBtn.addEventListener('click', () => {
+                if (gameSettings.sfx) clickSound.play();
+                
+                // [수정] 모달을 표시하고, 콜백으로 applyCustomLayoutToPreview 함수를 직접 넘깁니다.
+                showModal(keypadCustomModal, applyCustomLayoutToPreview);
+            });
+
+            saveKeypadBtn.addEventListener('click', () => {
+                if (gameSettings.sfx) clickSound.play();
+                // [수정] 드래그 종료 시 임시 저장된 x, y 값을 localStorage에 최종 저장
+                saveTetrisKeypadSettings();
+                closeAllModals();
+                showModal(gameSettingsModal); // 설정 모달로 복귀
+            });
+            
+            resetKeypadBtn.addEventListener('click', () => {
+                if (gameSettings.sfx) clickSound.play();
+                // [신규] 초기값으로 리셋
+                tetrisKeypadSettings.custom = { 
+                    leftCluster: { x: 5, y: 50 }, 
+                    rightCluster: { x: 55, y: 50 }
+                };
+                
+                applyCustomLayoutToPreview(); // 프리뷰 UI에 즉시 반영
+                
+                showToast('키패드 위치를 초기화했습니다.');
+                // 저장은 "저장" 버튼을 눌러야만 됨
+            });
 
             logoutBtn.addEventListener('click', () => {
                 if (currentUser) {
@@ -2053,5 +2415,35 @@
             }
         });
     </script>
+
+    <div id="keypad-custom-modal" class="overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button class="back-btn" data-close>‹</button>
+                <h2>키패드 커스텀</h2>
+            </div>
+            <div class="modal-body" style="padding: 0; overflow: hidden; max-height: 70vh; background: #333;">
+                <p style="color: white; text-align: center; padding: 10px 0; font-size: 0.9em; background: #222;">
+                    버튼 그룹을 드래그하여 위치를 조절하세요.
+                </p>
+              <div id="keypad-preview-area">
+                    <div id="tetris-keypad-clone">
+                        <div class="touch-btn draggable-btn pos-down" data-key="btnDown">▼</div>
+                        <div class="touch-btn draggable-btn pos-left" data-key="btnLeft">◀</div>
+                        <div class="touch-btn draggable-btn pos-right" data-key="btnRight">▶</div>
+                        
+                        <div class="touch-btn draggable-btn pos-hold" data-key="btnHold">HOLD</div>
+                        <div class="touch-btn draggable-btn pos-rotate" data-key="btnRotate">↻</div>
+                        <div class="touch-btn draggable-btn pos-drop" data-key="btnDrop">DROP</div>
+                    </div>
+                </div>
+                </div>
+            <div class="modal-footer">
+                <button id="reset-keypad-btn" class="menu-btn light">초기화</button>
+                <button id="save-keypad-btn" class="menu-btn secondary">저장</button>
+            </div>
+        </div>
+    </div>
+
 </body>
 </html>
