@@ -770,7 +770,7 @@ availableGames = [
             { id: 'quiz', name: 'AI 스피드퀴즈', icon: '❓', file: 'ai퀴즈.html', maxPlayers: 4 },
             { id: 'bomber', name: '크레이지 봄버', icon: '💣', file: '봄버맨.html', maxPlayers: 4 },
             { id: 'shisenSho', name: '사천성', icon: '🀄', file: '사천성.html', maxPlayers: 3 },
-            { id: 'tetris', name: '테트리스', icon: '🧱', file: '테트리스.html', maxPlayers: 2, color: '#2980b9', canSolo: false }
+            { id: 'tetris', name: '테트리스', icon: '🧱', file: '테트리스.html', maxPlayers: 4, color: '#2980b9', canSolo: false }
         ];
 
         // ✨ [수정] 게임 설정 로드
@@ -1328,8 +1328,8 @@ if (inviteBtn) {
         document.addEventListener('visibilitychange', () => {
             if (!roomRef || !currentUser) return; // 방 나가기 처리 중이거나, 아직 방 정보가 로드 안됐으면 무시
             
-            // on('value')가 실행되기 전, 즉 currentRoomData가 없거나 내가 players에 없으면 무시
-            if (!currentRoomData || !currentRoomData.players || !currentRoomData.players[currentUser.uid]) return; 
+            // [수정] currentRoomData null 체크 간소화
+            if (!currentRoomData) return; 
 
             if (document.visibilityState === 'hidden') {
                 // 앱이 숨겨지면 (카톡 전환 등), onDisconnect 핸들러를 즉시 취소
@@ -1345,13 +1345,25 @@ if (inviteBtn) {
             } else if (document.visibilityState === 'visible') {
                 // 앱으로 돌아오면, onDisconnect 핸들러를 즉시 재설정
                 console.log("App visible, onDisconnect 재설정.");
-                if (isHost) {
-                    hostOnDisconnect = roomRef.onDisconnect();
-                    hostOnDisconnect.remove();
-                } else {
-                    playerOnDisconnect = roomRef.child('players/' + currentUser.uid).onDisconnect();
-                    playerOnDisconnect.remove();
-                }
+                
+                // [핵심 수정] isHost 변수를 신뢰하지 않고, DB에서 최신 hostId를 *직접* 읽어옵니다.
+                roomRef.child('hostId').once('value', hostIdSnapshot => {
+                    const currentHostId = hostIdSnapshot.val();
+                    const amIHostNow = (currentHostId === currentUser.uid);
+                    
+                    // [수정] DB에서 읽어온 최신 hostId 기준으로 핸들러 설정
+                    if (amIHostNow) {
+                        console.log("...DB 확인: 내가 Host임. Host 핸들러 설정.");
+                        if (playerOnDisconnect) { try { playerOnDisconnect.cancel(); } catch(e) {} }
+                        hostOnDisconnect = roomRef.onDisconnect();
+                        hostOnDisconnect.remove();
+                    } else {
+                        console.log("...DB 확인: 내가 Guest임. Guest 핸들러 설정.");
+                        if (hostOnDisconnect) { try { hostOnDisconnect.cancel(); } catch(e) {} }
+                        playerOnDisconnect = roomRef.child('players/' + currentUser.uid).onDisconnect();
+                        playerOnDisconnect.remove();
+                    }
+                });
             }
         });
         // --- ✨ 코드 추가 끝 ---
