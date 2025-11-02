@@ -116,6 +116,12 @@ window.avatarShopItems = [
         name: '마법사고양이', 
         url: './아바타폴더/마법사고양이.png',
         price: 2000
+    },
+                    { 
+        id: 'avatar_rabbit', 
+        name: '당근토끼', 
+        url: './아바타폴더/당근토끼.png',
+        price: 2000
     }
     // ▲▲▲ [신규 추가] ▲▲▲
 ];
