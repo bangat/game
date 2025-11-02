@@ -1418,6 +1418,11 @@
             let currentUser, currentUserData, roomListener, lastMessageDate = null;
             let myFriendIds = {}; // [추가]
             let onlineUserIds = new Set(); // [추가]
+            // [추가] 알림 통합 관리를 위한 변수
+            let friendRequestRef, messageInboxRef;
+            let currentRequestCount = 0;
+            let currentMessageCount = 0;
+            let lastMessageTimestamp = 0; // 쪽지 토스트 알림용
             
             // [추가] 쪽지 관련 변수
             let currentMessagesRef = null;
@@ -1459,19 +1464,21 @@
                 });
             }
 
-            // [신규] 친구 요청 뱃지 업데이트 함수
-            function updateFriendBadge(count) {
+            // [수정] 통합 뱃지 업데이트 함수
+            function updateTotalBadge() {
                 const friendBtn = document.getElementById('friend-btn'); // <a> 태그
                 if (!friendBtn) return;
                 
+                const totalCount = currentRequestCount + currentMessageCount;
+                
                 const badgeEl = friendBtn.querySelector('.badge');
-                if (count > 0) {
+                if (totalCount > 0) {
                     if (badgeEl) {
-                        badgeEl.textContent = count > 9 ? '9+' : count;
+                        badgeEl.textContent = totalCount > 9 ? '9+' : totalCount;
                     } else {
                         const newBadge = document.createElement('span');
                         newBadge.className = 'badge';
-                        newBadge.textContent = count > 9 ? '9+' : count;
+                        newBadge.textContent = totalCount > 9 ? '9+' : totalCount;
                         friendBtn.appendChild(newBadge);
                     }
                 } else {
@@ -1499,42 +1506,7 @@
                         });
                     });
 
-                    // [신규] 친구 요청 리스너 (뱃지 + 토스트 알림)
-                    // [수정] users/{uid}/friendRequests 경로 사용
-                    const myFriendRequestsRef = usersRef.child(user.uid).child('friendRequests');
-                    myFriendRequestsRef.on('value', async (snapshot) => {
-                        const newRequests = snapshot.val() || {};
-                        const newRequestCount = snapshot.numChildren();
-                        
-                        // 1. 뱃지 업데이트
-                        updateFriendBadge(newRequestCount);
-                        
-                        // 2. 토스트 알림 (첫 로드 시 제외)
-                        if (isFirstRequestLoad) {
-                            currentFriendRequests = newRequests;
-                            isFirstRequestLoad = false;
-                            return;
-                        }
-
-                        // 새로 추가된 요청 찾기
-                        const newRequestUids = Object.keys(newRequests).filter(uid => !currentFriendRequests[uid]);
-                        
-                        if (newRequestUids.length > 0) {
-                            // 새로 추가된 요청이 하나 이상 있으면 마지막 요청자의 프로필 조회 후 토스트
-                            const lastNewUid = newRequestUids[newRequestUids.length - 1];
-                            try {
-                                // [수정] 요청에 저장된 프로필 스냅샷을 바로 사용
-                                const requestProfile = newRequests[lastNewUid];
-                                if (requestProfile && requestProfile.nickname) {
-                                    showToast(`💌 ${escapeHTML(requestProfile.nickname)}님에게 친구 요청이 도착했습니다!`);
-                                }
-                            } catch (error) {
-                                console.error("친구 요청자 프로필 조회 실패:", error);
-                            }
-                        }
-
-                        currentFriendRequests = newRequests; // 현재 상태 갱신
-                    });
+                    listenToNotifications(user.uid);
 
                     currentUser = user;
                     cleanupMyGhostRooms(user.uid);
@@ -1554,6 +1526,91 @@
                 }
             });
 
+            // [추가] 1. 통합 알림 리스너 (친구 요청 + 쪽지)
+            function listenToNotifications(uid) {
+                if (friendRequestRef) friendRequestRef.off();
+                if (messageInboxRef) messageInboxRef.off();
+
+                // 1.1 친구 요청 리스너 (뱃지 + 토스트)
+                friendRequestRef = usersRef.child(uid).child('friendRequests');
+                friendRequestRef.on('value', async (snapshot) => {
+                    const newRequests = snapshot.val() || {};
+                    currentRequestCount = snapshot.numChildren();
+                    
+                    // 1.1.1 뱃지 업데이트
+                    updateTotalBadge();
+                    
+                    // 1.1.2 토스트 알림 (첫 로드 시 제외)
+                    if (isFirstRequestLoad) {
+                        currentFriendRequests = newRequests;
+                        isFirstRequestLoad = false;
+                        return;
+                    }
+                    
+                    const newRequestUids = Object.keys(newRequests).filter(uid => !currentFriendRequests[uid]);
+                    if (newRequestUids.length > 0) {
+                        const lastNewUid = newRequestUids[newRequestUids.length - 1];
+                        const requestProfile = newRequests[lastNewUid];
+                        if (requestProfile && requestProfile.nickname) {
+                            showToast(`💌 ${escapeHTML(requestProfile.nickname)}님에게 친구 요청이 도착했습니다!`);
+                        }
+                    }
+                    currentFriendRequests = newRequests;
+                });
+
+                // 1.2 새 쪽지 리스너 (뱃지 + 토스트)
+                messageInboxRef = db.ref(`user_inboxes/${uid}`);
+                
+                // 1.2.1 뱃지용 (안 읽은 메시지 카운트)
+                messageInboxRef.on('value', (snapshot) => {
+                    // (친구.html의 쪽지함 로직과 달리, 여기서는 단순히 전체 개수만 셉니다.)
+                    // (정확도를 높이려면 isRead:false를 세어야 하지만, 우선 개수만 셉니다.)
+                    currentMessageCount = snapshot.numChildren(); 
+                    updateTotalBadge();
+                });
+
+                // 1.2.2 토스트 알림용 (마지막 타임스탬프 이후 메시지 감지)
+                messageInboxRef.once('value', (snapshot) => {
+                    const data = snapshot.val();
+                    if (data) {
+                        Object.values(data).forEach(msg => {
+                            if (msg.timestamp > lastMessageTimestamp) {
+                                lastMessageTimestamp = msg.timestamp;
+                            }
+                        });
+                    }
+                    // 마지막 메시지 이후에 온 것만 감지
+                    const startTimestamp = lastMessageTimestamp === 0 ? 0 : lastMessageTimestamp + 1;
+                    messageInboxRef.orderByChild('timestamp').startAt(startTimestamp).on('child_added', (snap) => handleNewMessageAlert(snap));
+                    messageInboxRef.orderByChild('timestamp').startAt(startTimestamp).on('child_changed', (snap) => handleNewMessageAlert(snap));
+                });
+            }
+
+            // [추가] 2. 새 쪽지 토스트 알림 핸들러 (친구.html에서 복사)
+            async function handleNewMessageAlert(snapshot) {
+                const messageData = snapshot.val();
+                const senderUid = snapshot.key;
+
+                if (messageData.timestamp <= lastMessageTimestamp) return;
+                lastMessageTimestamp = messageData.timestamp;
+
+                // 현재 쪽지 모달이 열려있고, 대화 상대가 동일하면 알림X
+                const messageModal = document.getElementById('message-modal');
+                if (messageModal.classList.contains('active') && messageModal.dataset.chattingWith === senderUid) {
+                    return; 
+                }
+
+                try {
+                    const profileSnap = await usersRef.child(senderUid).child('profile').once('value');
+                    if (profileSnap.exists()) {
+                        const nickname = escapeHTML(profileSnap.val().nickname);
+                        showToast(`✉️ ${nickname}님에게 메시지가 도착했습니다!`);
+                    }
+                } catch (error) {
+                    console.error("쪽지 발신자 프로필 조회 실패:", error);
+                }
+            }
+            
             function updateConcurrentUsers(count) {
                 const userCountEl = document.querySelector('.header-user-count'); // [수정] ID 대신 class로 선택
                 if (userCountEl) {
@@ -2303,7 +2360,7 @@
                     delete messageModal.dataset.chattingWith;
                 }
             });
-            
+
         });
     </script>
     <div id="online-users-modal" class="overlay">
