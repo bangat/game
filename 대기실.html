@@ -216,12 +216,12 @@
             margin: 10px 12px 10px; 
             width: calc(100% - 24px);
             box-shadow: 2px 2px 0px 0px var(--panel-shadow);
-            /* cursor: pointer; (제거) */
-            /* transition: background-color 0.2s; (제거) */
+            cursor: pointer; 
+            transition: background-color 0.2s; 
         }
-        /* .header-user-count:active { (제거)
+         .header-user-count:active { 
             background-color: var(--panel-border);
-        } */
+        } 
         .header-user-count strong {
             color: var(--primary-color);
             font-size: 1.2em;
@@ -984,6 +984,120 @@
             padding: 12px; /* [추가] 게임 카드 목록에 여백 추가 */
         }
 
+        /* [추가] 접속자 목록 (친구.html 스타일 재사용) */
+        .user-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .user-list-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px;
+            background-color: var(--panel-bg);
+            border: 3px solid var(--panel-border);
+            border-radius: 16px;
+            box-shadow: 4px 4px 0px 0px var(--panel-shadow);
+        }
+        .user-list-avatar {
+            width: 44px; height: 44px; font-size: 2.2em;
+            display: flex; justify-content: center; align-items: center;
+            border-radius: 12px; border: 3px solid var(--text-color-dark);
+            background-color: var(--panel-bg);
+            overflow: hidden; flex-shrink: 0;
+            position: relative; /* 온라인 표시 기준점 */
+        }
+        .user-list-avatar img { width: 100%; height: 100%; object-fit: contain; }
+        
+        /* [추가] 온라인 상태 표시 */
+        .online-dot {
+            position: absolute;
+            bottom: -3px;
+            right: -3px;
+            width: 14px;
+            height: 14px;
+            background-color: #4CAF50; /* 초록색 */
+            border-radius: 50%;
+            border: 2px solid white;
+            box-shadow: 0 0 5px rgba(0,0,0,0.3);
+        }
+
+        .user-list-nickname {
+            font-weight: 700;
+            font-size: 1.0em;
+            flex-grow: 1; min-width: 0;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .user-list-item.is-me {
+            background-color: #FFF8E1;
+        }
+        .user-list-item.is-me .user-list-nickname {
+            color: var(--primary-color);
+        }
+        
+        .user-item-actions {
+            display: flex; gap: 8px; flex-shrink: 0;
+        }
+        .user-action-btn {
+            font-size: 0.9em;
+            padding: 10px 12px;
+            min-width: 60px;
+            width: auto;
+            border-radius: 12px;
+            border-bottom-width: 4px;
+        }
+        .user-action-btn.add-friend {
+            background-color: var(--primary-color); 
+            color: var(--text-color-light); 
+            border-bottom-color: #C04A4A;
+        }
+        .user-action-btn.send-message {
+            background-color: var(--accent-color); 
+            color: var(--text-color-dark); 
+            border-bottom-color: #D1B030;
+        }
+
+        /* [추가] 쪽지 보내기 모달 (친구.html 쪽지 모달과 동일) */
+        #message-modal .modal-body {
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            height: 60vh; max-height: 500px;
+        }
+        #message-history {
+            flex-grow: 1; overflow-y: auto; padding: 15px;
+            display: flex; flex-direction: column-reverse;
+            background-color: var(--bg-color);
+        }
+        #message-input-area {
+            display: flex; padding: 10px; border-top: 3px solid var(--panel-border);
+            gap: 8px; background-color: #FFFAE0;
+        }
+        #message-input {
+            flex-grow: 1; border: 2px solid var(--text-color-dark); border-radius: 12px;
+            padding: 12px; font-size: 1em; font-family: var(--font-main); min-width: 0;
+        }
+        #message-send-btn {
+            flex-shrink: 0; font-family: var(--font-main); font-weight: 700;
+            font-size: 1em; padding: 0 20px; border: none; border-radius: 12px;
+            background-color: var(--primary-color); color: white;
+            border-bottom: 4px solid #C04A4A; cursor: pointer;
+        }
+        #message-send-btn:active { transform: translateY(2px); border-bottom-width: 2px; }
+        .msg-bubble {
+            margin-bottom: 8px; max-width: 90%; align-self: flex-start;
+            display: flex; align-items: flex-end; gap: 8px;
+        }
+        .msg-content {
+            padding: 6px 12px; border-radius: 12px;
+            background-color: var(--panel-bg); border: 2px solid var(--panel-border);
+            word-wrap: break-word;
+        }
+        .msg-time { font-size: 0.75em; color: #888; flex-shrink: 0; margin-bottom: 2px; }
+        .msg-bubble.my-message { align-self: flex-end; }
+        .msg-content.my-message { background-color: var(--accent-color); border-color: #D1B030; }
+
     </style>
 </head>
 <body>
@@ -1209,6 +1323,7 @@
         let gameSettings = JSON.parse(localStorage.getItem('gameSettings')) || defaultSettings;
         localStorage.setItem('gameSettings', JSON.stringify(gameSettings));
 
+
         document.addEventListener('DOMContentLoaded', () => {
             const confirmExitModal = document.getElementById('confirm-exit-modal');
             
@@ -1301,6 +1416,14 @@
             const chatSendBtn = document.getElementById('chat-send-btn');
 
             let currentUser, currentUserData, roomListener, lastMessageDate = null;
+            let myFriendIds = {}; // [추가]
+            let onlineUserIds = new Set(); // [추가]
+            
+            // [추가] 쪽지 관련 변수
+            let currentMessagesRef = null;
+            let currentMessageListener = null;
+            let messagesLoaded = false;
+            
             
             // [신규] 친구 요청 뱃지용 변수
             let currentFriendRequests = {};
@@ -1368,6 +1491,12 @@
                     presenceRef.on('value', snapshot => {
                         const userCount = snapshot.numChildren();
                         updateConcurrentUsers(userCount);
+                        
+                        // [추가] 접속자 ID 목록 저장
+                        onlineUserIds.clear();
+                        snapshot.forEach(child => {
+                            onlineUserIds.add(child.key);
+                        });
                     });
 
                     // [신규] 친구 요청 리스너 (뱃지 + 토스트 알림)
@@ -1412,6 +1541,8 @@
                     usersRef.child(user.uid).on('value', snapshot => {
                         if (snapshot.exists()) {
                             currentUserData = snapshot.val();
+                            myFriendIds = currentUserData.friends || {}; // [추가]
+                            
                             updateLobbyUI();
                             if (!roomListener) listenToRooms();
                             checkDailyLogin(user.uid, currentUserData.profile);
@@ -1427,6 +1558,12 @@
                 const userCountEl = document.querySelector('.header-user-count'); // [수정] ID 대신 class로 선택
                 if (userCountEl) {
                     userCountEl.innerHTML = `<strong>${count}</strong>명 접속중`;
+                    
+                    // [추가] 클릭 이벤트 (기존 리스너 제거 후 새로 추가)
+                    userCountEl.onclick = () => {
+                        if (gameSettings.sfx) clickSound.play();
+                        showOnlineUsers();
+                    };
                 }
             }
 
@@ -1936,8 +2073,271 @@
                     console.log("[데일리 보너스] 오늘 이미 지급받았습니다.");
                 }
             }
+
+            // [추가] 1. 접속자 목록 모달 표시
+            async function showOnlineUsers() {
+                const onlineUsersList = document.getElementById('online-users-list');
+                onlineUsersList.innerHTML = '<div class="spinner"></div>';
+                showModal(document.getElementById('online-users-modal'));
+
+                try {
+                    const onlineIds = Array.from(onlineUserIds);
+                    const promises = onlineIds.map(uid => usersRef.child(uid).child('profile').once('value'));
+                    const snapshots = await Promise.all(promises);
+
+                    onlineUsersList.innerHTML = '';
+                    
+                    snapshots.forEach((snapshot, index) => {
+                        if (snapshot.exists()) {
+                            const profile = snapshot.val();
+                            const uid = onlineIds[index];
+                            
+                            // (친구.html의 createUserListItem 함수 재사용)
+                            const itemEl = createLobbyUserListItem(uid, profile);
+                            onlineUsersList.appendChild(itemEl);
+                        }
+                    });
+                    
+                    if(onlineUsersList.innerHTML === '') {
+                        onlineUsersList.innerHTML = '<p style="text-align:center; color:#888;">현재 접속자가 없습니다.</p>';
+                    }
+
+                } catch (error) {
+                    console.error("접속자 목록 로드 오류:", error);
+                    onlineUsersList.innerHTML = '<p style="text-align:center; color:#888;">오류가 발생했습니다.</p>';
+                }
+            }
+            
+            // [추가] 2. 대기실용 유저 목록 아이템 생성 (친구.html과 거의 동일)
+            function createLobbyUserListItem(uid, profile) {
+                const itemEl = document.createElement('div');
+                itemEl.className = 'user-list-item';
+
+                const avatarSet = AVATAR_SETS[profile.avatar];
+                let avatarHTML = '';
+                if (avatarSet) { avatarHTML = `<img src="${avatarSet.front}" alt="av">`; }
+                else if (profile.avatar.startsWith('http') || profile.avatar.includes('.')) { avatarHTML = `<img src="${profile.avatar}" alt="av">`; }
+                else { avatarHTML = escapeHTML(profile.avatar); }
+                
+                // 온라인 점 (모달에서는 항상 온라인이므로 무조건 표시)
+                const onlineDotHTML = '<div class="online-dot"></div>';
+
+                let actionsHTML = '';
+                const isMe = (uid === currentUser.uid);
+
+                if (isMe) {
+                    itemEl.classList.add('is-me');
+                } else {
+                    const isFriend = !!myFriendIds[uid];
+                    if (isFriend) {
+                        actionsHTML = `
+                            <button class="menu-btn user-action-btn send-message" data-action="message" data-uid="${uid}" data-nickname="${escapeHTML(profile.nickname)}">쪽지</button>
+                            <button class="menu-btn user-action-btn light" disabled>친구</button>
+                        `;
+                    } else {
+                        actionsHTML = `
+                            <button class="menu-btn user-action-btn send-message" data-action="message" data-uid="${uid}" data-nickname="${escapeHTML(profile.nickname)}">쪽지</button>
+                            <button class="menu-btn user-action-btn add-friend" data-action="add" data-uid="${uid}">추가</button>
+                        `;
+                    }
+                }
+
+                itemEl.innerHTML = `
+                    <div class="user-list-avatar">${avatarHTML}${onlineDotHTML}</div>
+                    <div class="user-list-nickname">${escapeHTML(profile.nickname)} ${isMe ? '(나)' : ''}</div>
+                    <div class="user-item-actions">${actionsHTML}</div>
+                `;
+
+                // 버튼 이벤트 리스너 연결
+                const addBtn = itemEl.querySelector('[data-action="add"]');
+                if(addBtn) {
+                    addBtn.addEventListener('click', (e) => handleAddFriend(e, profile));
+                }
+                
+                const msgBtn = itemEl.querySelector('[data-action="message"]');
+                if(msgBtn) {
+                    msgBtn.addEventListener('click', (e) => {
+                        if (gameSettings.sfx) clickSound.play();
+                        const targetUid = e.currentTarget.dataset.uid;
+                        const targetNickname = e.currentTarget.dataset.nickname;
+                        openMessageModal(targetUid, targetNickname);
+                    });
+                }
+                return itemEl;
+            }
+
+            // [추가] 3. 친구 추가 (친구.html의 handleAddFriend 재사용)
+            function handleAddFriend(e, targetProfile) {
+                if (gameSettings.sfx) clickSound.play();
+                const targetUid = e.currentTarget.dataset.uid;
+                e.currentTarget.disabled = true;
+                e.currentTarget.textContent = '요청됨';
+                
+                const myProfile = currentUserData.profile;
+                usersRef.child(targetUid).child('friendRequests').child(currentUser.uid).set({
+                    nickname: myProfile.nickname,
+                    avatar: myProfile.avatar
+                }).then(() => {
+                    showToast(`${targetProfile.nickname}님에게 친구 요청을 보냈습니다.`);
+                });
+            }
+
+            // [추가] 4. 쪽지 모달 열기 (친구.html 함수 재사용)
+            function openMessageModal(targetUid, targetNickname) {
+                const messageModal = document.getElementById('message-modal');
+                messageModal.dataset.chattingWith = targetUid;
+                if (currentMessagesRef && currentMessageListener) {
+                    currentMessagesRef.off('child_added', currentMessageListener);
+                }
+
+                // 다른 모달 닫기
+                closeAllModals();
+                
+                messageModal.querySelector('#message-modal-nickname').textContent = `${escapeHTML(targetNickname)}님과 대화`;
+                const messageInput = messageModal.querySelector('#message-input');
+                const messageSendBtn = messageModal.querySelector('#message-send-btn');
+                const messageHistory = messageModal.querySelector('#message-history');
+                messageInput.value = '';
+                messagesLoaded = false;
+
+                messageInput.onkeydown = (e) => {
+                    if (e.key === 'Enter' && !e.isComposing) {
+                        e.preventDefault();
+                        messageSendBtn.click();
+                    }
+                };
+                
+                messageHistory.innerHTML = '<div class="spinner" style="margin: 20px auto;"></div>';
+                
+                const myUid = currentUser.uid;
+                const chatId = [myUid, targetUid].sort().join('_');
+                currentMessagesRef = db.ref(`messages/${chatId}`);
+
+                messageSendBtn.onclick = () => {
+                    const message = messageInput.value.trim();
+                    if (message === '') return;
+                    
+                    messageInput.value = '';
+                    messageInput.focus();
+                    
+                    const messageData = {
+                        senderUid: myUid,
+                        message: message,
+                        timestamp: firebase.database.ServerValue.TIMESTAMP
+                    };
+
+                    currentMessagesRef.push(messageData)
+                        .then(() => {
+                            db.ref(`user_inboxes/${targetUid}/${myUid}`).set({
+                                lastMessage: message,
+                                timestamp: firebase.database.ServerValue.TIMESTAMP
+                            });
+                        })
+                        .catch(error => {
+                            console.error("쪽지 전송 실패:", error);
+                            showToast("쪽지 전송에 실패했습니다.");
+                            messageInput.value = message;
+                        });
+                };
+
+                currentMessagesRef.orderByChild('timestamp').limitToLast(50).once('value', (snapshot) => {
+                    if (!snapshot.exists()) {
+                        messageHistory.innerHTML = '<p style="text-align:center; color:#888; padding: 40px;">아직 대화 내역이 없습니다.</p>';
+                        messagesLoaded = true;
+                    }
+                });
+
+                currentMessageListener = (snapshot) => {
+                    if (!messagesLoaded) {
+                        messageHistory.innerHTML = '';
+                        messagesLoaded = true;
+                    }
+                    const data = snapshot.val();
+                    if (!data) return;
+                    const isMe = data.senderUid === myUid;
+                    const msgEl = createMessageBubble(data.message, data.timestamp, isMe);
+                    messageHistory.prepend(msgEl);
+                };
+                
+                currentMessagesRef.orderByChild('timestamp').limitToLast(50).on('child_added', currentMessageListener);
+
+                showModal(messageModal); // showModal은 active만 추가
+                setTimeout(() => messageInput.focus(), 300);
+            }
+
+            // [추가] 5. 쪽지 말풍선 DOM 생성
+            function createMessageBubble(message, timestamp, isMe) {
+                const msgEl = document.createElement('div');
+                msgEl.className = 'msg-bubble';
+                
+                const contentEl = document.createElement('div');
+                contentEl.className = 'msg-content';
+                contentEl.textContent = escapeHTML(message);
+
+                const timeEl = document.createElement('span');
+                timeEl.className = 'msg-time';
+                timeEl.textContent = formatTime(timestamp);
+
+                if (isMe) {
+                    msgEl.classList.add('my-message');
+                    contentEl.classList.add('my-message');
+                    msgEl.appendChild(timeEl);
+                    msgEl.appendChild(contentEl);
+                } else {
+                    msgEl.appendChild(contentEl);
+                    msgEl.appendChild(timeEl);
+                }
+                return msgEl;
+            }
+
+            // [추가] 6. 쪽지 모달 닫기 버튼
+            document.querySelector('#message-modal [data-close]').addEventListener('click', () => {
+                const messageModal = document.getElementById('message-modal');
+                if (gameSettings.sfx) clickSound.play();
+                messageModal.classList.remove('active');
+                if (currentMessagesRef && currentMessageListener) {
+                    currentMessagesRef.off('child_added', currentMessageListener);
+                    currentMessagesRef = null;
+                    currentMessageListener = null;
+                    messagesLoaded = false;
+                    delete messageModal.dataset.chattingWith;
+                }
+            });
+            
         });
     </script>
+    <div id="online-users-modal" class="overlay">
+    <div class="modal-content">
+        <div class="modal-header">
+            <button class="back-btn" data-close>‹</button>
+            <h2>현재 접속자</h2>
+        </div>
+        <div class="modal-body" style="max-height: 60vh; padding: 15px;">
+            <div class="user-list" id="online-users-list">
+                <div class="spinner"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="message-modal" class="overlay">
+    <div class="modal-content">
+        <div class="modal-header">
+            <button class="back-btn" data-close>‹</button>
+            <h2 id="message-modal-nickname">...</h2>
+            <div style="width: 40px;"></div>
+        </div>
+        <div class="modal-body">
+            <div id="message-history">
+                <div class="spinner" style="margin: 20px auto;"></div>
+            </div>
+            <div id="message-input-area">
+                <input type="text" id="message-input" placeholder="쪽지를 입력하세요...">
+                <button id="message-send-btn">전송</button>
+            </div>
+        </div>
+    </div>
+</div>
 </body>
 </html>
 
