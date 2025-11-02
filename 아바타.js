@@ -98,6 +98,24 @@ window.avatarShopItems = [
         name: '베이커리 소녀', 
         url: './아바타폴더/베이커리소녀.png',
         price: 2000
+    },
+        { 
+        id: 'avatar_gom2', 
+        name: '요리사곰돌이', 
+        url: './아바타폴더/요리사곰돌이.png',
+        price: 2000
+    },
+            { 
+        id: 'avatar_birdk', 
+        name: '부엉이교수', 
+        url: './아바타폴더/부엉이교수.png',
+        price: 2000
+    },
+                { 
+        id: 'avatar_mcat', 
+        name: '마법사고양이', 
+        url: './아바타폴더/마법사고양이.png',
+        price: 2000
     }
     // ▲▲▲ [신규 추가] ▲▲▲
 ];
