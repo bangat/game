@@ -67,5 +67,37 @@ window.avatarShopItems = [
         name: '강아지 세트', 
         url: AVATAR_SETS['puppy_set'].front,
         price: 500 // 예시
+    },
+    // ▼▼▼ [신규 추가] ▼▼▼
+    { 
+        id: 'avatar_dessert_girl', 
+        name: '디저트 소녀', 
+        url: './아바타폴더/디저트소녀.png',
+        price: 2000
+    },
+    { 
+        id: 'avatar_cherry_spirit', 
+        name: '벚꽃 정령', 
+        url: './아바타폴더/벚꽃정령소녀.png',
+        price: 2000
+    },
+    { 
+        id: 'avatar_starlight_girl', 
+        name: '별빛 소녀', 
+        url: './아바타폴더/별빛소녀.png',
+        price: 2000
+    },
+    { 
+        id: 'avatar_moon_rabbit', 
+        name: '달토끼', 
+        url: './아바타폴더/우아한달토끼.png',
+        price: 2000
+    },
+    { 
+        id: 'avatar_bakery_girl', 
+        name: '베이커리 소녀', 
+        url: './아바타폴더/베이커리소녀.png',
+        price: 2000
     }
+    // ▲▲▲ [신규 추가] ▲▲▲
 ];
