@@ -409,6 +409,64 @@
             from { opacity: 1; transform: translateY(0); }
             to { opacity: 0; transform: translateY(-10px); }
         }
+
+        /* [추가] 받은 쪽지함 스타일 */
+        .message-list { display: flex; flex-direction: column; gap: 12px; }
+        .message-list-item {
+            background-color: var(--panel-bg);
+            border: 3px solid var(--panel-border);
+            border-radius: 16px;
+            box-shadow: 4px 4px 0px 0px var(--panel-shadow);
+        }
+        .message-list-item.is-unread {
+            background-color: #FFF8E1;
+            border-color: var(--accent-color);
+        }
+        .message-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            border-bottom: 2px dashed var(--panel-border);
+        }
+        .message-avatar {
+            width: 36px; height: 36px; font-size: 1.8em;
+            display: flex; justify-content: center; align-items: center;
+            border-radius: 10px; border: 3px solid var(--text-color-dark);
+            background-color: var(--panel-bg);
+            overflow: hidden; flex-shrink: 0;
+        }
+        .message-avatar img { width: 100%; height: 100%; object-fit: contain; }
+        .message-sender {
+            font-weight: 700;
+            font-size: 1.0em;
+            flex-grow: 1; min-width: 0;
+        }
+        .message-time {
+            font-size: 0.8em;
+            color: #777;
+            flex-shrink: 0;
+        }
+        .message-content {
+            padding: 15px 12px;
+            font-size: 0.95em;
+            line-height: 1.4;
+            word-break: break-word;
+        }
+        .message-actions {
+            display: flex;
+            gap: 8px;
+            padding: 0 12px 12px;
+        }
+        .message-actions .menu-btn {
+            font-size: 0.9em;
+            padding: 10px 12px;
+            min-width: 60px;
+            width: auto;
+            border-radius: 12px;
+            border-bottom-width: 4px;
+            flex: 1;
+        }
     </style>
 </head>
 <body>
@@ -422,12 +480,11 @@
             <div style="width: 40px; flex-shrink: 0;"></div>
         </div>
 
-        <div id="friend-tabs">
-            <!-- [신규] 접속자 탭 추가 -->
+       <div id="friend-tabs">
             <button class="tab-btn active" data-tab="online-users">접속자</button>
             <button class="tab-btn" data-tab="list">친구 목록</button>
             <button class="tab-btn" data-tab="requests">받은 요청</button>
-            <button class="tab-btn" data-tab="search">친구 찾기</button>
+            <button class="tab-btn" data-tab="messages">받은 쪽지</button> <button class="tab-btn" data-tab="search">친구 찾기</button>
         </div>
 
         <!-- [신규] 0. 접속자 목록 탭 -->
@@ -447,6 +504,17 @@
         <!-- 2. 받은 요청 탭 -->
         <div id="requests-content" class="tab-content">
             <div class="user-list" id="friend-requests-container">
+                <div class="spinner"></div>
+            </div>
+        </div>
+        <div id="requests-content" class="tab-content">
+            <div class="user-list" id="friend-requests-container">
+                <div class="spinner"></div>
+            </div>
+        </div>
+
+        <div id="messages-content" class="tab-content">
+            <div class="message-list" id="messages-container">
                 <div class="spinner"></div>
             </div>
         </div>
@@ -502,7 +570,27 @@
             }, duration - 500);
         }
 
+        
+// [추가] 날짜 포맷 함수
+        function formatTimeAgo(timestamp) {
+            const now = Date.now();
+            const seconds = Math.floor((now - timestamp) / 1000);
+
+            let interval = seconds / 31536000;
+            if (interval > 1) return Math.floor(interval) + "년 전";
+            interval = seconds / 2592000;
+            if (interval > 1) return Math.floor(interval) + "달 전";
+            interval = seconds / 86400;
+            if (interval > 1) return Math.floor(interval) + "일 전";
+            interval = seconds / 3600;
+            if (interval > 1) return Math.floor(interval) + "시간 전";
+            interval = seconds / 60;
+            if (interval > 1) return Math.floor(interval) + "분 전";
+            return "방금 전";
+        }
+
         function escapeHTML(str) {
+
             if (typeof str !== 'string') return '';
             const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
             return str.replace(/[&<>"']/g, m => map[m]);
@@ -660,6 +748,7 @@
                 loadOnlineUsersList(); // 1회성 로드
                 listenToFriends();
                 listenToFriendRequests();
+                listenToMessages(); // [추가]
             }
             
             function setupTabListeners() {
@@ -685,6 +774,8 @@
                             listenToFriends();
                         } else if (tabName === 'requests') {
                             listenToFriendRequests();
+                        } else if (tabName === 'messages') { // [추가]
+                            listenToMessages();
                         }
                     });
                 });
@@ -703,6 +794,8 @@
                     listenToFriends();
                 } else if (tabName === 'requests') {
                     listenToFriendRequests();
+                } else if (tabName === 'messages') { // [추가]
+                    listenToMessages();
                 }
             }
 
@@ -925,6 +1018,111 @@
                 return itemEl;
             }
             
+            // [추가] 4. 받은 쪽지함 리스너
+            function listenToMessages() {
+                const messagesContainer = document.getElementById('messages-container');
+                messagesContainer.innerHTML = '<div class="spinner"></div>';
+                
+                const myInboxRef = db.ref(`user_inboxes/${currentUser.uid}`);
+                myInboxRef.orderByChild('timestamp').on('value', async (snapshot) => {
+                    const messageBadge = tabsContainer.querySelector('[data-tab="messages"] .badge');
+                    
+                    if (!snapshot.exists()) {
+                        messagesContainer.innerHTML = '<p style="text-align:center; color:#888; padding: 50px 0;">받은 쪽지가 없습니다.</p>';
+                        if (messageBadge) messageBadge.remove();
+                        return;
+                    }
+                    
+                    messagesContainer.innerHTML = '';
+                    let unreadCount = 0;
+                    
+                    // 스냅샷을 배열로 변환하여 최신순으로 정렬
+                    const messages = [];
+                    snapshot.forEach(child => {
+                        messages.push({ senderUid: child.key, ...child.val() });
+                    });
+                    messages.reverse(); // 최신순
+
+                    // 프로필 정보를 병렬로 가져오기
+                    const senderUids = [...new Set(messages.map(msg => msg.senderUid))];
+                    const profilePromises = senderUids.map(uid => usersRef.child(uid).child('profile').once('value'));
+                    const profileSnapshots = await Promise.all(profilePromises);
+                    
+                    const profiles = {};
+                    profileSnapshots.forEach((snap, index) => {
+                        if(snap.exists()) profiles[senderUids[index]] = snap.val();
+                    });
+
+                    messages.forEach(msg => {
+                        // (읽음/안읽음 기능은 user_inboxes에 isRead 플래그가 없어서 일단 생략)
+                        // (isRead:false 카운트 대신, 그냥 뱃지 개수만 표시)
+                        
+                        const senderProfile = profiles[msg.senderUid] || { nickname: '알수없음', avatar: '❓' };
+                        const itemEl = createMessageListItem(msg.senderUid, senderProfile, msg);
+                        messagesContainer.appendChild(itemEl);
+                    });
+
+                    // 뱃지에 안 읽은 쪽지 수 표시 (일단 전체 개수로)
+                    const count = messages.length;
+                    if (count > 0) {
+                        if (messageBadge) {
+                            messageBadge.textContent = count > 9 ? '9+' : count;
+                        } else {
+                            const newBadge = document.createElement('span');
+                            newBadge.className = 'badge';
+                            newBadge.textContent = count > 9 ? '9+' : count;
+                            tabsContainer.querySelector('[data-tab="messages"]').appendChild(newBadge);
+                        }
+                    } else {
+                        if (messageBadge) messageBadge.remove();
+                    }
+                });
+            }
+            
+            // [추가] 5. 쪽지 리스트 아이템 생성
+            function createMessageListItem(senderUid, senderProfile, msgData) {
+                const itemEl = document.createElement('div');
+                itemEl.className = 'message-list-item';
+                // if (msgData.isRead === false) { // isRead 플래그가 없으므로 일단 주석
+                //     itemEl.classList.add('is-unread');
+                // }
+
+                const avatarSet = AVATAR_SETS[senderProfile.avatar];
+                let avatarHTML = '';
+                if (avatarSet) { avatarHTML = `<img src="${avatarSet.front}" alt="av">`; }
+                else if (senderProfile.avatar.startsWith('http') || senderProfile.avatar.includes('.')) { avatarHTML = `<img src="${senderProfile.avatar}" alt="av">`; }
+                else { avatarHTML = escapeHTML(senderProfile.avatar); }
+
+                itemEl.innerHTML = `
+                    <div class="message-header">
+                        <div class="message-avatar">${avatarHTML}</div>
+                        <span class="message-sender">${escapeHTML(senderProfile.nickname)}</span>
+                        <span class="message-time">${formatTimeAgo(msgData.timestamp)}</span>
+                    </div>
+                    <div class="message-content">
+                        ${escapeHTML(msgData.lastMessage)}
+                    </div>
+                    <div class="message-actions">
+                        <button class="menu-btn user-action-btn secondary" data-action="reply">답장</button>
+                        <button class="menu-btn user-action-btn light" data-action="delete">삭제</button>
+                    </div>
+                `;
+                
+                // 답장 버튼
+                itemEl.querySelector('[data-action="reply"]').addEventListener('click', () => {
+                    openMessageModal(senderUid, senderProfile.nickname);
+                });
+                
+                // 삭제 버튼
+                itemEl.querySelector('[data-action="delete"]').addEventListener('click', () => {
+                    if (gameSettings.sfx) clickSound.play();
+                    if (confirm('이 대화를 삭제하시겠습니까? (상대방에겐 유지됩니다)')) {
+                        db.ref(`user_inboxes/${currentUser.uid}/${senderUid}`).remove();
+                    }
+                });
+
+                return itemEl;
+            }
             // --- 친구 관리 액션 핸들러 ---
             
             function handleAddFriend(e, targetProfile) {
