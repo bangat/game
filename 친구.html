@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    
+    <title>친구</title>
+    
+    <link rel="manifest" href="manifest.json">
+    <link href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff" as="font" type="font/woff" crossorigin>
+    <style>
+        /* 대기실.html의 모든 <style> 내용을 여기에 복사합니다. */
+        :root {
+            --bg-color: #FFFBEB;
+            --primary-color: #FF6B6B;
+            --secondary-color: #4ECDC4;
+            --accent-color: #FFD93D;
+            --text-color-dark: #574141;
+            --text-color-light: #ffffff;
+            --danger-color: #F76363;
+            --panel-bg: #FFFFFF;
+            --panel-border: #F0EAD2;
+            --panel-shadow: #E4DCCF;
+            --font-main: 'GmarketSans', sans-serif;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%; height: 100%; overflow: hidden;
+            font-family: var(--font-main);
+            background-color: var(--bg-color);
+            color: var(--text-color-dark);
+            -webkit-user-select: none; user-select: none;
+            touch-action: manipulation;
+        }
+        .view {
+            width: 100%; height: 100%; 
+            display: flex; flex-direction: column;
+        }
+        .spinner {
+            border: 5px solid rgba(255,255,255,0.2);
+            border-radius: 50%;
+            border-top: 5px solid var(--accent-color);
+            width: 50px; height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 40px auto;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        /* 아케이드 스타일 버튼 (대기실.html과 동일) */
+        .menu-btn {
+            width: 100%; padding: 16px; font-size: 1.25em; font-weight: 900;
+            font-family: var(--font-main);
+            border-radius: 16px; border: none; cursor: pointer;
+            transition: all 0.1s ease-out;
+            border-bottom: 5px solid;
+            text-shadow: 1px 1px 1px rgba(0,0,0,0.1);
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+        .menu-btn:active { transform: translateY(3px); border-bottom-width: 2px; }
+        .menu-btn.primary { background-color: var(--primary-color); color: var(--text-color-light); border-bottom-color: #C04A4A; }
+        .menu-btn.secondary { background-color: var(--secondary-color); color: var(--text-color-light); border-bottom-color: #379A93; }
+        .menu-btn.accent { background-color: var(--accent-color); color: var(--text-color-dark); border-bottom-color: #D1B030; text-shadow: none; }
+        .menu-btn.light { background-color: #F8F9FA; color: var(--text-color-dark); border-bottom-color: #BDBDBD; }
+        .menu-btn.danger { background-color: var(--danger-color); color: var(--text-color-light); border-bottom-color: #A94442; }
+        .menu-btn:disabled { background-color: #BDBDBD !important; color: #757575 !important; border-bottom-color: #8D8D8D !important; cursor: not-allowed; transform: none; }
+
+
+        /* 페이지 헤더 (랭킹.html과 동일) */
+        .page-header {
+            width: 100%; padding: 10px 12px; flex-shrink: 0;
+            background: #FFFAE0;
+            border-bottom: 3px solid var(--panel-border);
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center;
+            gap: 8px;
+        }
+        .page-header h1 {
+            font-size: 1.3em;
+            color: var(--text-color-dark);
+            margin: 0;
+            flex-grow: 1;
+            text-align: center;
+        }
+        .back-btn {
+            background: none; border: none; color: var(--text-color-dark);
+            font-size: 2.0em; cursor: pointer; padding: 0 10px;
+            text-decoration: none;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        /* ------------------------- */
+        /* == 친구 관리 컨텐츠 == */
+        /* ------------------------- */
+        /* (랭킹.html의 탭 스타일 재사용) */
+        #friend-tabs {
+            display: flex;
+            padding: 10px 12px;
+            background-color: #FFFAE0;
+            border-bottom: 3px solid var(--panel-border);
+            flex-shrink: 0;
+            gap: 8px;
+        }
+        .tab-btn {
+            flex: 1; /* 탭 버튼이 공간을 균등하게 차지 */
+            padding: 10px 15px;
+            font-size: 0.9em;
+            font-weight: 700;
+            border-radius: 12px;
+            border: 3px solid var(--panel-border);
+            background: white;
+            color: #888;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+            border-bottom-width: 4px;
+            position: relative; /* 뱃지 기준점 */
+        }
+        .tab-btn:active {
+            transform: translateY(2px);
+            border-bottom-width: 2px;
+        }
+        .tab-btn.active {
+            background: var(--primary-color);
+            color: white;
+            border-color: #C04A4A;
+            border-bottom-color: #C04A4A;
+        }
+
+        /* 탭 뱃지 (친구 요청 수) */
+        .tab-btn .badge {
+            position: absolute;
+            top: -6px;
+            right: -6px;
+            background-color: var(--danger-color);
+            color: white;
+            border-radius: 50%;
+            width: 22px;
+            height: 22px;
+            font-size: 0.75em;
+            font-weight: 700;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border: 2px solid white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
+
+        /* 탭 컨텐츠 영역 */
+        .tab-content {
+            display: none; /* 기본적으로 숨김 */
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 15px;
+        }
+        .tab-content.active {
+            display: block; /* 활성화된 탭만 보임 */
+        }
+        
+        /* '친구 찾기' 탭 스타일 */
+        #friend-search-form {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        #friend-search-input {
+            flex-grow: 1;
+            border: 3px solid var(--text-color-dark);
+            border-radius: 12px;
+            padding: 12px;
+            font-size: 1em;
+            font-family: var(--font-main);
+            min-width: 0;
+        }
+        #friend-search-input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+        #friend-search-btn {
+            flex-shrink: 0;
+            font-family: var(--font-main);
+            font-weight: 700;
+            font-size: 1em;
+            padding: 0 20px;
+            border: none; border-radius: 12px;
+            background-color: var(--primary-color);
+            color: white;
+            border-bottom: 4px solid #C04A4A;
+            cursor: pointer;
+        }
+        #friend-search-btn:active {
+            transform: translateY(2px);
+            border-bottom-width: 2px;
+        }
+
+        /* 유저 목록 (대기실.html 접속자 목록 모달 스타일 재사용) */
+        .user-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .user-list-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px;
+            background-color: var(--panel-bg);
+            border: 3px solid var(--panel-border);
+            border-radius: 16px;
+            box-shadow: 4px 4px 0px 0px var(--panel-shadow);
+        }
+        .user-list-avatar {
+            width: 44px; height: 44px; font-size: 2.2em;
+            display: flex; justify-content: center; align-items: center;
+            border-radius: 12px; border: 3px solid var(--text-color-dark);
+            background-color: var(--panel-bg);
+            overflow: hidden; flex-shrink: 0;
+        }
+        .user-list-avatar img { width: 100%; height: 100%; object-fit: contain; }
+        
+        .user-list-nickname {
+            font-weight: 700;
+            font-size: 1.0em;
+            flex-grow: 1; min-width: 0;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        
+        .user-item-actions {
+            display: flex; gap: 8px; flex-shrink: 0;
+        }
+        .user-action-btn {
+            /* (버튼 스타일은 .menu-btn 재사용) */
+            font-size: 0.9em;
+            padding: 10px 12px;
+            min-width: 60px;
+            width: auto;
+            border-radius: 12px;
+            border-bottom-width: 4px;
+        }
+
+        /* ------------------------- */
+        /* == 토스트 알림 (대기실.html과 동일) == */
+        /* ------------------------- */
+        #toast-container {
+            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+            z-index: 9999; display: flex; flex-direction: column;
+            align-items: center; gap: 10px; pointer-events: none;
+        }
+        .toast-message {
+            background-color: rgba(40, 40, 40, 0.85); color: white;
+            padding: 10px 20px; border-radius: 20px;
+            font-size: 0.9em; font-weight: 700;
+            animation: toast-fade 3s ease-out forwards;
+        }
+        @keyframes toast-fade {
+            0% { opacity: 0; transform: translateY(-10px); }
+            10% { opacity: 1; transform: translateY(0); }
+            90% { opacity: 1; transform: translateY(0); }
+            100% { opacity: 0; transform: translateY(-10px); }
+        }
+        @keyframes toast-fade-out {
+            from { opacity: 1; transform: translateY(0); }
+            to { opacity: 0; transform: translateY(-10px); }
+        }
+    </style>
+</head>
+<body>
+    <div id="toast-container"></div>
+    <audio id="click-sound" src="https://blog.kakaocdn.net/dna/dC0WAE/dJMb84DsZw6/AAAAAAAAAAAAAAAAAAAAAC8XpuPuNVEsdp6Ia-d35XR-m3FCZxObUR5uFI1tk2iv/%EB%B2%84%ED%8A%BC%EC%82%AC%EC%9A%B4%EB%93%9C.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=RdbjxdP75HLHSpBIhymVkYpUOA0%3D&attach=1&knm=tfile.mp3" preload="auto"></audio>
+    
+    <div id="friend-view" class="view">
+        <div class="page-header">
+            <a href="대기실.html" class="back-btn" id="back-btn">‹</a>
+            <h1>👥 친구</h1>
+            <div style="width: 40px; flex-shrink: 0;"></div>
+        </div>
+
+        <div id="friend-tabs">
+            <button class="tab-btn active" data-tab="list">친구 목록</button>
+            <button class="tab-btn" data-tab="requests">받은 요청</button>
+            <button class="tab-btn" data-tab="search">친구 찾기</button>
+        </div>
+
+        <!-- 1. 친구 목록 탭 -->
+        <div id="friend-list-content" class="tab-content active">
+            <div class="user-list" id="friend-list-container">
+                <div class="spinner"></div>
+            </div>
+        </div>
+        
+        <!-- 2. 받은 요청 탭 -->
+        <div id="friend-requests-content" class="tab-content">
+            <div class="user-list" id="friend-requests-container">
+                <div class="spinner"></div>
+            </div>
+        </div>
+
+        <!-- 3. 친구 찾기 탭 -->
+        <div id="friend-search-content" class="tab-content">
+            <form id="friend-search-form">
+                <input type="text" id="friend-search-input" placeholder="닉네임을 입력하세요" required>
+                <button type="submit" id="friend-search-btn">검색</button>
+            </form>
+            <div class="user-list" id="friend-search-results-container">
+                <!-- 검색 결과가 여기에 표시됩니다 -->
+            </div>
+        </div>
+
+    </div>
+
+    <script src="아바타.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script>
+        // --- 헬퍼 함수 (대기실.html과 동일) ---
+        function showToast(message, duration = 3000) {
+            const container = document.getElementById('toast-container');
+            if (!container) return;
+            const toast = document.createElement('div');
+            toast.className = 'toast-message';
+            toast.textContent = message;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.animation = 'toast-fade-out 0.5s ease-out forwards';
+                toast.addEventListener('animationend', () => toast.remove());
+            }, duration - 500);
+        }
+
+        function escapeHTML(str) {
+            if (typeof str !== 'string') return '';
+            const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+            return str.replace(/[&<>"']/g, m => map[m]);
+        }
+
+        document.addEventListener('contextmenu', event => event.preventDefault());
+        
+        document.addEventListener('keydown', event => {
+            if (event.key === 'F12' ||
+                (event.ctrlKey && event.shiftKey && ['I', 'J', 'C'].includes(event.key.toUpperCase())) ||
+                (event.ctrlKey && event.key.toUpperCase() === 'U')) {
+            event.preventDefault();
+            }
+        });
+        // setInterval(() => { try { debugger; } catch (e) {} }, 1000); // 친구 페이지에서는 제거
+
+        const defaultSettings = { sfx: true, bgm: true, vibration: true };
+        let gameSettings = JSON.parse(localStorage.getItem('gameSettings')) || defaultSettings;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const firebaseConfig = {
+                apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
+                authDomain: "goodluck-7c14b.firebaseapp.com",
+                databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com",
+                projectId: "goodluck-7c14b",
+                storageBucket: "goodluck-7c14b.appspot.com",
+                messagingSenderId: "858281658455",
+                appId: "1:858281658455:web:9131280a459be983933b12"
+            };
+
+            firebase.initializeApp(firebaseConfig);
+            const db = firebase.database();
+            const auth = firebase.auth();
+            const usersRef = db.ref('users');
+            
+            const clickSound = document.getElementById('click-sound');
+            const backBtn = document.getElementById('back-btn');
+            
+            const tabsContainer = document.getElementById('friend-tabs');
+            const tabContents = document.querySelectorAll('.tab-content');
+            
+            const friendListContainer = document.getElementById('friend-list-container');
+            const friendRequestsContainer = document.getElementById('friend-requests-container');
+            const friendSearchForm = document.getElementById('friend-search-form');
+            const friendSearchInput = document.getElementById('friend-search-input');
+            const friendSearchResultsContainer = document.getElementById('friend-search-results-container');
+            
+            let currentUser, currentUserData;
+            let myFriendIds = {}; // 내 친구 목록(ID)을 캐시
+
+            backBtn.addEventListener('click', (e) => {
+                if (gameSettings.sfx) clickSound.play();
+            });
+
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    currentUser = user;
+                    // 친구 페이지는 실시간 데이터가 중요하므로 'on' 사용
+                    usersRef.child(user.uid).on('value', snapshot => {
+                        if (snapshot.exists()) {
+                            currentUserData = snapshot.val();
+                            myFriendIds = currentUserData.friends || {}; // 친구 ID 목록 업데이트
+                            // 페이지가 처음 로드될 때만 탭 리스너 설정
+                            if (!window.friendPageInitialized) {
+                                initFriendPage();
+                                window.friendPageInitialized = true;
+                            }
+                            
+                            // 데이터가 변경될 때마다 현재 활성화된 탭 새로고침
+                            refreshActiveTab();
+                        }
+                    });
+                } else {
+                    window.location.replace('index.html');
+                }
+            });
+            
+            function initFriendPage() {
+                setupTabListeners();
+                setupSearchFormListener();
+                
+                // 초기 로드 시 친구 목록과 요청 목록을 모두 수신 대기
+                listenToFriends();
+                listenToFriendRequests();
+            }
+            
+            function setupTabListeners() {
+                tabsContainer.querySelectorAll('.tab-btn').forEach(tab => {
+                    tab.addEventListener('click', (e) => {
+                        if (gameSettings.sfx) clickSound.play();
+                        
+                        const tabName = e.currentTarget.dataset.tab;
+                        
+                        // 모든 탭/컨텐츠 비활성화
+                        tabsContainer.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('active'));
+                        tabContents.forEach(c => c.classList.remove('active'));
+                        
+                        // 클릭된 탭/컨텐츠 활성화
+                        e.currentTarget.classList.add('active');
+                        document.getElementById(`${tabName}-content`).classList.add('active');
+                        
+                        // 탭 클릭 시 데이터 새로고침 (검색 탭 제외)
+                        if (tabName === 'list') {
+                            listenToFriends(); // 리스너를 다시 설정하여 최신 데이터 로드
+                        } else if (tabName === 'requests') {
+                            listenToFriendRequests();
+                        }
+                    });
+                });
+            }
+
+            // 현재 활성화된 탭에 따라 데이터를 새로고침
+            function refreshActiveTab() {
+                const activeTab = tabsContainer.querySelector('.tab-btn.active');
+                if (!activeTab) return;
+                
+                const tabName = activeTab.dataset.tab;
+                if (tabName === 'list') {
+                    listenToFriends();
+                } else if (tabName === 'requests') {
+                    listenToFriendRequests();
+                }
+                // 'search' 탭은 사용자가 검색할 때만 새로고침되므로 여기서는 제외
+            }
+            
+            // 1. 친구 목록 리스너
+            function listenToFriends() {
+                friendListContainer.innerHTML = '<div class="spinner"></div>';
+                
+                // users/{uid}/friends 경로 리스닝
+                const myFriendsRef = usersRef.child(currentUser.uid).child('friends');
+                myFriendsRef.on('value', snapshot => {
+                    if (!snapshot.exists()) {
+                        friendListContainer.innerHTML = '<p style="text-align:center; color:#888; padding: 50px 0;">친구가 없습니다.</p>';
+                        return;
+                    }
+                    
+                    const friendIds = Object.keys(snapshot.val());
+                    const promises = friendIds.map(uid => usersRef.child(uid).child('profile').once('value'));
+                    
+                    Promise.all(promises).then(results => {
+                        friendListContainer.innerHTML = '';
+                        results.forEach((profileSnapshot, index) => {
+                            if (profileSnapshot.exists()) {
+                                const friendProfile = profileSnapshot.val();
+                                const friendUid = friendIds[index];
+                                const itemEl = createUserListItem(friendUid, friendProfile, 'friend');
+                                friendListContainer.appendChild(itemEl);
+                            }
+                        });
+                    });
+                });
+            }
+            
+            // 2. 친구 요청 리스너
+            function listenToFriendRequests() {
+                friendRequestsContainer.innerHTML = '<div class="spinner"></div>';
+                
+                // users/{uid}/friendRequests 경로 리스닝
+                const myRequestsRef = usersRef.child(currentUser.uid).child('friendRequests');
+                myRequestsRef.on('value', snapshot => {
+                    const requestBadge = tabsContainer.querySelector('[data-tab="requests"] .badge');
+                    if (!snapshot.exists()) {
+                        friendRequestsContainer.innerHTML = '<p style="text-align:center; color:#888; padding: 50px 0;">받은 친구 요청이 없습니다.</p>';
+                        if (requestBadge) requestBadge.remove();
+                        return;
+                    }
+                    
+                    const requests = snapshot.val();
+                    const requestUids = Object.keys(requests);
+                    
+                    // 뱃지에 요청 수 표시
+                    if (requestBadge) {
+                        requestBadge.textContent = requestUids.length;
+                    } else {
+                        const newBadge = document.createElement('span');
+                        newBadge.className = 'badge';
+                        newBadge.textContent = requestUids.length;
+                        tabsContainer.querySelector('[data-tab="requests"]').appendChild(newBadge);
+                    }
+
+                    friendRequestsContainer.innerHTML = '';
+                    requestUids.forEach(uid => {
+                        const requestProfile = requests[uid]; // 요청에 프로필 정보가 같이 저장됨
+                        const itemEl = createUserListItem(uid, requestProfile, 'request');
+                        friendRequestsContainer.appendChild(itemEl);
+                    });
+                });
+            }
+            
+            // 3. 친구 찾기 폼 리스너
+            function setupSearchFormListener() {
+                friendSearchForm.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    if (gameSettings.sfx) clickSound.play();
+                    
+                    const searchTerm = friendSearchInput.value.trim();
+                    if (searchTerm.length < 2) {
+                        showToast('닉네임은 2자 이상 입력해주세요.');
+                        return;
+                    }
+                    
+                    if (searchTerm === currentUserData.profile.nickname) {
+                        showToast('자기 자신은 검색할 수 없습니다.');
+                        return;
+                    }
+                    
+                    friendSearchResultsContainer.innerHTML = '<div class="spinner"></div>';
+                    
+                    // 닉네임으로 유저 검색
+                    usersRef.orderByChild('profile/nickname').equalTo(searchTerm).once('value', snapshot => {
+                        if (!snapshot.exists()) {
+                            friendSearchResultsContainer.innerHTML = '<p style="text-align:center; color:#888; padding: 50px 0;">검색 결과가 없습니다.</p>';
+                            return;
+                        }
+                        
+                        friendSearchResultsContainer.innerHTML = '';
+                        snapshot.forEach(child => {
+                            const foundUid = child.key;
+                            const foundProfile = child.val().profile;
+                            
+                            // 자기 자신은 결과에서 제외
+                            if (foundUid === currentUser.uid) return;
+                            
+                            const itemEl = createUserListItem(foundUid, foundProfile, 'search');
+                            friendSearchResultsContainer.appendChild(itemEl);
+                        });
+                        
+                        if (friendSearchResultsContainer.innerHTML === '') {
+                             friendSearchResultsContainer.innerHTML = '<p style="text-align:center; color:#888; padding: 50px 0;">검색 결과가 없습니다.</p>';
+                        }
+                    });
+                });
+            }
+            
+            // 공통 유저 리스트 아이템 생성
+            function createUserListItem(uid, profile, type) {
+                const itemEl = document.createElement('div');
+                itemEl.className = 'user-list-item';
+                
+                // 아바타 HTML
+                const avatarSet = AVATAR_SETS[profile.avatar];
+                let avatarHTML = '';
+                if (avatarSet) {
+                    avatarHTML = `<img src="${avatarSet.front}" alt="avatar">`;
+                } else if (profile.avatar.startsWith('http') || profile.avatar.includes('.')) {
+                    avatarHTML = `<img src="${profile.avatar}" alt="avatar">`;
+                } else {
+                    avatarHTML = escapeHTML(profile.avatar);
+                }
+                
+                // 버튼 HTML
+                let actionsHTML = '';
+                if (type === 'friend') {
+                    actionsHTML = `
+                        <button class="menu-btn user-action-btn danger" data-action="remove" data-uid="${uid}">삭제</button>
+                    `;
+                } else if (type === 'request') {
+                    actionsHTML = `
+                        <button class="menu-btn user-action-btn secondary" data-action="accept" data-uid="${uid}">수락</button>
+                        <button class="menu-btn user-action-btn light" data-action="decline" data-uid="${uid}">거절</button>
+                    `;
+                } else if (type === 'search') {
+                    if (myFriendIds[uid]) {
+                        // 이미 친구인 경우
+                        actionsHTML = `<button class="menu-btn user-action-btn light" disabled>친구</button>`;
+                    } else {
+                        // 친구 추가 버튼
+                        actionsHTML = `<button class="menu-btn user-action-btn primary" data-action="add" data-uid="${uid}">추가</button>`;
+                    }
+                }
+                
+                itemEl.innerHTML = `
+                    <div class="user-list-avatar">${avatarHTML}</div>
+                    <div class="user-list-nickname">${escapeHTML(profile.nickname)}</div>
+                    <div class="user-item-actions">${actionsHTML}</div>
+                `;
+                
+                // 버튼에 이벤트 리스너 추가
+                itemEl.querySelector('[data-action="remove"]')?.addEventListener('click', (e) => handleRemoveFriend(e, profile.nickname));
+                itemEl.querySelector('[data-action="accept"]')?.addEventListener('click', (e) => handleAcceptRequest(e, profile));
+                itemEl.querySelector('[data-action="decline"]')?.addEventListener('click', (e) => handleDeclineRequest(e));
+                itemEl.querySelector('[data-action="add"]')?.addEventListener('click', (e) => handleAddFriend(e, profile));
+                
+                return itemEl;
+            }
+            
+            // --- 친구 관리 액션 핸들러 ---
+            
+            function handleAddFriend(e, targetProfile) {
+                if (gameSettings.sfx) clickSound.play();
+                const targetUid = e.currentTarget.dataset.uid;
+                e.currentTarget.disabled = true;
+                e.currentTarget.textContent = '요청됨';
+                
+                // 상대방의 friendRequests에 내 정보 추가
+                const myProfile = currentUserData.profile;
+                usersRef.child(targetUid).child('friendRequests').child(currentUser.uid).set({
+                    nickname: myProfile.nickname,
+                    avatar: myProfile.avatar
+                }).then(() => {
+                    showToast(`${targetProfile.nickname}님에게 친구 요청을 보냈습니다.`);
+                });
+            }
+            
+            function handleRemoveFriend(e, friendNickname) {
+                if (gameSettings.sfx) clickSound.play();
+                if (!confirm(`${friendNickname}님을 친구에서 삭제하시겠습니까?`)) return;
+                
+                const friendUid = e.currentTarget.dataset.uid;
+                
+                // 1. 내 친구 목록에서 상대방 삭제
+                usersRef.child(currentUser.uid).child('friends').child(friendUid).remove();
+                // 2. 상대방 친구 목록에서 나 삭제
+                usersRef.child(friendUid).child('friends').child(currentUser.uid).remove();
+                
+                showToast(`${friendNickname}님을 친구에서 삭제했습니다.`);
+                // 'on' 리스너가 자동 갱신
+            }
+            
+            function handleAcceptRequest(e, requesterProfile) {
+                if (gameSettings.sfx) clickSound.play();
+                const requesterUid = e.currentTarget.dataset.uid;
+                
+                const myProfile = currentUserData.profile;
+                
+                // Firebase multi-path update
+                const updates = {};
+                // 1. 내 친구 목록에 상대방 추가
+                updates[`/users/${currentUser.uid}/friends/${requesterUid}`] = true;
+                // 2. 상대방 친구 목록에 나 추가
+                updates[`/users/${requesterUid}/friends/${currentUser.uid}`] = true;
+                // 3. 내 친구 요청 목록에서 상대방 제거
+                updates[`/users/${currentUser.uid}/friendRequests/${requesterUid}`] = null;
+                
+                db.ref().update(updates).then(() => {
+                    showToast(`${requesterProfile.nickname}님의 친구 요청을 수락했습니다.`);
+                    // 'on' 리스너가 자동 갱신
+                });
+            }
+            
+            function handleDeclineRequest(e) {
+                if (gameSettings.sfx) clickSound.play();
+                const requesterUid = e.currentTarget.dataset.uid;
+                
+                // 내 친구 요청 목록에서 상대방 제거
+                usersRef.child(currentUser.uid).child('friendRequests').child(requesterUid).remove().then(() => {
+                    showToast('친구 요청을 거절했습니다.');
+                    // 'on' 리스너가 자동 갱신
+                });
+            }
+
+        });
+    </script>
+</body>
+</html>

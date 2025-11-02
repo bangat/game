@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    
+    <title>랭킹</title>
+    
+    <link rel="manifest" href="manifest.json">
+    <link href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff" as="font" type="font/woff" crossorigin>
+    <style>
+        /* 대기실.html의 모든 <style> 내용을 여기에 복사합니다. */
+        :root {
+            --bg-color: #FFFBEB;
+            --primary-color: #FF6B6B;
+            --secondary-color: #4ECDC4;
+            --accent-color: #FFD93D;
+            --text-color-dark: #574141;
+            --text-color-light: #ffffff;
+            --danger-color: #F76363;
+            --panel-bg: #FFFFFF;
+            --panel-border: #F0EAD2;
+            --panel-shadow: #E4DCCF;
+            --font-main: 'GmarketSans', sans-serif;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%; height: 100%; overflow: hidden;
+            font-family: var(--font-main);
+            background-color: var(--bg-color);
+            color: var(--text-color-dark);
+            -webkit-user-select: none; user-select: none;
+            touch-action: manipulation;
+        }
+        .view {
+            width: 100%; height: 100%; 
+            display: flex; flex-direction: column;
+        }
+        .spinner {
+            border: 5px solid rgba(255,255,255,0.2);
+            border-radius: 50%;
+            border-top: 5px solid var(--accent-color);
+            width: 50px; height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 40px auto;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        /* 아케이드 스타일 버튼 (대기실.html과 동일) */
+        .menu-btn {
+            width: 100%; padding: 16px; font-size: 1.25em; font-weight: 900;
+            font-family: var(--font-main);
+            border-radius: 16px; border: none; cursor: pointer;
+            transition: all 0.1s ease-out;
+            border-bottom: 5px solid;
+            text-shadow: 1px 1px 1px rgba(0,0,0,0.1);
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+        .menu-btn:active { transform: translateY(3px); border-bottom-width: 2px; }
+        .menu-btn.primary { background-color: var(--primary-color); color: var(--text-color-light); border-bottom-color: #C04A4A; }
+        .menu-btn.secondary { background-color: var(--secondary-color); color: var(--text-color-light); border-bottom-color: #379A93; }
+        .menu-btn.accent { background-color: var(--accent-color); color: var(--text-color-dark); border-bottom-color: #D1B030; text-shadow: none; }
+        .menu-btn.light { background-color: #F8F9FA; color: var(--text-color-dark); border-bottom-color: #BDBDBD; }
+        .menu-btn:disabled { background-color: #BDBDBD !important; color: #757575 !important; border-bottom-color: #8D8D8D !important; cursor: not-allowed; transform: none; }
+
+        /* 페이지 헤더 (대기실.html과 약간 다름) */
+        .page-header {
+            width: 100%; padding: 10px 12px; flex-shrink: 0;
+            background: #FFFAE0;
+            border-bottom: 3px solid var(--panel-border);
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center;
+            gap: 8px;
+        }
+        .page-header h1 {
+            font-size: 1.3em;
+            color: var(--text-color-dark);
+            margin: 0;
+            flex-grow: 1;
+            text-align: center;
+        }
+        .back-btn {
+            background: none; border: none; color: var(--text-color-dark);
+            font-size: 2.0em; cursor: pointer; padding: 0 10px;
+            text-decoration: none;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        /* ------------------------- */
+        /* == 랭킹 컨텐츠 (통합대기실.html에서 복사) == */
+        /* ------------------------- */
+        /* [제거] #ranking-tabs 및 .tab-btn 스타일 제거 */
+        
+        #ranking-content { flex-grow: 1; overflow-y: auto; padding: 0 15px 15px; }
+        .ranking-list { display: flex; flex-direction: column; gap: 12px; }
+        
+        .rank-item {
+            display: flex; align-items: center;
+            background-color: #fff;
+            border-radius: 16px;
+            padding: 12px;
+            border: 2px solid var(--panel-border);
+        }
+        .rank-item.is-me { /* [추가] '나' 강조 스타일 */
+            background-color: #FFF8E1;
+            border-color: var(--accent-color);
+        }
+        .rank-item:nth-child(1) { background-color: #FFF8E1; border-color: #FFD93D; }
+        .rank-item:nth-child(2) { background-color: #F8F9FA; border-color: #E0E0E0; }
+        .rank-item:nth-child(3) { background-color: #FFF3E0; border-color: #FFCC80; }
+
+        .rank-col-rank {
+            font-size: 1.5em; font-weight: 900;
+            color: #888; width: 40px; text-align: center;
+            flex-shrink: 0;
+        }
+        .rank-item:nth-child(1) .rank-col-rank { color: #FFA000; }
+        .rank-item:nth-child(2) .rank-col-rank { color: #757575; }
+        .rank-item:nth-child(3) .rank-col-rank { color: #D28C49; }
+
+        .rank-col-profile {
+            display: flex; align-items: center; gap: 12px;
+            flex-grow: 1; min-width: 0;
+        }
+        .rank-avatar {
+            width: 48px; height: 48px; font-size: 2.2em;
+            flex-shrink: 0; border-radius: 12px;
+            border: 3px solid var(--panel-border);
+            display: flex; justify-content: center; align-items: center;
+            background-color: #F8F9FA;
+            overflow: hidden;
+        }
+        .rank-avatar img { width: 100%; height: 100%; border-radius: 8px; object-fit: contain; }
+        .profile-text .nickname {
+            font-size: 1.1em; font-weight: 700;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .profile-text .level { font-size: 0.85em; color: #666; font-weight: 700; }
+
+        .rank-col-stats {
+            display: flex; flex-wrap: wrap; justify-content: flex-end;
+            gap: 5px;
+            text-align: right;
+            margin-left: 8px;
+        }
+        .stat-item {
+            padding: 4px 8px;
+            border-radius: 8px;
+            font-size: 0.8em;
+            font-weight: 700; white-space: nowrap;
+        }
+        .stat-item.wins { background-color: #E3F2FD; color: #1E88E5; border: 1px solid #BBDEFB; }
+        .stat-item.losses { background-color: #FFEBEE; color: #E53935; border: 1px solid #FFCDD2; }
+        .stat-item.winrate { background-color: #F3E5F5; color: #8E24AA; border: 1px solid #E1BEE7; }
+        .stat-item.plays { background-color: #E8EAF6; color: #3949AB; border: 1px solid #C5CAE9; }
+        .stat-item.points { background-color: #FFF8E1; color: #FF8F00; border: 1px solid #FFECB3; }
+
+        /* ------------------------- */
+        /* == 토스트 알림 (대기실.html과 동일) == */
+        /* ------------------------- */
+        #toast-container {
+            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+            z-index: 9999; display: flex; flex-direction: column;
+            align-items: center; gap: 10px; pointer-events: none;
+        }
+        .toast-message {
+            background-color: rgba(40, 40, 40, 0.85); color: white;
+            padding: 10px 20px; border-radius: 20px;
+            font-size: 0.9em; font-weight: 700;
+            animation: toast-fade 3s ease-out forwards;
+        }
+        @keyframes toast-fade {
+            0% { opacity: 0; transform: translateY(-10px); }
+            10% { opacity: 1; transform: translateY(0); }
+            90% { opacity: 1; transform: translateY(0); }
+            100% { opacity: 0; transform: translateY(-10px); }
+        }
+        @keyframes toast-fade-out {
+            from { opacity: 1; transform: translateY(0); }
+            to { opacity: 0; transform: translateY(-10px); }
+        }
+    </style>
+</head>
+<body>
+    <div id="toast-container"></div>
+    <audio id="click-sound" src="https://blog.kakaocdn.net/dna/dC0WAE/dJMb84DsZw6/AAAAAAAAAAAAAAAAAAAAAC8XpuPuNVEsdp6Ia-d35XR-m3FCZxObUR5uFI1tk2iv/%EB%B2%84%ED%8A%BC%EC%82%AC%EC%9A%B4%EB%93%9C.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=RdbjxdP75HLHSpBIhymVkYpUOA0%3D&attach=1&knm=tfile.mp3" preload="auto"></audio>
+    
+    <div id="ranking-view" class="view">
+        <div class="page-header">
+            <a href="대기실.html" class="back-btn" id="back-btn">‹</a>
+            <h1>🏆 랭킹</h1>
+            <div style="width: 40px; flex-shrink: 0;"></div> <!-- 오른쪽 정렬용 더미 div -->
+        </div>
+
+        <!-- [수정] 탭을 드롭다운으로 변경 -->
+        <div id="ranking-select-container" style="padding: 10px 15px; background-color: #FFFAE0; border-bottom: 3px solid var(--panel-border);">
+            <select id="ranking-select" style="width: 100%; padding: 12px; font-size: 1.1em; font-weight: 700; border-radius: 12px; border: 3px solid var(--text-color-dark); background-color: white; font-family: var(--font-main); -webkit-appearance: none; appearance: none; background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23574141%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.6-3.6%205.4-7.8%205.4-12.8%200-5-1.8-9.2-5.4-12.8z%22%2F%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 12px center; background-size: 12px;">
+                <!-- 옵션은 스크립트로 동적 생성 -->
+            </select>
+        </div>
+
+        <div id="ranking-content">
+            <div class="spinner"></div>
+            <!-- 랭킹 목록은 스크립트로 동적 생성됩니다 -->
+        </div>
+    </div>
+
+    <script src="아바타.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script>
+        // --- 헬퍼 함수 (대기실.html과 동일) ---
+        function showToast(message, duration = 3000) {
+            const container = document.getElementById('toast-container');
+            if (!container) return;
+            const toast = document.createElement('div');
+            toast.className = 'toast-message';
+            toast.textContent = message;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.animation = 'toast-fade-out 0.5s ease-out forwards';
+                toast.addEventListener('animationend', () => toast.remove());
+            }, duration - 500);
+        }
+
+        function escapeHTML(str) {
+            if (typeof str !== 'string') return '';
+            const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+            return str.replace(/[&<>"']/g, m => map[m]);
+        }
+
+        document.addEventListener('contextmenu', event => event.preventDefault());
+        
+        document.addEventListener('keydown', event => {
+            if (event.key === 'F12' ||
+                (event.ctrlKey && event.shiftKey && ['I', 'J', 'C'].includes(event.key.toUpperCase())) ||
+                (event.ctrlKey && event.key.toUpperCase() === 'U')) {
+            event.preventDefault();
+            }
+        });
+
+        const defaultSettings = { sfx: true, bgm: true, vibration: true };
+        let gameSettings = JSON.parse(localStorage.getItem('gameSettings')) || defaultSettings;
+
+        // [수정] availableGames 배열 (통합대기실.html에서 복사)
+        const availableGames = [
+            { id: 'alkkagi', name: '알까기', icon: '⚪', file: '알까기.html', maxPlayers: 2, canSolo: true },
+            { id: 'bomber', name: '크레이지 봄버', icon: '🕹️', file: '봄버맨.html', maxPlayers: 4, canSolo: false },
+            { id: 'shisenSho', name: '사천성', icon: '🀄', file: '사천성.html', maxPlayers: 3, canSolo: true }, 
+            { id: 'quiz', name: 'AI 스피드퀴즈', icon: '❓', file: 'ai퀴즈.html', maxPlayers: 4, canSolo: true },
+            { id: 'memoryGame', name: '메모리', icon: '🧠', file: '메모리게임.html', maxPlayers: 4, canSolo: false },
+            { id: 'reversi', name: '리버시', icon: '⚫', file: '리버시.html', maxPlayers: 2, canSolo: true },
+            { id: 'indianpoker', name: '인디언포커', icon: '🃏', file: '인디언포커.html', maxPlayers: 2, canSolo: false },
+            { id: 'candysoap', name: '캔디솝', icon: '🍬', file: '캔디솝.html', isSolo: true, canSolo: true },
+            { id: 'linePuzzle', name: '라인 퍼즐', icon: '🎨', file: '라인퍼즐.html', isSolo: true, canSolo: true },
+            { id: 'crossingKnights', name: '크로싱 나이츠', icon: '♞', file: '크로싱나이츠.html', maxPlayers: 2, canSolo: false },
+            { id: 'tetris', name: '테트리스', icon: '🧱', file: '테트리스.html', maxPlayers: 2, canSolo: true }
+        ];
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const firebaseConfig = {
+                apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
+                authDomain: "goodluck-7c14b.firebaseapp.com",
+                databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com",
+                projectId: "goodluck-7c14b",
+                storageBucket: "goodluck-7c14b.appspot.com",
+                messagingSenderId: "858281658455",
+                appId: "1:858281658455:web:9131280a459be983933b12"
+            };
+
+            firebase.initializeApp(firebaseConfig);
+            const db = firebase.database();
+            const auth = firebase.auth();
+            const usersRef = db.ref('users');
+            
+            const clickSound = document.getElementById('click-sound');
+            // [수정] 드롭다운 Select
+            const rankingSelect = document.getElementById('ranking-select');
+            const rankingContent = document.getElementById('ranking-content');
+            const backBtn = document.getElementById('back-btn');
+
+            let currentUser, currentUserData;
+
+            backBtn.addEventListener('click', (e) => {
+                if (gameSettings.sfx) clickSound.play();
+            });
+
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    currentUser = user;
+                    usersRef.child(user.uid).once('value', snapshot => {
+                        if (snapshot.exists()) {
+                            currentUserData = snapshot.val();
+                            showRanking();
+                        }
+                    });
+                } else {
+                    window.location.replace('index.html');
+                }
+            });
+            
+            // [수정] showRanking (드롭다운 용으로 수정)
+            function showRanking() {
+                rankingSelect.innerHTML = '';
+                const gameTabs = [{ id: 'points', name: '통합 랭킹' }, ...availableGames.filter(g => !g.isSolo)];
+                
+                gameTabs.forEach((game, index) => {
+                    const option = document.createElement('option');
+                    option.value = game.id;
+                    
+                    if (game.id === 'points') {
+                        option.textContent = '💰 통합 랭킹';
+                    } else {
+                        const gameInfo = availableGames.find(g => g.id === game.id);
+                        option.textContent = gameInfo ? `${gameInfo.icon} ${game.name}` : game.name;
+                    }
+                    
+                    rankingSelect.appendChild(option);
+                });
+                
+                rankingSelect.onchange = () => {
+                    if (gameSettings.sfx) clickSound.play();
+                    loadRanking(rankingSelect.value);
+                };
+
+                loadRanking('points');
+            }
+
+            // [수정] loadRanking (필터 로직 수정)
+            function loadRanking(gameId) {
+                const rankingContent = document.getElementById('ranking-content');
+                rankingContent.innerHTML = `<div class="spinner"></div>`;
+                
+                // [추가] 점수(rating) 기반 랭킹 게임 ID 목록
+                const ratingBasedGames = ['shisenSho', 'tetris'];
+
+                usersRef.once('value', snapshot => {
+                    let users = [];
+                    snapshot.forEach(child => {
+                        const user = child.val();
+                        if (user.profile?.nickname) { 
+                            users.push({ ...user, uid: child.key }); // uid 주입
+                        }
+                    });
+
+                    if (gameId === 'points') {
+                        // 1. 통합 랭킹 (포인트)
+                        users.sort((a, b) => (b.profile.points || 0) - (a.profile.points || 0));
+                    } else if (gameId === 'quiz') {
+                        // 2. 퀴즈 랭킹 (최고점수)
+                        users = users.filter(user => user.gameStats?.quiz?.plays > 0);
+                        users.sort((a, b) => (b.gameStats?.quiz?.highscore || 0) - (a.gameStats?.quiz?.highscore || 0));
+                    } else if (ratingBasedGames.includes(gameId)) {
+                        // 3. 점수(rating) 기반 게임 랭킹
+                        users = users.filter(user => user.gameStats?.[gameId]?.rating > 0);
+                        users.sort((a, b) => (b.gameStats?.[gameId]?.rating || 0) - (a.gameStats?.[gameId]?.rating || 0));
+                    } else {
+                        // 4. 나머지 (승리) 기반 게임 랭킹
+                        users = users.filter(user => user.gameStats?.[gameId]?.plays > 0);
+                        users.sort((a, b) => (b.gameStats?.[gameId]?.wins || 0) - (a.gameStats?.[gameId]?.wins || 0));
+                    }
+
+                    rankingContent.innerHTML = '<div class="ranking-list"></div>';
+                    const rankingList = rankingContent.querySelector('.ranking-list');
+
+                    if (users.length === 0) {
+                        rankingList.innerHTML = `<p style="text-align:center; color:#888; padding: 40px;">랭킹 정보가 없습니다.</p>`;
+                        return;
+                    }
+
+                    users.slice(0, 100).forEach((user, i) => {
+                        const profile = user.profile;
+                        const gameStats = user.gameStats;
+                        const avatarSet = AVATAR_SETS[profile.avatar];
+                        let avatarHTML = '';
+                        if (avatarSet) {
+                            avatarHTML = `<img src="${avatarSet.front}" alt="avatar">`;
+                        } else if (profile.avatar.startsWith('http') || profile.avatar.includes('.')) {
+                            avatarHTML = `<img src="${profile.avatar}" alt="avatar">`;
+                        } else {
+                            avatarHTML = profile.avatar; // 이모지
+                        }
+                        
+                        let statsHTML = '';
+                        // [추가] 점수(rating) 기반 랭킹 게임 ID 목록 (loadRanking과 동일)
+                        const ratingBasedGames = ['shisenSho', 'tetris'];
+
+                        if (gameId === 'points') {
+                            const totalWins = Object.values(gameStats || {}).reduce((sum, game) => sum + (game.wins || 0), 0);
+                            const totalLosses = Object.values(gameStats || {}).reduce((sum, game) => sum + (game.losses || 0), 0);
+                            const totalPlays = Object.values(gameStats || {}).reduce((sum, game) => sum + (game.plays || 0), 0);
+                            const totalDraws = Math.max(0, totalPlays - (totalWins + totalLosses));
+                            statsHTML = `
+                                <div class="stat-item wins">${totalWins}승</div>
+                                <div class="stat-item losses">${totalLosses}패</div>
+                                <div class="stat-item plays">${totalDraws}무</div>
+                                <div class="stat-item points">${(profile.points || 0).toLocaleString()} P</div>`;
+                        } else if (gameId === 'quiz') {
+                            const game = gameStats?.quiz || { wins: 0, losses: 0, plays: 0, highscore: 0 };
+                            statsHTML = `
+                                <div class="stat-item points">최고 ${game.highscore}점</div>
+                                <div class="stat-item wins">${game.wins}승</div>
+                                <div class="stat-item losses">${game.losses}패</div>
+                                <div class="stat-item plays">${game.plays || 0}회</div>`;
+                        } else {
+                            // [수정] 점수 표시 로직 분리
+                            const game = gameStats?.[gameId] || { wins: 0, losses: 0, draws: 0, plays: 0, rating: 0 };
+                            const wins = game.wins || 0;
+                            const losses = game.losses || 0;
+                            const plays = game.plays || 0;
+                            const draws = game.draws || 0;
+                            const winRate = plays > 0 ? ((wins / plays) * 100).toFixed(0) + '%' : '0%';
+                            
+                            // 기본 스탯 (승/패/무/승률)
+                            statsHTML = `
+                                <div class="stat-item wins">${wins}승</div>
+                                <div class="stat-item losses">${losses}패</div>
+                                <div class="stat-item plays">${draws}무</div> 
+                                <div class="stat-item winrate">${winRate}</div>`;
+
+                            // [수정] 점수(rating) 기반 게임인 경우에만 점수 표시
+                            if (ratingBasedGames.includes(gameId)) {
+                                const rating = game.rating || 0;
+                                statsHTML = `<div class="stat-item points">${rating}점</div>` + statsHTML; // 점수를 맨 앞에 추가
+                            }
+                        }
+                        
+                        const rankItem = document.createElement('div');
+                        rankItem.className = 'rank-item';
+
+                        if (user.uid === currentUser.uid) {
+                            rankItem.classList.add('is-me');
+                        }
+
+                        rankItem.innerHTML = `
+                            <div class="rank-col-rank">${i + 1}</div>
+                            <div class="rank-col-profile">
+                                <div class="rank-avatar">${avatarHTML}</div>
+                                <div class="profile-text">
+                                    <div class="nickname">${escapeHTML(profile.nickname)}</div>
+                                    <div class="level">Lv. ${profile.level || 1}</div>
+                                </div>
+                            </div>
+                            <div class="rank-col-stats">${statsHTML}</div>`;
+                        rankingList.appendChild(rankItem);
+                    });
+                });
+            }
+        });
+    </script>
+</body>
+</html>
+
