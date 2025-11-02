@@ -1116,47 +1116,52 @@ function _generateBoardRecursive(board, tilesToPlace, depth = 0) {
                         fragment.appendChild(tileEl);
                     }
 
-                    // [수정] 타일 렌더링 로직 (깜빡임 해결)
-                    const wasHidden = tileEl.classList.contains('hidden');
+                   // [수정] 타일 렌더링 로직 (깜빡임 해결 + 즉시 반영)
+const wasHidden = tileEl.classList.contains('hidden');
 
-                    if (!isEmpty) {
-                        // 1. 타일이 있는 경우 (내용 채우기)
-                        tileEl.classList.remove('hidden'); // hidden 클래스 제거
-                        
-                         const isImage = tileIcon.startsWith('.') || tileIcon.startsWith('http') || tileIcon.includes('/');
-                         const currentContent = tileEl.firstChild;
+if (!isEmpty) {
+    // 1. 타일이 있는 경우 (내용 채우기)
+    
+    // ✨ [추가] hidden 클래스를 먼저 제거 (이미 사라졌던 타일 재등장 방지)
+    if (wasHidden) {
+        tileEl.classList.remove('hidden');
+    }
+    
+     const isImage = tileIcon.startsWith('.') || tileIcon.startsWith('http') || tileIcon.includes('/');
+     const currentContent = tileEl.firstChild;
 
-                         if (isImage) {
-                             if (!currentContent || currentContent.tagName !== 'IMG' || currentContent.src !== tileIcon) {
-                                 tileEl.innerHTML = `<img src="${escapeHTML(tileIcon)}" alt="tile">`;
-                             }
-                         } else {
-                             if (!currentContent || currentContent.nodeType !== Node.TEXT_NODE || currentContent.textContent !== tileIcon) {
-                                 tileEl.textContent = tileIcon;
-                             }
-                             tileEl.style.fontSize = `${currentTileSize * 0.55}px`;
-                         }
+     if (isImage) {
+         if (!currentContent || currentContent.tagName !== 'IMG' || currentContent.src !== tileIcon) {
+             tileEl.innerHTML = `<img src="${escapeHTML(tileIcon)}" alt="tile">`;
+         }
+     } else {
+         if (!currentContent || currentContent.nodeType !== Node.TEXT_NODE || currentContent.textContent !== tileIcon) {
+             tileEl.textContent = tileIcon;
+         }
+         tileEl.style.fontSize = `${currentTileSize * 0.55}px`;
+     }
 
-                         // 리스너 설정
-                         if (isGameLive && !tileEl.onclick) {
-                             tileEl.onclick = handleTileClick;
-                         } else if (!isGameLive && tileEl.onclick) {
-                             tileEl.onclick = null;
-                         }
-                    } else {
-                        // 2. 타일이 없는 경우 (isEmpty === true)
-                        if (!wasHidden) {
-                            // 2a. 방금 사라진 타일: .hidden 클래스만 추가 (애니메이션 시작)
-                            //     내용물(innerHTML)은 건드리지 않음!
-                            tileEl.classList.add('hidden');
-                            tileEl.onclick = null; // 클릭 방지
-                        } else {
-                            // 2b. 원래부터 비어있던 칸: 내용물이 없어야 함
-                            tileEl.innerHTML = '';
-                            tileEl.onclick = null;
-                        }
-                    }
-                    // [수정 끝]
+     // 리스너 설정
+     if (isGameLive && !tileEl.onclick) {
+         tileEl.onclick = handleTileClick;
+     } else if (!isGameLive && tileEl.onclick) {
+         tileEl.onclick = null;
+     }
+} else {
+    // 2. 타일이 없는 경우 (isEmpty === true)
+    
+    // ✨ [핵심] 즉시 hidden 클래스 추가 (1프레임 지연 없이)
+    if (!wasHidden) {
+        // 방금 사라진 타일: 즉시 .hidden 추가 (애니메이션 시작)
+        tileEl.classList.add('hidden');
+        tileEl.onclick = null; // 클릭 방지
+    } else {
+        // 원래부터 비어있던 칸: 내용물이 없어야 함
+        tileEl.innerHTML = '';
+        tileEl.onclick = null;
+    }
+}
+// [수정 끝]
 
                     existingTiles.delete(index);
                 });
@@ -1251,38 +1256,46 @@ function _generateBoardRecursive(board, tilesToPlace, depth = 0) {
             }
         }
 
-            // --- 내 선택 상태 UI 반영 ---
-            function updateMySelection() {
-                if (!currentRoomData || !currentRoomData.selectedTiles) return;
-                firstSelection = currentRoomData.selectedTiles[myPlayerId] || null;
+           // --- 내 선택 상태 UI 반영 ---
+function updateMySelection() {
+    if (!currentRoomData || !currentRoomData.selectedTiles) return;
+    
+    // ✨ [추가] 현재 보드 상태 가져오기 (이미 제거된 타일 체크용)
+    const boardArray = getBoardArray(currentRoomData.board, TILE_COUNT);
+    
+    firstSelection = currentRoomData.selectedTiles[myPlayerId] || null;
 
-                // 기존 선택 UI 제거
-                const previouslySelected = gameBoard.querySelector('.tile.selected');
-                if (previouslySelected) {
-                    previouslySelected.classList.remove('selected');
-                }
-                selectedTileElement = null; // 로컬 참조 초기화
+    // 기존 선택 UI 제거
+    const previouslySelected = gameBoard.querySelector('.tile.selected');
+    if (previouslySelected) {
+        previouslySelected.classList.remove('selected');
+    }
+    selectedTileElement = null; // 로컬 참조 초기화
 
-                // 새 선택 UI 적용
-                if (firstSelection) {
-                    const selectedIndex = firstSelection.index;
-                    selectedTileElement = gameBoard.querySelector(`.tile[data-index="${selectedIndex}"]`);
-                    if (selectedTileElement && !selectedTileElement.classList.contains('hidden')) { // hidden 아닌 타일만
-                        selectedTileElement.classList.add('selected');
-                    } else {
-                        // 선택된 타일이 hidden 상태면 로컬 선택 정보도 초기화
-                        firstSelection = null;
-                         // Firebase에도 반영 (선택 사항 - 다른 플레이어가 먼저 제거한 경우 등)
-                         // roomRef.child('selectedTiles').child(myPlayerId).set(null);
-                    }
-                }
-            }
+    // 새 선택 UI 적용
+    if (firstSelection) {
+        const selectedIndex = firstSelection.index;
+        
+        // ✨ [추가] 선택된 타일이 이미 제거되었는지 확인
+        if (boardArray[selectedIndex] === null) {
+            // 타일이 이미 제거됨 -> Firebase 선택도 초기화
+            console.log("선택된 타일이 이미 제거됨. Firebase 선택 초기화.");
+            roomRef.child('selectedTiles').child(myPlayerId).set(null);
+            firstSelection = null;
+            return; // 더 이상 UI 업데이트 불필요
+        }
+        
+        selectedTileElement = gameBoard.querySelector(`.tile[data-index="${selectedIndex}"]`);
+        if (selectedTileElement && !selectedTileElement.classList.contains('hidden')) { // hidden 아닌 타일만
+            selectedTileElement.classList.add('selected');
+        } else {
+            // 선택된 타일이 hidden 상태면 로컬 선택 정보도 초기화
+            firstSelection = null;
+        }
+    }
+}
 
-          
-
-            // --- [대체] 경로 탐색 함수 (BFS) ---
-            // 기존 findPath_BFS 함수를 통째로 삭제하고 아래 코드로 교체하세요.
-            // (경로를 찾으면 'true' 대신 '경로 배열'을 반환합니다)
+        
             function findPath_BFS(board, startIndex, endIndex) {
                 const V_ROWS = BOARD_ROWS + 2;
                 const V_COLS = BOARD_COLS + 2;
@@ -1716,27 +1729,33 @@ function _generateBoardRecursive(board, tilesToPlace, depth = 0) {
 
                     return currentRoom; // 변경된 전체 방 데이터 반환
 
-                }, (error, committed, snapshot) => {
+              }, (error, committed, snapshot) => {
                     if (error) {
                         console.error("타일 제거 Transaction 실패:", error);
                     } else if (!committed) {
-                        console.log("타일 선점 실패 (다른 유저가 먼저 가져가거나 데이터 변경됨)");
+                        console.log("타일 선점 실패 (상대가 먼저 제거함)");
                         
-                        // ✨ [수정] 트랜잭션이 중단되었으므로, Firebase에 쓰지 않고 *로컬* UI만 갱신합니다.
-                        // (Firebase에 쓰면 '타일 부활' 버그가 발생합니다)
+                        // ✨ [핵심 수정] 트랜잭션 중단 시:
+                        // 1. Firebase에 절대 쓰지 않음 (타일 부활 버그 방지)
+                        // 2. 로컬 UI만 즉시 초기화
+                        // 3. Firebase 동기화는 listenToRoomChanges에 맡김
+                        
+                        // 로컬 선택 상태 즉시 초기화
                         if (selectedTileElement) {
                             selectedTileElement.classList.remove('selected');
                         }
                         selectedTileElement = null;
                         firstSelection = null;
                         
-                        // [삭제] (버그의 원인)
-                        // if (currentRoomData.selectedTiles[myPlayerId] !== null) {
-                        //     roomRef.child('selectedTiles').child(myPlayerId).set(null);
-                        // }
+                        // 캔버스 경로 지우기 (혹시 그려졌다면)
+                        if (ctx) {
+                            ctx.clearRect(0, 0, pathCanvas.width, pathCanvas.height);
+                        }
                         
-                        // ✨ [추가] 상대방이 먼저 맞췄을 때 '틀림' 효과음 대신 진동
+                        // ✨ 상대가 먼저 맞췄음을 알리는 진동
                         playVibrationEffect();
+                        
+                        // Firebase 동기화는 자동으로 이루어짐 (on('value') 리스너가 처리)
 
                   } else {
                         // 성공 시 사운드 재생
