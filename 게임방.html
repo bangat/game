@@ -775,6 +775,8 @@
 
         let hostOnDisconnect = null;
         let playerOnDisconnect = null;
+        let isPageVisible = true;
+let reconnectTimer = null;
 
         const firebaseConfig = {
             apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
@@ -862,8 +864,32 @@ availableGames = [
             }
         };
 
-        // --- 나머지 함수 정의 (initializeRoom, listenToRoomChanges 등) ---
-        auth.onAuthStateChanged(user => {
+        // ✨ [신규] 페이지 가시성 감지
+document.addEventListener('visibilitychange', () => {
+    isPageVisible = !document.hidden;
+    
+    if (isPageVisible) {
+        console.log('[가시성] 페이지가 다시 활성화됨 - Firebase 재연결 확인');
+        
+        // ✨ 페이지가 다시 보일 때 Firebase 연결 상태 확인
+        if (roomRef) {
+            const connectedRef = firebase.database().ref('.info/connected');
+            connectedRef.once('value', snapshot => {
+                if (snapshot.val() === true) {
+                    console.log('[가시성] Firebase 연결 유지됨');
+                    // 연결이 유지되고 있으면 onDisconnect 핸들러 재설정
+                    setupOnDisconnectHandlers();
+                } else {
+                    console.log('[가시성] Firebase 재연결 중...');
+                }
+            });
+        }
+    } else {
+        console.log('[가시성] 페이지가 백그라운드로 전환됨');
+    }
+});
+
+auth.onAuthStateChanged(user => {
             if (user) {
                 currentUser = user;
                 myNickname = localStorage.getItem('userNickname');
@@ -887,7 +913,34 @@ availableGames = [
             }
         });
 
-        function initializeRoom() {
+        // ✨ [신규] onDisconnect 핸들러 설정 함수 (중복 코드 제거)
+function setupOnDisconnectHandlers() {
+    if (!roomRef || !currentUser) return;
+    
+    // 기존 핸들러 취소
+    if (hostOnDisconnect) {
+        try { hostOnDisconnect.cancel(); } catch(e) { console.warn("호스트 onDisconnect 취소 실패:", e); }
+    }
+    if (playerOnDisconnect) {
+        try { playerOnDisconnect.cancel(); } catch(e) { console.warn("플레이어 onDisconnect 취소 실패:", e); }
+    }
+    
+    // ✨ [수정] 지연 시간을 두고 onDisconnect 설정 (카카오톡 전환 허용)
+    clearTimeout(reconnectTimer);
+    reconnectTimer = setTimeout(() => {
+        if (isHost) {
+            hostOnDisconnect = roomRef.onDisconnect();
+            hostOnDisconnect.remove();
+            console.log('[onDisconnect] 호스트 핸들러 설정됨 (5초 지연)');
+        } else {
+            playerOnDisconnect = roomRef.child('players/' + currentUser.uid).onDisconnect();
+            playerOnDisconnect.remove();
+            console.log('[onDisconnect] 플레이어 핸들러 설정됨 (5초 지연)');
+        }
+    }, 5000); // ✨ 5초 지연 (카카오톡 전환 시간 확보)
+}
+
+function initializeRoom() {
             const urlParams = new URLSearchParams(window.location.search);
             const roomId = urlParams.get('roomId');
             const isSoloQuiz = urlParams.get('mode') === 'solo' && roomId === 'solo_quiz_temp';
@@ -924,64 +977,50 @@ availableGames = [
             });
         }
 
+        
+
         function listenToRoomChanges() {
-            roomRef.on('value', snapshot => {
-                if (!snapshot.exists()) {
-                     if (!document.querySelector('.overlay.active')) { // 게임 종료 모달 등이 떠 있지 않을 때만 알림
-                        alert("방이 사라졌습니다.");
-                     }
-                     cleanupAndExit();
-                     return;
+    roomRef.on('value', snapshot => {
+        if (!snapshot.exists()) {
+             if (!document.querySelector('.overlay.active')) {
+                alert("방이 사라졌습니다.");
+             }
+             cleanupAndExit();
+             return;
+         }
+        const oldRoomData = currentRoomData;
+        currentRoomData = snapshot.val();
+
+        if (currentRoomData.status === 'playing') {
+             const game = availableGames.find(g => g.id === currentRoomData.gameType);
+             if (game) {
+                 // ✨ [수정] 게임 시작 시에만 onDisconnect 취소
+                 if(hostOnDisconnect) {
+                     try { hostOnDisconnect.cancel(); } catch(e) { console.warn("게임 시작 - 호스트 onDisconnect 취소:", e); }
                  }
-                const oldRoomData = currentRoomData;
-                currentRoomData = snapshot.val();
-
-                if (currentRoomData.status === 'playing') {
-                     const game = availableGames.find(g => g.id === currentRoomData.gameType);
-                     if (game) {
-                         if (isHost) {
-                             if(hostOnDisconnect) hostOnDisconnect.cancel(); // 취소 먼저
-                             roomRef.onDisconnect().cancel(); // 안전하게 한번 더
-                         } else {
-                             if(playerOnDisconnect) playerOnDisconnect.cancel(); // 취소 먼저
-                             roomRef.child('players/' + currentUser.uid).onDisconnect().cancel(); // 안전하게 한번 더
-                         }
-                         if(roomRef) roomRef.off(); // 모든 리스너 제거
-                         window.location.href = `${game.file}?roomId=${snapshot.key}`; // 게임 페이지로 이동
-                     }
-                     return; // 게임 페이지 이동 후 더 이상 처리 안 함
+                 if(playerOnDisconnect) {
+                     try { playerOnDisconnect.cancel(); } catch(e) { console.warn("게임 시작 - 플레이어 onDisconnect 취소:", e); }
                  }
+                 if(roomRef) roomRef.off();
+                 window.location.href = `${game.file}?roomId=${snapshot.key}`;
+             }
+             return;
+         }
 
-                if (!currentRoomData.players || !currentRoomData.players[currentUser.uid]) {
-                     if (!document.querySelector('.overlay.active')) {
-                        alert("방에서 퇴장되었습니다.");
-                     }
-                     cleanupAndExit();
-                     return;
-                 }
+        if (!currentRoomData.players || !currentRoomData.players[currentUser.uid]) {
+             if (!document.querySelector('.overlay.active')) {
+                alert("방에서 퇴장되었습니다.");
+             }
+             cleanupAndExit();
+             return;
+         }
 
-                isHost = currentRoomData.hostId === currentUser.uid; // 데이터 변경 시 isHost 재확인
+       isHost = currentRoomData.hostId === currentUser.uid; // 데이터 변경 시 isHost 재확인
 
-                // onDisconnect 설정
-                if (isHost) {
-                    if (playerOnDisconnect) playerOnDisconnect.cancel(); // 게스트 핸들러 취소
-                    // hostOnDisconnect 변수에 할당하기 전에 기존 핸들러 취소 시도
-                    if(hostOnDisconnect) {
-                        try { hostOnDisconnect.cancel(); } catch(e) { console.warn("기존 호스트 onDisconnect 취소 실패:", e); }
-                    }
-                    hostOnDisconnect = roomRef.onDisconnect();
-                    hostOnDisconnect.remove();
-                } else {
-                    if (hostOnDisconnect) hostOnDisconnect.cancel(); // 호스트 핸들러 취소
-                    // playerOnDisconnect 변수에 할당하기 전에 기존 핸들러 취소 시도
-                    if(playerOnDisconnect) {
-                         try { playerOnDisconnect.cancel(); } catch(e) { console.warn("기존 플레이어 onDisconnect 취소 실패:", e); }
-                    }
-                    playerOnDisconnect = roomRef.child('players/' + currentUser.uid).onDisconnect();
-                    playerOnDisconnect.remove();
-                }
+// ✨ [수정] onDisconnect 핸들러를 별도 함수로 호출
+setupOnDisconnectHandlers();
 
-                updateUI();
+updateUI();
                 handlePlayerChanges(oldRoomData ? oldRoomData.players : {});
                 loadingOverlay.style.display = 'none';
             });
@@ -1317,10 +1356,14 @@ availableGames = [
         }
 
         function cleanupAndExit() {
-            console.log("Cleanup and Exit called");
-            if (roomRef) {
-                try { roomRef.off(); } catch(e) { console.warn("roomRef listener removal failed:", e); }
-            }
+    console.log("Cleanup and Exit called");
+    
+    // ✨ [추가] 타이머 정리
+    clearTimeout(reconnectTimer);
+    
+    if (roomRef) {
+        try { roomRef.off(); } catch(e) { console.warn("roomRef listener removal failed:", e); }
+    }
             // onDisconnect 핸들러 취소 시도
             if (hostOnDisconnect) { try { hostOnDisconnect.cancel(); } catch(e) { console.warn("Host onDisconnect cancel failed:", e); } }
             if (playerOnDisconnect) { try { playerOnDisconnect.cancel(); } catch(e) { console.warn("Player onDisconnect cancel failed:", e); } }
