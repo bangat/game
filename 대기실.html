@@ -1254,8 +1254,8 @@
                 const friendBtn = document.getElementById('friend-btn'); // <a> 태그
                 if (!friendBtn) return;
                 
-                // [수정] 친구 요청 개수만 카운트 (쪽지는 토스트로만)
-                const totalCount = currentRequestCount; 
+                // [수정] 친구 요청 + 쪽지 개수 합산
+                const totalCount = currentRequestCount + currentMessageCount; 
                 
                 const badgeEl = friendBtn.querySelector('.badge');
                 if (totalCount > 0) {
@@ -1310,10 +1310,11 @@
             // [수정] 알림 리스너 (친구 요청 + 쪽지 토스트)
             function listenToNotifications(uid) {
                 if (friendRequestRef) friendRequestRef.off();
-                if (messageInboxRef) messageInboxRef.off();
+                if (messageInboxRef) messageInboxRef.off(); // 토스트용 리스너는 분리
 
                 // 1.1 친구 요청 리스너 (뱃지 + 토스트)
-                friendRequestRef = usersRef.child(uid).child('friendRequests');
+                // [수정] 올바른 경로로 변경
+                friendRequestRef = db.ref(`friend_requests/${uid}`); 
                 friendRequestRef.on('value', async (snapshot) => {
                     const newRequests = snapshot.val() || {};
                     currentRequestCount = snapshot.numChildren();
@@ -1337,7 +1338,14 @@
                     currentFriendRequests = newRequests;
                 });
 
-                // 1.2 새 쪽지 리스너 (토스트 알림용)
+                // 1.2 [신규] 새 쪽지 뱃지 카운트용 리스너
+                const messageBadgeRef = db.ref(`user_inboxes/${uid}`);
+                messageBadgeRef.on('value', (snapshot) => {
+                    currentMessageCount = snapshot.numChildren();
+                    updateTotalBadge();
+                });
+
+                // 1.3 새 쪽지 리스너 (토스트 알림용)
                 messageInboxRef = db.ref(`user_inboxes/${uid}`);
                 
                 messageInboxRef.once('value', (snapshot) => {
