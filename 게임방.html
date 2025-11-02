@@ -434,6 +434,55 @@
             animation: spin 1s linear infinite;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* 4. [신규] 불타는 등장 (이글이글) */
+        @keyframes flame-anim {
+            0% { box-shadow: 0 5px 12px -5px #F90, 0 8px 15px 0px #F00, 0 5px 20px 5px #F90, 0 2px 5px 0 #FFF; }
+            50% { box-shadow: 0 8px 15px -5px #FFF, 0 10px 20px 5px #F00, 0 8px 25px 10px #F90, 0 5px 10px 0 #FFF; }
+            100% { box-shadow: 0 5px 12px -5px #F90, 0 8px 15px 0px #F00, 0 5px 20px 5px #F90, 0 2px 5px 0 #FFF; }
+        }
+        /* [수정] 셀렉터 변경: .player-slot-compact .avatar */
+        .player-slot-compact .avatar.preview-effect-flames {
+            position: relative; z-index: 1;
+        }
+        .player-slot-compact .avatar.preview-effect-flames::after {
+            content: ''; position: absolute; bottom: -5px; left: 10%;
+            width: 80%; height: 10px; border-radius: 50%;
+            background: transparent;
+            animation: flame-anim 1.2s ease-in-out infinite;
+            z-index: -1;
+        }
+
+        /* 5. [신규] 천사 링 */
+        @keyframes halo-hover-anim {
+            0%, 100% { transform: translateY(0) rotateX(60deg) scale(0.9); opacity: 0.8; }
+            50% { transform: translateY(-8px) rotateX(60deg) scale(1); opacity: 1; }
+        }
+        .effect-angel-halo {
+            position: absolute; top: 0px; left: 50%;
+            transform-origin: center center; width: 40px; height: 15px;
+            margin-left: -20px; border: 3px solid var(--accent-color);
+            border-radius: 50%;
+            background: radial-gradient(ellipse at center, rgba(255,255,0,0.3) 0%, rgba(255,255,255,0) 60%);
+            box-shadow: 0 0 10px 3px var(--accent-color);
+            animation: halo-hover-anim 2s ease-in-out infinite;
+            transform: rotateX(60deg); z-index: 20; 
+        }
+
+        /* 6. [신규] 빙결 */
+        @keyframes frost-anim {
+            0% { opacity: 0.7; box-shadow: 0 0 10px 3px #FFF, 0 0 20px 8px #a7d5ff, inset 0 0 8px 3px #FFF; }
+            50% { opacity: 0.4; box-shadow: 0 0 15px 5px #FFF, 0 0 30px 12px #a7d5ff, inset 0 0 12px 5px #FFF; }
+            100% { opacity: 0.7; box-shadow: 0 0 10px 3px #FFF, 0 0 20px 8px #a7d5ff, inset 0 0 8px 3px #FFF; }
+        }
+        .effect-frozen-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            border-radius: 12px;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.2' numOctaves='3'/%3E%3CfeDiffuseLighting lighting-color='%23a7d5ff' surfaceScale='5'%3E%3CfeDistantLight azimuth='45' elevation='45'/%3E%3C/feDiffuseLighting%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url(%23f)'/%3E%3C/svg%3E");
+            mix-blend-mode: screen; 
+            animation: frost-anim 4s ease-in-out infinite;
+            z-index: 20;
+        }
     </style>
     <script src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.2/kakao.min.js"></script>
 </head>
@@ -603,7 +652,22 @@
     // --- DOMContentLoaded 시작 ---
     document.addEventListener('DOMContentLoaded', () => {
         console.log('--- DOMContentLoaded 시작 ---');
-        
+        // --- ✨ [신규] Kakao SDK 초기화 (DOMContentLoaded로 이동) ---
+        try {
+            if (typeof window.Kakao !== 'undefined' && window.Kakao.init) {
+                if (!window.Kakao.isInitialized()) {
+                    window.Kakao.init('eab4e799223cb0d41b51e518546b2405');
+                    console.log('Kakao SDK가 DOMContentLoaded에서 성공적으로 초기화되었습니다.');
+                } else {
+                    console.log('Kakao SDK가 DOMContentLoaded에서 이미 초기화되었음을 확인했습니다.');
+                }
+            } else {
+                console.error('DOMContentLoaded: Kakao SDK 스크립트를 로드했으나, Kakao 객체를 찾을 수 없습니다.');
+            }
+        } catch (e) {
+            console.error("DOMContentLoaded: Kakao SDK 초기화 실패:", e);
+        }
+        // --- ✨ Kakao SDK 초기화 끝 ---
           
     
 
@@ -985,19 +1049,35 @@ availableGames = [
 
                     // 2. ✨ [신규] 지속형 이펙트 추가 (플레이어 데이터 기반)
                     const effectId = player.entryEffect;
+
+                    // [신규] 적용 전 초기화
+                    avatarEl.classList.remove('effect-spotlight-equipped-bg', 'preview-effect-flames');
+                    const existingOverlay = avatarEl.querySelector('.entry-effect-overlay, .effect-angel-halo, .effect-frozen-overlay');
+                    if (existingOverlay) {
+                        existingOverlay.remove();
+                    }
+
                     if (effectId) {
                         const effectOverlay = document.createElement('div');
-                        effectOverlay.className = 'entry-effect-overlay'; // 공통 클래스
+                        effectOverlay.className = 'entry-effect-overlay'; // 기본 클래스
                         
                         if (effectId === 'effect_sparkle') {
                             effectOverlay.classList.add('effect-sparkle-persistent');
+                            avatarEl.appendChild(effectOverlay);
                         } else if (effectId === 'effect_spotlight') {
                             effectOverlay.classList.add('effect-spotlight-persistent');
-                            // ✨ [신규] 스포트라이트 장착 시 배경색 변경 클래스 추가
                             avatarEl.classList.add('effect-spotlight-equipped-bg');
-                        }
-                        
-                        if (effectOverlay.classList.length > 1) { // 유효한 이펙트가 추가된 경우에만
+                            avatarEl.appendChild(effectOverlay);
+                        } else if (effectId === 'effect_flames') {
+                            // '이글이글'은 클래스만 추가 (오버레이 div 없음)
+                            avatarEl.classList.add('preview-effect-flames');
+                        } else if (effectId === 'effect_angel') {
+                            // '천사 링'은 전용 클래스로 div 추가
+                            effectOverlay.className = 'effect-angel-halo';
+                            avatarEl.appendChild(effectOverlay);
+                        } else if (effectId === 'effect_frozen') {
+                            // '빙결'은 전용 클래스로 div 추가
+                            effectOverlay.className = 'effect-frozen-overlay';
                             avatarEl.appendChild(effectOverlay);
                         }
                     }
@@ -1323,75 +1403,11 @@ if (inviteBtn) {
         document.addEventListener('click', () => emojiPopover.classList.remove('active'));
        emojiPopover.addEventListener('click', e => { if(e.target.tagName === 'BUTTON'){ sendMessage(e.target.textContent); emojiPopover.classList.remove('active'); } });
 
-       // --- ✨ [신규] 앱 숨김/복귀 감지 (카톡 초대 문제 해결) ---
-        // 이전에 제거했던 코드를 다시 추가합니다.
-        document.addEventListener('visibilitychange', () => {
-            if (!roomRef || !currentUser) return; // 방 나가기 처리 중이거나, 아직 방 정보가 로드 안됐으면 무시
-            
-            // [수정] currentRoomData null 체크 간소화
-            if (!currentRoomData) return; 
-
-            if (document.visibilityState === 'hidden') {
-                // 앱이 숨겨지면 (카톡 전환 등), onDisconnect 핸들러를 즉시 취소
-                console.log("App hidden, onDisconnect 취소.");
-                if (hostOnDisconnect) {
-                    try { hostOnDisconnect.cancel(); } catch(e) { console.warn("Host onDisconnect cancel failed (hidden):", e); }
-                    hostOnDisconnect = null; // 핸들러 참조 제거
-                }
-                if (playerOnDisconnect) {
-                    try { playerOnDisconnect.cancel(); } catch(e) { console.warn("Player onDisconnect cancel failed (hidden):", e); }
-                    playerOnDisconnect = null; // 핸들러 참조 제거
-                }
-            } else if (document.visibilityState === 'visible') {
-                // 앱으로 돌아오면, onDisconnect 핸들러를 즉시 재설정
-                console.log("App visible, onDisconnect 재설정.");
-                
-                // [핵심 수정] isHost 변수를 신뢰하지 않고, DB에서 최신 hostId를 *직접* 읽어옵니다.
-                roomRef.child('hostId').once('value', hostIdSnapshot => {
-                    const currentHostId = hostIdSnapshot.val();
-                    const amIHostNow = (currentHostId === currentUser.uid);
-                    
-                    // [수정] DB에서 읽어온 최신 hostId 기준으로 핸들러 설정
-                    if (amIHostNow) {
-                        console.log("...DB 확인: 내가 Host임. Host 핸들러 설정.");
-                        if (playerOnDisconnect) { try { playerOnDisconnect.cancel(); } catch(e) {} }
-                        hostOnDisconnect = roomRef.onDisconnect();
-                        hostOnDisconnect.remove();
-                    } else {
-                        console.log("...DB 확인: 내가 Guest임. Guest 핸들러 설정.");
-                        if (hostOnDisconnect) { try { hostOnDisconnect.cancel(); } catch(e) {} }
-                        playerOnDisconnect = roomRef.child('players/' + currentUser.uid).onDisconnect();
-                        playerOnDisconnect.remove();
-                    }
-                });
-            }
-        });
-        // --- ✨ 코드 추가 끝 ---
+     
         
     }); // --- DOMContentLoaded 끝 ---
 
-    // --- ✨ window.onload for SDK Initialization ---
-    window.addEventListener('load', () => {
-        // 이 시점에는 인앱 콘솔 기능이 로드(console.log가 오버라이드)된 후입니다.
-        console.log('--- window.onload 시작 (Kakao SDK 초기화) ---');
-        try {
-            if (typeof window.Kakao !== 'undefined' && window.Kakao.init) {
-                if (!window.Kakao.isInitialized()) {
-                    window.Kakao.init('eab4e799223cb0d41b51e518546b2405');
-                    console.log('Kakao SDK가 window.onload에서 성공적으로 초기화되었습니다.');
-                } else {
-                    console.log('Kakao SDK가 window.onload에서 이미 초기화되었음을 확인했습니다.');
-                }
-            } else {
-                console.error('window.onload: Kakao SDK 스크립트를 로드했으나, Kakao 객체를 찾을 수 없습니다.');
-                alert('Kakao SDK 로드에 실패했습니다. 페이지를 새로고침 해주세요.');
-            }
-        } catch (e) {
-            console.error("window.onload: Kakao SDK 초기화 실패:", e);
-            alert('Kakao SDK 초기화에 실패했습니다. 페이지를 새로고침 해주세요.');
-        }
-    });
-    // --- ✨ window.onload 끝 ---
+    
 
 </script>
 
