@@ -832,7 +832,7 @@
                 });
             }
             
-            // [수정] 1. 친구 목록 리스너 (경로 수정)
+            // [수정] 1. 친구 목록 리스너 (경로 및 중복 리스너 수정)
             function listenToFriends() {
                 friendListContainer.innerHTML = '<div class="spinner"></div>';
                 
@@ -841,6 +841,7 @@
                     friendListRef.off('value', friendListListener);
                 }
 
+                // [수정] 올바른 경로로 수정
                 friendListRef = db.ref(`friends/${currentUser.uid}`);
                 friendListListener = friendListRef.on('value', snapshot => {
                     if (!snapshot.exists()) {
@@ -852,7 +853,7 @@
                     const promises = friendIds.map(uid => usersRef.child(uid).child('profile').once('value'));
                     
                     Promise.all(promises).then(results => {
-                        friendListContainer.innerHTML = '';
+                        friendListContainer.innerHTML = ''; // 목록 비우기
                         results.forEach((profileSnapshot, index) => {
                             if (profileSnapshot.exists()) {
                                 const friendProfile = profileSnapshot.val();
@@ -861,11 +862,15 @@
                                 friendListContainer.appendChild(itemEl);
                             }
                         });
+                        // [신규] 친구가 프로필 조회 실패 등으로 0명일 경우
+                        if (friendListContainer.innerHTML === '') {
+                             friendListContainer.innerHTML = '<p style="text-align:center; color:#888; padding: 50px 0;">친구 목록을 불러올 수 없습니다.</p>';
+                        }
                     });
                 });
             }
             
-            // [수정] 2. 친구 요청 리스너 (경로 수정)
+            // [수정] 2. 친구 요청 리스너 (리스너 중복 수정)
             function listenToFriendRequests() {
                 friendRequestsContainer.innerHTML = '<div class="spinner"></div>';
                 
@@ -873,7 +878,7 @@
                 if (friendRequestRef && friendRequestListener) {
                     friendRequestRef.off('value', friendRequestListener);
                 }
-                
+
                 friendRequestRef = db.ref(`friend_requests/${currentUser.uid}`);
                 friendRequestListener = friendRequestRef.on('value', async (snapshot) => {
                     const requestBadge = tabsContainer.querySelector('[data-tab="requests"] .badge');
@@ -1152,7 +1157,8 @@
             // [수정] 친구 삭제 (경로: friends)
             function handleRemoveFriend(e, friendNickname) {
                 if (gameSettings.sfx) clickSound.play();
-                if (!confirm(`${friendNickname}님을 친구에서 삭제하시겠습니까?`)) return;
+                // [수정] confirm()은 iframe 환경에서 작동하지 않으므로, window.confirm() 사용
+                if (!window.confirm(`${friendNickname}님을 친구에서 삭제하시겠습니까?`)) return;
                 
                 const friendUid = e.currentTarget.dataset.uid;
                 
@@ -1161,6 +1167,7 @@
                 updates[`/friends/${friendUid}/${currentUser.uid}`] = null;
                 db.ref().update(updates).then(() => {
                     showToast(`${friendNickname}님을 친구에서 삭제했습니다.`);
+                    // 'on' 리스너가 자동으로 UI를 갱신합니다.
                 });
             }
             
