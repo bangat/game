@@ -305,10 +305,6 @@
     <audio id="combo2-sound" src="./sounds/combo2.mp3" preload="auto"></audio>
     <audio id="combo3-sound" src="./sounds/combo3.mp3" preload="auto"></audio>
 
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
-
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             
@@ -367,6 +363,7 @@
             // 2. Firebase (솔로 모드용 - 점수 저장)
             // ------------------------------------
             
+            /* // [로컬 테스트용 주석]
             const firebaseConfig = {
                 apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
                 authDomain: "goodluck-7c14b.firebaseapp.com",
@@ -387,6 +384,8 @@
                     currentUser = user;
                 }
             });
+            */ // [로컬 테스트용 주석]
+            let currentUser = null; // [로컬 테스트용] 임시 변수
 
             // ------------------------------------
             // 3. 게임 초기화
@@ -397,7 +396,7 @@
                 score = 0;
                 timer = GAME_TIME;
                 currentCombo = 0;
-                isProcessing = true; // 시작 전 처리 중
+                isProcessing = true; // [수정] 카운트다운 시작 전까지 처리 중
                 
                 // UI 초기화
                 scoreValue.textContent = '0';
@@ -408,8 +407,9 @@
                 createBoardData();
                 renderBoard();
                 
-                // 카운트다운 시작
-                startCountdown();
+                // [수정] 카운트다운 시작
+                // [삭제] startCountdown() (initGame 밖에서 호출됨)
+                // [수정] startGame() (카운트다운이 끝나고 호출됨)
             }
 
             function createBoardData() {
@@ -450,6 +450,13 @@
                 // 보드 크기 맞춤
                 const containerW = gameContainer.clientWidth;
                 const containerH = gameContainer.clientHeight;
+                
+                // [버그 수정] containerW가 0일 경우(초기 로드) 대비
+                if (containerW === 0 || containerH === 0) {
+                    console.warn("컨테이너 크기 0. 렌더링 스킵.");
+                    return; // 렌더링 중단
+                }
+                
                 const boardSize = Math.min(containerW, containerH) * 0.95; // 95%
                 const tileSize = (boardSize - (COLS - 1) * 2 - 8) / COLS; // gap 2px, padding 4px
                 
@@ -495,13 +502,14 @@
                     } else {
                         clearInterval(interval);
                         infoOverlay.classList.remove('active');
-                        startGame();
+                        // [수정] 카운트다운이 끝난 후 initGame() 호출
+                        initGame(); 
                     }
                 }, 1000);
             }
 
             function startGame() {
-                isProcessing = false;
+                isProcessing = false; // [수정] initGame()에서 true로 설정된 것을 false로 변경
                 timerId = setInterval(() => {
                     timer--;
                     timerValue.textContent = timer;
@@ -529,6 +537,7 @@
                 gameOverOverlay.classList.add('active');
                 
                 // Firebase에 점수 저장 (로그인한 경우)
+                /* // [로컬 테스트용 주석]
                 if (currentUser) {
                     const gameStatsRef = usersRef.child(currentUser.uid).child('gameStats/candysoap');
                     gameStatsRef.transaction(stats => {
@@ -544,9 +553,14 @@
                     const pointsGained = Math.floor(score / 10);
                     usersRef.child(currentUser.uid).child('profile/points').transaction(points => (points || 0) + pointsGained);
                 }
+                */ // [로컬 테스트용 주석]
             }
-
-            restartBtn.addEventListener('click', initGame);
+            
+            // [수정] 다시하기 버튼은 카운트다운부터 다시 시작
+            restartBtn.addEventListener('click', () => {
+                gameOverOverlay.classList.remove('active');
+                startCountdown();
+            });
 
             // ------------------------------------
             // 5. 컨트롤 (드래그 앤 스왑)
@@ -782,6 +796,16 @@
                 scoreValue.textContent = score.toLocaleString();
             }
             
+            function playSound(id) {
+                try {
+                    const sound = sounds[id];
+                    if(sound) {
+                        sound.currentTime = 0;
+                        sound.play().catch(e => {});
+                    }
+                } catch(e) {}
+            }
+            
             function playComboSound(combo) {
                 playSound('match');
                 if (combo >= 1) {
@@ -796,7 +820,9 @@
             function animatePop(matches) {
                 matches.forEach(key => {
                     const [r, c] = key.split('-').map(Number);
-                    tileElements[r][c].classList.add('pop');
+                    if (tileElements[r] && tileElements[r][c]) {
+                        tileElements[r][c].classList.add('pop');
+                    }
                 });
                 return new Promise(resolve => setTimeout(resolve, 300)); // 0.3초 (애니메이션 시간)
             }
@@ -804,7 +830,9 @@
             function removeMatches(matches) {
                 matches.forEach(key => {
                     const [r, c] = key.split('-').map(Number);
-                    board[r][c] = null; // 데이터 제거
+                    if (board[r]) {
+                        board[r][c] = null; // 데이터 제거
+                    }
                 });
             }
             
@@ -849,6 +877,12 @@
                 // 1. 떨어진 타일 (Fall)
                 droppedTilesMap.forEach((startRow, endKey) => {
                     const [endRow, col] = endKey.split('-').map(Number);
+                    
+                    if (!tileElements[startRow] || !tileElements[startRow][col]) {
+                        console.error(`AnimateDrops: Fall [${startRow}][${col}] DOM 요소를 찾을 수 없습니다.`);
+                        return;
+                    }
+                    
                     const tile = tileElements[startRow][col]; // (이전 위치의 DOM)
                     
                     // DOM 재배치
@@ -864,6 +898,22 @@
                 // 2. 새로 생긴 타일 (New)
                 newTilesMap.forEach((emoji, key) => {
                     const [row, col] = key.split('-').map(Number);
+                    
+                    if (!tileElements[row] || !tileElements[row][col]) {
+                         // 이 경우는 '떨어진 타일'이 아니므로, 빈 슬롯에서 DOM을 찾아야 함
+                         // 하지만 'pop'으로 인해  DOM이 엉망이 되었을 수 있음.
+                         // DOM 재정렬이 필요함.
+                         console.error(`AnimateDrops: New [${row}][${col}] DOM 요소를 찾을 수 없습니다.`);
+                         // 임시방편: DOM을 강제로 찾아서 채움
+                         const tile = gameBoard.querySelector(`.tile[data-row="${row}"][data-col="${col}"]`);
+                         if (tile) {
+                            tile.textContent = emoji;
+                            tile.className = 'tile new';
+                            tile.style.transform = '';
+                         }
+                         return;
+                    }
+                    
                     const tile = tileElements[row][col]; // (빈 슬롯의 DOM)
                     
                     tile.textContent = emoji;
@@ -878,20 +928,26 @@
                 // 4. 모든 타일 클래스 초기화
                 for (let r = 0; r < ROWS; r++) {
                     for (let c = 0; c < COLS; c++) {
-                        tileElements[r][c].className = 'tile';
-                        tileElements[r][c].style.transform = '';
+                        if (tileElements[r] && tileElements[r][c]) {
+                            tileElements[r][c].className = 'tile';
+                            tileElements[r][c].style.transform = '';
+                        }
                     }
                 }
                 
                 // 5. DOM 요소 2D 배열 재정렬 (매우 중요)
-                // (DOM 요소 자체가 위/아래로 이동했으므로, tileElements 배열을 DOM 순서에 맞게 다시 정렬)
                 tileElements = [];
                 const allTileElements = gameBoard.querySelectorAll('.tile');
                 for (let r = 0; r < ROWS; r++) {
                     const rowElements = [];
                     for (let c = 0; c < COLS; c++) {
                         const index = r * COLS + c;
-                        rowElements.push(allTileElements[index]);
+                        const el = allTileElements[index];
+                        // [버그 수정] DOM 요소의 데이터셋을 데이터(board) 기준으로 강제 동기화
+                        el.dataset.row = r;
+                        el.dataset.col = c;
+                        el.textContent = board[r][c];
+                        rowElements.push(el);
                     }
                     tileElements.push(rowElements);
                 }
@@ -967,7 +1023,9 @@
             // ------------------------------------
             // 8. 게임 시작
             // ------------------------------------
-            initGame();
+            // [수정] DOMContentLoaded 시점에는 카운트다운만 시작
+            startCountdown();
+            // [삭제] initGame();
         });
     </script>
 </body>
