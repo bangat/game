@@ -136,7 +136,7 @@
         #game-board {
             position: relative; 
             background-color: var(--panel-bg);
-            border: 3px solid var(--text-color-dark);
+            border: none; /* [수정] 테두리 제거 */
             box-shadow: 6px 6px 0px 0px var(--panel-shadow);
             border-radius: 12px;
             display: grid; 
@@ -161,7 +161,7 @@
             box-shadow: inset 2px 2px 4px rgba(87, 65, 65, 0.15), 
                         inset -2px -2px 4px rgba(255, 255, 255, 0.7);
             text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
-            aspect-ratio: 1 / 1;
+            /* aspect-ratio: 1 / 1; */ /* [수정] JS에서 gridTemplateRows를 설정하므로 제거 */
             transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), 
                         opacity 0.2s ease,
                         box-shadow 0.2s ease;
@@ -184,7 +184,7 @@
             transition: transform 0.3s cubic-bezier(0.55, 0.085, 0.68, 0.53);
         }
         
-        .tile.new { animation: new-tile 0.2s ease-out; }
+        .tile.new-tile-anim { animation: new-tile 0.2s ease-out; } /* [수정] .new -> .new-tile-anim */
         @keyframes new-tile {
             from { transform: scale(0.5); opacity: 0; }
             to { transform: scale(1); opacity: 1; }
@@ -293,7 +293,7 @@
             font-size: 2.5em;
             font-weight: 900;
             color: white;
-            -webkit-text-stroke: 2px var(--primary-color);
+            /* -webkit-text-stroke: 2px var(--primary-color); */ /* [수정] 이 줄을 주석 처리하거나 삭제합니다. */
             text-shadow: 2px 2px 5px rgba(0,0,0,0.5);
             z-index: 100;
             pointer-events: none;
@@ -334,7 +334,7 @@
                 <div class="label">시간</div>
                 <div class="value" id="timer-value">60</div>
             </div>
-            <div id="combo-score-display" style="position: absolute; bottom: 10px; right: 20px;"></div>
+    
         </div>
 
         <div id="game-container">
@@ -415,7 +415,7 @@
             const ROWS = 8;
             const COLS = 6;
             // [수정] 이모지 (5개 동물)
-            const TILE_EMOJIS = ['🐶', '🐱', '🐻', '🐼', '🦊']; 
+            const TILE_EMOJIS = ['🐄', '🐯', '🐳', '🐷', '🦒']; 
             const GAME_TIME = 60;
 
             let board = []; 
@@ -507,20 +507,9 @@
                     const players = snapshot.val();
                     if (players) {
                         updateScoreboardUI(players);
-
-                        // [수정] 호스트는 'isFinished' 상태만 감시
-                        if (isHost) {
-                            const playerArray = Object.values(players);
-                            if (playerArray.length > 0 && playerArray.every(p => p.isFinished === true)) {
-                                // [수정] 중복 호출 방지를 위해 'playing' 상태일 때만 'finished'로 변경
-                                statusRef.once('value', (statusSnap) => {
-                                    if (statusSnap.val() === 'playing') {
-                                        console.log("Host: 모든 플레이어 종료 확인. 방 상태를 'finished'로 변경합니다.");
-                                        statusRef.set('finished');
-                                    }
-                                });
-                            }
-                        }
+                        
+                        // [수정] 게스트 멈춤 버그를 해결하기 위해 'isFinished' 감시 로직을
+                        // 'gameOver()' -> 'checkAllPlayersFinished()' 함수로 이동시킴.
                     }
                 });
 
@@ -534,6 +523,9 @@
                         startCountdown();
                     } else if (status === 'finished') {
                         // [수정] 호스트/게스트 모두 이 함수를 호출하여 리스너를 정리함
+                        forceGameOver();
+                    } else if (status === null && !gameOverOverlay.classList.contains('active')) {
+                        console.warn("방 상태가 'null'입니다. 호스트가 방을 삭제한 것 같습니다.");
                         forceGameOver();
                     }
                 });
@@ -628,12 +620,12 @@
                 const gap = 2; // grid-gap
                 const boardPadding = 4; // #game-board padding
                 const containerPadding = 10; // #game-container padding
-                const boardBorder = 3; // [신규] #game-board border
+                const boardBorder = 0; // [신규] #game-board border
                 
                 const availableW = containerW - (containerPadding * 2);
                 const availableH = containerH - (containerPadding * 2);
 
-                // [수정] 타일 크기 계산 시 (boardBorder * 2) 추가
+                // [수정] "타일 안맞음" 버그 해결 (boardBorder * 2 확인)
                 const tileW_calc = (availableW - (boardPadding * 2) - (boardBorder * 2) - (COLS - 1) * gap) / COLS;
                 const tileH_calc = (availableH - (boardPadding * 2) - (boardBorder * 2) - (ROWS - 1) * gap) / ROWS;
 
@@ -647,7 +639,8 @@
 
                 gameBoard.style.width = `${finalBoardW}px`;
                 gameBoard.style.height = `${finalBoardH}px`; // [수정] auto -> 명시적 높이
-                gameBoard.style.gridTemplateColumns = `repeat(${COLS}, 1fr)`;
+                gameBoard.style.gridTemplateColumns = `repeat(${COLS}, ${tileSize}px)`; // [수정] 1fr -> 50px (계산된 값)
+                gameBoard.style.gridTemplateRows = `repeat(${ROWS}, ${tileSize}px)`; // [신규] 명시적 높이
                 
                 const iconSize = tileSize * 0.7; // 폰트 크기
 
@@ -719,10 +712,42 @@
                 timerValue.textContent = '0';
                 playSound('gameOver');
                 if (playerRef) {
-                    playerRef.child('isFinished').set(true);
+                    playerRef.child('isFinished').set(true).then(() => {
+                        // [수정] isFinished.set()이 완료된 후, 호스트만 모두 종료했는지 체크
+                        if (isHost) {
+                            // 1초 후 체크 (게스트의 set(true)가 반영될 시간을 줌)
+                            setTimeout(checkAllPlayersFinished, 1000);
+                        }
+                    });
                 }
                 loadingOverlay.classList.add('active');
                 loadingOverlay.querySelector('p').textContent = "결과 집계 중...";
+            }
+
+            // [신규] 게스트 멈춤 버그 수정을 위한 호스트용 함수
+            function checkAllPlayersFinished() {
+                if (!isHost || !allPlayersRef) return;
+
+                allPlayersRef.once('value', (snapshot) => {
+                    const players = snapshot.val();
+                    if (!players) return;
+
+                    const playerArray = Object.values(players);
+                    // [수정] 모든 플레이어가 'isFinished: true'인지 확인
+                    if (playerArray.length > 0 && playerArray.every(p => p.isFinished === true)) {
+                        // [수정] 'playing' 상태일 때만 'finished'로 변경 (중복 방지)
+                        statusRef.once('value', (statusSnap) => {
+                            if (statusSnap.val() === 'playing') {
+                                console.log("Host (Delayed Check): 모든 플레이어 종료 확인. 'finished'로 변경.");
+                                statusRef.set('finished');
+                            }
+                        });
+                    } else {
+                        console.log("Host (Delayed Check): 아직 모든 플레이어가 종료되지 않음. 2초 후 재시도.");
+                        // 2초 후 다시 시도 (네트워크 지연, 플레이어 이탈 등)
+                        setTimeout(checkAllPlayersFinished, 2000);
+                    }
+                });
             }
 
             // [수정] "게스트 멈춤" 버그 해결 (리스너 정리)
@@ -737,7 +762,12 @@
                 isProcessing = true; 
                 loadingOverlay.classList.remove('active');
                 
-                // [수정] .once() 콜백 *안*에서 리스너를 끈다.
+                if (!allPlayersRef) {
+                    finalRankingList.innerHTML = '<p style="text-align: center;">방 연결이 끊겼습니다.</p>';
+                    finalScoreEl.textContent = `${score.toLocaleString()} 점`;
+                    return;
+                }
+                
                 allPlayersRef.once('value', (snapshot) => {
                     // [수정] 콜백 함수 내부에서 리스너 즉시 끄기
                     if (allPlayersRef) {
@@ -750,7 +780,12 @@
                     }
                     
                     const players = snapshot.val();
-                    if (!players) return;
+                    if (!players) {
+                        // [수정] players가 null일 때 (방이 삭제됨)
+                        finalRankingList.innerHTML = '<p style="text-align: center;">방이 종료되었습니다.</p>';
+                        finalScoreEl.textContent = `${score.toLocaleString()} 점`;
+                        return; // [수정] null일 때 여기서 반환
+                    }
 
                     const sortedPlayers = Object.entries(players)
                         .map(([uid, data]) => ({ uid, ...data }))
@@ -1038,24 +1073,25 @@
                 return newTilesMap;
             }
           
-            // [수정] "고스트 터치" "입력 오류" "버벅임" 모두 해결한 최종 함수
+          // [수정] "고스트 터치" "입력 오류" "버벅임" 모두 해결한 최종 함수 (v2)
             async function animateDrops(droppedTilesMap, newTilesMap) {
                 const fallPromises = [];
-                // [수정] 타일 크기(높이)를 한 번만 계산
-                const tileSize = tileElements[0][0].clientHeight + 2; // 2는 갭(gap)
+                // [버그 수정] tileElements[0][0]이 null일 수 있으므로 안전하게 크기 계산
+                const firstTile = gameBoard.querySelector('.tile') || {};
+                const tileSize = (firstTile.clientHeight || 50) + 2; // 2는 갭(gap)
 
                 // 1. DOM/데이터/배열 업데이트
                 // (데이터 `board` 배열은 이미 최신 상태)
                 // `tileElements` 배열을 `board` 데이터 기준으로 재정렬
                 
                 const newTileElements = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
-                const tilesToReuse = [];
-
-                // 1a. 재활용 타일 수집
+                
+                // [수정] 1a. 모든 타일 DOM 요소를 1D 배열로 수집 (재사용 큐)
+                const allOldTiles = [];
                 for (let r = 0; r < ROWS; r++) {
                     for (let c = 0; c < COLS; c++) {
-                        if (tileElements[r][c] && tileElements[r][c].classList.contains('pop')) {
-                            tilesToReuse.push(tileElements[r][c]);
+                        if (tileElements[r][c]) {
+                            allOldTiles.push(tileElements[r][c]);
                         }
                     }
                 }
@@ -1065,36 +1101,46 @@
                     for (let c = 0; c < COLS; c++) {
                         const key = `${r}-${c}`;
                         const tileData = board[r][c];
-                        let tile;
+                        
+                        // [수정] 재사용 큐에서 타일을 하나 꺼냄
+                        const tile = allOldTiles.pop(); // DOM 요소
+                        if (!tile) {
+                             console.error("Tile reuse queue empty! This should not happen.");
+                             continue; 
+                        }
+
+                        tile.textContent = tileData; // [수정] 데이터(이모지) 강제 일치
+                        tile.dataset.row = r; // [수정] dataset 강제 일치
+                        tile.dataset.col = c; // [수정] dataset 강제 일치
+                        newTileElements[r][c] = tile; // 새 2D 배열에 할당
 
                         if (newTilesMap.has(key)) {
-                            // '새로 생긴 타일' = 재활용 타일 사용
-                            tile = tilesToReuse.pop();
-                            tile.textContent = tileData;
-                            tile.className = 'tile fall';
-                            // [수정] 애니메이션 시작 위치 (보드 밖)
+                            // '새로 생긴 타일'
+                            tile.className = 'tile fall new-tile-anim'; // [수정] .new -> .new-tile-anim
                             const startY = -(r + 2) * tileSize;
                             tile.style.transform = `translateY(${startY}px)`;
 
                         } else if (droppedTilesMap.has(key)) {
                             // '떨어진 타일'
-                            const startRow = droppedTilesMap.get(key);
-                            tile = tileElements[startRow][c]; // 기존 DOM 요소
+                            const startRow = droppedTilesMap.get(key); // 데이터가 있던 '행'
                             tile.className = 'tile fall';
-                            // [수정] 애니메이션 시작 위치 (떨어지기 전 위치)
+                            // (r=5, startRow=2) -> 3칸 이동
                             const dropDistance = (r - startRow) * tileSize;
-                            tile.style.transform = `translateY(${dropDistance}px)`;
-
+                            // [수정] 버그 방지: 떨어지는 거리가 0일 수 없음 (로직상)
+                            // startRow가 r과 같으면 `droppedTilesMap`에 없어야 함.
+                            // 만약의 경우를 대비해 0이 아닌 값만 transform
+                            if (dropDistance !== 0) {
+                                tile.style.transform = `translateY(${dropDistance}px)`;
+                            } else {
+                                // 이 타일은 실제로는 움직이지 않은 타일임
+                                tile.className = 'tile';
+                                tile.style.transform = '';
+                            }
+                            
                         } else {
                             // '가만히 있는 타일'
-                            tile = tileElements[r][c];
-                        }
-                        
-                        // [수정] 새 배열에 할당하고 dataset을 강제로 쓴다 (싱크 맞추기)
-                        if(tile) {
-                            tile.dataset.row = r;
-                            tile.dataset.col = c;
-                            newTileElements[r][c] = tile;
+                            tile.className = 'tile'; // [수정] fall 클래스 제거
+                            tile.style.transform = ''; // [수정] transform 초기화
                         }
                     }
                 }
@@ -1102,15 +1148,15 @@
                 // 2. 전역 `tileElements` 배열 교체 (DOM/데이터/배열 논리적 싱크 완료)
                 tileElements = newTileElements;
                 
-                // 3. 강제 리페인트
-                await new Promise(resolve => requestAnimationFrame(resolve));
+                // 3. 강제 리페인트 (중요)
+                gameBoard.offsetHeight; 
 
-                // 4. 모든 타일 최종 위치(translateY(0))로 애니메이션 시작
+                // 4. 모든 'fall' 타일 최종 위치(translateY(0))로 애니메이션 시작
                 for (let r = 0; r < ROWS; r++) {
                     for (let c = 0; c < COLS; c++) {
                         const tile = tileElements[r][c];
                         if (tile && tile.classList.contains('fall')) {
-                            requestAnimationFrame(() => {
+                            requestAnimationFrame(() => { // [수정] rAF로 감싸기
                                 tile.style.transform = 'translateY(0)';
                                 fallPromises.push(new Promise(resolve => {
                                     tile.addEventListener('transitionend', resolve, { once: true });
@@ -1120,8 +1166,8 @@
                     }
                 }
 
-                // 5. 애니메이션 완료 대기
-                const timeoutPromise = new Promise(resolve => setTimeout(resolve, 600));
+                // 5. 애니메이션 완료 대기 (transition 0.3s + 예비 0.3s)
+                const timeoutPromise = new Promise(resolve => setTimeout(resolve, 600)); 
                 await Promise.race([Promise.all(fallPromises), timeoutPromise]);
 
                 // 6. DOM 순서 재정렬 및 스타일 초기화 (버벅임 해결)
@@ -1136,20 +1182,6 @@
                     }
                 }
                 
-                // 7. [수정] "고스트 터치" 최종 해결 (DOM 기준 배열 재정렬)
-                // appendChild로 순서가 맞춰진 DOM을 기준으로 tileElements 배열을 '다시' 읽어옴
-                const allTileElements = gameBoard.querySelectorAll('.tile');
-                tileElements = [];
-                for (let r = 0; r < ROWS; r++) {
-                    const rowElements = [];
-                    for (let c = 0; c < COLS; c++) {
-                        const index = r * COLS + c; 
-                        if (allTileElements[index]) {
-                            rowElements.push(allTileElements[index]);
-                        }
-                    }
-                    tileElements.push(rowElements);
-                }
             }
 
             // ------------------------------------
@@ -1180,7 +1212,7 @@
 
                 const comboEl = document.createElement('div');
                 comboEl.className = 'combo-text';
-                comboEl.textContent = `${combo} COMBO!`;
+                comboEl.textContent = `${combo} 콤보!`;
                 
                 const wrapperRect = gameWrapper.getBoundingClientRect();
                 comboEl.style.top = `${avgTop + boardRect.top - wrapperRect.top}px`;
