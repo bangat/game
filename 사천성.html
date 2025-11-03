@@ -75,13 +75,17 @@
             padding: 8px; background-color: #FFFAE0; /* [테마] */
             gap: 8px; 
             border-bottom: 3px solid var(--panel-border); /* [테마] */
+            flex-wrap: wrap; /* [추가] 줄바꿈 허용 */
+            padding-bottom: 8px; /* [추가] '내 정보'와 간격 */
         }
         .player-info {
-            display: flex; align-items: center; gap: 8px;
+            display: flex; align-items: center; gap: 5px; /* [수정] 갭 축소 */
             background-color: var(--panel-bg); /* [테마] */
-            padding: 8px; border-radius: 16px; 
+            padding: 5px; /* [수정] 패딩 축소 */
+            border-radius: 12px; /* [수정] */
             transition: all 0.3s ease;
-            flex: 1; min-width: 0; 
+            flex: 1 1 30%; /* [수정] 3개가 한 줄에 맞도록 (핵심) */
+            min-width: 0; 
             border: 3px solid var(--panel-border); /* [테마] */
             box-shadow: 4px 4px 0px 0px var(--panel-shadow); /* [테마] */
         }
@@ -91,19 +95,21 @@
             box-shadow: 4px 4px 0px 0px var(--accent-color);
         }
         .player-info .avatar {
-            font-size: 1.8em; width: 36px; height: 36px;
+            font-size: 1.5em; width: 30px; height: 30px; /* [수정] 크기 축소 */
             display: flex; justify-content: center; align-items: center;
             flex-shrink: 0; 
             background-color: var(--bg-color); /* [테마] */
-            border-radius: 10px; /* [테마] */
+            border-radius: 8px; /* [수정] */
             border: 2px solid var(--panel-border); /* [테마] */
             overflow: hidden;
         }
         .player-info .avatar img { width: 100%; height: 100%; object-fit: contain; }
         .player-info .info-text { display: flex; flex-direction: column; min-width: 0; flex-grow: 1;}
         .player-info .nickname { 
-            font-weight: 700; font-size: 0.9em; 
+            font-weight: 700; font-size: 0.8em; /* [수정] 폰트 축소 */
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            /* [신규] 게이지바를 위한 공간 확보 */
+            margin-bottom: 2px;
         }
         .player-info .score { 
             font-size: 1.0em; font-weight: 900; 
@@ -413,7 +419,6 @@
             to { opacity: 0; transform: scale(0.8); }
         }
 
-
         @keyframes combo-fade-up {
             0% { transform: translateY(0) scale(1); opacity: 1; }
             100% { transform: translateY(-50px) scale(1.2); opacity: 0; }
@@ -557,7 +562,6 @@
             // [신규] 이펙트 DOM
             const comboTextOverlay = document.getElementById('combo-text-overlay');
             const inkSplatterOverlay = document.getElementById('ink-splatter-overlay');
-
             // 사운드 요소
             const sounds = {
                 select: document.getElementById('tile-select-sound'),
@@ -1023,8 +1027,6 @@
                         // [신규] 게이지 계산 (총 타일의 절반 = 총 점수)
                         const totalMatches = TILE_COUNT / 2;
                         const gaugeValue = Math.min(100, (myScore / totalMatches) * 100);
-                        
-                        // [신규] Firebase에 내 상태 업데이트
                         roomRef.child('playerStates/' + myPlayerId).update({
                             gauge: gaugeValue,
                             combo: myCombo
@@ -1593,7 +1595,7 @@
                             infoOverlay.classList.remove('active');
                             isGameLive = true;
                             renderBoard(myBoard); // 내 보드 렌더링
-                            // 맵 검사 시작
+                                    // 맵 검사 시작
                             setTimeout(() => checkAndShuffleIfNeeded_Local(0), 500);
                         }
                     }, 1000);
@@ -1614,7 +1616,8 @@
                  playerIds.forEach(playerId => {
                     const player = players[playerId];
                     if (!player) return; 
-
+// [신규] '나'는 헤더에 그리지 않고 건너뛰기
+                    if (playerId === myPlayerId) return;
                     // [신규]
                     const state = playerStates[playerId] || { gauge: 0, combo: 0 };
                     const gauge = state.gauge;
@@ -1628,6 +1631,7 @@
 
                     const infoEl = document.createElement('div');
                     infoEl.className = 'player-info';
+                    infoEl.dataset.playerId = playerId; // [신규] ID 주입
                     // [신규] 게이지바 HTML 추가
                     infoEl.innerHTML = `
                         <div class="avatar">${avatarHTML}</div>
@@ -1650,21 +1654,18 @@
                 if (!snapshot.exists() || !currentRoomData || !currentRoomData.players) return;
                 
                 const playerStates = snapshot.val();
-                
-                // [수정] gameHeader를 다시 렌더링하는 대신, 기존 DOM을 업데이트 (효율적)
+               
+                // [신규] 2. '상대방' 게이지 및 콤보 업데이트
                 const playerInfoElements = gameHeader.querySelectorAll('.player-info');
                 
-                // player-info가 아직 렌더링되지 않았다면, updateHeaderUI()가 렌더링하도록 함
-                if (playerInfoElements.length === 0) {
+                // player-info가 아직 렌더링되지 않았다면 (최초 1회)
+                if (playerInfoElements.length === 0 && Object.keys(playerStates).length > 1) {
                     updateHeaderUI();
-                    return;
                 }
 
-                // player-info가 이미 있다면 게이지와 콤보만 갱신
-                playerInfoElements.forEach((infoEl, index) => {
-                    // playerIds 순서가 보장된다고 가정 (위 updateHeaderUI()의 정렬 순서)
-                    const playerIds = Object.keys(currentRoomData.players).sort((a, b) => (a === currentRoomData.hostId) ? -1 : (b === currentRoomData.hostId) ? 1 : a.localeCompare(b));
-                    const playerId = playerIds[index];
+                playerInfoElements.forEach(infoEl => {
+                    // [수정] 인덱스 기반이 아닌, 주입된 ID로 찾기
+                    const playerId = infoEl.dataset.playerId; 
                     
                     if (playerId && playerStates[playerId]) {
                         const state = playerStates[playerId];
