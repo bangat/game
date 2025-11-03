@@ -348,6 +348,7 @@
         .combo-display {
             position: absolute;
             top: 2px; right: 5px;
+            display: none; /* [수정] 헤더 콤보 텍스트 숨김 */
             white-space: nowrap; /* [수정] 콤보 텍스트 세로 오류 방지 */
             font-size: 1.1em;
             font-weight: 900;
@@ -584,6 +585,8 @@
 
             // 캔버스 좌표 계산용
             let currentTileSize = 0, currentGapSize = 2, currentExtraMargin = 0; 
+            // [신규] 아이템 상태
+            let isFirewallActive = false; // 방화벽 활성화 상태
             
             // 게임 설정 (플레이어 수에 따라 JS에서 변경)
             let BOARD_ROWS = 8;
@@ -1015,7 +1018,8 @@
                         
                         // [신규] 콤보 텍스트 표시
                         showComboText(myCombo, clickedIndex);
-                        
+                        // [신규] 아이템 랜덤 뽑기
+                        triggerRandomItem();
                         // [신규] 게이지 계산 (총 타일의 절반 = 총 점수)
                         const totalMatches = TILE_COUNT / 2;
                         const gaugeValue = Math.min(100, (myScore / totalMatches) * 100);
@@ -1026,12 +1030,10 @@
                             combo: myCombo
                         });
 
-                        // [신규] 5콤보 / 10콤보 공격
-                        if (myCombo === 5) {
-                            sendAttack("INK_SPLATTER"); // 5콤보: 먹물
-                        } else if (myCombo === 8) {
-                            sendAttack("SHAKE_BOARD"); // 8콤보: 지진
-                            myCombo = 0; // 10콤보 달성 시 콤보 리셋
+                        // [수정] 7콤보 랜덤 아이템 발동 (기존 5, 8콤보 삭제)
+                        if (myCombo === 7) {
+                            triggerGuaranteedRandomItem(); // 5가지 아이템 중 1개 랜덤 발동
+                            myCombo = 0; // 콤보 리셋
                             roomRef.child('playerStates/' + myPlayerId + '/combo').set(0);
                         }
 
@@ -1107,9 +1109,15 @@
                 } else if (attackType === "SHAKE_BOARD") {
                     console.log("[공격] 8콤보 달성! 지진 공격 전송!");
                     attackText = "지진 공격!";
+                } else if (attackType === "FOG_BLIND") { // [신규]
+                    console.log("[공격] 아이템! 안개 공격 전송!");
+                    // attackText = "안개 공격!"; // (useItem에서 이미 띄움)
                 }
                 
-                showComboText(attackText, TILE_COUNT / 2);
+                // 콤보 텍스트는 콤보일 때만 띄움
+                if (attackText) {
+                    showComboText(attackText, TILE_COUNT / 2);
+                }
                 
                 roomRef.child('attackEvents').push({
                     senderId: myPlayerId,
@@ -1122,6 +1130,15 @@
             function handleAttackEvent(snapshot) {
                 const attack = snapshot.val();
                 if (!attack || attack.senderId === myPlayerId) return;
+
+                // [신규] 방화벽 로직
+                if (isFirewallActive) {
+                    isFirewallActive = false; // 1회용
+                    console.log("[방어] 방화벽이 공격을 1회 막았습니다!");
+                    showItemGetText("FIREWALL_BLOCK");
+                    // (필요시) 방화벽 UI 제거
+                    return; // 공격 무효화
+                }
 
                 playSound('shuffle'); // 공격 수신 사운드 (정크 사운드)
 
@@ -1156,6 +1173,48 @@
                     setTimeout(() => {
                         inkSplatterOverlay.innerHTML = '';
                     }, 3000); // [수정] 2초 -> 3초 (CSS 애니메이션 시간과 일치)
+                    } else if (attack.type === "FOG_BLIND") { // [신규]
+                    console.log("[수신] 안개 공격 받음!");
+                    
+                    // 1. 덮어쓸 타일 8개 고르기
+                    const availableIndices = [];
+                    myBoard.forEach((icon, index) => {
+                        // 빈칸이 아니고, DOM에서도 숨겨지지 않은 타일
+                        const tileEl = gameBoard.querySelector(`.tile[data-index="${index}"]`);
+                        if (icon !== null && tileEl && !tileEl.classList.contains('hidden')) {
+                            availableIndices.push(index);
+                        }
+                    });
+                    
+                    shuffleArray(availableIndices);
+                    const tilesToFog = availableIndices.slice(0, 8); // 8개
+
+                    // 2. '❓'로 덮어쓰기
+                    const originalContents = new Map(); // 원래 내용 저장용
+                    
+                    tilesToFog.forEach(index => {
+                        const tileEl = gameBoard.querySelector(`.tile[data-index="${index}"]`);
+                        if (tileEl) {
+                            originalContents.set(index, tileEl.innerHTML); // 원래 HTML(이미지 또는 텍스트) 저장
+                            tileEl.innerHTML = '❓';
+                            tileEl.style.fontSize = `${currentTileSize * 0.55}px`; // 폰트 크기 강제
+                        }
+                    });
+
+                    // 3. 3초 뒤 복원
+                    setTimeout(() => {
+                        originalContents.forEach((originalHTML, index) => {
+                            const tileEl = gameBoard.querySelector(`.tile[data-index="${index}"]`);
+                            // 그 사이에 타일이 매칭(hidden)되지 않았을 때만 복원
+                            if (tileEl && !tileEl.classList.contains('hidden')) {
+                                tileEl.innerHTML = originalHTML;
+                                // 만약 텍스트였다면 폰트 크기 복원 (이미지면 자동)
+                                if (!originalHTML.includes('<img')) {
+                                    tileEl.style.fontSize = `${currentTileSize * 0.55}px`;
+                                }
+                            }
+                        });
+                    }, 3000); // 5초
 
                 } else if (attack.type === "SHAKE_BOARD") {
                     console.log("[수신] 지진 공격 받음!");
@@ -1166,6 +1225,135 @@
                         gameBoard.classList.remove('board-shake');
                     }, 2000);
                 }
+            }
+
+            // ------------------------------------
+            // [신규] 7.5. 아이템 시스템 로직
+            // ------------------------------------
+
+            function triggerRandomItem() {
+                if (Math.random() < 0.15) { // 15% 확률
+                    const items = ["SHAKE_BOARD", "INK_SPLATTER", "FOG_BLIND", "SHOW_HINT", "FIREWALL"];
+                    const selectedItem = items[Math.floor(Math.random() * items.length)];
+                    console.log(`[아이템] 획득! : ${selectedItem}`);
+                    useItem(selectedItem);
+                }
+            }
+
+            /**
+             * [신규] 7콤보 달성 시 100% 확률로 아이템을 발동시킵니다.
+             */
+            function triggerGuaranteedRandomItem() {
+                const items = ["SHAKE_BOARD", "INK_SPLATTER", "FOG_BLIND", "SHOW_HINT", "FIREWALL"];
+                const selectedItem = items[Math.floor(Math.random() * items.length)];
+                console.log(`[아이템] 7콤보 획득! : ${selectedItem}`);
+                useItem(selectedItem);
+            }
+
+            /**
+             * [신규] 획득한 아이템을 즉시 사용합니다.
+             */
+            function useItem(itemType) {
+                showItemGetText(itemType); // 아이템 획득 알림
+
+                switch (itemType) {
+                    case "SHAKE_BOARD":
+                        sendAttack("SHAKE_BOARD");
+                        break;
+                    case "INK_SPLATTER":
+                        sendAttack("INK_SPLATTER");
+                        break;
+                    case "FOG_BLIND": // [신규] 안개 공격
+                        sendAttack("FOG_BLIND");
+                        break;
+                    case "SHOW_HINT": // [신규] 힌트 보기
+                        activateHintItem();
+                        break;
+                    case "FIREWALL": // [신규] 방화벽
+                        activateFirewallItem();
+                        break;
+                }
+            }
+
+            /**
+             * [신규] 아이템 획득/사용 알림을 화면 중앙에 표시
+             */
+            function showItemGetText(itemType) {
+                if (!comboTextOverlay) return;
+
+                let text = "";
+                let color = "var(--secondary-color)"; // 기본값 (지원/방어)
+
+                switch (itemType) {
+                    case "SHAKE_BOARD":
+                        text = "지진 공격!"; color = "var(--danger-color)"; break;
+                    case "INK_SPLATTER":
+                        text = "먹물 공격!"; color = "var(--danger-color)"; break;
+                    case "FOG_BLIND":
+                        text = "안개 공격!"; color = "var(--danger-color)"; break;
+                    case "SHOW_HINT":
+                        text = "힌트 획득!"; break;
+                    case "FIREWALL":
+                        text = "방화벽 획득!"; break;
+                    case "FIREWALL_BLOCK": // 방어 성공 시
+                        text = "✨공격 방어!✨"; color = "var(--accent-color)"; break;
+                }
+
+                const popup = document.createElement('div');
+                popup.className = 'combo-text-popup';
+                popup.textContent = text;
+                popup.style.fontSize = '2.0em'; // 콤보보다 크게
+                popup.style.color = color;
+                // 화면 중앙 배치
+                popup.style.left = '50%';
+                popup.style.top = '40%';
+                popup.style.transform = 'translateX(-50%)';
+
+                comboTextOverlay.appendChild(popup);
+                setTimeout(() => popup.remove(), 2000);
+            }
+
+            /**
+             * [신규] 힌트 아이템 활성화 (로컬)
+             */
+            function activateHintItem() {
+                // 3쌍의 힌트 찾기
+                const pairs = findAvailableMoves(myBoard, 3);
+                if (!pairs || pairs.length === 0) return;
+
+                const elementsToHighlight = [];
+
+                pairs.forEach(pair => {
+                    const el1 = gameBoard.querySelector(`.tile[data-index="${pair[0]}"]`);
+                    const el2 = gameBoard.querySelector(`.tile[data-index="${pair[1]}"]`);
+
+                    if (el1 && !el1.classList.contains('hidden')) {
+                        el1.classList.add('selected');
+                        elementsToHighlight.push(el1);
+                    }
+                    if (el2 && !el2.classList.contains('hidden')) {
+                        el2.classList.add('selected');
+                        elementsToHighlight.push(el2);
+                    }
+                });
+
+                // 3초 뒤 하이라이트 제거
+                setTimeout(() => {
+                    elementsToHighlight.forEach(el => {
+                        // 유저가 그 사이에 매칭했을 수도 있으므로, 선택된 타일이 아닐 때만 제거
+                        if (selectedTileElement !== el) {
+                            el.classList.remove('selected');
+                        }
+                    });
+                }, 3000); // 3초
+            }
+
+            /**
+             * [신규] 방화벽 아이템 활성화 (로컬)
+             */
+            function activateFirewallItem() {
+                isFirewallActive = true;
+                // (필요시) 여기에 방화벽 UI(예: 플레이어 아바타에 방패 표시) 추가
             }
 
             // ------------------------------------
@@ -1250,8 +1438,47 @@
                 return false; 
             }
 
+            /**
+             * [신규] 힌트용: 매칭 가능한 쌍을 찾아 반환 (최대 count개)
+             */
+            function findAvailableMoves(boardArray, count) {
+                const availableTiles = {};
+                boardArray.forEach((icon, index) => {
+                    if (icon !== null) {
+                        if (!availableTiles[icon]) availableTiles[icon] = [];
+                        availableTiles[icon].push(index);
+                    }
+                });
+
+                const foundPairs = [];
+                const icons = shuffleArray(Object.keys(availableTiles)); // 아이콘 순서 섞기
+
+                for (const icon of icons) {
+                    const indices = availableTiles[icon];
+                    if (indices.length < 2) continue;
+                    
+                    // 해당 아이콘의 모든 조합 검사
+                    for (let i = 0; i < indices.length - 1; i++) {
+                        for (let j = i + 1; j < indices.length; j++) {
+                            if (findPath_BFS(boardArray, indices[i], indices[j])) {
+                                foundPairs.push([indices[i], indices[j]]);
+                                // 원하는 개수만큼 찾았으면 즉시 종료
+                                if (foundPairs.length >= count) {
+                                    return foundPairs;
+                                }
+                                // 이 쌍(i, j)을 찾았으니 다음 아이콘으로 넘어가기 (다양성)
+                                // (주석 처리: 한 아이콘에서 여러 쌍을 찾도록 허용)
+                                // break; 
+                            }
+                        }
+                        // if (foundPairs.length >= count) break; // (i 루프)
+                    }
+                    // if (foundPairs.length >= count) break; // (icon 루프)
+                }
+                return foundPairs; // 찾은 만큼 반환
+            }
+
             function shuffleRemainingTiles(boardArray) {
-                // ... (사천성혼자하기.html와 동일한 로직) ...
                 const remainingTiles = [];
                 boardArray.forEach((icon) => {
                     if (icon !== null) remainingTiles.push(icon);
