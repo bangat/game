@@ -49,7 +49,7 @@
             padding-top: env(safe-area-inset-top);
             padding-bottom: env(safe-area-inset-bottom);
         }
-        
+
         /* [테마] 랭킹.html 헤더 스타일 적용 */
         .page-header {
             width: 100%; padding: 10px 12px; flex-shrink: 0;
@@ -128,7 +128,7 @@
             transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), 
                         opacity 0.2s ease;
         }
-        
+
         /* [신규] 타일 애니메이션 */
         .tile.pop { /* 터질 때 */
             animation: pop 0.3s ease-out forwards;
@@ -138,11 +138,11 @@
             50% { transform: scale(1.4); opacity: 0.5; }
             100% { transform: scale(0.1); opacity: 0; }
         }
-        
+
         .tile.fall { /* 떨어질 때 */
             transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
-        
+
         .tile.new { /* 새로 생길 때 */
             animation: new-tile 0.3s ease-out;
         }
@@ -150,12 +150,12 @@
             from { transform: scale(0.5); opacity: 0; }
             to { transform: scale(1); opacity: 1; }
         }
-        
+
         .tile.swap { /* 스왑될 때 */
             transition: transform 0.2s ease-in-out;
             z-index: 10;
         }
-        
+
         .tile.invalid { /* 잘못된 스왑 (흔들) */
             animation: shake 0.4s ease-in-out;
         }
@@ -181,7 +181,7 @@
             padding-bottom: env(safe-area-inset-bottom);
         }
         .overlay.active { display: flex; }
-        
+
         .modal-content { 
             background: var(--panel-bg); 
             color: var(--text-color-dark); 
@@ -206,7 +206,7 @@
             border-top: 3px solid var(--panel-border);
             background-color: #FFFAE0;
         }
-        
+
         /* 스피너/카운트다운 (유지) */
         .spinner { border: 4px solid rgba(0,0,0,0.1); border-radius: 50%; border-top: 4px solid var(--primary-color); width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
@@ -225,7 +225,7 @@
             font-weight: 700;
             color: var(--text-color-dark);
         }
-        
+
         /* ------------------------- */
         /* == 5. 아케이드 버튼 (대기실.html) == */
         /* ------------------------- */
@@ -261,7 +261,7 @@
             <h1>캔디솝</h1>
             <div style="width: 40px; flex-shrink: 0;"></div>
         </div>
-        
+
         <div id="game-stats">
             <div class="stat-box">
                 <div class="label">점수</div>
@@ -272,7 +272,7 @@
                 <div class="value" id="timer-value">60</div>
             </div>
         </div>
-        
+
         <div id="game-container">
             <div id="game-board">
                 </div>
@@ -281,7 +281,7 @@
 
     <div id="info-overlay" class="overlay active"> <div id="countdown-number">3</div>
     </div>
-    
+
     <div id="game-over-overlay" class="overlay">
          <div class="modal-content">
              <div class="modal-header">
@@ -307,14 +307,14 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            
+
             // F12/개발자 도구 허용
             document.addEventListener('contextmenu', event => event.preventDefault());
 
             // ------------------------------------
             // 1. DOM 요소 및 기본 설정
             // ------------------------------------
-            
+
             // DOM
             const gameBoard = document.getElementById('game-board');
             const scoreValue = document.getElementById('score-value');
@@ -325,6 +325,7 @@
             const finalScoreEl = document.getElementById('final-score');
             const highScoreEl = document.getElementById('high-score');
             const restartBtn = document.getElementById('restart-btn');
+            const gameContainer = document.getElementById('game-container'); // [수정] renderBoard에서 사용하므로 캐싱
 
             // 사운드
             const sounds = {
@@ -337,7 +338,7 @@
                     document.getElementById('combo3-sound')
                 ]
             };
-            
+
             // 게임 설정
             const ROWS = 8;
             const COLS = 8;
@@ -353,16 +354,16 @@
             let isProcessing = false; // 애니메이션/처리 중 클릭 방지
             let currentCombo = 0;
             let highScore = parseInt(localStorage.getItem('candysoap-highscore') || '0');
-            
+
             // 드래그 상태 변수
             let dragStartTile = null;
             let dragStartX = 0;
             let dragStartY = 0;
-            
+
             // ------------------------------------
             // 2. Firebase (솔로 모드용 - 점수 저장)
             // ------------------------------------
-            
+
             /* // [로컬 테스트용 주석]
             const firebaseConfig = {
                 apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
@@ -397,16 +398,16 @@
                 timer = GAME_TIME;
                 currentCombo = 0;
                 isProcessing = true; // [수정] 카운트다운 시작 전까지 처리 중
-                
+
                 // UI 초기화
                 scoreValue.textContent = '0';
                 timerValue.textContent = GAME_TIME;
                 gameOverOverlay.classList.remove('active');
-                
+
                 // 보드 생성
                 createBoardData();
-                renderBoard();
-                
+                renderBoard(); // [수정] 여기서 호출하되, 실패할 수 있음
+
                 // [수정] 카운트다운 시작
                 // [삭제] startCountdown() (initGame 밖에서 호출됨)
                 // [수정] startGame() (카운트다운이 끝나고 호출됨)
@@ -429,7 +430,7 @@
                     }
                     board.push(row);
                 }
-                
+
                 // [중요] 생성 후에도 매치가 있을 수 있음 (L자 등)
                 // 초기 매치 모두 제거
                 const initialMatches = findAllMatches();
@@ -438,7 +439,7 @@
                     createBoardData(); // 재귀 호출로 다시 생성
                 }
             }
-            
+
             function getRandomEmoji() {
                 return TILE_EMOJIS[Math.floor(Math.random() * TILE_EMOJIS.length)];
             }
@@ -446,20 +447,20 @@
             function renderBoard() {
                 gameBoard.innerHTML = '';
                 tileElements = [];
-                
+
                 // 보드 크기 맞춤
                 const containerW = gameContainer.clientWidth;
                 const containerH = gameContainer.clientHeight;
-                
+
                 // [버그 수정] containerW가 0일 경우(초기 로드) 대비
                 if (containerW === 0 || containerH === 0) {
                     console.warn("컨테이너 크기 0. 렌더링 스킵.");
-                    return; // 렌더링 중단
+                    return; // 렌더링 중단 (startGame에서 재시도)
                 }
-                
+
                 const boardSize = Math.min(containerW, containerH) * 0.95; // 95%
                 const tileSize = (boardSize - (COLS - 1) * 2 - 8) / COLS; // gap 2px, padding 4px
-                
+
                 gameBoard.style.width = `${boardSize}px`;
                 gameBoard.style.height = `${boardSize}px`;
                 gameBoard.style.gridTemplateColumns = `repeat(${COLS}, 1fr)`;
@@ -473,10 +474,10 @@
                         tile.dataset.col = c;
                         tile.textContent = board[r][c];
                         tile.style.fontSize = `${tileSize * 0.6}px`;
-                        
+
                         gameBoard.appendChild(tile);
                         rowElements.push(tile);
-                        
+
                         // 이벤트 리스너 (드래그 시작)
                         tile.addEventListener('pointerdown', handleDragStart);
                     }
@@ -492,7 +493,7 @@
                 infoOverlay.classList.add('active');
                 let count = 3;
                 countdownNumber.textContent = count;
-                
+
                 const interval = setInterval(() => {
                     count--;
                     if (count > 0) {
@@ -502,7 +503,7 @@
                                                            } else {
                         clearInterval(interval);
                         infoOverlay.classList.remove('active');
-                        
+
                         // [수정] 오버레이가 사라진 후, 브라우저가 레이아웃을 다시 계산할 시간을 줍니다.
                         // 0ms 딜레이로도 reflow 타이밍을 확보할 수 있습니다.
                         setTimeout(() => {
@@ -513,8 +514,23 @@
                 }, 1000);
             }
 
-
+            // [ *** 여기가 수정된 부분입니다 *** ]
             function startGame() {
+                // [버그 수정] initGame()에서 renderBoard()가
+                // 레이아웃 계산 전에 호출되어 실패하는 경우(gameContainer.clientWidth === 0)를 대비,
+                // 여기서 한 번 더 렌더링을 시도합니다.
+                if (tileElements.length === 0) {
+                    console.log("보드가 렌더링되지 않았습니다. startGame에서 재시도합니다.");
+                    renderBoard();
+                }
+
+                // [버그 수정] 렌더링이 여전히 실패했다면(e.g. 창이 숨겨진 상태) 게임을 시작하지 않습니다.
+                if (tileElements.length === 0) {
+                    console.error("보드 렌더링에 최종 실패했습니다. 게임을 시작할 수 없습니다.");
+                    // (필요시 사용자에게 오류 메시지 표시)
+                    return; 
+                }
+
                 isProcessing = false; // [수정] initGame()에서 true로 설정된 것을 false로 변경
                 timerId = setInterval(() => {
                     timer--;
@@ -524,6 +540,8 @@
                     }
                 }, 1000);
             }
+            // [ *** 수정된 부분 끝 *** ]
+
 
             function gameOver() {
                 isProcessing = true; // 모든 입력 중지
@@ -541,7 +559,7 @@
                 }
                 finalScoreEl.textContent = `${score.toLocaleString()} 점`;
                 gameOverOverlay.classList.add('active');
-                
+
                 // Firebase에 점수 저장 (로그인한 경우)
                 /* // [로컬 테스트용 주석]
                 if (currentUser) {
@@ -561,7 +579,7 @@
                 }
                 */ // [로컬 테스트용 주석]
             }
-            
+
             // [수정] 다시하기 버튼은 카운트다운부터 다시 시작
             restartBtn.addEventListener('click', () => {
                 gameOverOverlay.classList.remove('active');
@@ -571,21 +589,21 @@
             // ------------------------------------
             // 5. 컨트롤 (드래그 앤 스왑)
             // ------------------------------------
-            
+
             function handleDragStart(e) {
                 if (isProcessing) return;
                 const tile = e.currentTarget;
-                
+
                 dragStartTile = {
                     row: parseInt(tile.dataset.row, 10),
                     col: parseInt(tile.dataset.col, 10),
                     el: tile
                 };
-                
+
                 // 터치/클릭 시작 좌표 저장
                 dragStartX = e.clientX || (e.touches && e.touches[0].clientX);
                 dragStartY = e.clientY || (e.touches && e.touches[0].clientY);
-                
+
                 // [중요] 드래그 종료(손 떼기) 이벤트를 window에 등록
                 window.addEventListener('pointerup', handleDragEnd, { once: true });
                 window.addEventListener('pointercancel', handleDragEnd, { once: true });
@@ -593,14 +611,14 @@
 
             function handleDragEnd(e) {
                 if (!dragStartTile) return;
-                
+
                 const dragEndX = e.clientX || (e.changedTouches && e.changedTouches[0].clientX);
                 const dragEndY = e.clientY || (e.changedTouches && e.changedTouches[0].clientY);
-                
+
                 const deltaX = dragEndX - dragStartX;
                 const deltaY = dragEndY - dragStartY;
                 const threshold = dragStartTile.el.clientWidth / 3; // 타일 크기의 1/3만큼
-                
+
                 let targetRow = dragStartTile.row;
                 let targetCol = dragStartTile.col;
 
@@ -615,16 +633,16 @@
                     dragStartTile = null;
                     return;
                 }
-                
+
                 // 보드 밖으로 스와이프했는지 확인
                 if (targetRow < 0 || targetRow >= ROWS || targetCol < 0 || targetCol >= COLS) {
                     dragStartTile = null;
                     return;
                 }
-                
+
                 // 스왑 시도
                 attemptSwap(dragStartTile.row, dragStartTile.col, targetRow, targetCol);
-                
+
                 dragStartTile = null;
             }
 
@@ -635,18 +653,18 @@
             async function attemptSwap(r1, c1, r2, c2) {
                 if (isProcessing) return;
                 isProcessing = true; // 처리 시작
-                
+
                 playSound('swap');
-                
+
                 // 1. 데이터 스왑
                 swapData(r1, c1, r2, c2);
-                
+
                 // 2. DOM 스왑 (애니메이션)
                 await animateSwap(r1, c1, r2, c2);
-                
+
                 // 3. 매치 확인
                 const matches = findAllMatches();
-                
+
                 if (matches.size > 0) {
                     // 4a. 매치 성공 -> 폭포 시작
                     currentCombo = 0; // 콤보 시작
@@ -655,11 +673,11 @@
                     // 4b. 매치 실패 -> 원위치
                     await animateInvalidSwap(r1, c1, r2, c2);
                 }
-                
+
                 // 5. 다음 턴 준비
                 isProcessing = false;
             }
-            
+
             // 데이터 교환
             function swapData(r1, c1, r2, c2) {
                 const temp = board[r1][c1];
@@ -671,35 +689,35 @@
             function swapDOMElements(r1, c1, r2, c2) {
                 const tile1 = tileElements[r1][c1];
                 const tile2 = tileElements[r2][c2];
-                
+
                 // 데이터셋 교환 (DOM은 그대로 두고 내용만 바꿈)
                 const tempEmoji = tile1.textContent;
                 tile1.textContent = tile2.textContent;
                 tile2.textContent = tempEmoji;
-                
+
                 // (애니메이션 클래스 초기화)
                 tile1.className = 'tile';
                 tile2.className = 'tile';
             }
-            
+
             // 스왑 애니메이션
             function animateSwap(r1, c1, r2, c2) {
                 const tile1 = tileElements[r1][c1];
                 const tile2 = tileElements[r2][c2];
-                
+
                 tile1.classList.add('swap');
                 tile2.classList.add('swap');
-                
+
                 // CSS Transform으로 위치 교환
                 const rect1 = tile1.getBoundingClientRect();
                 const rect2 = tile2.getBoundingClientRect();
-                
+
                 const deltaX = rect1.left - rect2.left;
                 const deltaY = rect1.top - rect2.top;
-                
+
                 tile1.style.transform = `translate(${-deltaX}px, ${-deltaY}px)`;
                 tile2.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
-                
+
                 return new Promise(resolve => {
                     setTimeout(() => {
                         // Transform 원위치 및 DOM/데이터 실제 교환
@@ -710,7 +728,7 @@
                     }, 200); // 0.2초 (CSS transition 시간)
                 });
             }
-            
+
             // 잘못된 스왑 애니메이션 (원위치)
             async function animateInvalidSwap(r1, c1, r2, c2) {
                 // (현재 r1,c1 과 r2,c2는 이미 스왑된 상태)
@@ -719,12 +737,12 @@
 
                 tile1.classList.add('invalid');
                 tile2.classList.add('invalid');
-                
+
                 await new Promise(resolve => setTimeout(resolve, 400)); // 흔들리는 시간
 
                 // 데이터 원위치
                 swapData(r1, c1, r2, c2);
-                
+
                 // DOM 원위치 (애니메이션)
                 await animateSwap(r1, c1, r2, c2);
             }
@@ -732,7 +750,7 @@
             // 모든 매치 찾기
             function findAllMatches() {
                 const matches = new Set();
-                
+
                 // 가로
                 for (let r = 0; r < ROWS; r++) {
                     for (let c = 0; c < COLS - 2; c++) {
@@ -755,32 +773,32 @@
                 }
                 return matches;
             }
-            
+
             // 매치 처리 및 폭포 (재귀적)
             async function processMatchesAndCascade(matches) {
                 if (isProcessing === false) isProcessing = true; // (최초 스왑 외의 폭포 진입)
-                
+
                 currentCombo++;
-                
+
                 // 1. 점수 갱신 및 사운드
                 updateScore(matches.size, currentCombo);
                 playComboSound(currentCombo);
-                
+
                 // 2. 매치된 타일 DOM에서 제거 (애니메이션)
                 await animatePop(matches);
-                
+
                 // 3. 데이터에서 제거 (null)
                 removeMatches(matches);
-                
+
                 // 4. 타일 아래로 내리기 (데이터)
                 const { droppedTilesMap, maxDrop } = dropTiles();
-                
+
                 // 5. 빈 칸 채우기 (데이터)
                 const newTilesMap = fillTopTiles();
-                
+
                 // 6. DOM 렌더링 (낙하 및 생성)
                 await animateDrops(droppedTilesMap, newTilesMap, maxDrop);
-                
+
                 // 7. 연쇄 폭포 확인
                 const newMatches = findAllMatches();
                 if (newMatches.size > 0) {
@@ -801,7 +819,7 @@
                 score += baseScore + comboBonus;
                 scoreValue.textContent = score.toLocaleString();
             }
-            
+
             function playSound(id) {
                 try {
                     const sound = sounds[id];
@@ -811,7 +829,7 @@
                     }
                 } catch(e) {}
             }
-            
+
             function playComboSound(combo) {
                 playSound('match');
                 if (combo >= 1) {
@@ -832,7 +850,7 @@
                 });
                 return new Promise(resolve => setTimeout(resolve, 300)); // 0.3초 (애니메이션 시간)
             }
-            
+
             function removeMatches(matches) {
                 matches.forEach(key => {
                     const [r, c] = key.split('-').map(Number);
@@ -841,11 +859,11 @@
                     }
                 });
             }
-            
+
             function dropTiles() {
                 const droppedTilesMap = new Map(); // key: "r_end-c", value: r_start
                 let maxDrop = 0;
-                
+
                 for (let c = 0; c < COLS; c++) {
                     let emptyRow = ROWS - 1; // 가장 아래 빈 칸
                     for (let r = ROWS - 1; r >= 0; r--) {
@@ -854,7 +872,7 @@
                                 // 타일을 빈 칸으로 내림
                                 board[emptyRow][c] = board[r][c];
                                 board[r][c] = null;
-                                
+
                                 droppedTilesMap.set(`${emptyRow}-${c}`, r); // (끝_위치, 시작_위치)
                                 maxDrop = Math.max(maxDrop, emptyRow - r);
                             }
@@ -864,7 +882,7 @@
                 }
                 return { droppedTilesMap, maxDrop };
             }
-            
+
             function fillTopTiles() {
                 const newTilesMap = new Map(); // key: "r-c", value: newEmoji
                 for (let r = 0; r < ROWS; r++) {
@@ -878,33 +896,33 @@
                 }
                 return newTilesMap;
             }
-            
+
             async function animateDrops(droppedTilesMap, newTilesMap, maxDrop) {
                 // 1. 떨어진 타일 (Fall)
                 droppedTilesMap.forEach((startRow, endKey) => {
                     const [endRow, col] = endKey.split('-').map(Number);
-                    
+
                     if (!tileElements[startRow] || !tileElements[startRow][col]) {
                         console.error(`AnimateDrops: Fall [${startRow}][${col}] DOM 요소를 찾을 수 없습니다.`);
                         return;
                     }
-                    
+
                     const tile = tileElements[startRow][col]; // (이전 위치의 DOM)
-                    
+
                     // DOM 재배치
                     tileElements[endRow][col] = tile;
                     tile.dataset.row = endRow;
-                    
+
                     // 애니메이션
                     const dropDistance = (endRow - startRow) * tile.clientHeight;
                     tile.className = 'tile fall'; // 애니메이션 클래스
                     tile.style.transform = `translateY(${dropDistance}px)`;
                 });
-                
+
                 // 2. 새로 생긴 타일 (New)
                 newTilesMap.forEach((emoji, key) => {
                     const [row, col] = key.split('-').map(Number);
-                    
+
                     if (!tileElements[row] || !tileElements[row][col]) {
                          // 이 경우는 '떨어진 타일'이 아니므로, 빈 슬롯에서 DOM을 찾아야 함
                          // 하지만 'pop'으로 인해  DOM이 엉망이 되었을 수 있음.
@@ -919,18 +937,18 @@
                          }
                          return;
                     }
-                    
+
                     const tile = tileElements[row][col]; // (빈 슬롯의 DOM)
-                    
+
                     tile.textContent = emoji;
                     tile.className = 'tile new'; // 생성 애니메이션
                     tile.style.transform = ''; // 위치 초기화
                 });
-                
+
                 // 3. 애니메이션 완료 대기
                 const duration = Math.min(300 + maxDrop * 50, 600);
                 await new Promise(resolve => setTimeout(resolve, duration));
-                
+
                 // 4. 모든 타일 클래스 초기화
                 for (let r = 0; r < ROWS; r++) {
                     for (let c = 0; c < COLS; c++) {
@@ -940,7 +958,7 @@
                         }
                     }
                 }
-                
+
                 // 5. DOM 요소 2D 배열 재정렬 (매우 중요)
                 tileElements = [];
                 const allTileElements = gameBoard.querySelectorAll('.tile');
@@ -978,7 +996,7 @@
                 }
                 return false; // 가능한 수 없음
             }
-            
+
             // 가상 스왑 후 매치 확인
             function checkMove(r1, c1, r2, c2) {
                 // 1. 가상 스왑
@@ -987,19 +1005,19 @@
                 const matches = findAllMatches();
                 // 3. 원위치
                 swapData(r1, c1, r2, c2);
-                
+
                 return matches.size > 0;
             }
-            
+
             async function handleNoMoreMoves() {
                 console.log("더 이상 움직일 수 없음! 셔플합니다.");
                 isProcessing = true; // 셔플 중 입력 방지
-                
+
                 // (TODO: 셔플 알림 UI)
-                
+
                 // 데이터 셔플
                 shuffleBoard();
-                
+
                 // DOM 렌더링
                 // (간단하게는 그냥 다시 렌더링)
                 for (let r = 0; r < ROWS; r++) {
@@ -1009,23 +1027,23 @@
                     }
                 }
                 await new Promise(resolve => setTimeout(resolve, 300));
-                
+
                 // 셔플 후에도 매치가 있을 수 있음 (폭포)
                 const matches = findAllMatches();
                 if (matches.size > 0) {
                     await processMatchesAndCascade(matches);
                 }
-                
+
                 isProcessing = false;
             }
-            
+
             function shuffleBoard() {
                 // (간단한 셔플: 그냥 데이터만 섞고, 초기 매치 없는지 확인)
                 // (createBoardData는 초기 매치 방지 로직이 있으므로 재사용)
                 console.log("보드 데이터 셔플 중...");
                 createBoardData(); 
             }
-            
+
             // ------------------------------------
             // 8. 게임 시작
             // ------------------------------------
