@@ -1194,71 +1194,110 @@ if (!isEmpty) {
 
             // --- 타일 클릭 처리 ---
             function handleTileClick(event) {
-    if (!isGameLive || (currentRoomData && currentRoomData.isShuffling)) return;
+                if (!isGameLive || (currentRoomData && currentRoomData.isShuffling)) return;
 
-    const clickedEl = event.currentTarget;
-    
-    // ✨ [추가] DOM 상태를 먼저 체크 (가장 빠른 검증)
-    if (clickedEl.classList.contains('hidden')) {
-        console.log("이미 제거된 타일 클릭 차단 (DOM)");
-        return;
-    }
-    
-    const clickedIndex = parseInt(clickedEl.dataset.index, 10);
-    const boardArray = getBoardArray(currentRoomData.board, TILE_COUNT);
-    const clickedIcon = boardArray[clickedIndex];
+                const clickedEl = event.currentTarget;
+                
+                // 1. DOM 상태 즉시 체크
+                if (clickedEl.classList.contains('hidden')) {
+                    return;
+                }
+                
+                const clickedIndex = parseInt(clickedEl.dataset.index, 10);
+                const boardArray = getBoardArray(currentRoomData.board, TILE_COUNT);
+                const clickedIcon = boardArray[clickedIndex];
 
-    // ✨ [개선] 보드 배열 체크 (Firebase 동기화 확인)
-    if (clickedIcon === null) {
-        console.log("이미 제거된 타일 클릭 차단 (Firebase)");
-        return;
-    }
-
-                playSound('tile-select-sound'); // 선택 사운드
-
-                // 현재 Firebase에 저장된 내 첫 번째 선택 가져오기
-                const currentFirstSelection = currentRoomData.selectedTiles ? currentRoomData.selectedTiles[myPlayerId] : null;
-
-                // 이미 선택된 타일 다시 클릭 (선택 취소)
-                if (currentFirstSelection && currentFirstSelection.index === clickedIndex) {
-                    roomRef.child('selectedTiles').child(myPlayerId).set(null); // Firebase 선택 취소
-                    // UI 업데이트는 listenToRoomChanges가 처리
+                // 2. 보드 데이터 즉시 체크
+                if (clickedIcon === null) {
                     return;
                 }
 
-                // 첫 번째 타일 선택
-                if (!currentFirstSelection) {
-                    const selectionData = { index: clickedIndex, icon: clickedIcon };
-                    roomRef.child('selectedTiles').child(myPlayerId).set(selectionData);
-                    // UI 업데이트는 listenToRoomChanges가 처리
-                }
-                // 두 번째 타일 선택
-                else {
-                    // 1. 아이콘이 같은지 확인
-                    if (currentFirstSelection.icon === clickedIcon) {
-                        // 2. 경로 탐색 (BFS)
-                         const path = findPath_BFS(boardArray, currentFirstSelection.index, clickedIndex); // ▼ [수정] 경로 반환 ▼
+                playSound('tile-select-sound');
 
-                        if (path) { // ▼ [수정] path가 있으면 (경로 찾음) ▼
-                            
-                            // ▼▼▼ [수정] 애니메이션으로 경로 시각화 ▼▼▼
-                            drawAnimatedPath(path); // 1. 선 그리기 애니메이션 시작
-                            // ▲▲▲ [수정] 애니메이션으로 경로 시각화 ▲▲▲
-                            
-                            // 2. 매칭 성공! -> Transaction으로 타일 제거 시도 (즉시 실행)
-                            attemptTileRemoval(currentFirstSelection.index, clickedIndex);
-                     } else {
-                        // 4. 경로 없음 -> 두 번째 타일을 새로운 첫 선택으로 변경
-                         const newSelectionData = { index: clickedIndex, icon: clickedIcon };
-                         roomRef.child('selectedTiles').child(myPlayerId).set(newSelectionData);
+                // --- [핵심] Optimistic UI (즉시 반응) 로직 ---
+                
+                // Case 1: 선택 취소 (같은 타일 클릭)
+                // (로컬 firstSelection 변수 사용)
+                if (firstSelection && firstSelection.index === clickedIndex) {
+                    // UI 즉시 업데이트
+                    if (selectedTileElement) {
+                        selectedTileElement.classList.remove('selected');
+                    }
+                    selectedTileElement = null;
+                    firstSelection = null;
+                    
+                    // Firebase에 비동기 통보
+                    roomRef.child('selectedTiles').child(myPlayerId).set(null);
+                    return;
+                }
+
+                // Case 2: 첫 번째 타일 선택
+                if (!firstSelection) {
+                    // UI 즉시 업데이트
+                    firstSelection = { index: clickedIndex, icon: clickedIcon };
+                    selectedTileElement = clickedEl;
+                    clickedEl.classList.add('selected');
+                    
+                    // Firebase에 비동기 통보
+                    roomRef.child('selectedTiles').child(myPlayerId).set(firstSelection);
+                    return;
+                }
+
+                // Case 3: 두 번째 타일 선택 (firstSelection이 존재함)
+                
+                // 3a. 아이콘 매치 검사
+                if (firstSelection.icon === clickedIcon) {
+                    const path = findPath_BFS(boardArray, firstSelection.index, clickedIndex);
+
+                    if (path) {
+                        // 3b. 매치 성공!
+                        
+                        // UI 즉시 초기화 (빠른 연타 방지)
+                        if (selectedTileElement) {
+                            selectedTileElement.classList.remove('selected');
+                        }
+                        
+                        const index1 = firstSelection.index;
+                        const icon1 = firstSelection.icon; // (버그 픽스용 아이콘 저장)
+                        
+                        // 로컬 상태 즉시 초기화
+                        firstSelection = null;
+                        selectedTileElement = null;
+
+                        // 로컬 애니메이션 + 서버 트랜잭션 실행
+                        drawAnimatedPath(path); 
+                        
+                        // (★중요) 버그 픽스를 위해 icon1을 전달합니다.
+                        attemptTileRemoval(index1, clickedIndex, icon1);
+                        
+                    } else {
+                        // 3c. 경로 없음 (두 번째 타일을 새 선택으로)
+                        // UI 즉시 업데이트
+                        if (selectedTileElement) {
+                            selectedTileElement.classList.remove('selected');
+                        }
+                        firstSelection = { index: clickedIndex, icon: clickedIcon };
+                        selectedTileElement = clickedEl;
+                        clickedEl.classList.add('selected');
+                        
+                        // Firebase에 비동기 통보
+                        roomRef.child('selectedTiles').child(myPlayerId).set(firstSelection);
                     }
                 } else {
-                    // 5. 아이콘 다름 -> 두 번째 타일을 새로운 첫 선택으로 변경
-                     const newSelectionData = { index: clickedIndex, icon: clickedIcon };
-                     roomRef.child('selectedTiles').child(myPlayerId).set(newSelectionData);
+                    // 3d. 아이콘 빗나감 (두 번째 타일을 새 선택으로)
+                    // UI 즉시 업데이트
+                    if (selectedTileElement) {
+                        selectedTileElement.classList.remove('selected');
+                    }
+                    firstSelection = { index: clickedIndex, icon: clickedIcon };
+                    selectedTileElement = clickedEl;
+                    clickedEl.classList.add('selected');
+                    
+                    // Firebase에 비동기 통보
+                    roomRef.child('selectedTiles').child(myPlayerId).set(firstSelection);
                 }
+                // --- [로직 변경 끝] ---
             }
-        }
 
            // --- 내 선택 상태 UI 반영 ---
 function updateMySelection() {
@@ -1677,56 +1716,52 @@ function updateMySelection() {
                 currentAnimationId = requestAnimationFrame(animate);
             }
 
-            // --- 타일 제거 시도 (Transaction) ---
-            // (이 함수는 위 2번 단계에서 이미 수정했습니다.)
-            function attemptTileRemoval(index1, index2) {
+            // (★ 중요) expectedIcon 인자가 추가되었습니다.
+            function attemptTileRemoval(index1, index2, expectedIcon) {
                 roomRef.transaction(currentRoom => {
                     if (!currentRoom || !currentRoom.board || !currentRoom.selectedTiles) {
                         return; // Abort transaction
                     }
 
-                    // ▼▼▼ [수정] 헬퍼 함수 사용 ▼▼▼
-                    const board = getBoardArray(currentRoom.board, TILE_COUNT);
-                    // ▲▲▲ [수정] 헬퍼 함수 사용 ▼▼▼
-                    const icon1 = board[index1];
-                    const icon2 = board[index2];
+                    // ✨ 1. [핵심] getBoardArray()를 사용하지 않고,
+                    // Firebase 객체(currentRoom.board)를 직접 검사합니다.
+                    const icon1 = currentRoom.board[index1] || null;
+                    const icon2 = currentRoom.board[index2] || null;
 
-                    // 트랜잭션 시점 확인:
-                    // 1. 두 타일이 여전히 존재하는가 (null이 아닌가)?
-                    // 2. 두 타일의 아이콘이 여전히 같은가?
-                    if (icon1 === null || icon2 === null || icon1 !== icon2) {
+                    // ✨ 2. [핵심] 검사 로직 (내가 클릭했을 때의 아이콘과 일치하는지 확인)
+                    if (icon1 === null || icon2 === null || icon1 !== icon2 || icon1 !== expectedIcon) {
                         // 조건 불일치 -> 트랜잭션 중단(abort)
-                        // (선택 해제 로직은 콜백의 !committed 블록으로 이동)
                         return; // undefined를 반환하여 트랜잭션을 중단시킵니다.
                     }
 
-                    // 선점 성공: 타일 제거
-                    board[index1] = null;
-                    board[index2] = null;
-                    currentRoom.board = board; // 변경된 board로 업데이트
-
+                    // ✨ 3. [핵심] 선점 성공: 객체의 키를 'null'로 설정 (Firebase가 이 키를 삭제함)
+                    // (배열 전체를 덮어쓰지 않고, 이 두 키만 원자적으로 수정합니다.)
+                    currentRoom.board[index1] = null;
+                    currentRoom.board[index2] = null;
+                    
+                    // --- 나머지 로직은 거의 동일 ---
+                    
                     // 점수 획득
-                    if (!currentRoom.scores) currentRoom.scores = {}; // scores 객체 없을 경우 대비
+                    if (!currentRoom.scores) currentRoom.scores = {}; 
                     currentRoom.scores[myPlayerId] = (currentRoom.scores[myPlayerId] || 0) + 1;
 
                     // 내 선택 초기화
                     currentRoom.selectedTiles[myPlayerId] = null;
-                    // 상대방 선택도 초기화 (혹시 같은 타일 노렸을 경우 방지)
+                    
+                    // ✨ [개선] 3인 이상일 때 모든 플레이어를 검사하도록 수정
                      const playerIds = Object.keys(currentRoom.players);
-                     const opponentId = playerIds.find(id => id !== myPlayerId);
-                     if (opponentId && currentRoom.selectedTiles[opponentId]) {
-                          const oppSelection = currentRoom.selectedTiles[opponentId];
-                          if (oppSelection.index === index1 || oppSelection.index === index2) {
-                               currentRoom.selectedTiles[opponentId] = null;
-                          }
-                    }
-
-                    // ▼▼▼ [삭제] 턴 넘기기 로직 (실시간이므로 삭제) ▼▼▼
-                    // (턴 관련 코드 4줄 삭제)
-                    // ▲▲▲ [삭제] 턴 넘기기 로직 (실시간이므로 삭제) ▲▲▲
+                     playerIds.forEach(id => {
+                         if (id !== myPlayerId && currentRoom.selectedTiles[id]) {
+                             const oppSelection = currentRoom.selectedTiles[id];
+                             if (oppSelection.index === index1 || oppSelection.index === index2) {
+                                  currentRoom.selectedTiles[id] = null;
+                             }
+                         }
+                     });
 
                     // 남은 타일 확인 (게임 종료 조건)
-                    const remainingTiles = board.filter(tile => tile !== null).length;
+                    // ✨ 4. 'null'이 아닌 값을 직접 카운트
+                    const remainingTiles = Object.values(currentRoom.board).filter(tile => tile !== null).length;
                     if (remainingTiles === 0) {
                         currentRoom.status = 'gameOver';
                     }
@@ -1734,43 +1769,32 @@ function updateMySelection() {
                     return currentRoom; // 변경된 전체 방 데이터 반환
 
               }, (error, committed, snapshot) => {
+                    // --- 콜백 로직은 기존과 동일하게 유지 ---
                     if (error) {
                         console.error("타일 제거 Transaction 실패:", error);
                     } else if (!committed) {
                         console.log("타일 선점 실패 (상대가 먼저 제거함)");
                         
-                        // ✨ [핵심 수정] 트랜잭션 중단 시:
-                        // 1. Firebase에 절대 쓰지 않음 (타일 부활 버그 방지)
-                        // 2. 로컬 UI만 즉시 초기화
-                        // 3. Firebase 동기화는 listenToRoomChanges에 맡김
-                        
-                        // 로컬 선택 상태 즉시 초기화
+                        // (Optimistic UI가 이미 처리했거나, listenToRoomChanges가 처리하므로
+                        // 이곳의 로컬 UI 초기화 코드는 그대로 둡니다.)
                         if (selectedTileElement) {
                             selectedTileElement.classList.remove('selected');
                         }
                         selectedTileElement = null;
                         firstSelection = null;
                         
-                        // 캔버스 경로 지우기 (혹시 그려졌다면)
                         if (ctx) {
                             ctx.clearRect(0, 0, pathCanvas.width, pathCanvas.height);
                         }
                         
-                        // ✨ 상대가 먼저 맞췄음을 알리는 진동
                         playVibrationEffect();
-                        
-                        // Firebase 동기화는 자동으로 이루어짐 (on('value') 리스너가 처리)
+                        renderBoard(); // (상대방이 선점했으므로 보드 갱신)
 
                   } else {
                         // 성공 시 사운드 재생
-                        playSound('tile-match-sound-new'); // ▼ [수정] 새 사운드 ID ▼
-                        // ✨ [수정] 매칭 성공 후, 방장에게 '셔플 검사'를 요청합니다. (방장/게스트 공통)
-                            // (방장이 이 요청을 받고 checkAndShuffleIfNeeded를 실행합니다)
-                            roomRef.child('checkShuffleRequest').set(true);
-                         // (방장이 요청을 감지하여 checkAndShuffleIfNeeded를 호출하므로 중복 호출 제거)
-                         // console.log("타일 제거 성공:", snapshot.val()); // 디버깅용
-                         
-                        // (검사 로직을 listenToRoomChanges로 이동)
+                        playSound('tile-match-sound-new');
+                        // 셔플 검사 요청
+                        roomRef.child('checkShuffleRequest').set(true);
                     }
                 });
             }
