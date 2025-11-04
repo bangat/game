@@ -360,7 +360,7 @@
             position: absolute;
             font-size: 2.5em;
             font-weight: 900;
-            color: white;
+            color: rgb(138, 163, 243);
             text-shadow: 2px 2px 5px rgba(0,0,0,0.5);
             z-index: 100;
             pointer-events: none;
@@ -505,7 +505,7 @@
             const COLS = 6;
             // [수정] 이모지 (5개 동물)
             const TILE_EMOJIS = ['🐄', '🐯', '🐳', '🐷', '🦒']; 
-            const GAME_TIME = 60; // [수정] 5초 -> 60초 (원래대로)
+            const GAME_TIME = 3; // [수정] 5초 -> 60초 (원래대로)
 
             let board = []; 
             let tileElements = []; 
@@ -717,9 +717,11 @@
                         const totalPlayers = Object.keys(currentRoomData.players).length;
                         const readyCount = Object.keys(readyPlayers).length;
                         
-                        if (infoOverlay.classList.contains('active')) {
-                             infoOverlay.querySelector('p').textContent = `상대방 기다리는 중 (${readyCount}/${totalPlayers})...`;
-                        }
+                        // [수정] infoOverlay의 내용을 '대기 중' 스피너로 덮어씁니다. (p 태그 오류 수정)
+            if (infoOverlay.classList.contains('active')) {
+                 // '사천성'과 동일하게 innerHTML을 설정하여 스피너와 p 태그를 생성합니다.
+                 infoOverlay.innerHTML = `<div class="spinner"></div><p style="color: white; margin-top: 15px; font-size: 1.1em;">상대방 기다리는 중 (${readyCount}/${totalPlayers})...</p>`;
+            }
 
                         // [핵심] 호스트가 재시작 신호 보냄
                         if (isHost && totalPlayers >= 2 && readyCount === totalPlayers) {
@@ -902,21 +904,53 @@
                 // if (infoOverlay.classList.contains('active')) return; 
                 
                 infoOverlay.classList.add('active');
+                
+                // [수정] '사천성/테트리스'처럼 innerHTML을 교체하여 카운트다운을 표시합니다.
+                // 'waiting' 상태에서 스피너로 덮어썼기 때문에, countdownNumber 요소가 더 이상 존재하지 않습니다.
+                infoOverlay.innerHTML = `<div id="countdown-number" style="font-size: 7em; font-weight: 700; color: white; text-shadow: 0 0 20px rgba(255,255,255,0.7);">3</div>`;
+                const countdownNumberEl = document.getElementById('countdown-number'); // [수정] 새로 생성된 요소를 참조
+                
                 let count = 3;
-                countdownNumber.textContent = count;
+                
                 const interval = setInterval(() => {
                     count--;
                     if (count > 0) {
-                        countdownNumber.textContent = count;
-                    } else if (count === 0) {
-                        countdownNumber.textContent = 'GO!';
-                    } else {
+                        if (countdownNumberEl) countdownNumberEl.textContent = count; // [수정] 새 요소 참조
+                        // [추가] 애니메이션 효과
+                        if (countdownNumberEl) {
+                            countdownNumberEl.style.animation = 'none';
+                            countdownNumberEl.offsetHeight; 
+                            countdownNumberEl.style.animation = 'countdown-pop 1s';
+                        }
+                  } else if (count === 0) {
+                     if (countdownNumberEl) countdownNumberEl.textContent = 'GO!'; // [수정] 새 요소 참조
+                     // [추가] 애니메이션 효과
+                     if (countdownNumberEl) {
+                         countdownNumberEl.style.animation = 'none';
+                         countdownNumberEl.offsetHeight; 
+                         countdownNumberEl.style.animation = 'countdown-pop 1s';
+                     }
+                 } else {
                         clearInterval(interval);
                         infoOverlay.classList.remove('active');
-                        setTimeout(() => {
-                            initGame(); 
-                            startGame();
-                        }, 0); // [수정] 500ms -> 0ms
+                        
+                        // [수정] 레이아웃이 계산될 때까지 기다립니다.
+                        function runGame() {
+                            // renderBoard()가 의존하는 gameContainer의 크기를 확인합니다.
+                            // [수정] clientHeight도 0보다 큰지 확인하여 렌더링 오류 방지
+                            if (gameContainer.clientWidth > 0 && gameContainer.clientHeight > 0) {
+                                console.log("레이아웃 계산 완료. 게임 시작.");
+                                initGame();
+                                startGame();
+                            } else {
+                                // 아직 0이면 다음 프레임에 다시 시도
+                                console.log(`레이아웃 대기 중... W:${gameContainer.clientWidth} H:${gameContainer.clientHeight}`);
+                                requestAnimationFrame(runGame);
+                            }
+                        }
+                        
+                        // 다음 애니메이션 프레임에서 게임 시작 시도
+                        requestAnimationFrame(runGame);
                     }
                 }, 1000);
             }
