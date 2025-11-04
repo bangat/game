@@ -1217,23 +1217,38 @@
 
         document.addEventListener('DOMContentLoaded', () => {
             const confirmExitModal = document.getElementById('confirm-exit-modal');
-            // [신규] PWA 설치 유도 로직 (대기실용)
+            // [수정] PWA 설치 유도 로직 (대기실용 - 경합 조건 해결)
             try {
                 const pwaModal = document.getElementById('pwa-install-modal');
                 const pwaConfirmBtn = document.getElementById('pwa-install-confirm-btn');
                 const pwaLaterBtn = document.getElementById('pwa-install-later-btn');
 
-                // 1. 이미 앱(PWA)으로 실행 중인지 확인
-                const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
-                
-                // 2. index.html에서 캡처한 설치 이벤트(window.deferredPrompt)가 있는지 확인
-                // 3. 이 세션에서 이미 '나중에'를 누르지 않았는지 확인
-                if (!isStandalone && window.deferredPrompt && sessionStorage.getItem('pwaModalDismissed') !== 'true') {
-                    console.log('대기실: PWA 설치 가능, 모달 표시.');
-                    pwaModal.classList.add('active');
+                const showPwaModal = () => {
+                    // 1. 이미 앱(PWA)으로 실행 중인지 확인
+                    const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+                    // 2. 이 세션에서 이미 '나중에'를 누르지 않았는지 확인
+                    if (!isStandalone && sessionStorage.getItem('pwaModalDismissed') !== 'true') {
+                        console.log('대기실: PWA 설치 가능, 모달 표시.');
+                        pwaModal.classList.add('active');
+                    }
+                };
+
+                // [수정] 1. 페이지 로드 시점에 이미 prompt가 준비되었다면 즉시 모달 표시
+                if (window.deferredPrompt) {
+                    showPwaModal();
                 }
 
-                // 4. 모달 버튼 이벤트 리스너 (index.html과 동일한 로직)
+                // [수정] 2. index.html에서 미처 잡지 못하고 늦게 이벤트가 발생할 경우를 대비해,
+                // 대기실에서도 'beforeinstallprompt' 이벤트를 수신 대기합니다.
+                window.addEventListener('beforeinstallprompt', (e) => {
+                    e.preventDefault();
+                    window.deferredPrompt = e; // [수정] 이벤트를 전역에 저장
+                    console.log('대기실: PWA 설치 가능(beforeinstallprompt) 감지됨.');
+                    // 이벤트가 발생한 이 시점에 모달 표시
+                    showPwaModal();
+                });
+
+                // 3. 모달 버튼 이벤트 리스너 (index.html과 동일한 로직)
                 pwaConfirmBtn.addEventListener('click', async () => {
                     if (gameSettings.sfx) clickSound.play();
                     const prompt = window.deferredPrompt;
@@ -1260,7 +1275,7 @@
             } catch (e) {
                 console.error('PWA 모달 로직 (대기실) 오류:', e);
             }
-            // [신규] PWA 설치 로직 끝
+            // [수정] PWA 설치 로직 끝
             let presenceTimeout = null;
             let myPresenceRef = null;
 
