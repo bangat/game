@@ -217,6 +217,36 @@
             margin: 0;
             font-size: 1.1em;
         }
+
+        /* [신규] PWA 설치 모달용 CSS (대기실 테마) */
+        .overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            display: none; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 200; background-color: rgba(0,0,0,0.6);
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+        }
+        .overlay.active { display: flex; }
+        
+        #pwa-install-modal .modal-content {
+            background: var(--panel-bg);
+            border-radius: 24px;
+            width: 90%; max-width: 380px;
+            overflow: hidden;
+            border: 4px solid var(--text-color-dark);
+            box-shadow: 8px 8px 0px 0px var(--text-color-dark);
+        }
+        #pwa-install-modal .modal-body {
+            padding: 30px 20px 20px; text-align: center;
+        }
+        #pwa-install-modal .modal-footer {
+            display: flex; gap: 10px; padding: 20px;
+            border-top: 3px solid var(--panel-border);
+            background-color: #FFFAE0;
+        }
+        #pwa-install-modal .modal-footer .menu-btn {
+            margin: 0; font-size: 1.1em;
+        }
     </style>
 </head>
 <body>
@@ -347,41 +377,80 @@
         }
         
 
-         // ✨ [신규] PWA 설치 관련 코드 시작
-        let deferredPrompt; // 'beforeinstallprompt' 이벤트를 저장할 변수
-        const installButton = document.getElementById('install-pwa-btn');
+         // [수정] PWA 설치 관련 로직 (모달 추가)
+        window.deferredPrompt = null; // [신규] 전역 스코프(window)에 저장
+        
+        const legacyInstallButton = document.getElementById('install-pwa-btn'); // 기존 버튼
+        const pwaModal = document.getElementById('pwa-install-modal');
+        const pwaConfirmBtn = document.getElementById('pwa-install-confirm-btn');
+        const pwaLaterBtn = document.getElementById('pwa-install-later-btn');
 
         window.addEventListener('beforeinstallprompt', (e) => {
-            // 기본 설치 프롬프트를 막습니다.
             e.preventDefault();
-            // 나중에 사용하기 위해 이벤트를 저장합니다.
-            deferredPrompt = e;
-            // 설치 버튼을 화면에 표시합니다.
-            installButton.style.display = 'block';
-            console.log('PWA 설치 가능 감지됨.');
+            window.deferredPrompt = e; // [수정] 이벤트를 전역에 저장
+            console.log('PWA 설치 가능(beforeinstallprompt) 감지됨.');
+
+            // [수정] 기존 버튼 숨김 (모달이 우선)
+            legacyInstallButton.style.display = 'none'; 
+
+            // [신규] 사용자가 이미 이 세션에서 닫지 않았을 때만 모달 표시
+            if (sessionStorage.getItem('pwaModalDismissed') !== 'true') {
+                pwaModal.classList.add('active'); // [수정] 모달을 바로 띄움
+            }
         });
 
-        installButton.addEventListener('click', async () => {
-            if (deferredPrompt) {
-                // 저장된 프롬프트를 표시합니다.
-                deferredPrompt.prompt();
-                // 사용자의 응답을 기다립니다.
-                const { outcome } = await deferredPrompt.userChoice;
+        // [신규] PWA 모달 "설치" 버튼
+        pwaConfirmBtn.addEventListener('click', async () => {
+            clickSound.play();
+            const prompt = window.deferredPrompt;
+            if (!prompt) {
+                console.log('PWA 프롬프트가 없습니다.');
+                pwaModal.classList.remove('active');
+                return;
+            }
+            
+            prompt.prompt();
+            const { outcome } = await prompt.userChoice;
+            console.log(`PWA 설치 프롬프트 결과: ${outcome}`);
+            
+            window.deferredPrompt = null; // 프롬프트는 1회용
+            pwaModal.classList.remove('active');
+            sessionStorage.setItem('pwaModalDismissed', 'true'); // 설치했으니 다시 안 띄움
+        });
+
+        // [신규] PWA 모달 "나중에" 버튼
+        pwaLaterBtn.addEventListener('click', () => {
+            clickSound.play();
+            pwaModal.classList.remove('active');
+            // [신규] 이 세션 동안 다시 묻지 않음
+            sessionStorage.setItem('pwaModalDismissed', 'true');
+            // [신규] 대신 하단의 작은 '앱 설치' 버튼을 표시
+            if (window.deferredPrompt) { // 설치 이벤트가 여전히 유효할 때만
+                legacyInstallButton.style.display = 'block';
+            }
+        });
+
+        // [수정] 하단 '앱 설치' 버튼 로직 (pwaConfirmBtn 로직과 동일하게)
+        legacyInstallButton.addEventListener('click', async () => {
+            clickSound.play(); // [추가]
+            const prompt = window.deferredPrompt;
+            if (prompt) {
+                prompt.prompt();
+                const { outcome } = await prompt.userChoice;
                 console.log(`PWA 설치 프롬프트 결과: ${outcome}`);
-                // 프롬프트는 한 번만 사용할 수 있으므로 변수를 초기화합니다.
-                deferredPrompt = null;
-                // 설치 후 버튼을 숨깁니다.
-                installButton.style.display = 'none';
+                window.deferredPrompt = null;
+                legacyInstallButton.style.display = 'none';
             }
         });
 
         window.addEventListener('appinstalled', () => {
             // 앱이 성공적으로 설치된 후
             console.log('PWA 설치 완료됨.');
-            deferredPrompt = null; // 혹시 모를 경우를 대비해 초기화
-            installButton.style.display = 'none'; // 버튼 숨김
+            window.deferredPrompt = null; // 혹시 모를 경우를 대비해 초기화
+            legacyInstallButton.style.display = 'none'; // 버튼 숨김
+            pwaModal.classList.remove('active'); // 모달 숨김
         });
-        // ✨ [신규] PWA 설치 관련 코드 끝
+        // [수정] PWA 설치 관련 로직 끝
 
 
         const firebaseConfig = {
@@ -649,6 +718,22 @@
                 </button>
             </div>
         </div>
+
+        <div id="pwa-install-modal" class="overlay">
+        <div class="modal-content">
+            <div class="modal-body">
+                <h3 style="font-size: 1.4em; margin-bottom: 15px;">📲 앱(App) 설치</h3>
+                <p style="font-size: 1em; color: #333; line-height: 1.5;">
+                    홈 화면에 앱을 설치하여<br>더 빠르고 쾌적하게 접속하세요!
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button id="pwa-install-later-btn" class="menu-btn secondary">나중에</button>
+                <button id="pwa-install-confirm-btn" class="menu-btn primary">설치</button>
+            </div>
+        </div>
+    </div>
+
     </div>
 </body>
 </html>

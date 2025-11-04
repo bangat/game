@@ -1217,7 +1217,50 @@
 
         document.addEventListener('DOMContentLoaded', () => {
             const confirmExitModal = document.getElementById('confirm-exit-modal');
-            
+            // [신규] PWA 설치 유도 로직 (대기실용)
+            try {
+                const pwaModal = document.getElementById('pwa-install-modal');
+                const pwaConfirmBtn = document.getElementById('pwa-install-confirm-btn');
+                const pwaLaterBtn = document.getElementById('pwa-install-later-btn');
+
+                // 1. 이미 앱(PWA)으로 실행 중인지 확인
+                const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+                
+                // 2. index.html에서 캡처한 설치 이벤트(window.deferredPrompt)가 있는지 확인
+                // 3. 이 세션에서 이미 '나중에'를 누르지 않았는지 확인
+                if (!isStandalone && window.deferredPrompt && sessionStorage.getItem('pwaModalDismissed') !== 'true') {
+                    console.log('대기실: PWA 설치 가능, 모달 표시.');
+                    pwaModal.classList.add('active');
+                }
+
+                // 4. 모달 버튼 이벤트 리스너 (index.html과 동일한 로직)
+                pwaConfirmBtn.addEventListener('click', async () => {
+                    if (gameSettings.sfx) clickSound.play();
+                    const prompt = window.deferredPrompt;
+                    if (!prompt) {
+                        pwaModal.classList.remove('active');
+                        return;
+                    }
+                    
+                    prompt.prompt();
+                    const { outcome } = await prompt.userChoice;
+                    console.log(`PWA 설치 프롬프트 결과: ${outcome}`);
+                    
+                    window.deferredPrompt = null;
+                    pwaModal.classList.remove('active');
+                    sessionStorage.setItem('pwaModalDismissed', 'true');
+                });
+
+                pwaLaterBtn.addEventListener('click', () => {
+                    if (gameSettings.sfx) clickSound.play();
+                    pwaModal.classList.remove('active');
+                    sessionStorage.setItem('pwaModalDismissed', 'true');
+                });
+
+            } catch (e) {
+                console.error('PWA 모달 로직 (대기실) 오류:', e);
+            }
+            // [신규] PWA 설치 로직 끝
             let presenceTimeout = null;
             let myPresenceRef = null;
 
@@ -2358,6 +2401,20 @@
                 <button id="reset-keypad-btn" class="menu-btn light">초기화</button>
                 <button id="save-keypad-btn" class="menu-btn secondary">저장</button>
             </div>
+            <div id="pwa-install-modal" class="overlay">
+        <div class="modal-content" style="max-width: 380px;">
+            <div class="modal-body">
+                <h3 style="font-size: 1.4em; margin-bottom: 15px;">📲 앱(App) 설치</h3>
+                <p style="font-size: 1em; color: #333; line-height: 1.5;">
+                    홈 화면에 앱을 설치하여<br>더 빠르고 쾌적하게 접속하세요!
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button id="pwa-install-later-btn" class="menu-btn secondary">나중에</button>
+                <button id="pwa-install-confirm-btn" class="menu-btn primary">설치</button>
+            </div>
+        </div>
+    </div>
         </div>
     </div>
 
