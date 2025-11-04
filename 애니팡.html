@@ -505,7 +505,7 @@
             const COLS = 6;
             // [수정] 이모지 (5개 동물)
             const TILE_EMOJIS = ['🐄', '🐯', '🐳', '🐷', '🦒']; 
-            const GAME_TIME = 3; // [수정] 5초 -> 60초 (원래대로)
+            const GAME_TIME = 60; // [수정] 5초 -> 60초 (원래대로)
 
             let board = []; 
             let tileElements = []; 
@@ -522,7 +522,7 @@
             let feverGauge = 0;
             const MAX_FEVER_GAUGE = 100; // (게이지 최대치, 100으로 설정)
             let isFeverMode = false;
-            const FEVER_DURATION = 5000; // (피버 지속 시간, 5초 = 5000ms)
+            const FEVER_DURATION = 7000; // (피버 지속 시간, 5초 = 5000ms)
             let feverTimerId = null;
             // --- 피버 시스템 끝 ---
 
@@ -612,9 +612,6 @@
                 });
                 
                 playerRef.onDisconnect().remove();
-
-                // [버그 수정] 호스트가 게임 중 나가면, 방 상태를 'finished'로 강제 변경
-
                 // [버그 수정] 호스트가 게임 중 나가면, 방 상태를 'finished'로 강제 변경
                 if (isHost) {
                     hostStatusDisconnectRef = statusRef.onDisconnect();
@@ -1143,6 +1140,23 @@
                     const sortedPlayers = Object.entries(players)
                         .map(([uid, data]) => ({ uid, ...data }))
                         .sort((a, b) => (b.score || 0) - (a.score || 0));
+
+                        // [신규] 내 랭킹과 승/패 여부, 최종 점수 확인
+                    let myFinalRank = -1;
+                    let myFinalScore = 0;
+                    
+                    sortedPlayers.forEach((player, index) => {
+                        if (player.uid === playerUid) {
+                            myFinalRank = index + 1;
+                            myFinalScore = player.score || 0;
+                        }
+                    });
+
+                    // [신규] 1등=승리, 2/3/4등=패배 (무승부 없음)
+                    const didIWin = (myFinalRank === 1);
+                    
+                    // [신규] 스탯 업데이트 함수 호출
+                    updatePlayerStats(didIWin, myFinalScore);
 
                     finalRankingList.innerHTML = '';
                     sortedPlayers.forEach((player, index) => {
@@ -1783,6 +1797,38 @@
             function shuffleBoard() {
                 console.log("보드 데이터 셔플 중...");
                 createBoardData(); 
+            }
+
+            // [신규] 게임 스탯 업데이트 함수 (테트리스.html에서 가져와 수정)
+            function updatePlayerStats(didIWin, finalScore) { 
+                if (!playerUid || playerUid.startsWith('guest_')) return;
+                
+                // 'win', 'loss', 'draw' 중 하나
+                const result = (didIWin === null) ? 'draws' : (didIWin ? 'wins' : 'losses');
+                
+                // [수정] 'candysoap' 경로로 변경
+                const userStatsRef = db.ref('users').child(playerUid).child('gameStats/candysoap');
+
+                userStatsRef.transaction(currentStats => {
+                    if (currentStats === null) {
+                        currentStats = { wins: 0, losses: 0, draws: 0, plays: 0, highscore: 0 };
+                    }
+                    currentStats.plays = (currentStats.plays || 0) + 1;
+                    currentStats[result] = (currentStats[result] || 0) + 1;
+                    // [수정] 'score' (전역 변수) 대신 'finalScore' (매개변수) 사용
+                    currentStats.highscore = Math.max(currentStats.highscore || 0, finalScore); 
+                    return currentStats;
+                });
+                
+                // 경험치 및 포인트 지급 (테트리스와 동일하게)
+                let expGained = 50, pointsGained = 50;
+                if(didIWin === true) { expGained = 150; pointsGained = 100; } // 1등
+                else if (didIWin === null) { expGained = 75; pointsGained = 75; } // 무승부 (현재 애니팡엔 없음)
+                // 2~4등은 기본 점수
+                
+                const userProfileRef = db.ref('users').child(playerUid).child('profile');
+                userProfileRef.child('exp').transaction(exp => (exp || 0) + expGained);
+                userProfileRef.child('points').transaction(points => (points || 0) + pointsGained);
             }
 
             // [신규] '사천성' 방식의 안전한 나가기 함수
