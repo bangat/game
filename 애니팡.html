@@ -319,6 +319,46 @@
             100% { transform: scale(1); opacity: 0; }
         }
 
+/* ------------------------- */
+        /* == 7. [신규] 피버 게이지 == */
+        /* ------------------------- */
+        #fever-gauge-container {
+            width: 80%;
+            max-width: 300px;
+            height: 22px;
+            background-color: #fff;
+            border: 2px solid var(--panel-border);
+            border-radius: 20px;
+            margin: 5px auto 0;
+            position: relative;
+            overflow: hidden;
+            box-shadow: inset 2px 2px 4px rgba(87, 65, 65, 0.1);
+        }
+        #fever-gauge-fill {
+            height: 100%;
+            width: 0%; /* 0%에서 시작 */
+            background: linear-gradient(90deg, var(--secondary-color), var(--primary-color));
+            border-radius: 20px;
+            transition: width 0.3s ease-out;
+        }
+        #fever-gauge-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 0.9em;
+            font-weight: 900;
+            color: white;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+        }
+        /* 피버 모드 활성화 시 UI */
+        #game-board.fever-active {
+            animation: fever-pulse 0.7s infinite alternate;
+        }
+        @keyframes fever-pulse {
+            from { box-shadow: 6px 6px 0px 0px var(--panel-shadow); }
+            to { box-shadow: 6px 6px 20px 10px var(--primary-color); }
+        }
     </style>
 </head>
 <body>
@@ -333,6 +373,11 @@
             <div id="timer-container">
                 <div class="label">시간</div>
                 <div class="value" id="timer-value">60</div>
+            </div>
+            
+            <div id="fever-gauge-container">
+                <div id="fever-gauge-fill"></div>
+                <span id="fever-gauge-text">FEVER</span>
             </div>
     
         </div>
@@ -417,7 +462,7 @@
             const COLS = 6;
             // [수정] 이모지 (5개 동물)
             const TILE_EMOJIS = ['🐄', '🐯', '🐳', '🐷', '🦒']; 
-            const GAME_TIME = 60;
+            const GAME_TIME = 5;
 
             let board = []; 
             let tileElements = []; 
@@ -430,6 +475,13 @@
             let dragStartTile = null;
             let dragStartX = 0;
             let dragStartY = 0;
+            // --- ✨ [신규] 피버 시스템 변수 ---
+            let feverGauge = 0;
+            const MAX_FEVER_GAUGE = 100; // (게이지 최대치, 100으로 설정)
+            let isFeverMode = false;
+            const FEVER_DURATION = 5000; // (피버 지속 시간, 5초 = 5000ms)
+            let feverTimerId = null;
+            // --- 피버 시스템 끝 ---
 
             // ------------------------------------
             // 2. Firebase (멀티플레이)
@@ -495,14 +547,24 @@
                 playerRef = allPlayersRef.child(playerUid);
                 statusRef = roomRef.child('status'); // [신규] status 리스너 분리
 
-                const myNickname = currentUser.displayName || `Player${playerUid.substring(0, 4)}`;
-
-                playerRef.set({
-                    nickname: myNickname,
-                    score: 0,
-                    isFinished: false
+                // [버그 수정] .set()은 아바타/닉네임을 덮어쓰므로 .update() 사용
+                // 또한, 방 상태가 'playing'이 아닐 때만 초기화하여,
+                // 게임 종료 후 재접속 시 isFinished가 덮어써지는 것을 방지합니다.
+                roomRef.child('status').once('value', (statusSnapshot) => {
+                    if (statusSnapshot.val() !== 'playing') {
+                        playerRef.update({
+                            score: 0,
+                            isFinished: false
+                        });
+                        console.log("플레이어 상태 'waiting'으로 초기화 완료.");
+                    } else {
+                        console.log("게임이 이미 'playing' 상태이므로, 점수/상태를 초기화하지 않습니다.");
+                    }
                 });
+                
                 playerRef.onDisconnect().remove();
+
+                // [버그 수정] 호스트가 게임 중 나가면, 방 상태를 'finished'로 강제 변경
 
                 // [버그 수정] 호스트가 게임 중 나가면, 방 상태를 'finished'로 강제 변경
                 if (isHost) {
@@ -526,7 +588,7 @@
                 statusRef.on('value', (snapshot) => {
                     const status = snapshot.val();
                     console.log("방 상태 변경:", status);
-
+ console.log(`[애니팡] 방 상태 변경: ${status}, 게임오버 모달: ${gameOverOverlay.classList.contains('active')}`);
                     if (status === 'playing' && !timerId && !gameOverOverlay.classList.contains('active')) {
                         loadingOverlay.classList.remove('active');
                         startCountdown();
@@ -578,6 +640,15 @@
                 timer = GAME_TIME;
                 currentCombo = 0;
                 isProcessing = true; 
+
+                // --- ✨ [신규] 피버 게이지 초기화 ---
+                if (feverTimerId) clearTimeout(feverTimerId); // 이전 타이머 제거
+                feverGauge = 0;
+                isFeverMode = false;
+                feverTimerId = null;
+                updateFeverGaugeUI(); // UI 0%로 리셋
+                gameBoard.classList.remove('fever-active'); // 이펙트 제거
+                // --- 피버 초기화 끝 ---
 
                 timerValue.textContent = GAME_TIME;
                 timerDisplay.classList.remove('danger-time');
@@ -712,52 +783,118 @@
                 }, 1000);
             }
 
-            function gameOver() {
-                if (isProcessing) return;
-                isProcessing = true; 
-                clearInterval(timerId);
-                timerId = null;
-                timerDisplay.classList.remove('danger-time'); 
-                timerValue.textContent = '0';
-                playSound('gameOver');
-                if (playerRef) {
-                    playerRef.child('isFinished').set(true).then(() => {
-                        // [수정] isFinished.set()이 완료된 후, 호스트만 모두 종료했는지 체크
-                        if (isHost) {
-                            // 1초 후 체크 (게스트의 set(true)가 반영될 시간을 줌)
-                            setTimeout(checkAllPlayersFinished, 1000);
-                        }
-                    });
-                }
-                loadingOverlay.classList.add('active');
-                loadingOverlay.querySelector('p').textContent = "결과 집계 중...";
+        function gameOver() {
+            if (isProcessing) return; // 중복 실행 방지
+            isProcessing = true; 
+            clearInterval(timerId);
+            timerId = null;
+        
+            if (feverTimerId) {
+                clearTimeout(feverTimerId);
+                feverTimerId = null;
+                isFeverMode = false;
+                gameBoard.classList.remove('fever-active');
             }
+            timerDisplay.classList.remove('danger-time'); 
+            timerValue.textContent = '0';
+            playSound('gameOver');
+            
+            // [수정] (Tetris/ShisenSho 방식 적용)
+            // 1. 먼저 본인의 isFinished를 true로 설정
+            if (playerRef) {
+                playerRef.child('isFinished').set(true).then(() => {
+                    console.log(`[${isHost ? 'Host' : 'Guest'}] isFinished = true 설정 완료.`);
+                    
+                    // 2. (신규) 호스트/게스트 구분 없이 "즉시" 공용 체크 함수 호출
+                    //    (Firebase 전파 시간을 고려해 500ms 딜레이)
+                    setTimeout(checkGameOverCondition, 500); 
 
-            // [신규] 게스트 멈춤 버그 수정을 위한 호스트용 함수
-            function checkAllPlayersFinished() {
-                if (!isHost || !allPlayersRef) return;
-
-                allPlayersRef.once('value', (snapshot) => {
-                    const players = snapshot.val();
-                    if (!players) return;
-
-                    const playerArray = Object.values(players);
-                    // [수정] 모든 플레이어가 'isFinished: true'인지 확인
-                    if (playerArray.length > 0 && playerArray.every(p => p.isFinished === true)) {
-                        // [수정] 'playing' 상태일 때만 'finished'로 변경 (중복 방지)
-                        statusRef.once('value', (statusSnap) => {
-                            if (statusSnap.val() === 'playing') {
-                                console.log("Host (Delayed Check): 모든 플레이어 종료 확인. 'finished'로 변경.");
-                                statusRef.set('finished');
-                            }
-                        });
-                    } else {
-                        console.log("Host (Delayed Check): 아직 모든 플레이어가 종료되지 않음. 2초 후 재시도.");
-                        // 2초 후 다시 시도 (네트워크 지연, 플레이어 이탈 등)
-                        setTimeout(checkAllPlayersFinished, 2000);
-                    }
+                }).catch(err => {
+                    // [신규] set 실패 시에도 500ms 후 체크 시도 (방어 코드)
+                    console.error("isFinished 설정 실패:", err);
+                    setTimeout(checkGameOverCondition, 500);
                 });
+            } else {
+                // playerRef가 없는 비정상적 상황
+                setTimeout(checkGameOverCondition, 500);
             }
+            
+            // 3. 결과 집계중 UI 표시
+            loadingOverlay.classList.add('active');
+            loadingOverlay.querySelector('p').textContent = "결과 집계 중...";
+        }
+
+
+
+       // [수정] 최대 시도 횟수 증가 및 간격 단축
+// [수정] (Tetris/ShisenSho 방식 적용)
+        // checkAttempts 변수 및 관련 상수는 이 함수 내부에서만 사용
+        let checkGameOverAttempts = 0;
+        const MAX_CHECK_ATTEMPTS = 20; // 10초 (500ms * 20)
+        const CHECK_INTERVAL = 500;
+
+        // [수정] 함수 이름을 변경하고 (checkAllPlayersFinished -> checkGameOverCondition)
+        // 호스트/게스트 공용 함수로 변경
+        function checkGameOverCondition() {
+            // 1. 이미 결과창이 떴으면 중복 실행 방지
+            if (gameOverOverlay.classList.contains('active')) {
+                return;
+            }
+            
+            // 2. allPlayersRef가 없으면 (방이 터졌으면) 강제 종료
+            if (!allPlayersRef) {
+                console.warn("[CheckGameOver] allPlayersRef가 없습니다. 강제 종료.");
+                forceGameOver(); // (결과: 방이 종료됨)
+                return;
+            }
+
+            checkGameOverAttempts++;
+            console.log(`[CheckGameOver] (공용) 플레이어 종료 체크 (${checkGameOverAttempts}/${MAX_CHECK_ATTEMPTS})`);
+
+            // 3. (신규) 호스트/게스트 구분 없이 "즉시" allPlayersRef를 확인
+            allPlayersRef.once('value', (snapshot) => {
+                const players = snapshot.val();
+                if (!players) {
+                    console.warn("[CheckGameOver] players 데이터가 없습니다. 강제 종료.");
+                    forceGameOver(); // (결과: 방이 종료됨)
+                    return;
+                }
+
+                const playerArray = Object.values(players);
+                const allFinished = playerArray.length > 0 && playerArray.every(p => p.isFinished === true);
+
+                // 4. (신규) "모두 종료"가 확인되면, 즉시 로컬에서 forceGameOver() 호출
+                if (allFinished) {
+                    console.log("[CheckGameOver] 모든 플레이어 종료 확인! 즉시 결과 표시.");
+                    
+                    // (선택적) 호스트가 status: 'finished'를 쏴서, 
+                    // 체크가 늦는 다른 플레이어에게 신호를 줄 수 있음 (안전장치)
+                    if (isHost) {
+                        statusRef.set('finished');
+                    }
+                    
+                    forceGameOver(); // "즉시" 로컬에서 결과창 표시
+                    checkGameOverAttempts = 0; // 초기화
+                }
+                // 5. (신규) 아직 "모두 종료"가 아니면, 재시도 (안전장치)
+                else if (checkGameOverAttempts < MAX_CHECK_ATTEMPTS) {
+                    console.log(`[CheckGameOver] 아직 모두 종료되지 않음. ${CHECK_INTERVAL}ms 후 재시도...`);
+                    setTimeout(checkGameOverCondition, CHECK_INTERVAL);
+                }
+                // 6. (신규) 최대 시도 횟수 초과 (안전장치)
+                else {
+                    console.warn("[CheckGameOver] 최대 체크 횟수 초과. 강제로 결과 표시.");
+                    
+                    // (선택적) 호스트가 강제로 status: 'finished' 설정
+                    if (isHost) {
+                        statusRef.set('finished');
+                    }
+                    
+                    forceGameOver();
+                    checkGameOverAttempts = 0;
+                }
+            });
+        }
 
             // [수정] "게스트 멈춤" 버그 해결 (리스너 정리)
             function forceGameOver() {
@@ -824,6 +961,12 @@
                         }
                         p.innerHTML = rankText;
                         finalRankingList.appendChild(p);
+
+                        // [버그 수정] 게스트 재접속 시 로컬 score(0점)가 아닌,
+                        // Firebase에서 가져온 player.score를 사용해야 함
+                        if (player.uid === playerUid) {
+                            finalScoreEl.textContent = `${player.score.toLocaleString()} 점`;
+                        }
                     });
                 });
             }
@@ -832,6 +975,48 @@
                 window.location.href = '대기실.html';
             });
 
+            // ------------------------------------
+            // 5. [신규] 피버 시스템 함수
+            // ------------------------------------
+            
+            function updateFeverGaugeUI() {
+                const fill = document.getElementById('fever-gauge-fill');
+                if (fill) {
+                    const percent = Math.min(100, (feverGauge / MAX_FEVER_GAUGE) * 100);
+                    fill.style.width = `${percent}%`;
+                }
+            }
+
+            function startFeverMode() {
+                if (isFeverMode) return; // 중복 실행 방지
+                
+                console.log("🔥 피버 모드 발동!");
+                isFeverMode = true;
+                feverGauge = 0; // 게이지 초기화
+                updateFeverGaugeUI();
+                gameBoard.classList.add('fever-active'); // 피버 이펙트
+
+                // "FEVER!" 텍스트 표시
+                const feverText = document.createElement('div');
+                feverText.className = 'combo-text';
+                feverText.textContent = '🔥 FEVER! 🔥';
+                feverText.style.top = '50%';
+                feverText.style.left = '50%';
+                feverText.style.transform = 'translate(-50%, -50%)';
+                gameWrapper.appendChild(feverText);
+                setTimeout(() => feverText.remove(), 1000); // 1초 뒤 제거
+
+                // 피버 종료 타이머
+                feverTimerId = setTimeout(endFeverMode, FEVER_DURATION);
+            }
+
+            function endFeverMode() {
+                console.log("...피버 모드 종료.");
+                isFeverMode = false;
+                feverTimerId = null;
+                gameBoard.classList.remove('fever-active');
+                // (필요시) "FEVER END" 텍스트
+            }
             // ------------------------------------
             // 5. 컨트롤 (드래그) (수정)
             // ------------------------------------
@@ -987,13 +1172,31 @@
                 // if (isProcessing === false) isProcessing = true; // [삭제] 상태 관리 중복 제거
                 currentCombo++;
 
+                // --- ✨ [신규] 피버 점수 적용 ---
+                const scoreMultiplier = isFeverMode ? 1.5 : 1.0;
+                // --- 피버 점수 끝 ---
+
                 const baseScore = matches.size * 10;
                 const comboBonus = currentCombo * 20;
-                const turnScore = baseScore + comboBonus;
+                const turnScore = Math.round((baseScore + comboBonus) * scoreMultiplier); // [수정] scoreMultiplier 곱하기 및 반올림
                 score += turnScore;
                 
                 showComboText(currentCombo, matches);
-                showComboScore(turnScore);
+                showComboScore(turnScore); // 1.5배 적용된 점수 표시
+
+                // --- ✨ [신규] 피버 게이지 획득 ---
+                if (!isFeverMode) { // 피버 모드가 아닐 때만 게이지 획득
+                    // 콤보가 높을수록, 많이 터뜨릴수록 게이지 많이 참
+                    const gaugeGain = (matches.size * 0.5) + (currentCombo * 1.5); 
+                    feverGauge = Math.min(MAX_FEVER_GAUGE, feverGauge + gaugeGain);
+                    updateFeverGaugeUI();
+
+                    // 게이지가 찼는지 확인
+                    if (feverGauge >= MAX_FEVER_GAUGE) {
+                        startFeverMode();
+                    }
+                }
+                // --- 피버 게이지 끝 ---
 
                 updateScoreUI(); 
                 if (playerRef) { playerRef.child('score').set(score); }
