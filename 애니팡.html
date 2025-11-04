@@ -1433,29 +1433,56 @@
             }
             
             async function processMatchesAndCascade(matches) {
-                // if (isProcessing === false) isProcessing = true; // [삭제] 상태 관리 중복 제거
                 currentCombo++;
 
-                // --- ✨ [신규] 피버 점수 적용 ---
+                // [수정] 'matches'를 'finalMatches'로 확장
+                let finalMatches = new Set(matches); 
+
+                // --- ✨ [신규] 피버 모드 폭탄 로직 ---
+                if (isFeverMode) {
+                    console.log("🔥 피버 폭탄! 주변 타일 추가");
+                    const neighbors = [
+                        [-1, -1], [-1, 0], [-1, 1],
+                        [ 0, -1],         [ 0, 1],
+                        [ 1, -1], [ 1, 0], [ 1, 1]
+                    ];
+                    
+                    // [수정] 원본 'matches'를 순회 (finalMatches를 순회하면 무한히 커짐)
+                    matches.forEach(key => {
+                        const [r, c] = key.split('-').map(Number);
+                        for (const [dr, dc] of neighbors) {
+                            const nr = r + dr;
+                            const nc = c + dc;
+                            // 경계 체크 및 빈 칸(null)이 아닌지 체크
+                            if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS && board[nr][nc] !== null) {
+                                finalMatches.add(`${nr}-${nc}`);
+                            }
+                        }
+                    });
+                }
+                // --- 피버 폭탄 로직 끝 ---
+
+
+                // --- ✨ [수정] 피버 점수 적용 (finalMatches 기준) ---
                 const scoreMultiplier = isFeverMode ? 1.5 : 1.0;
                 // --- 피버 점수 끝 ---
 
-                const baseScore = matches.size * 10;
+                // [수정] 'matches.size' 대신 'finalMatches.size' 사용
+                const baseScore = finalMatches.size * 10;
                 const comboBonus = currentCombo * 20;
-                const turnScore = Math.round((baseScore + comboBonus) * scoreMultiplier); // [수정] scoreMultiplier 곱하기 및 반올림
+                const turnScore = Math.round((baseScore + comboBonus) * scoreMultiplier);
                 score += turnScore;
                 
-                showComboText(currentCombo, matches);
-                showComboScore(turnScore); // 1.5배 적용된 점수 표시
+                showComboText(currentCombo, finalMatches); // [수정]
+                showComboScore(turnScore); 
 
-                // --- ✨ [신규] 피버 게이지 획득 ---
-                if (!isFeverMode) { // 피버 모드가 아닐 때만 게이지 획득
-                    // 콤보가 높을수록, 많이 터뜨릴수록 게이지 많이 참
-                    const gaugeGain = (matches.size * 0.5) + (currentCombo * 1.5); 
+                // --- ✨ [신규] 피버 게이지 획득 (finalMatches 기준) ---
+                if (!isFeverMode) { 
+                    // [수정]
+                    const gaugeGain = (finalMatches.size * 0.5) + (currentCombo * 1.5); 
                     feverGauge = Math.min(MAX_FEVER_GAUGE, feverGauge + gaugeGain);
                     updateFeverGaugeUI();
 
-                    // 게이지가 찼는지 확인
                     if (feverGauge >= MAX_FEVER_GAUGE) {
                         startFeverMode();
                     }
@@ -1466,12 +1493,11 @@
                 if (playerRef) { playerRef.child('score').set(score); }
                 playComboSound(currentCombo);
                 
-                await animatePop(matches);
-                removeMatches(matches);
+                await animatePop(finalMatches); // [수정]
+                removeMatches(finalMatches); // [수정]
                 const { droppedTilesMap } = dropTiles();
                 const newTilesMap = fillTopTiles();
                 
-                // [수정] "고스트 터치" "버벅임" 해결
                 await animateDrops(droppedTilesMap, newTilesMap);
                 
                 const newMatches = findAllMatches();
