@@ -444,6 +444,7 @@
             let allPlayersRef = null;
             let statusRef = null; // [신규] status 리스너 전용 참조
             let isHost = false; 
+            let hostStatusDisconnectRef = null; // [신규] 호스트 전용 onDisconnect 핸들러
 
             const firebaseConfig = {
                 apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
@@ -502,6 +503,13 @@
                     isFinished: false
                 });
                 playerRef.onDisconnect().remove();
+
+                // [버그 수정] 호스트가 게임 중 나가면, 방 상태를 'finished'로 강제 변경
+                if (isHost) {
+                    hostStatusDisconnectRef = statusRef.onDisconnect();
+                    hostStatusDisconnectRef.set('finished');
+                    console.log("호스트 onDisconnect 핸들러 설정: 비정상 종료 시 status를 'finished'로 변경합니다.");
+                }
 
                 // 리스너 1: 모든 플레이어의 점수/상태 감시
                 allPlayersRef.on('value', (snapshot) => {
@@ -755,6 +763,17 @@
             function forceGameOver() {
                 if (gameOverOverlay.classList.contains('active')) return;
                 gameOverOverlay.classList.add('active'); // 중복 방지
+
+                // [버그 수정] 게임이 정상 종료되었으므로, 호스트의 onDisconnect 핸들러 취소
+                if (isHost && hostStatusDisconnectRef) {
+                    try {
+                        hostStatusDisconnectRef.cancel();
+                        hostStatusDisconnectRef = null;
+                        console.log("게임 정상 종료: 호스트 onDisconnect 핸들러를 취소했습니다.");
+                    } catch (e) {
+                        console.warn("호스트 onDisconnect 핸들러 취소 실패:", e);
+                    }
+                }
 
                 if (timerId) {
                     clearInterval(timerId);
