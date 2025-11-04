@@ -1336,19 +1336,31 @@
             
             async function attemptSwap(r1, c1, r2, c2) {
                 if (isProcessing) return;
-                isProcessing = true; 
+                isProcessing = true; // [수정] 입력 잠금
+
                 playSound('swap');
                 swapData(r1, c1, r2, c2); // 1. 데이터 스왑
-                await animateSwap(r1, c1, r2, c2); // 2. DOM 스왑 (이때 tileElements와 dataset도 같이 스왑됨)
+                await animateSwap(r1, c1, r2, c2); // 2. DOM 스왑 (애니메이션 대기)
+                
                 const matches = findAllMatches();
+                
                 if (matches.size > 0) {
-                    currentCombo = 0; 
-                    await processMatchesAndCascade(matches);
+                    // --- 매칭 성공 ---
+                    if (isFeverMode) {
+                        // [신규] 피버 모드: 백그라운드에서 처리하고 즉시 입력 잠금 해제
+                        processMatchesAndCascade(matches);
+                        isProcessing = false;
+                    } else {
+                        // [기존] 일반 모드: 연쇄 폭발이 끝날 때까지 대기
+                        await processMatchesAndCascade(matches);
+                        isProcessing = false;
+                    }
                 } else {
-                    // [수정] 매치 실패 시, 데이터와 DOM을 '다시' 원위치
+                    // --- 매칭 실패 ---
+                    // (피버 모드용으로 수정된 animateInvalidSwap 함수가 호출됨)
                     await animateInvalidSwap(r1, c1, r2, c2); 
+                    isProcessing = false;
                 }
-                isProcessing = false;
             }
             function swapData(r1, c1, r2, c2) {
                 const temp = board[r1][c1];
@@ -1399,15 +1411,19 @@
                 });
             }
             async function animateInvalidSwap(r1, c1, r2, c2) {
-                const tile1 = tileElements[r2][c2]; // [수정] 스왑된 위치
-                const tile2 = tileElements[r1][c1]; // [수정] 스왑된 위치
-                tile1.classList.add('invalid');
-                tile2.classList.add('invalid');
-                await new Promise(resolve => setTimeout(resolve, 400)); 
-                tile1.classList.remove('invalid');
-                tile2.classList.remove('invalid');
+                // [신규] 피버 모드가 "아닐" 때만 흔들림(shake) 애니메이션 실행
+                if (!isFeverMode) {
+                    const tile1 = tileElements[r2][c2]; 
+                    const tile2 = tileElements[r1][c1]; 
+                    tile1.classList.add('invalid');
+                    tile2.classList.add('invalid');
+                    await new Promise(resolve => setTimeout(resolve, 400)); // 400ms 대기
+                    tile1.classList.remove('invalid');
+                    tile2.classList.remove('invalid');
+                }
+                
                 swapData(r1, c1, r2, c2); // 데이터 원위치
-                await animateSwap(r2, c2, r1, c1); // DOM 원위치
+                await animateSwap(r2, c2, r1, c1); // DOM 원위치 (빠른 복귀)
             }
             function findAllMatches() {
                 const matches = new Set();
@@ -1433,56 +1449,29 @@
             }
             
             async function processMatchesAndCascade(matches) {
+                // if (isProcessing === false) isProcessing = true; // [삭제] 상태 관리 중복 제거
                 currentCombo++;
 
-                // [수정] 'matches'를 'finalMatches'로 확장
-                let finalMatches = new Set(matches); 
-
-                // --- ✨ [신규] 피버 모드 폭탄 로직 ---
-                if (isFeverMode) {
-                    console.log("🔥 피버 폭탄! 주변 타일 추가");
-                    const neighbors = [
-                        [-1, -1], [-1, 0], [-1, 1],
-                        [ 0, -1],         [ 0, 1],
-                        [ 1, -1], [ 1, 0], [ 1, 1]
-                    ];
-                    
-                    // [수정] 원본 'matches'를 순회 (finalMatches를 순회하면 무한히 커짐)
-                    matches.forEach(key => {
-                        const [r, c] = key.split('-').map(Number);
-                        for (const [dr, dc] of neighbors) {
-                            const nr = r + dr;
-                            const nc = c + dc;
-                            // 경계 체크 및 빈 칸(null)이 아닌지 체크
-                            if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS && board[nr][nc] !== null) {
-                                finalMatches.add(`${nr}-${nc}`);
-                            }
-                        }
-                    });
-                }
-                // --- 피버 폭탄 로직 끝 ---
-
-
-                // --- ✨ [수정] 피버 점수 적용 (finalMatches 기준) ---
+                // --- ✨ [신규] 피버 점수 적용 ---
                 const scoreMultiplier = isFeverMode ? 1.5 : 1.0;
                 // --- 피버 점수 끝 ---
 
-                // [수정] 'matches.size' 대신 'finalMatches.size' 사용
-                const baseScore = finalMatches.size * 10;
+                const baseScore = matches.size * 10;
                 const comboBonus = currentCombo * 20;
-                const turnScore = Math.round((baseScore + comboBonus) * scoreMultiplier);
+                const turnScore = Math.round((baseScore + comboBonus) * scoreMultiplier); // [수정] scoreMultiplier 곱하기 및 반올림
                 score += turnScore;
                 
-                showComboText(currentCombo, finalMatches); // [수정]
-                showComboScore(turnScore); 
+                showComboText(currentCombo, matches);
+                showComboScore(turnScore); // 1.5배 적용된 점수 표시
 
-                // --- ✨ [신규] 피버 게이지 획득 (finalMatches 기준) ---
-                if (!isFeverMode) { 
-                    // [수정]
-                    const gaugeGain = (finalMatches.size * 0.5) + (currentCombo * 1.5); 
+                // --- ✨ [신규] 피버 게이지 획득 ---
+                if (!isFeverMode) { // 피버 모드가 아닐 때만 게이지 획득
+                    // 콤보가 높을수록, 많이 터뜨릴수록 게이지 많이 참
+                    const gaugeGain = (matches.size * 0.5) + (currentCombo * 1.5); 
                     feverGauge = Math.min(MAX_FEVER_GAUGE, feverGauge + gaugeGain);
                     updateFeverGaugeUI();
 
+                    // 게이지가 찼는지 확인
                     if (feverGauge >= MAX_FEVER_GAUGE) {
                         startFeverMode();
                     }
@@ -1493,11 +1482,12 @@
                 if (playerRef) { playerRef.child('score').set(score); }
                 playComboSound(currentCombo);
                 
-                await animatePop(finalMatches); // [수정]
-                removeMatches(finalMatches); // [수정]
+                await animatePop(matches);
+                removeMatches(matches);
                 const { droppedTilesMap } = dropTiles();
                 const newTilesMap = fillTopTiles();
                 
+                // [수정] "고스트 터치" "버벅임" 해결
                 await animateDrops(droppedTilesMap, newTilesMap);
                 
                 const newMatches = findAllMatches();
