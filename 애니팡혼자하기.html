@@ -1,0 +1,1314 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>애니팡 (혼자하기)</title> 
+    <link rel="manifest" href="manifest.json">
+    <link href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff" as="font" type="font/woff" crossorigin>
+    
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+
+    <style>
+        /* ------------------------- */
+        /* == 1. 앱 공통 테마 == */
+        /* ------------------------- */
+        :root {
+            --bg-color: #FFFBEB;
+            --primary-color: #FF6B6B;
+            --secondary-color: #4ECDC4;
+            --accent-color: #FFD93D;
+            --text-color-dark: #574141;
+            --text-color-light: #ffffff;
+            --danger-color: #F76363;
+            --panel-bg: #FFFFFF;
+            --panel-border: #F0EAD2;
+            --panel-shadow: #E4DCCF;
+            --font-main: 'GmarketSans', sans-serif;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%; height: 100%; overflow: hidden;
+            font-family: var(--font-main);
+            background-color: var(--bg-color);
+            color: var(--text-color-dark);
+            display: flex; flex-direction: column;
+            justify-content: flex-start; 
+            align-items: center;
+            -webkit-user-select: none; user-select: none;
+            touch-action: manipulation;
+            padding: 10px;
+        }
+
+        /* ------------------------- */
+        /* == 2. [수정] 게임 레이아웃 (통합 프레임) == */
+        /* ------------------------- */
+        #game-wrapper { 
+            width: 100%; height: 100%; 
+            display: flex; flex-direction: column; 
+            justify-content: flex-start; 
+            align-items: center; 
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+            position: relative; 
+        }
+
+        #game-area-frame {
+            display: flex;
+            flex-direction: column;
+            background: var(--panel-bg);
+            border: 4px solid var(--panel-border); 
+            box-shadow: 6px 6px 0px 0px var(--panel-shadow);
+            border-radius: 20px;
+            width: 100%;
+            max-width: 430px;
+            height: 100%;
+            padding: 10px;
+            overflow: hidden;
+        }
+        
+        /* [신규] '혼자하기'용 헤더 */
+        #game-stats-header {
+            flex-shrink: 0;
+            padding-bottom: 8px;
+            border-bottom: 3px solid var(--panel-border);
+        }
+
+        /* [신규] '혼자하기'용 단일 스코어보드 */
+        #solo-score-container {
+            width: 100%;
+        }
+        #solo-score-container .stat-box {
+            width: 100%;
+            padding: 5px 10px; /* 멀티보다 살짝 크게 */
+            background-color: #fff;
+            border: 2px solid var(--panel-border);
+            border-radius: 10px;
+            text-align: center;
+            font-weight: 900;
+            transition: all 0.2s ease;
+            overflow: hidden;
+        }
+        #solo-score-container .stat-box.my-score {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 10px rgba(255, 107, 107, 0.5);
+            transform: scale(1.02);
+        }
+        #solo-score-container .stat-box .label {
+            font-size: 0.8em; /* 폰트 축소 */
+            color: #9A6A3A;
+        }
+        #solo-score-container .stat-box .value {
+            font-size: 1.6em; /* 폰트 확대 */
+            color: var(--primary-color);
+        }
+        /* [삭제] .stat-box (멀티용) */
+        
+        /* (이하 기존 CSS 유지) */
+        #game-stats-footer {
+            flex-shrink: 0; display: flex; gap: 10px;
+            align-items: center; padding-top: 8px;
+            border-top: 3px solid var(--panel-border);
+        }
+        #timer-container {
+            flex-shrink: 0; width: 100px; text-align: center;
+            font-weight: 900; background-color: #fff;
+            border: 2px solid var(--panel-border);
+            border-radius: 10px; padding: 2px 5px; margin: 0;
+        }
+        #timer-container .label { font-size: 0.8em; color: #9A6A3A; }
+        #timer-container .value {
+            font-size: 1.6em; color: var(--primary-color);
+            transition: color 0.3s ease;
+        }
+        #timer-container .value.danger-time {
+            color: var(--danger-color);
+            animation: throb 1.2s infinite ease-in-out;
+        }
+        @keyframes throb {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.15); }
+        }
+        #fever-gauge-container {
+            flex-grow: 1; width: auto; max-width: none;
+            height: 22px; background-color: #fff;
+            border: 2px solid var(--panel-border);
+            border-radius: 20px; margin: 0;
+            position: relative; overflow: hidden;
+            box-shadow: inset 2px 2px 4px rgba(87, 65, 65, 0.1);
+        }
+        #fever-gauge-fill {
+            height: 100%; width: 0%; 
+            background: linear-gradient(90deg, var(--secondary-color), var(--primary-color));
+            border-radius: 20px;
+            transition: width 0.3s ease-out;
+        }
+        #fever-gauge-text {
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 0.9em; font-weight: 900; color: white;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+        }
+        #game-container {
+            width: 100%; flex-grow: 1;
+            display: flex; justify-content: center; align-items: center;
+            position: relative; overflow: hidden; padding: 5px 0;
+        }
+        #game-board {
+            position: relative; background-color: #FFFEF5;
+            border: 2px solid var(--panel-border);
+            border-radius: 12px;
+            display: grid; gap: 2px;
+            padding: 4px;
+            touch-action: none;
+            -webkit-touch-callout: none;
+            -webkit-tap-highlight-color: transparent;
+            overflow: hidden; 
+        }
+
+        /* ------------------------- */
+        /* == 3. 타일 스타일 (유지) == */
+        /* ------------------------- */
+        .tile {
+            background-color: #FFFEF5; 
+            border-radius: 10px; 
+            display: flex; justify-content: center; align-items: center;
+            font-size: 2.5em; 
+            cursor: pointer;
+            border: 1px solid var(--panel-border);
+            box-shadow: inset 2px 2px 4px rgba(87, 65, 65, 0.15), 
+                        inset -2px -2px 4px rgba(255, 255, 255, 0.7);
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+            transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), 
+                        opacity 0.2s ease,
+                        box-shadow 0.2s ease;
+        }
+        .tile:active {
+            box-shadow: inset 1px 1px 2px rgba(87, 65, 65, 0.2), 
+                        inset -1px -1px 2px rgba(255, 255, 255, 0.7);
+            transform: scale(0.95);
+        }
+        .tile.pop { animation: pop 0.2s ease-out forwards; }
+        @keyframes pop {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.3); opacity: 0.5; }
+            100% { transform: scale(0.1); opacity: 0; }
+        }
+        .tile.fall {
+            transition: transform 0.3s cubic-bezier(0.55, 0.085, 0.68, 0.53);
+        }
+        .tile.new-tile-anim { animation: new-tile 0.2s ease-out; }
+        @keyframes new-tile {
+            from { transform: scale(0.5); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+        .tile.swap { transition: transform 0.2s ease-in-out; z-index: 10; }
+        .tile.invalid { animation: shake 0.4s ease-in-out; }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            50% { transform: translateX(5px); }
+            75% { transform: translateX(-5px); }
+        }
+
+        /* ------------------------- */
+        /* == 4. 모달 (유지) == */
+        /* ------------------------- */
+        .overlay { 
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            display: none; 
+            flex-direction: column; justify-content: center; align-items: center; 
+            z-index: 200; text-align: center; 
+            background-color: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+        .overlay.active { display: flex; }
+
+        .modal-content { 
+            background: var(--panel-bg); 
+            color: var(--text-color-dark); 
+            padding: 0; 
+            border-radius: 24px;
+            width: 90%; max-width: 400px; 
+            box-shadow: 8px 8px 0px 0px var(--text-color-dark);
+            overflow: hidden; 
+            border: 4px solid var(--text-color-dark);
+        }
+        .modal-header { 
+            background-color: var(--primary-color);
+            color: white; 
+            padding: 15px; 
+            border-bottom: 4px solid #C04A4A; 
+        }
+        .modal-header h2 { font-size: 1.6em; text-shadow: 1px 1px 1px rgba(0,0,0,0.2); }
+        .modal-body { padding: 25px; }
+        .modal-footer {
+            display: flex; gap: 10px;
+            padding: 20px;
+            border-top: 3px solid var(--panel-border);
+            background-color: #FFFAE0;
+        }
+
+        .spinner { border: 4px solid rgba(0,0,0,0.1); border-radius: 50%; border-top: 4px solid var(--primary-color); width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        #countdown-number { font-size: 7em; font-weight: 700; color: white; text-shadow: 0 0 20px rgba(255,255,255,0.7); animation: countdown-pop 1s; }
+        @keyframes countdown-pop { from { transform: scale(0.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+        #final-score {
+            font-size: 2.0em;
+            font-weight: 900;
+            color: var(--primary-color);
+            margin-bottom: 0px;
+        }
+        /* [삭제] #final-ranking-list (혼자하기 불필요) */
+        
+        /* ------------------------- */
+        /* == 5. 아케이드 버튼 (유지) == */
+        /* ------------------------- */
+        .menu-btn { 
+            width: 100%; padding: 15px; font-size: 1.1em; font-weight: 900; 
+            font-family: var(--font-main);
+            border-radius: 16px; border: none; cursor: pointer; 
+            transition: all 0.1s ease-out;
+            border-bottom: 5px solid;
+            text-shadow: 1px 1px 1px rgba(0,0,0,0.1);
+            margin: 5px 0; 
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+        .menu-btn:active { transform: translateY(3px); border-bottom-width: 2px; }
+        .menu-btn.primary { 
+            background-color: var(--primary-color);
+            color: white; 
+            border-bottom-color: #C04A4A;
+        }
+        .menu-btn.secondary { 
+            background-color: var(--secondary-color);
+            color: white; 
+            border-bottom-color: #379A93;
+        }
+        
+        /* ------------------------- */
+        /* == 6. 콤보 텍스트/점수 (유지) == */
+        /* ------------------------- */
+        .combo-text {
+            position: absolute;
+            font-size: 2.5em;
+            font-weight: 900;
+            color: rgb(243, 41, 41);
+            text-shadow: 2px 2px 5px rgba(0,0,0,0.5);
+            z-index: 100;
+            pointer-events: none;
+            animation: combo-pop 0.8s ease-out forwards;
+        }
+        
+        .combo-score {
+            position: absolute;
+            font-size: 1.8em;
+            font-weight: 900;
+            color: var(--accent-color);
+            text-shadow: 1px 1px 3px rgba(0,0,0,0.5);
+            z-index: 101;
+            pointer-events: none;
+            animation: combo-pop 0.8s ease-out forwards;
+        }
+
+        @keyframes combo-pop {
+            0% { transform: scale(0.8); opacity: 1; }
+            20% { transform: scale(1.3); }
+            40% { transform: scale(1); }
+            80% { transform: scale(1); opacity: 1; }
+            100% { transform: scale(1); opacity: 0; }
+        }
+
+        /* ------------------------- */
+        /* == 7. 피버 게이지 UI (유지) == */
+        /* ------------------------- */
+        #game-board.fever-active {
+            animation: fever-pulse 0.7s infinite alternate;
+        }
+        @keyframes fever-pulse {
+            from { box-shadow: none; border-color: var(--panel-border); }
+            to { box-shadow: 0 0 20px 5px var(--primary-color); border-color: var(--primary-color); }
+        }
+    </style>
+</head>
+<body>
+    <div id="game-wrapper">
+
+        <div id="game-area-frame">
+
+            <div id="game-stats-header">
+                <div id="solo-score-container">
+                    <div class="stat-box my-score">
+                        <div class="label">SCORE</div>
+                        <div class="value" id="score-value">0</div>
+                    </div>
+                </div>
+            </div>
+            <div id="game-container">
+                <div id="combo-score-display" style="position: absolute; top: 10px; left: 0; width: 100%; text-align: center; pointer-events: none; z-index: 101;"></div>
+                <div id="game-board">
+                    </div>
+            </div>
+
+            <div id="game-stats-footer">
+                <div id="fever-gauge-container">
+                    <div id="fever-gauge-fill"></div>
+                    <span id="fever-gauge-text">FEVER</span>
+                </div>
+                <div id="timer-container">
+                    <div class="label">시간</div>
+                    <div class="value" id="timer-value">60</div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <div id="loading-overlay" class="overlay">
+        <div class="spinner"></div>
+        <p style="color: white; font-size: 1.2em;">로그인 확인 중...</p>
+    </div>
+
+    <div id="info-overlay" class="overlay">
+        <div id="countdown-number">3</div>
+    </div>
+
+    <div id="game-over-overlay" class="overlay">
+         <div class="modal-content">
+             <div class="modal-header">
+                 <h2>게임 종료!</h2>
+             </div>
+             <div class="modal-body">
+                <p style="font-size: 1.1em; font-weight: 700;">최종 점수</p>
+                <p id="final-score" style="margin-bottom: 0;">0</p>
+             </div>
+             <div class="modal-footer">
+                 <button id="restart-btn" class="menu-btn primary">다시하기</button>
+                 <button id="lobby-btn" class="menu-btn secondary">나가기</button>
+             </div>
+         </div>
+    </div>
+
+    <audio id="swap-sound" src="./sounds/move.wav" preload="auto"></audio>
+    <audio id="match-sound" src="./봄버맨사운드/사천성맞춤.mp3" preload="auto"></audio>
+    <audio id="gameover-sound" src="./봄버맨사운드/패배.mp3" preload="auto"></audio>
+    <audio id="combo1-sound" src="./sounds/combo1.mp3" preload="auto"></audio>
+    <audio id="combo2-sound" src="./sounds/combo2.mp3" preload="auto"></audio>
+    <audio id="combo3-sound" src="./sounds/combo3.mp3" preload="auto"></audio>
+    <audio id="fever-bgm-sound" src="./sounds/fever-bgm.mp3" preload="auto" loop></audio>
+
+    <script>
+        // [신규] F12 및 디버거 방지
+        document.addEventListener('contextmenu', event => event.preventDefault());
+        document.addEventListener('keydown', event => {
+            if (event.key === 'F12' ||
+                (event.ctrlKey && event.shiftKey && ['I', 'J', 'C'].includes(event.key.toUpperCase())) ||
+                (event.ctrlKey && event.key.toUpperCase() === 'U')) {
+            event.preventDefault();
+            }
+        });
+        // setInterval(() => { try { debugger; } catch (e) {} }, 1000); // 디버깅 시 주석 해제
+
+        document.addEventListener('DOMContentLoaded', () => {
+
+            // ------------------------------------
+            // 1. DOM 요소 및 기본 설정
+            // ------------------------------------
+
+            const gameBoard = document.getElementById('game-board');
+            const timerValue = document.getElementById('timer-value');
+            const infoOverlay = document.getElementById('info-overlay');
+            const countdownNumber = document.getElementById('countdown-number');
+            const gameOverOverlay = document.getElementById('game-over-overlay');
+            const finalScoreEl = document.getElementById('final-score');
+            const restartBtn = document.getElementById('restart-btn');
+            const gameContainer = document.getElementById('game-container'); 
+            const loadingOverlay = document.getElementById('loading-overlay');
+            
+            // [수정] '혼자하기'용 스코어보드
+            const myScoreValueEl = document.getElementById('score-value'); 
+            
+            const finalRankingList = document.getElementById('final-ranking-list'); // [삭제] 불필요 (DOM에 없음)
+            const timerDisplay = document.getElementById('timer-container').querySelector('.value');
+            const gameWrapper = document.getElementById('game-wrapper'); 
+            const comboScoreDisplay = document.getElementById('combo-score-display'); 
+            const lobbyBtn = document.getElementById('lobby-btn'); // [신규] '나가기' 버튼
+
+            const sounds = {
+                swap: document.getElementById('swap-sound'),
+                match: document.getElementById('match-sound'),
+                gameOver: document.getElementById('gameover-sound'),
+                combo: [
+                    document.getElementById('combo1-sound'),
+                    document.getElementById('combo2-sound'),
+                    document.getElementById('combo3-sound')
+                ],
+                feverBGM: document.getElementById('fever-bgm-sound') // [신규]
+            };
+
+            const ROWS = 8;
+            const COLS = 6;
+            const TILE_EMOJIS = ['🐄', '🐯', '🐳', '🐷', '🦒']; 
+            const GAME_TIME = 60; 
+
+            let board = []; 
+            let tileElements = []; 
+            let score = 0;
+            let timer = GAME_TIME;
+            let timerId = null;
+            let isProcessing = true;
+            let currentCombo = 0;
+
+            let dragStartTile = null;
+            let dragStartX = 0;
+            let dragStartY = 0;
+            
+            let feverGauge = 0;
+            const MAX_FEVER_GAUGE = 100;
+            let isFeverMode = false;
+            const FEVER_DURATION = 7000;
+            let feverTimerId = null;
+            let lastMatchTime = 0; // [신규] 콤보 유지용
+
+            // ------------------------------------
+            // 2. Firebase (랭킹 등록용)
+            // ------------------------------------
+            
+            let db, auth;
+            let currentUser = null;
+            let playerUid = null;
+            // [삭제] 멀티플레이용 변수 모두 제거
+
+            const firebaseConfig = {
+                apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
+                authDomain: "goodluck-7c14b.firebaseapp.com",
+                databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com",
+                projectId: "goodluck-7c14b",
+                storageBucket: "goodluck-7c14b.appspot.com",
+                messagingSenderId: "858281658455",
+                appId: "1:858281658455:web:9131280a459be983933b12"
+            };
+            
+            try {
+                firebase.initializeApp(firebaseConfig);
+                db = firebase.database();
+                auth = firebase.auth();
+            } catch (e) {
+                loadingOverlay.innerHTML = "<p style='color: white;'>Firebase 연결 실패!</p>";
+                return;
+            }
+
+            // [수정] '혼자하기'용 인증 체크
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    currentUser = user;
+                    playerUid = user.uid; // 랭킹 등록에 필요
+                    console.log("로그인 확인, '혼자하기'를 시작합니다.");
+                    loadingOverlay.classList.remove('active');
+                    startCountdown(); // [수정] 방 참가 대신 즉시 카운트다운 시작
+                } else {
+                    // 로그아웃 상태
+                    loadingOverlay.classList.add('active'); // [수정]
+                    loadingOverlay.innerHTML = "<p style='color: white;'>랭킹을 등록하려면 로그인이 필요합니다.<br/><br/><a href='index.html' style='color: white; border: 1px solid white; padding: 5px 10px; text-decoration: none; border-radius: 8px;'>로그인</a></p>";
+                }
+            });
+
+            // [삭제] joinGameRoom() 및 모든 멀티플레이 리스너 제거
+
+            // ------------------------------------
+            // 3. 게임 초기화
+            // ------------------------------------
+
+            function initGame() {
+                score = 0;
+                timer = GAME_TIME;
+                currentCombo = 0;
+                isProcessing = true; 
+                lastMatchTime = 0; // [신규]
+
+                if (feverTimerId) clearTimeout(feverTimerId);
+                feverGauge = 0;
+                isFeverMode = false;
+                feverTimerId = null;
+                updateFeverGaugeUI(); 
+                gameBoard.classList.remove('fever-active');
+                stopSound('feverBGM'); // [신규]
+
+                timerValue.textContent = GAME_TIME;
+                timerDisplay.classList.remove('danger-time');
+                gameOverOverlay.classList.remove('active');
+                
+                updateScoreUI(); // [신규] 점수판 0으로 초기화
+
+                createBoardData();
+                renderBoard();
+            }
+
+            function createBoardData() {
+                board = [];
+                for (let r = 0; r < ROWS; r++) {
+                    const row = [];
+                    for (let c = 0; c < COLS; c++) {
+                        let newEmoji;
+                        do {
+                            newEmoji = getRandomEmoji();
+                        } while (
+                            (c >= 2 && newEmoji === row[c - 1] && newEmoji === row[c - 2]) ||
+                            (r >= 2 && newEmoji === board[r - 1][c] && newEmoji === board[r - 2][c])
+                        );
+                        row.push(newEmoji);
+                    }
+                    board.push(row);
+                }
+                const initialMatches = findAllMatches();
+                if (initialMatches.size > 0) {
+                    createBoardData(); 
+                }
+            }
+            function getRandomEmoji() {
+                return TILE_EMOJIS[Math.floor(Math.random() * TILE_EMOJIS.length)];
+            }
+
+            function renderBoard() {
+                gameBoard.innerHTML = '';
+                tileElements = [];
+                
+                const gameContainerStyles = window.getComputedStyle(gameContainer);
+                const containerPaddingTop = parseFloat(gameContainerStyles.paddingTop) || 0;
+                const containerPaddingBottom = parseFloat(gameContainerStyles.paddingBottom) || 0;
+                
+                const containerW = gameContainer.clientWidth;
+                const containerH = gameContainer.clientHeight - containerPaddingTop - containerPaddingBottom; 
+                
+                if (containerW <= 0 || containerH <= 0) { 
+                    setTimeout(renderBoard, 100);
+                    return; 
+                }
+
+                const gap = 2;
+                const boardPadding = 4;
+                const boardBorder = 2;
+                
+                const availableW = containerW;
+                const availableH = containerH;
+
+                const tileW_calc = (availableW - (boardPadding * 2) - (boardBorder * 2) - (COLS - 1) * gap) / COLS;
+                const tileH_calc = (availableH - (boardPadding * 2) - (boardBorder * 2) - (ROWS - 1) * gap) / ROWS;
+
+                const tileSize = Math.floor(Math.min(tileW_calc, tileH_calc));
+                
+                if (tileSize <= 0) { 
+                    console.warn("타일 크기 계산 오류", tileSize);
+                    return; 
+                }
+                
+                const finalBoardW = (tileSize * COLS) + (COLS - 1) * gap + (boardPadding * 2) + (boardBorder * 2);
+                const finalBoardH = (tileSize * ROWS) + (ROWS - 1) * gap + (boardPadding * 2) + (boardBorder * 2);
+
+                gameBoard.style.width = `${finalBoardW}px`;
+                gameBoard.style.height = `${finalBoardH}px`; 
+                gameBoard.style.gridTemplateColumns = `repeat(${COLS}, ${tileSize}px)`; 
+                gameBoard.style.gridTemplateRows = `repeat(${ROWS}, ${tileSize}px)`; 
+                
+                const iconSize = tileSize * 0.7; 
+
+                for (let r = 0; r < ROWS; r++) {
+                    const rowElements = [];
+                    for (let c = 0; c < COLS; c++) {
+                        const tile = document.createElement('div');
+                        tile.className = 'tile';
+                        tile.dataset.row = r;
+                        tile.dataset.col = c;
+                        tile.textContent = board[r][c];
+                        tile.style.fontSize = `${iconSize}px`; 
+                        gameBoard.appendChild(tile);
+                        rowElements.push(tile);
+                        tile.addEventListener('pointerdown', handleDragStart);
+                    }
+                    tileElements.push(rowElements);
+                }
+            }
+
+            // ------------------------------------
+            // 4. 게임 시작/종료 (수정)
+            // ------------------------------------
+
+            function startCountdown() {
+                infoOverlay.classList.add('active');
+                infoOverlay.innerHTML = `<div id="countdown-number" style="font-size: 7em; font-weight: 700; color: white; text-shadow: 0 0 20px rgba(255,255,255,0.7);">3</div>`;
+                const countdownNumberEl = document.getElementById('countdown-number');
+                
+                let count = 3;
+                
+                const interval = setInterval(() => {
+                    count--;
+                    if (count > 0) {
+                        if (countdownNumberEl) countdownNumberEl.textContent = count;
+                        if (countdownNumberEl) {
+                            countdownNumberEl.style.animation = 'none';
+                            countdownNumberEl.offsetHeight; 
+                            countdownNumberEl.style.animation = 'countdown-pop 1s';
+                        }
+                  } else if (count === 0) {
+                     if (countdownNumberEl) countdownNumberEl.textContent = 'GO!';
+                     if (countdownNumberEl) {
+                         countdownNumberEl.style.animation = 'none';
+                         countdownNumberEl.offsetHeight; 
+                         countdownNumberEl.style.animation = 'countdown-pop 1s';
+                     }
+                 } else {
+                        clearInterval(interval);
+                        infoOverlay.classList.remove('active');
+                        
+                        function runGame() {
+                            if (gameContainer.clientWidth > 0 && gameContainer.clientHeight > 0) {
+                                initGame();
+                                startGame();
+                            } else {
+                                requestAnimationFrame(runGame);
+                            }
+                        }
+                        requestAnimationFrame(runGame);
+                    }
+                }, 1000);
+            }
+
+            function startGame() {
+                if (tileElements.length === 0) { 
+                    renderBoard(); 
+                }
+                if (tileElements.length === 0) { 
+                    console.error("보드 렌더링 실패. 시작 불가.");
+                    return; 
+                }
+                
+                isProcessing = false;
+                timerId = setInterval(() => {
+                    timer--;
+                    timerValue.textContent = timer;
+                    if (timer <= 10) {
+                        timerDisplay.classList.add('danger-time');
+                    }
+                    if (timer <= 0) {
+                        gameOver();
+                    }
+                }, 1000);
+            }
+
+            // [신규] '혼자하기'용 게임 오버
+            function gameOver() {
+                if (isProcessing) return;
+                isProcessing = true; 
+                clearInterval(timerId);
+                timerId = null;
+            
+                if (feverTimerId) {
+                    clearTimeout(feverTimerId);
+                    feverTimerId = null;
+                    isFeverMode = false;
+                    gameBoard.classList.remove('fever-active');
+                    stopSound('feverBGM'); // BGM 중지
+                }
+                timerDisplay.classList.remove('danger-time'); 
+                timerValue.textContent = '0';
+                playSound('gameOver');
+                
+                // [신규] 랭킹 등록
+                updatePlayerStats(score);
+                
+                // [신규] 모달 표시
+                showGameOverScreen(score);
+            }
+            
+            // [신규] '혼자하기'용 모달 표시
+            function showGameOverScreen(finalScore) {
+                gameOverOverlay.classList.add('active');
+                finalScoreEl.textContent = `${finalScore.toLocaleString()} 점`;
+
+                // [수정] '다시하기' / '나가기' 버튼 리스너
+                if (restartBtn.dataset.listener !== 'true') {
+                    restartBtn.addEventListener('click', () => {
+                        gameOverOverlay.classList.remove('active');
+                        startCountdown(); // [수정] 카운트다운부터 다시 시작
+                    });
+                    restartBtn.dataset.listener = 'true';
+                }
+                if (lobbyBtn.dataset.listener !== 'true') {
+                    lobbyBtn.addEventListener('click', cleanupAndExit);
+                    lobbyBtn.dataset.listener = 'true';
+                }
+            }
+
+            // [삭제] 멀티플레이용 게임오버 함수 (checkGameOverCondition, forceGameOver) 제거
+            // [삭제] 멀티플레이용 재시작 리스너 (listenForRematch) 제거
+
+            // ------------------------------------
+            // 5. 피버 시스템 (BGM 로직 추가)
+            // ------------------------------------
+            
+            function updateFeverGaugeUI() {
+                const fill = document.getElementById('fever-gauge-fill');
+                if (fill) {
+                    const percent = Math.min(100, (feverGauge / MAX_FEVER_GAUGE) * 100);
+                    fill.style.width = `${percent}%`;
+                }
+            }
+
+            function startFeverMode() {
+                if (isFeverMode) return;
+                
+                console.log("🔥 피버 모드 발동!");
+                isFeverMode = true;
+                feverGauge = 0;
+                updateFeverGaugeUI();
+                gameBoard.classList.add('fever-active');
+                playSound('feverBGM'); // [신규] BGM 재생
+
+                const feverText = document.createElement('div');
+                feverText.className = 'combo-text';
+                feverText.textContent = '🔥 FEVER! 🔥';
+                feverText.style.top = '50%';
+                feverText.style.left = '50%';
+                feverText.style.transform = 'translate(-50%, -50%)';
+                gameWrapper.appendChild(feverText);
+                setTimeout(() => feverText.remove(), 1000); 
+
+                feverTimerId = setTimeout(endFeverMode, FEVER_DURATION);
+            }
+
+            function endFeverMode() {
+                console.log("...피버 모드 종료.");
+                isFeverMode = false;
+                feverTimerId = null;
+                gameBoard.classList.remove('fever-active');
+                stopSound('feverBGM'); // [신규] BGM 정지
+            }
+
+            // [신규] BGM 정지 헬퍼
+            function stopSound(id) {
+                try {
+                    const sound = sounds[id];
+                    if(sound) {
+                        sound.pause();
+                        sound.currentTime = 0;
+                    }
+                } catch(e) {}
+            }
+
+            // ------------------------------------
+            // 6. 컨트롤 (드래그) (유지)
+            // ------------------------------------
+
+            function handleDragStart(e) {
+                if (isProcessing) return;
+                const row = parseInt(e.currentTarget.dataset.row, 10);
+                const col = parseInt(e.currentTarget.dataset.col, 10);
+                const tile = tileElements[row][col]; 
+                
+                if (!tile) {
+                    console.error("고스트 터치 방지: 타일을 찾을 수 없음", row, col);
+                    return;
+                }
+
+                dragStartTile = { row: row, col: col, el: tile };
+                dragStartX = e.clientX || (e.touches && e.touches[0].clientX);
+                dragStartY = e.clientY || (e.touches && e.touches[0].clientY);
+                window.addEventListener('pointerup', handleDragEnd, { once: true });
+                window.addEventListener('pointercancel', handleDragEnd, { once: true });
+            }
+
+            function handleDragEnd(e) {
+                if (!dragStartTile) return;
+                const dragEndX = e.clientX || (e.changedTouches && e.changedTouches[0].clientX);
+                const dragEndY = e.clientY || (e.changedTouches && e.changedTouches[0].clientY);
+                const deltaX = dragEndX - dragStartX;
+                const deltaY = dragEndY - dragStartY;
+                const threshold = dragStartTile.el.clientWidth / 3; 
+                let targetRow = dragStartTile.row;
+                let targetCol = dragStartTile.col;
+
+                if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > threshold) {
+                    targetCol += (deltaX > 0) ? 1 : -1;
+                } else if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > threshold) {
+                    targetRow += (deltaY > 0) ? 1 : -1;
+                } else {
+                    dragStartTile = null; return;
+                }
+                if (targetRow < 0 || targetRow >= ROWS || targetCol < 0 || targetCol >= COLS) {
+                    dragStartTile = null; return;
+                }
+                attemptSwap(dragStartTile.row, dragStartTile.col, targetRow, targetCol);
+                dragStartTile = null;
+            }
+
+            // ------------------------------------
+            // 7. 게임 로직 (수정)
+            // ------------------------------------
+            
+            // [수정] '빠른 매칭' 로직 (멀티플레이와 동일)
+            async function attemptSwap(r1, c1, r2, c2) {
+                if (isProcessing) return;
+                isProcessing = true; 
+
+                playSound('swap');
+                swapData(r1, c1, r2, c2); 
+                await animateSwap(r1, c1, r2, c2);
+                
+                const matches = findAllMatches();
+                
+                if (matches.size > 0) {
+                    if (isFeverMode) {
+                        processMatchesAndCascade(matches);
+                        isProcessing = false;
+                    } else {
+                        await processMatchesAndCascade(matches);
+                        isProcessing = false;
+                    }
+                } else {
+                    await animateInvalidSwap(r1, c1, r2, c2); 
+                    isProcessing = false;
+                }
+            }
+            function swapData(r1, c1, r2, c2) {
+                const temp = board[r1][c1];
+                board[r1][c1] = board[r2][c2];
+                board[r2][c2] = temp;
+            }
+            function swapDOMElements(r1, c1, r2, c2) {
+                const tile1 = tileElements[r1][c1];
+                const tile2 = tileElements[r2][c2];
+                const tempEmoji = tile1.textContent;
+                tile1.textContent = tile2.textContent;
+                tile2.textContent = tempEmoji;
+                tile1.dataset.row = r2; tile1.dataset.col = c2;
+                tile2.dataset.row = r1; tile2.dataset.col = c1;
+                tileElements[r1][c1] = tile2;
+                tileElements[r2][c2] = tile1;
+            }
+            function animateSwap(r1, c1, r2, c2) {
+                const tile1 = tileElements[r1][c1];
+                const tile2 = tileElements[r2][c2];
+                tile1.classList.add('swap');
+                tile2.classList.add('swap');
+                const rect1 = tile1.getBoundingClientRect();
+                const rect2 = tile2.getBoundingClientRect();
+                const deltaX = rect1.left - rect2.left;
+                const deltaY = rect1.top - rect2.top;
+                tile1.style.transform = `translate(${-deltaX}px, ${-deltaY}px)`;
+                tile2.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+                return new Promise(resolve => {
+                    setTimeout(() => {
+                        tile1.style.transform = '';
+                        tile2.style.transform = '';
+                        tile1.classList.remove('swap');
+                        tile2.classList.remove('swap');
+                        swapDOMElements(r1, c1, r2, c2); 
+                        resolve();
+                    }, 200); 
+                });
+            }
+            
+            // [수정] '빠른 매칭' 로직 (멀티플레이와 동일)
+            async function animateInvalidSwap(r1, c1, r2, c2) {
+                if (!isFeverMode) {
+                    const tile1 = tileElements[r2][c2]; 
+                    const tile2 = tileElements[r1][c1]; 
+                    tile1.classList.add('invalid');
+                    tile2.classList.add('invalid');
+                    await new Promise(resolve => setTimeout(resolve, 400));
+                    tile1.classList.remove('invalid');
+                    tile2.classList.remove('invalid');
+                }
+                swapData(r1, c1, r2, c2); 
+                await animateSwap(r2, c2, r1, c1);
+            }
+            function findAllMatches() {
+                const matches = new Set();
+                for (let r = 0; r < ROWS; r++) {
+                    for (let c = 0; c < COLS - 2; c++) {
+                        if (board[r][c] && board[r][c] === board[r][c+1] && board[r][c] === board[r][c+2]) {
+                            matches.add(`${r}-${c}`);
+                            matches.add(`${r}-${c+1}`);
+                            matches.add(`${r}-${c+2}`);
+                        }
+                    }
+                }
+                for (let c = 0; c < COLS; c++) {
+                    for (let r = 0; r < ROWS - 2; r++) {
+                        if (board[r][c] && board[r][c] === board[r+1][c] && board[r][c] === board[r+2][c]) {
+                            matches.add(`${r}-${c}`);
+                            matches.add(`${r+1}-${c}`);
+                            matches.add(`${r+2}-${c}`);
+                        }
+                    }
+                }
+                return matches;
+            }
+            
+            // [수정] '빠른 매칭' 로직 (멀티플레이와 동일)
+            async function processMatchesAndCascade(matches) {
+                currentCombo++;
+
+                const scoreMultiplier = isFeverMode ? 2.0 : 1.0; 
+                const baseScore = matches.size * 10;
+                const comboBonus = currentCombo * 20;
+                const turnScore = Math.round((baseScore + comboBonus) * scoreMultiplier);
+                score += turnScore;
+                
+                showComboText(currentCombo, matches);
+                showComboScore(turnScore); 
+
+                if (!isFeverMode) { 
+                    const gaugeGain = (matches.size * 0.5) + (currentCombo * 1.5); 
+                    feverGauge = Math.min(MAX_FEVER_GAUGE, feverGauge + gaugeGain);
+                    updateFeverGaugeUI();
+                    if (feverGauge >= MAX_FEVER_GAUGE) {
+                        startFeverMode();
+                    }
+                }
+
+                // 콤보 유지 로직
+                const now = Date.now();
+                if (isFeverMode || now - lastMatchTime <= 3000) {
+                    // 콤보 유지 (이미 위에서 ++ 됨)
+                } else {
+                    currentCombo = 1; // 콤보 리셋
+                }
+                lastMatchTime = now; 
+
+                updateScoreUI(); 
+                // [삭제] playerRef.set(score) 제거
+                playComboSound(currentCombo);
+                
+                await animatePop(matches);
+                removeMatches(matches);
+                const { droppedTilesMap } = dropTiles();
+                const newTilesMap = fillTopTiles();
+                
+                await animateDrops(droppedTilesMap, newTilesMap);
+                
+                const newMatches = findAllMatches();
+                if (newMatches.size > 0) {
+                    await new Promise(resolve => setTimeout(resolve, 100)); 
+                    await processMatchesAndCascade(newMatches);
+                } else {
+                    currentCombo = 0;
+                    if (!checkForPossibleMoves()) {
+                        await handleNoMoreMoves();
+                    }
+                }
+            }
+
+            // [신규] '혼자하기'용 점수판 업데이트
+            function updateScoreUI() {
+                if (myScoreValueEl) {
+                    myScoreValueEl.textContent = score.toLocaleString();
+                }
+            }
+
+            function playSound(id) {
+                try {
+                    const sound = sounds[id];
+                    if(sound) {
+                        sound.currentTime = 0;
+                        sound.play().catch(e => {});
+                    }
+                } catch(e) {}
+            }
+            function playComboSound(combo) {
+                playSound('match');
+                if (combo >= 1) {
+                    const comboSound = sounds.combo[Math.min(combo - 1, sounds.combo.length - 1)];
+                    if (comboSound) {
+                        comboSound.currentTime = 0;
+                        comboSound.play().catch(e => {});
+                    }
+                }
+            }
+            function animatePop(matches) {
+                matches.forEach(key => {
+                    const [r, c] = key.split('-').map(Number);
+                    if (tileElements[r] && tileElements[r][c]) {
+                        tileElements[r][c].classList.add('pop');
+                    }
+                });
+                return new Promise(resolve => setTimeout(resolve, 200)); 
+            }
+            function removeMatches(matches) {
+                matches.forEach(key => {
+                    const [r, c] = key.split('-').map(Number);
+                    if (board[r]) {
+                        board[r][c] = null; 
+                    }
+                });
+            }
+            function dropTiles() {
+                const droppedTilesMap = new Map(); 
+                for (let c = 0; c < COLS; c++) {
+                    let emptyRow = ROWS - 1; 
+                    for (let r = ROWS - 1; r >= 0; r--) {
+                        if (board[r][c] !== null) {
+                            if (r !== emptyRow) {
+                                board[emptyRow][c] = board[r][c];
+                                board[r][c] = null;
+                                droppedTilesMap.set(`${emptyRow}-${c}`, r);
+                            }
+                            emptyRow--;
+                        }
+                    }
+                }
+                return { droppedTilesMap };
+            }
+            function fillTopTiles() {
+                const newTilesMap = new Map(); 
+                for (let r = 0; r < ROWS; r++) {
+                    for (let c = 0; c < COLS; c++) {
+                        if (board[r][c] === null) {
+                            const newEmoji = getRandomEmoji();
+                            board[r][c] = newEmoji;
+                            newTilesMap.set(`${r}-${c}`, newEmoji);
+                        }
+                    }
+                }
+                return newTilesMap;
+            }
+          
+            async function animateDrops(droppedTilesMap, newTilesMap) {
+                const fallPromises = [];
+                const firstTile = gameBoard.querySelector('.tile') || {};
+                const tileSize = (firstTile.clientHeight || 50) + 2; 
+
+                const newTileElements = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
+                const allOldTiles = [];
+                for (let r = 0; r < ROWS; r++) {
+                    for (let c = 0; c < COLS; c++) {
+                        if (tileElements[r][c]) {
+                            allOldTiles.push(tileElements[r][c]);
+                        }
+                    }
+                }
+                for (let r = 0; r < ROWS; r++) {
+                    for (let c = 0; c < COLS; c++) {
+                        const key = `${r}-${c}`;
+                        const tileData = board[r][c];
+                        const tile = allOldTiles.pop(); 
+                        if (!tile) { continue; }
+                        tile.textContent = tileData;
+                        tile.dataset.row = r;
+                        tile.dataset.col = c;
+                        newTileElements[r][c] = tile; 
+
+                        if (newTilesMap.has(key)) {
+                            tile.className = 'tile fall new-tile-anim';
+                            const startY = -(r + 2) * tileSize;
+                            tile.style.transform = `translateY(${startY}px)`;
+                        } else if (droppedTilesMap.has(key)) {
+                            const startRow = droppedTilesMap.get(key);
+                            tile.className = 'tile fall';
+                            const dropDistance = (r - startRow) * tileSize;
+                            if (dropDistance !== 0) {
+                                tile.style.transform = `translateY(${dropDistance}px)`;
+                            } else {
+                                tile.className = 'tile';
+                                tile.style.transform = '';
+                            }
+                        } else {
+                            tile.className = 'tile';
+                            tile.style.transform = '';
+                        }
+                    }
+                }
+                
+                tileElements = newTileElements;
+                gameBoard.offsetHeight; 
+
+                for (let r = 0; r < ROWS; r++) {
+                    for (let c = 0; c < COLS; c++) {
+                        const tile = tileElements[r][c];
+                        if (tile && tile.classList.contains('fall')) {
+                            requestAnimationFrame(() => {
+                                tile.style.transform = 'translateY(0)';
+                                fallPromises.push(new Promise(resolve => {
+                                    tile.addEventListener('transitionend', resolve, { once: true });
+                                }));
+                            });
+                        }
+                    }
+                }
+                const timeoutPromise = new Promise(resolve => setTimeout(resolve, 600)); 
+                await Promise.race([Promise.all(fallPromises), timeoutPromise]);
+                for (let r = 0; r < ROWS; r++) {
+                    for (let c = 0; c < COLS; c++) {
+                        if (tileElements[r][c]) {
+                            const tile = tileElements[r][c];
+                            tile.className = 'tile';
+                            tile.style.transform = '';
+                            gameBoard.appendChild(tile);
+
+                        }
+                    }
+                }
+            }
+
+            // ------------------------------------
+            // 8. 콤보/셔플 (유지)
+            // ------------------------------------
+            
+            function showComboText(combo, matches) {
+                if (combo < 2) return; 
+                let totalTop = 0;
+                let totalLeft = 0;
+                let count = 0;
+                const boardRect = gameBoard.getBoundingClientRect();
+                matches.forEach(key => {
+                    const [r, c] = key.split('-').map(Number);
+                    if (tileElements[r] && tileElements[r][c]) {
+                        const rect = tileElements[r][c].getBoundingClientRect();
+                        totalTop += (rect.top - boardRect.top) + (rect.height / 2);
+                        totalLeft += (rect.left - boardRect.left) + (rect.width / 2);
+                        count++;
+                    }
+                });
+                if (count === 0) return;
+                const avgTop = totalTop / count;
+                const avgLeft = totalLeft / count;
+                const comboEl = document.createElement('div');
+                comboEl.className = 'combo-text';
+                comboEl.textContent = `${combo} 콤보!`;
+                const wrapperRect = gameWrapper.getBoundingClientRect();
+                comboEl.style.top = `${avgTop + boardRect.top - wrapperRect.top}px`;
+                comboEl.style.left = `${avgLeft + boardRect.left - wrapperRect.left}px`;
+                comboEl.style.transform = 'translate(-50%, -50%)'; 
+                gameWrapper.appendChild(comboEl);
+                setTimeout(() => {
+                    comboEl.remove();
+                }, 800);
+            }
+
+            function showComboScore(turnScore) {
+                const scoreEl = document.createElement('div');
+                scoreEl.className = 'combo-score';
+                scoreEl.textContent = `+${turnScore}`;
+                comboScoreDisplay.innerHTML = ''; 
+                comboScoreDisplay.appendChild(scoreEl);
+                setTimeout(() => {
+                    scoreEl.remove();
+                }, 800);
+            }
+
+            function checkForPossibleMoves() {
+                for (let r = 0; r < ROWS; r++) {
+                    for (let c = 0; c < COLS; c++) {
+                        if (c < COLS - 1) {
+                            if (checkMove(r, c, r, c + 1)) return true;
+                        }
+                        if (r < ROWS - 1) {
+                            if (checkMove(r, c, r + 1, c)) return true;
+                        }
+                    }
+                }
+                return false; 
+            }
+            function checkMove(r1, c1, r2, c2) {
+                swapData(r1, c1, r2, c2);
+                const matches = findAllMatches();
+                swapData(r1, c1, r2, c2); 
+                return matches.size > 0;
+            }
+            async function handleNoMoreMoves() {
+                console.log("더 이상 움직일 수 없음! 셔플합니다.");
+                
+                const shuffleText = document.createElement('div');
+                shuffleText.className = 'combo-text';
+                shuffleText.textContent = 'SHUFFLE!';
+                shuffleText.style.top = '50%';
+                shuffleText.style.left = '50%';
+                shuffleText.style.transform = 'translate(-50%, -50%)';
+                gameWrapper.appendChild(shuffleText);
+                setTimeout(() => shuffleText.remove(), 800);
+                
+                await new Promise(resolve => setTimeout(resolve, 300));
+                shuffleBoard(); 
+
+                for (let r = 0; r < ROWS; r++) {
+                    for (let c = 0; c < COLS; c++) {
+                        if(tileElements[r][c]) {
+                            tileElements[r][c].textContent = board[r][c];
+                            tileElements[r][c].className = 'tile new'; 
+                            tileElements[r][c].dataset.row = r;
+                            tileElements[r][c].dataset.col = c;
+                        }
+                    }
+                }
+                await new Promise(resolve => setTimeout(resolve, 300));
+                for (let r = 0; r < ROWS; r++) {
+                    for (let c = 0; c < COLS; c++) {
+                        if(tileElements[r][c]) {
+                            tileElements[r][c].className = 'tile';
+                        }
+                    }
+                }
+                
+                const matches = findAllMatches();
+                if (matches.size > 0) {
+                    await processMatchesAndCascade(matches);
+                }
+            }
+            function shuffleBoard() {
+                console.log("보드 데이터 셔플 중...");
+                createBoardData(); 
+            }
+
+            // [신규] '혼자하기'용 랭킹 등록
+            function updatePlayerStats(finalScore) { 
+                if (!playerUid || playerUid.startsWith('guest_')) {
+                    console.log("게스트 모드입니다. 랭킹을 등록하지 않습니다.");
+                    return;
+                }
+                
+                const userStatsRef = db.ref('users').child(playerUid).child('gameStats/candysoap');
+
+                userStatsRef.transaction(currentStats => {
+                    if (currentStats === null) {
+                        currentStats = { plays: 0, highscore: 0, wins: 0, losses: 0, draws: 0 };
+                    }
+                    currentStats.plays = (currentStats.plays || 0) + 1;
+                    currentStats.highscore = Math.max(currentStats.highscore || 0, finalScore); 
+                    return currentStats;
+                });
+                
+                const expGained = 50; 
+                const pointsGained = 50; 
+                
+                const userProfileRef = db.ref('users').child(playerUid).child('profile');
+                userProfileRef.child('exp').transaction(exp => (exp || 0) + expGained);
+                userProfileRef.child('points').transaction(points => (points || 0) + pointsGained);
+            }
+
+            // [신규] '혼자하기'용 나가기
+            function cleanupAndExit() {
+                isProcessing = true;
+                if (timerId) clearInterval(timerId);
+                if (feverTimerId) clearTimeout(feverTimerId);
+                
+                // 멀티플레이 DB 제거 로직 대신, 단순 페이지 이동
+                window.location.replace('대기실.html');
+            }
+
+            // [삭제] 멀티플레이용 'window.addEventListener('resize')' 제거
+            // (renderBoard는 카운트다운 시작 시 한 번만 호출됨)
+        });
+    </script>
+</body>
+</html>
