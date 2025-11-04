@@ -7,7 +7,7 @@ const BASE_PATH = SCOPE_URL.pathname.endsWith('/')
 
 /* ===== 2) 캐시 버전 및 이름 설정 ===== */
 // ✨ 앱을 업데이트할 때마다 이 버전을 변경하세요 (예: v1.0.1)
-const SW_VERSION = 'v1.1.3';
+const SW_VERSION = 'v1.1.4';
 const CACHE_NAME = `minigame-heaven-${SW_VERSION}`;
 
 /* ===== 3) 프리캐시 목록 (핵심!) ===== */
@@ -96,22 +96,25 @@ async function handleAsset(request) {
 
 // 6-3) 메인 Fetch 이벤트 리스너
 self.addEventListener('fetch', (event) => {
-  const req = event.request;
-  if (req.method !== 'GET') return;
+    const req = event.request;
+    if (req.method !== 'GET') return;
 
-  const url = new URL(req.url);
+    const url = new URL(req.url);
 
-  // ✨ [핵심] 외부 리소스(폰트, 사운드, Firebase 등)는 SW가 처리하지 않음
-  if (url.origin !== self.location.origin) {
+    // [수정] 1. 페이지 이동 요청인 경우 (HTML)
+    if (req.mode === 'navigate') {
+        event.respondWith(handleNavigation(req));
+        return;
+    }
+
+    // [수정] 2. "내부" 자원(JS, CSS, 로컬 이미지 등) 요청인 경우
+    // (Firebase 같은 외부 요청은 이 조건에 해당하지 않음)
+    if (url.origin === self.location.origin) {
+        event.respondWith(handleAsset(req));
+        return;
+    }
+
+    // [수정] 3. 위 2가지(네비게이션, 로컬파일) 외의 모든 요청(Firebase DB, 폰트 등)은
+    // 서비스 워커가 "절대" 건드리지 않고 브라우저가 직접 처리하도록 즉시 반환합니다.
     return;
-  }
-
-  // 1. 페이지 이동 요청인 경우 (e.g., 리버시.html 로 이동)
-  if (req.mode === 'navigate') {
-    event.respondWith(handleNavigation(req));
-    return;
-  }
-  
-  // 2. 기타 내부 자원(JS, CSS, 로컬 이미지 등) 요청인 경우
-  event.respondWith(handleAsset(req));
 });
