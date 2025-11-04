@@ -417,6 +417,8 @@
             if (!prompt) {
                 console.log('PWA 프롬프트가 없습니다.');
                 pwaModal.classList.remove('active');
+                // [신규] 프롬프트가 없으면(오류) 그냥 대기실로 이동
+                if (auth.currentUser) window.location.replace('대기실.html');
                 return;
             }
             
@@ -427,6 +429,12 @@
             window.deferredPrompt = null; // 프롬프트는 1회용
             pwaModal.classList.remove('active');
             sessionStorage.setItem('pwaModalDismissed', 'true'); // 설치했으니 다시 안 띄움
+
+            // [신규] 사용자가 설치를 '취소'한 경우(dismissed) 대기실로 이동
+            if (outcome === 'dismissed' && auth.currentUser) {
+                window.location.replace('대기실.html');
+            }
+            // 'accepted'인 경우 앱이 재시작되므로 리디렉션 불필요
         });
 
         // [신규] PWA 모달 "나중에" 버튼
@@ -438,6 +446,11 @@
             // [신규] 대신 하단의 작은 '앱 설치' 버튼을 표시
             if (window.deferredPrompt) { // 설치 이벤트가 여전히 유효할 때만
                 legacyInstallButton.style.display = 'block';
+            }
+
+            // [신규] '나중에'를 눌렀을 때, 로그인 상태면 대기실로 이동
+            if (auth.currentUser) {
+                window.location.replace('대기실.html');
             }
         });
 
@@ -538,16 +551,27 @@
                         // [수정] 3. 로그인 성공 시, 저장된 초대장이 있는지 확인
                         const invitedRoomId = sessionStorage.getItem('invitedRoomId');
                         
+                        // --- [신규] PWA 설치 모달 표시 조건 확인 ---
+                        const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+                        const pwaModalDismissed = sessionStorage.getItem('pwaModalDismissed') === 'true';
+                        const shouldShowPwaModal = !isStandalone && !pwaModalDismissed;
+                        // ------------------------------------------
+
                         if (invitedRoomId) {
-                            // [수정] 4. 초대장이 있으면 -> 게임방으로 이동
+                            // [수정] 4. 초대장이 있으면 -> 게임방으로 이동 (PWA 모달보다 우선)
                             console.log(`초대장(${invitedRoomId})을 사용하여 게임방으로 이동합니다.`);
                             sessionStorage.removeItem('invitedRoomId'); // 사용했으니 삭제
                             window.location.replace(`게임방.html?roomId=${invitedRoomId}`);
                         
+                        } else if (shouldShowPwaModal) {
+                            // [신규] 5. 초대장이 없고, PWA 모달을 띄워야 하면 -> 대기실로 "가지 않고" 대기
+                            console.log('PWA 설치 모달을 띄우기 위해 index.html에 머무릅니다.');
+                            // DOMContentLoaded의 PWA 모달 로직이 실행될 것임.
+                            
                         } else {
-                            // [수정] 5. 초대장이 없으면 -> 기존처럼 대기실로 이동
-                            console.log('초대장 없음. 대기실로 이동합니다.');
-                            sessionStorage.removeItem('invitedRoomId'); // ✨ [추가] 대기실로 갈 때는 초대장 삭제
+                            // [수정] 6. 초대장도 없고, PWA 모달 띄울 필요도 없으면 -> 대기실로 이동
+                            console.log('초대장 없음, PWA 모달 불필요. 대기실로 이동합니다.');
+                            sessionStorage.removeItem('invitedRoomId');
                             window.location.replace('대기실.html');
                         }
 
