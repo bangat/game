@@ -289,40 +289,45 @@
 
     document.addEventListener('DOMContentLoaded', () => {
 
-       // [신규] 1. 초대장 확인: 페이지 로드 시 URL에서 'roomId'를 확인합니다.
-        const urlParams = new URLSearchParams(window.location.search);
-        
-        // ▼▼▼ [신규] 이 코드를 여기에 추가하세요 ▼▼▼
-        // --- 인앱 브라우저 감지 및 권장 모달 ---
-        try {
-            const ua = navigator.userAgent.toLowerCase();
-            const isIOS = /iphone|ipad|ipod/.test(ua);
+           // [신규] 1. 초대장 확인: 페이지 로드 시 URL에서 'roomId'를 확인합니다.
+            const urlParams = new URLSearchParams(window.location.search);
             
-            // iOS이면서, 'safari' 문자열이 없는 경우 (대부분의 인앱 브라우저)
-            if (isIOS && !/safari/.test(ua)) {
-                console.log("iOS 인앱 브라우저 감지됨.");
-                
-                // 모달 요소를 찾아서 표시
-                const inAppModal = document.getElementById('in-app-browser-modal');
-                const inAppCloseBtn = document.getElementById('in-app-close-btn');
-                
-                if (inAppModal && inAppCloseBtn) {
-                    inAppModal.style.display = 'flex'; // 모달 표시
-                    
-                    // 닫기 버튼 (강제X, 그대로 진행)
-                    inAppCloseBtn.addEventListener('click', () => {
-                        // clickSound가 로드되었을 수 있으므로 시도
-                        try { document.getElementById('click-sound')?.play(); } catch(e) {}
-                        inAppModal.style.display = 'none'; // 모달 숨김
-                    });
+            // ▼▼▼ [수정] 안드로이드 카카오톡 감지 및 Chrome 강제 실행 ▼▼▼
+            try {
+                const ua = navigator.userAgent.toLowerCase();
+                const isAndroid = /android/.test(ua);
+                const isIOS = /iphone|ipad|ipod/.test(ua);
+                const isKakaotalk = /kakaotalk/.test(ua);
+
+                // 1. 안드로이드 + 카카오톡
+                if (isAndroid && isKakaotalk) {
+                    // [수정] 특정 앱(크롬) 지정 대신 "기본 브라우저"로 열도록 변경
+                    // 'package=com.android.chrome;' 부분을 삭제
+                    const intentUrl = `intent:${location.href}#Intent;scheme=https;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;end;`;
+                    location.href = intentUrl; // 즉시 "기본 브라우저"로 리디렉션
+                    return; // 이후 스크립트 실행 중지
                 }
+
+                // 2. iOS 인앱 브라우저 (기존 코드 유지)
+                if (isIOS && !/safari/.test(ua)) {
+                    console.log("iOS 인앱 브라우저 감지됨.");
+                    const inAppModal = document.getElementById('in-app-browser-modal');
+                    const inAppCloseBtn = document.getElementById('in-app-close-btn');
+                    
+                    if (inAppModal && inAppCloseBtn) {
+                        inAppModal.style.display = 'flex'; 
+                        inAppCloseBtn.addEventListener('click', () => {
+                            try { document.getElementById('click-sound')?.play(); } catch(e) {}
+                            inAppModal.style.display = 'none';
+                        });
+                    }
+                }
+            } catch (e) {
+                console.warn("인앱 브라우저 감지 중 오류:", e);
             }
-        } catch (e) {
-            console.warn("인앱 브라우저 감지 중 오류:", e);
-        }
-        // --- [신규] 코드 추가 끝 ---
-        
-        const invitedRoomId = urlParams.get('roomId');
+            // --- [수정] 코드 추가 끝 ---
+            
+            const invitedRoomId = urlParams.get('roomId');
 
         if (invitedRoomId) {
             // [신규] 2. 초대장이 있으면, 로그인 후 사용할 수 있도록 sessionStorage에 저장합니다.
