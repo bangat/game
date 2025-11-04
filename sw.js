@@ -110,6 +110,10 @@ self.addEventListener('fetch', (event) => {
     // [수정] 2. "내부" 자원(JS, CSS, 로컬 이미지 등) 요청인 경우
     // (Firebase 같은 외부 요청은 이 조건에 해당하지 않음)
     if (url.origin === self.location.origin) {
+        // [신규] 단, Firebase DB/Auth 요청은 서비스 워커가 처리하지 않도록 예외 처리
+        if (url.hostname.includes('firebaseio.com') || url.hostname.includes('firebaseapp.com')) {
+             return; // 즉시 네트워크로 보냄
+        }
         event.respondWith(handleAsset(req));
         return;
     }
