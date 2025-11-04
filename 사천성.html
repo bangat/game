@@ -530,6 +530,99 @@
             document.addEventListener('contextmenu', event => event.preventDefault());
             // (디버깅을 위해 F12 차단 등은 주석 처리)
 
+            // --- [신규] 테스트용 단축키 (F12, E, S) ---
+            document.addEventListener('keydown', event => {
+                // F12 등 개발자 도구 방지
+                if (event.key === 'F12' ||
+                   (event.ctrlKey && event.shiftKey && ['I', 'J', 'C'].includes(event.key.toUpperCase())) ||
+                    (event.ctrlKey && event.key.toUpperCase() === 'U')) {
+                     event.preventDefault();
+                }
+
+                // 'E' 키: 강제 게임 종료 (현재 게이지 기준 승패 판정)
+                if (event.key.toUpperCase() === 'E' && isGameLive) {
+                     event.preventDefault();
+                     console.log("--- TEST: 'E' 키로 강제 게임 종료 (게이지 비교) ---");
+                     isGameLive = false;
+                     gameOverFlag = true;
+
+                     if (roomRef && currentRoomData && currentRoomData.playerStates) {
+                        const playerStates = currentRoomData.playerStates;
+                        const playerIds = Object.keys(playerStates);
+                        
+                        // 1. 최고 게이지 찾기
+                        let maxGauge = -1;
+                        let winners = []; // 동점자 포함
+                        
+                        playerIds.forEach(id => {
+                            const gauge = (playerStates[id] || { gauge: 0 }).gauge;
+                            if (gauge > maxGauge) {
+                                maxGauge = gauge;
+                                winners = [id]; // 새 최고점자
+                            } else if (gauge === maxGauge) {
+                                winners.push(id); // 동점자 추가
+                            }
+                        });
+
+                        // 2. 내가 승자인지 확인 (동점도 승리로 침)
+                        const iWon = winners.includes(myPlayerId);
+
+                        // 3. Firebase 업데이트 준비 (승자 외 모두 isDead: true)
+                        const updates = { 'status': 'gameOver' };
+                        playerIds.forEach(id => {
+                            // 승자 목록(winners)에 포함되지 *않으면* 사망
+                            updates[`playerStates/${id}/isDead`] = !winners.includes(id);
+                        });
+                        
+                        // 4. Firebase 업데이트 (모든 플레이어에게 전파)
+                        roomRef.update(updates);
+                        
+                        // 5. 로컬 즉시 반영
+                        // (Firebase on('value')가 어차피 이걸 다시 호출하겠지만, 즉각적인 반응을 위해 필요)
+                        showGameOverScreen(iWon);
+
+                    } else {
+                        // 정보가 없을 땐 그냥 이전처럼 패배 처리
+                        console.log("--- TEST: playerStates 정보 없어 강제 패배 처리 ---");
+                        showGameOverScreen(false);
+                    }
+                }
+
+                // 'S' 키: 강제 로컬 페널티 셔플
+                if (event.key.toUpperCase() === 'S' && isGameLive && !isShuffling) {
+                    event.preventDefault();
+                    console.log("--- TEST: 'S' 키로 강제 '페널티 셔플' 실행 (체크 무시) ---");
+                    
+                    // [수정] checkAndShuffleIfNeeded_Local(0) 대신, 셔플 로직 강제 실행
+                    isShuffling = true;
+
+                    // 재배열 UI 표시 (1초)
+                    infoOverlay.innerHTML = `<p style="color: white; font-size: 1.5em; font-weight: 700;">🎲 강제 셔플 실행중!</p>`;
+                    infoOverlay.style.display = 'flex';
+                    gameBoard.classList.add('board-shake');
+                    playSound('shuffle');
+                    playVibrationEffect();
+
+                    // 1초 뒤에 실제 셔플 실행
+                    setTimeout(() => {
+                        const newShuffledBoard = shuffleRemainingTiles(myBoard);
+                        
+                        myBoard = newShuffledBoard; // 로컬 보드 교체
+                        renderBoard(myBoard); // 새 보드로 렌더링
+
+                        // UI 숨기기
+                        gameBoard.classList.remove('board-shake');
+                        infoOverlay.style.display = 'none';
+                        isShuffling = false; // 플래그 해제
+
+                        // 셔플된 새 보드가 막혔는지 0.5초 뒤 검사
+                        setTimeout(() => checkAndShuffleIfNeeded_Local(0), 500);
+
+                    }, 1000); // 1초 페널티
+                }
+            });
+            // --- 테스트용 단축키 끝 ---
+
             // Firebase 설정
             const firebaseConfig = {
                 apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
@@ -1543,7 +1636,7 @@
                 }
 
                 // 재배열 UI 표시 (1초)
-                infoOverlay.innerHTML = `<p style="color: white; font-size: 1.5em; font-weight: 700;">🎲 타일을 다시 섞고 있어요! (1초)</p>`;
+                infoOverlay.innerHTML = `<p style="color: white; font-size: 1.5em; font-weight: 700;">🎲 타일을 다시 섞고 있어요!</p>`;
                 infoOverlay.style.display = 'flex';
                 gameBoard.classList.add('board-shake');
                 playSound('shuffle');
@@ -1845,6 +1938,49 @@
                  
                  // 전적 업데이트
                  updatePlayerStats(iWon ? 'win' : 'loss');
+                 // ✨ [신규] 영구 상호 전적 (H2H) 로직 (멀티사천성.html에서 복원)
+                 // 1:1 대전일 때만 상호 전적 처리
+                 if (playerIds.length === 2) {
+                     const opponentId = playerIds.find(id => id !== myPlayerId);
+                     
+                     // 영구 키 생성 (ID 정렬)
+                     const sortedIds = [myPlayerId, opponentId].sort();
+                     const h2hKey = sortedIds.join('_');
+                     const h2hRef = db.ref(`h2hStats/shisenSho/${h2hKey}`); // 최상위 영구 경로
+
+                     // 방장(Host)만 트랜잭션으로 전적을 "업데이트"
+                     if (isHost) {
+                         h2hRef.transaction(currentStats => {
+                             if (currentStats === null) {
+                                 currentStats = { [sortedIds[0]]: 0, [sortedIds[1]]: 0, draws: 0 };
+                             }
+                             
+                             // 이번 판 결과 누적 (무승부가 없으므로 승/패만)
+                             if (iWon) { // 내가 이겼으면
+                                 currentStats[myPlayerId] = (currentStats[myPlayerId] || 0) + 1;
+                             } else { // 내가 졌으면 (상대가 이겼으면)
+                                 currentStats[opponentId] = (currentStats[opponentId] || 0) + 1;
+                             }
+                             // (참고: 이 게임은 무승부가 없음)
+                             
+                             return currentStats; // 새 전적 반환
+                         }).then(result => {
+                             if (result.committed) {
+                                 // 방장이 트랜잭션 성공 시, 임시 경로에 결과 전파
+                                 if (roomRef) roomRef.child('displayH2HStats').set(result.snapshot.val());
+                             }
+                         }).catch(error => {
+                             console.error("영구 H2H 전적 업데이트 실패:", error);
+                             // 트랜잭션 실패 시, 최소한 '현재' DB값이라도 읽어서 게스트에게 전파
+                             h2hRef.once('value', currentSnapshot => {
+                                 if(currentSnapshot.exists() && roomRef) {
+                                     roomRef.child('displayH2HStats').set(currentSnapshot.val());
+                                 }
+                             });
+                         });
+                     }
+                 }
+                 // ✨ [신규] H2H 로직 종료
 
                  // 점수판 HTML (playerStates 기반)
                  const scoresHTML = playerIds.map(id => {
@@ -1873,6 +2009,7 @@
                      <div class="modal-content">
                          <div class="modal-header"><h2>${resultText}</h2></div>
                          <div class="modal-body">
+                             <div id="h2h-stats-placeholder"></div>
                              <div id="score-board">${scoresHTML}</div>
                               <div class="modal-buttons">
                                  <button id="rematch-btn" class="menu-btn secondary">다시 하기</button>
@@ -1884,6 +2021,10 @@
                  
                  // ... (버튼 리스너 및 재시작 리스너는 동일) ...
                  document.getElementById('lobby-btn').addEventListener('click', cleanupAndExit);
+                 // ✨ [신규] H2H 리스너 호출
+                 if (playerIds.length === 2) {
+                    listenForH2HDisplay(); 
+                 }
                  const rematchBtn = document.getElementById('rematch-btn');
                  rematchBtn.addEventListener('click', () => {
                      rematchBtn.textContent = '상대방 기다리는 중...';
@@ -1892,7 +2033,41 @@
                  });
                  listenForRematch();
             }
+// ✨ [신규] 영구 H2H 전적을 모달에 표시하는 리스너
+            function listenForH2HDisplay() {
+                 // displayH2HStats 경로를 구독
+                 if (!roomRef) return; // [수정] roomRef null 체크
+                 roomRef.child('displayH2HStats').on('value', snapshot => {
+                     // 1. 데이터가 없거나, 게임오버 모달이 안 켜져있으면 무시
+                     if (!snapshot.exists() || gameOverOverlay.style.display === 'none' || !currentRoomData || !currentRoomData.players) return;
 
+                     const stats = snapshot.val();
+                     const playerIds = Object.keys(currentRoomData.players);
+                     
+                     // 2. 1:1 게임이 아니면 무시
+                     if (playerIds.length !== 2) return;
+
+                     // 3. 상대방 정보 찾기
+                     const opponentId = playerIds.find(id => id !== myPlayerId);
+                     const opponent = currentRoomData.players[opponentId];
+                     if (!opponent) return; // 상대방 정보 없으면 중단
+
+                     // 4. 전적 계산
+                     const myWins = stats[myPlayerId] || 0;
+                     const oppWins = stats[opponentId] || 0;
+                     const totalGames = myWins + oppWins; // [수정] 무승부 제외한 승률 계산
+                     const winRate = totalGames > 0 ? Math.round((myWins / totalGames) * 100) : 0;
+                     
+                     // 5. HTML 생성
+                     const h2hHTML = `<p class="h2h-stats">${escapeHTML(opponent.nickname)}님과의 전적 (${myWins}승 ${oppWins}패, 승률 ${winRate}%)</p>`;
+                     
+                     // 6. 모달 내부의 자리표시자에 HTML 삽입
+                     const placeholder = document.getElementById('h2h-stats-placeholder');
+                     if (placeholder) {
+                         placeholder.innerHTML = h2hHTML;
+                     }
+                 });
+            }
             function listenForRematch() {
                  // ... (기존과 동일) ...
                  if (!roomRef) return;
