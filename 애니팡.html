@@ -660,129 +660,115 @@
                     console.log("호스트 onDisconnect 핸들러 설정: 비정상 종료 시 status를 'finished'로 변경합니다.");
                 }
 
-                             // [핵심 수정] 기존 리스너 제거 후 새로 등록
-                if (roomValueListener) {
-                    roomRef.off('value', roomValueListener);
-                }
-                
-                // [수정] '사천성' 방식의 단일 리스너로 교체 (v2)
-                             roomRef.on('value', (snapshot) => {
-                    if (isExiting) return;
-                    if (!snapshot.exists()) {
-                         if (!gameOverOverlay.classList.contains('active')) {
-                            alert("방이 사라졌습니다.");
-                         }
-                         cleanupAndExit();
-                         return;
-                     }
-                    
-                    currentRoomData = snapshot.val(); // [핵심] 항상 최신 데이터 유지
-                    
-                    // 1. (공통) 플레이어 UI 갱신 (점수판)
-                    if (currentRoomData.players) {
-                        updateScoreboardUI(currentRoomData.players);
-                    } else {
-                        // 플레이어 정보가 없으면(방금 만들어졌거나 오류) 아무것도 안 함
-                        return;
-                    }
+                             // 기존 위치 (joinGameRoom 함수 내부, playerRef.onDisconnect() 다음)
 
-                    // 2. (공통) 호스트 마이그레이션 (방장이 나갔을 때)
-                    const playerIds = Object.keys(currentRoomData.players || {});
-                    if (playerIds.length > 0 && (!currentRoomData.hostId || !currentRoomData.players[currentRoomData.hostId])) {
-                        const newHostId = playerIds.sort()[0];
-                        isHost = (newHostId === playerUid);
-                        if (isHost) {
-                            console.log(`[호스트 마이그레이션] 내가 새 호스트(${playerUid})가 됨.`);
-                            roomRef.update({ 'hostId': newHostId });
-                        }
-                    }
-                    
-                    // 3. (공통) 1명만 남았을 때 (승리 처리)
-                    if (currentRoomData.status === 'playing' && playerIds.length === 1) {
-                        if (playerIds[0] === playerUid && !gameOverFlag) {
-                            console.log("[게임 종료] 상대방 이탈로 승리.");
-                            isGameLive = false;
-                            gameOverFlag = true;
-                            if (playerRef) playerRef.child('isFinished').set(true);
-                            forceGameOver(); // 즉시 내 승리 표시
-                        }
-                        return; 
-                    }
-                    
-                    // 4. (공통) 내가 방에서 제외됨 (강퇴)
-                    if (!currentRoomData.players || !currentRoomData.players[playerUid]) {
-                         if (!gameOverOverlay.classList.contains('active')) {
-                            alert("방에서 퇴장되었습니다.");
-                         }
-                         cleanupAndExit(); // cleanupAndExit 호출
-                         return;
-                    }
+// [핵심 수정] 기존 리스너 제거 후 새로 등록
+if (roomValueListener) {
+    roomRef.off('value', roomValueListener);
+}
 
-                    // --- 5. 상태별 분기 (핵심) ---
-                    const status = currentRoomData.status;
-                    console.log("방 상태 변경:", status);
+roomValueListener = (snapshot) => {
+    if (isExiting) return;
+    if (!snapshot.exists()) {
+        if (!gameOverOverlay.classList.contains('active')) {
+            alert("방이 사라졌습니다.");
+        }
+        cleanupAndExit();
+        return;
+    }
+    
+    currentRoomData = snapshot.val(); // [핵심] 항상 최신 데이터 유지
+    
+    // 1. (공통) 플레이어 UI 갱신 (스코어판)
+    if (currentRoomData.players) {
+        updateScoreboardUI(currentRoomData.players);
+    } else {
+        return;
+    }
 
-                    // 5-1. 'playing' (게임 시작)
-                    if (status === 'playing') {
-                        // [수정] countdownStarted 플래그로 중복 실행 방지
-                        if (!timerId && !gameOverOverlay.classList.contains('active') && !countdownStarted) {
-                            countdownStarted = true; 
-                            loadingOverlay.classList.remove('active');
-                            infoOverlay.classList.remove('active');
-                            startCountdown(); // (기존 로직)
-                        }
-                    
-                    // 5-2. 'finished' (게임 종료)
-                    } else if (status === 'finished') {
-                        forceGameOver(); // (기존 로직)
-                    
-                    // 5-3. 'waiting' (재시작 대기)
-                    } else if (status === 'waiting') {
-                        // [핵심] 재시작 로직
-                        if (gameOverOverlay.classList.contains('active')) {
-                            console.log("[Rematch] 'waiting' 상태 감지. 게임 재시작 준비...");
-                            gameOverOverlay.classList.remove('active');
-                            
-                            // (기존) 게임 상태 초기화
-                            gameOverFlag = false;
-                            countdownStarted = false; 
-                            isProcessing = true; 
-                            
-                            // (기존) '준비' 신호 보내기
-                            if (roomRef && playerUid) {
-                                roomRef.child('readyPlayers/' + playerUid).set(true);
-                            }
-                            infoOverlay.classList.add('active'); // '기다리는 중' 스피너 표시
-                        }
-                        
-                        // [핵심] 'readyPlayers' 갱신 (항상 최신 currentRoomData 사용)
-                        const readyPlayers = currentRoomData.readyPlayers || {};
-                        const totalPlayers = Object.keys(currentRoomData.players).length;
-                        const readyCount = Object.keys(readyPlayers).length;
-                        
-                        // [수정] infoOverlay의 내용을 '대기 중' 스피너로 덮어씁니다. (p 태그 오류 수정)
-            if (infoOverlay.classList.contains('active')) {
-                 // '사천성'과 동일하게 innerHTML을 설정하여 스피너와 p 태그를 생성합니다.
-                 infoOverlay.innerHTML = `<div class="spinner"></div><p style="color: white; margin-top: 15px; font-size: 1.1em;">상대방 기다리는 중 (${readyCount}/${totalPlayers})...</p>`;
+    // 2. (공통) 호스트 마이그레이션
+    const playerIds = Object.keys(currentRoomData.players || {});
+    if (playerIds.length > 0 && (!currentRoomData.hostId || !currentRoomData.players[currentRoomData.hostId])) {
+        const newHostId = playerIds.sort()[0];
+        isHost = (newHostId === playerUid);
+        if (isHost) {
+            console.log(`[호스트 마이그레이션] 내가 새 호스트(${playerUid})가 됨.`);
+            roomRef.update({ 'hostId': newHostId });
+        }
+    }
+    
+    // 3. (공통) 1명만 남았을 때
+    if (currentRoomData.status === 'playing' && playerIds.length === 1) {
+        if (playerIds[0] === playerUid && !gameOverFlag) {
+            console.log("[게임 종료] 상대방 이탈로 승리.");
+            gameOverFlag = true;
+            if (playerRef) playerRef.child('isFinished').set(true);
+            forceGameOver();
+        }
+        return; 
+    }
+    
+    // 4. (공통) 내가 방에서 제외됨
+    if (!currentRoomData.players || !currentRoomData.players[playerUid]) {
+        if (!gameOverOverlay.classList.contains('active')) {
+            alert("방에서 퇴장되었습니다.");
+        }
+        cleanupAndExit();
+        return;
+    }
+
+    // 5. 상태별 분기
+    const status = currentRoomData.status;
+    console.log("방 상태 변경:", status);
+
+    if (status === 'playing') {
+        if (!timerId && !gameOverOverlay.classList.contains('active') && !countdownStarted) {
+            countdownStarted = true; 
+            loadingOverlay.classList.remove('active');
+            infoOverlay.classList.remove('active');
+            startCountdown();
+        }
+    } else if (status === 'finished') {
+        forceGameOver();
+    } else if (status === 'waiting') {
+        if (gameOverOverlay.classList.contains('active')) {
+            console.log("[Rematch] 'waiting' 상태 감지. 게임 재시작 준비...");
+            gameOverOverlay.classList.remove('active');
+            gameOverFlag = false;
+            countdownStarted = false; 
+            isProcessing = true; 
+            
+            if (roomRef && playerUid) {
+                roomRef.child('readyPlayers/' + playerUid).set(true);
             }
+            infoOverlay.classList.add('active');
+        }
+        
+        const readyPlayers = currentRoomData.readyPlayers || {};
+        const totalPlayers = Object.keys(currentRoomData.players).length;
+        const readyCount = Object.keys(readyPlayers).length;
+        
+        if (infoOverlay.classList.contains('active')) {
+            infoOverlay.innerHTML = `<div class="spinner"></div><p style="color: white; margin-top: 15px; font-size: 1.1em;">상대방 기다리는 중 (${readyCount}/${totalPlayers})...</p>`;
+        }
 
-                        // [핵심] 호스트가 재시작 신호 보냄
-                        if (isHost && totalPlayers >= 2 && readyCount === totalPlayers) {
-                            roomRef.update({
-                                status: 'playing',
-                                gameStarted: false, // '애니팡'용
-                                readyPlayers: null
-                            });
-                        }
-                    
-                    // 5-4. 'null' (방 폭파)
-                    } else if (status === null && !gameOverOverlay.classList.contains('active')) {
-                        console.warn("방 상태가 'null'입니다. 호스트가 방을 삭제한 것 같습니다.");
-                        forceGameOver();
-                    }
-                });
+        if (isHost && totalPlayers >= 2 && readyCount === totalPlayers) {
+            roomRef.update({
+                status: 'playing',
+                gameStarted: false,
+                readyPlayers: null
+            });
+        }
+    } else if (status === null && !gameOverOverlay.classList.contains('active')) {
+        console.warn("방 상태가 'null'입니다. 호스트가 방을 삭제한 것 같습니다.");
+        forceGameOver();
+    }
+};
 
-                loadingOverlay.querySelector('p').textContent = "다른 플레이어를 기다리는 중...";
+// [핵심] 리스너 등록
+roomRef.on('value', roomValueListener);
+
+loadingOverlay.querySelector('p').textContent = "다른 플레이어를 기다리는 중...";
             }
 
             function updateScoreboardUI(players) {
