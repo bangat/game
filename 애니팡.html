@@ -724,6 +724,7 @@ const STRIPED_BONUS = 200; // [신규] 줄무늬 타일 보너스 점수
             let currentCombo = 0;
 
             let dragStartTile = null;
+            let comboTimerId = null; // [신규] 콤보 유지 타이머
             let dragStartX = 0;
             let dragStartY = 0;
             // --- ✨ [신규] 피버 시스템 변수 ---
@@ -2390,6 +2391,12 @@ function showStripedExplosion(row, col, direction) {
 }
             
           async function processMatchesAndCascade(matchData) {
+    // [신규] 콤보 유지 타이머가 있다면 즉시 취소 (콤보가 이어짐)
+    if (comboTimerId) {
+        clearTimeout(comboTimerId);
+        comboTimerId = null;
+    }
+
     const matches = matchData.matches || matchData;
     const crossExplosions = matchData.crossExplosions || [];
     const rainbowTiles = matchData.rainbowTiles || [];
@@ -2464,7 +2471,17 @@ function showStripedExplosion(row, col, direction) {
         await new Promise(resolve => setTimeout(resolve, 100)); 
         await processMatchesAndCascade(newMatchData);
     } else {
-        currentCombo = 0;
+        // [수정] 콤보 즉시 리셋 대신, 3초 유지 타이머 시작
+        // currentCombo = 0; // [제거]
+        
+        console.log(`콤보 ${currentCombo} 종료. 2초간 유지...`);
+        if (comboTimerId) clearTimeout(comboTimerId); // 혹시 모를 타이머 정리
+        comboTimerId = setTimeout(() => {
+            console.log("콤보 유지시간 종료. 콤보 리셋.");
+            currentCombo = 0;
+            comboTimerId = null;
+        }, 2000); // 2초
+
         if (!checkForPossibleMoves()) {
             await handleNoMoreMoves();
         }
