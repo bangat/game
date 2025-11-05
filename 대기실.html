@@ -1374,6 +1374,13 @@
             const bgmToggle = document.getElementById('bgm-toggle');
             const vibrationToggle = document.getElementById('vibration-toggle');
 
+            // [신규] 초대 수신 모달
+            const inviteReceivedModal = document.getElementById('invite-received-modal');
+            const inviteModalTitle = document.getElementById('invite-modal-title');
+            const inviteModalMessage = document.getElementById('invite-modal-message');
+            const inviteAcceptBtn = document.getElementById('invite-accept-btn');
+            const inviteDeclineBtn = document.getElementById('invite-decline-btn');
+
           // --- [수정] 테트리스 키패드 커스텀 UI (개별 버튼 + 겹침 버그 수정) ---
             const keypadLayoutSelector = document.getElementById('keypad-layout-selector');
             const openKeypadCustomBtn = document.getElementById('open-keypad-custom-btn');
@@ -1564,6 +1571,10 @@
             let currentFriendRequests = {};
             let isFirstRequestLoad = true;
             
+            // [신규] 초대 리스너
+            let currentInvitationRef = null;
+            let currentInvitationData = null; // 수락/거절 시 사용할 데이터
+
             // [수정] 쪽지 관련 변수 (팝업용)
             let currentMessagesRef = null;
             let currentMessageListener = null;
@@ -1660,6 +1671,8 @@
                 // 1. 기존 리스너 제거
                 if (friendRequestRef) friendRequestRef.off();
                 if (messageInboxRef) messageInboxRef.off();
+                if (currentInvitationRef) currentInvitationRef.off(); // [추가]
+                
                 // [신규] 뱃지용 리스너 참조
                 let friendBadgeRef = db.ref(`friend_requests/${uid}`);
                 let messageBadgeRef = db.ref(`user_inboxes/${uid}`);
@@ -1720,6 +1733,29 @@
                         lastMessageTimestamp = snap.val().timestamp; // 타임스탬프 갱신
                         handleNewMessageAlert(snap.key, snap.val());
                     });
+                });
+
+                // --- 3. [신규] 게임 초대 리스너 ---
+                currentInvitationRef = db.ref(`invitations/${uid}`);
+                currentInvitationRef.on('child_added', (snapshot) => {
+                    // 이미 다른 초대가 와있으면 무시 (간단하게)
+                    if (inviteReceivedModal.classList.contains('active')) return;
+
+                    const inviteData = snapshot.val();
+                    if (!inviteData) return;
+                    
+                    // 초대 데이터 저장
+                    currentInvitationData = { key: snapshot.key, ...inviteData };
+
+                    // 모달 내용 설정
+                    inviteModalTitle.textContent = `🔔 ${escapeHTML(inviteData.from_name)}님의 초대`;
+                    inviteModalMessage.innerHTML = `[${escapeHTML(inviteData.game_name)}] 방<br>(${escapeHTML(inviteData.room_name)})<br>으로 초대했습니다. 참가하시겠습니까?`;
+                    
+                    // 모달 표시
+                    showModal(inviteReceivedModal);
+                    
+                    // 효과음
+                    if (gameSettings.sfx) clickSound.play();
                 });
             }
 
@@ -2435,6 +2471,30 @@
                 return msgEl;
             }
         });
+
+        // [신규] 초대 수락/거절 버튼 리스너
+            inviteAcceptBtn.addEventListener('click', () => {
+                if (gameSettings.sfx) clickSound.play();
+                if (currentInvitationData && currentInvitationData.room_id) {
+                    // 초대에 응했으므로, Firebase에서 초대장 삭제
+                    currentInvitationRef.child(currentInvitationData.key).remove();
+                    
+                    // 해당 게임방으로 이동
+                    window.location.href = `게임방.html?roomId=${currentInvitationData.room_id}`;
+                }
+                closeAllModals();
+            });
+
+            inviteDeclineBtn.addEventListener('click', () => {
+                if (gameSettings.sfx) clickSound.play();
+                if (currentInvitationData) {
+                    // 거절했으므로, Firebase에서 초대장 삭제
+                    currentInvitationRef.child(currentInvitationData.key).remove();
+                }
+                closeAllModals();
+                currentInvitationData = null;
+            });
+            
     </script>
 
 
@@ -2524,7 +2584,17 @@
     </div>
 
 
-
+<div id="invite-received-modal" class="overlay">
+        <div class="modal-content" style="max-width: 350px;">
+            <div class="modal-body" style="padding: 30px 20px 20px; text-align: center;">
+                <h3 id="invite-modal-title" style="font-size: 1.3em; margin-bottom: 10px;">...</h3>
+                <p id="invite-modal-message" style="font-size: 1.0em; color: #333; line-height: 1.5; margin-bottom: 20px;">...</p>
+            </div>
+            <div class="modal-footer" style="padding: 20px;">
+                <button id="invite-decline-btn" class="menu-btn secondary">거절</button>
+                <button id="invite-accept-btn" class="menu-btn primary">수락</button>
+            </div>
+        </div>
+    </div>
 </body>
-
 </html>
