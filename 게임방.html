@@ -393,6 +393,85 @@
             animation: star-fall 2.5s linear infinite; /* ✨ 1.5s -> 2.5s (더 느리게) */
         }
 
+        /* [신규] 친구 초대 모달 */
+        #friend-invite-modal .modal-header {
+            padding: 15px 20px;
+            background-color: var(--secondary-color);
+            color: white;
+            border-bottom: 4px solid #379A93;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+        #friend-invite-modal .modal-header h2 {
+            font-size: 1.25em;
+            margin: 0;
+            color: white;
+            text-align: center;
+            flex-grow: 1;
+        }
+        #friend-invite-modal .modal-header .close-btn {
+            background: none; border: none; color: white;
+            font-size: 2.5em; cursor: pointer;
+            text-shadow: 1px 1px 1px rgba(0,0,0,0.2);
+            position: absolute;
+            left: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            padding: 0 10px;
+            line-height: 1;
+        }
+        #friend-invite-modal .modal-body {
+            padding: 0;
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+
+        /* [신규] 유저 목록 (친구.html 스타일 재사용) */
+        .user-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            padding: 15px;
+        }
+        .user-list-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px;
+            background-color: var(--panel-bg);
+            border: 3px solid var(--panel-border);
+            border-radius: 16px;
+            box-shadow: 4px 4px 0px 0px var(--panel-shadow);
+        }
+        .user-list-avatar {
+            width: 44px; height: 44px; font-size: 2.2em;
+            display: flex; justify-content: center; align-items: center;
+            border-radius: 12px; border: 3px solid var(--text-color-dark);
+            background-color: var(--panel-bg);
+            overflow: hidden; flex-shrink: 0;
+        }
+        .user-list-avatar img { width: 100%; height: 100%; object-fit: contain; }
+        
+        .user-list-nickname {
+            font-weight: 700;
+            font-size: 1.0em;
+            flex-grow: 1; min-width: 0;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .user-item-actions {
+            display: flex; gap: 8px; flex-shrink: 0;
+        }
+        .user-action-btn {
+            font-size: 0.9em;
+            padding: 10px 12px;
+            min-width: 60px;
+            width: auto;
+            border-radius: 12px;
+            border-bottom-width: 4px;
+        }
+
         /* 3. ✨ [제거] 빈 슬롯 애니메이션 제거 */
         /* (.player-slot-compact .avatar:empty 규칙 없음) */
 /* [신규] 토스트 알림 */
@@ -832,6 +911,11 @@ function kakaoInvite() {
         const alertModal = document.getElementById('alert-modal');
         const alertModalMessage = document.getElementById('alert-modal-message');
         const alertModalOkBtn = document.getElementById('alert-modal-ok-btn');
+
+        // [신규] 친구 초대 모달
+        const friendInviteModal = document.getElementById('friend-invite-modal');
+        const friendInviteListContainer = document.getElementById('friend-invite-list-container');
+        const friendInviteModalCloseBtn = document.getElementById('friend-invite-modal').querySelector('[data-close]');
         
         // ✨ [신규] 알림 모달 "확인" 버튼 리스너
         if (alertModalOkBtn) {
@@ -1434,6 +1518,11 @@ const inviteBtn = document.getElementById('invite-btn');
                 // ✨ [수정] showAlert -> showToast
                 showToast('링크를 복사할 수 없습니다.');
             }
+
+            // --- [신규] 사용자 요청: 링크 복사와 동시에 초대 모달 열기 ---
+            if (gameSettings.sfx) playSound('enter-sound'); // 효과음 재활용
+            loadAndShowInviteModal();
+            // --- [신규] ---
         });
 
 if (inviteBtn) {
@@ -1450,6 +1539,130 @@ if (inviteBtn) {
        emojiPopover.addEventListener('click', e => { if(e.target.tagName === 'BUTTON'){ sendMessage(e.target.textContent); emojiPopover.classList.remove('active'); } });
 
      
+       // --- [신규] 대기실 친구 초대 로직 ---
+
+        let presenceRef = db.ref('status'); // 접속 상태 참조
+        let myFriendsRef = null;
+        let myFriendIds = {};
+
+        // 2. 모달 닫기 버튼 리스너
+        friendInviteModalCloseBtn.addEventListener('click', () => {
+            friendInviteModal.classList.remove('active');
+        });
+
+        // 3. 초대 모달 열기 및 목록 로드
+        async function loadAndShowInviteModal() {
+            friendInviteModal.classList.add('active');
+            friendInviteListContainer.innerHTML = '<div class="spinner" style="margin: 30px auto;"></div>';
+
+            try {
+                // 1. 내 친구 목록 가져오기
+                const friendsSnap = await db.ref(`friends/${currentUser.uid}`).once('value');
+                myFriendIds = friendsSnap.val() || {};
+
+                // 2. 현재 접속자 목록 가져오기
+                const presenceSnap = await presenceRef.once('value');
+                if (!presenceSnap.exists()) {
+                    friendInviteListContainer.innerHTML = '<p style="text-align:center; padding: 20px;">현재 접속 중인 친구가 없습니다.</p>';
+                    return;
+                }
+                const onlineUserIds = Object.keys(presenceSnap.val());
+                
+                // 3. 현재 방에 있는 유저 목록
+                const playerIdsInRoom = Object.keys(currentRoomData.players || {});
+
+                // 4. 필터링: (접속중 && 내 친구 && 이 방에 없음)
+                const targetUids = onlineUserIds.filter(uid => 
+                    myFriendIds[uid] &&                     // 내 친구이고
+                    uid !== currentUser.uid &&              // 내가 아니고
+                    !playerIdsInRoom.includes(uid)          // 이 방에 없고
+                );
+
+                if (targetUids.length === 0) {
+                    friendInviteListContainer.innerHTML = '<p style="text-align:center; padding: 20px;">현재 접속 중인 친구가 없습니다.</p>';
+                    return;
+                }
+
+                // 5. 프로필 정보 가져오기
+                const profilePromises = targetUids.map(uid => usersRef.child(uid).child('profile').once('value'));
+                const profileSnapshots = await Promise.all(profilePromises);
+
+                friendInviteListContainer.innerHTML = ''; // 목록 비우기
+                profileSnapshots.forEach((snap, index) => {
+                    if (snap.exists()) {
+                        const profile = snap.val();
+                        const uid = targetUids[index];
+                        const itemEl = createInviteListItem(uid, profile);
+                        friendInviteListContainer.appendChild(itemEl);
+                    }
+                });
+
+            } catch (error) {
+                console.error("초대 목록 로드 실패:", error);
+                friendInviteListContainer.innerHTML = '<p style="text-align:center; padding: 20px;">목록을 불러오는 중 오류가 발생했습니다.</p>';
+            }
+        }
+
+        // 4. 초대 목록 아이템 생성
+        function createInviteListItem(uid, profile) {
+            const itemEl = document.createElement('div');
+            itemEl.className = 'user-list-item';
+
+            const avatarSet = AVATAR_SETS[profile.avatar];
+            let avatarHTML = '';
+            if (avatarSet) { avatarHTML = `<img src="${avatarSet.front}" alt="av">`; }
+            else if (profile.avatar && (profile.avatar.startsWith('http') || profile.avatar.includes('.'))) { avatarHTML = `<img src="${profile.avatar}" alt="av">`; }
+            else { avatarHTML = escapeHTML(profile.avatar || '❓'); }
+
+            itemEl.innerHTML = `
+                <div class="user-list-avatar">${avatarHTML}</div>
+                <div class="user-list-nickname">${escapeHTML(profile.nickname)}</div>
+                <div class="user-item-actions">
+                    <button class="menu-btn user-action-btn secondary" data-action="invite" data-uid="${uid}" data-nickname="${escapeHTML(profile.nickname)}">초대</button>
+                </div>
+            `;
+
+            // 5. 초대 버튼에 리스너 추가
+            itemEl.querySelector('[data-action="invite"]').addEventListener('click', (e) => {
+                const btn = e.currentTarget;
+                const targetUid = btn.dataset.uid;
+                const targetNickname = btn.dataset.nickname;
+                
+                // 버튼 비활성화
+                btn.disabled = true;
+                btn.textContent = '초대됨';
+                btn.classList.remove('secondary');
+                btn.classList.add('light');
+
+                // 초대 데이터 생성
+                const game = availableGames.find(g => g.id === currentRoomData.gameType);
+                const inviteData = {
+                    from_uid: currentUser.uid,
+                    from_name: myNickname,
+                    room_id: roomRef.key,
+                    room_name: currentRoomData.roomName,
+                    game_name: game ? game.name : '알 수 없는 게임',
+                    timestamp: firebase.database.ServerValue.TIMESTAMP
+                };
+                
+                // Firebase에 초대장 전송
+                db.ref(`invitations/${targetUid}`).push(inviteData)
+                    .then(() => {
+                        showToast(`${targetNickname}님을 초대했습니다.`);
+                    })
+                    .catch((err) => {
+                        showToast('초대 전송에 실패했습니다.');
+                        console.error("초대 실패:", err);
+                        btn.disabled = false; // 실패 시 버튼 복구
+                        btn.textContent = '초대';
+                        btn.classList.remove('light');
+                        btn.classList.add('secondary');
+                    });
+            });
+
+            return itemEl;
+        }
+
         
     }); // --- DOMContentLoaded 끝 ---
 
@@ -1457,6 +1670,21 @@ if (inviteBtn) {
 
 </script>
 <div id="toast-container"></div>
+
+
+<div id="friend-invite-modal" class="overlay">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header">
+                <button class="close-btn" data-close>‹</button>
+                <h2>대기실 친구초대</h2>
+            </div>
+            <div class="modal-body">
+                <div class="user-list" id="friend-invite-list-container">
+                    <div class="spinner" style="margin: 30px auto;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
 
 <div id="confirm-exit-modal" class="overlay">
     <div class="modal-content" style="max-width: 350px;">
