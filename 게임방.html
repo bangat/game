@@ -952,6 +952,10 @@ function kakaoInvite() {
 let currentUser, myNickname, myAvatar, myBombSkin, isHost;
 let myEntryEffect = null; // ✨ [신규] 입장 이펙트 저장용
 let previousPlayerNicks = {};
+// ✨ [신규] 친구 접속 감지 리스너
+let friendStatusListener = null;
+let friendStatusRef = null;
+
 
 // availableGames 정의 (전역으로 이동)
 availableGames = [
@@ -999,6 +1003,34 @@ availableGames = [
                 myNickname = localStorage.getItem('userNickname');
                 myAvatar = localStorage.getItem('userAvatar');
                 if (!myNickname) { auth.signOut(); window.location.replace('index.html'); return; }
+
+                // ✨ [수정] "모든 유저" 접속 감지 리스너 (친구 목록 로드 제거)
+                if (friendStatusListener) {
+                    friendStatusRef.off('child_added', friendStatusListener); // 기존 리스너 제거
+                }
+                
+                friendStatusRef = db.ref('status');
+                friendStatusListener = friendStatusRef.on('child_added', (statusSnap) => {
+                    const onlineUid = statusSnap.key;
+                    
+                    // 1. 접속한 사람이 내가 아니어야 함
+                    if (onlineUid !== currentUser.uid) {
+                        
+                        // 2. (중요) 이 사람이 이미 이 방에 있는지 확인
+                        const playerIdsInRoom = Object.keys(currentRoomData?.players || {});
+                        if (playerIdsInRoom.includes(onlineUid)) {
+                            return; // 이미 방에 있으므로 알림 X
+                        }
+
+                        // 3. 닉네임을 가져와서 토스트 알림
+                        usersRef.child(onlineUid).child('profile/nickname').once('value', (profileSnap) => {
+                            if (profileSnap.exists()) {
+                                showToast(`🔔 ${escapeHTML(profileSnap.val())}님이 게임에 접속했습니다.`);
+                            }
+                        });
+                    }
+                });
+                // --- [수정] 리스너 로직 변경 끝 ---
 
                 // ✨ [수정] bombSkin과 entryEffect를 함께 불러옵니다.
                 usersRef.child(currentUser.uid).child('profile').once('value', snapshot => {
@@ -1131,7 +1163,10 @@ availableGames = [
                     addSystemMessage(`${joinedPlayer.nickname}님이 입장했습니다.`);
                     playSound('enter-sound');
                     vibrate();
-                    
+                    // ✨ [신규] 접속한 유저가 친구인지 확인
+                    if (myFriendIds[id]) {
+                        showToast(`🔔 ${escapeHTML(joinedPlayer.nickname)}님이 접속했어요!`);
+                    }
                     // ✨ [제거] 입장 이펙트 재생 (updateUI가 처리)
                     // playEntryEffect(id, joinedPlayer.entryEffect);
                 }
@@ -1454,7 +1489,10 @@ availableGames = [
             // onDisconnect 핸들러 취소 시도
             if (hostOnDisconnect) { try { hostOnDisconnect.cancel(); } catch(e) { console.warn("Host onDisconnect cancel failed:", e); } }
             if (playerOnDisconnect) { try { playerOnDisconnect.cancel(); } catch(e) { console.warn("Player onDisconnect cancel failed:", e); } }
-
+// ✨ [신규] 친구 접속 리스너 제거
+            if (friendStatusListener) {
+                try { friendStatusRef.off('child_added', friendStatusListener); } catch(e) { console.warn("Friend status listener removal failed:", e); }
+            }
             let removePromise = Promise.resolve(); // 기본 Promise
 
             if (roomRef && currentUser) {
@@ -1556,14 +1594,12 @@ if (inviteBtn) {
             friendInviteListContainer.innerHTML = '<div class="spinner" style="margin: 30px auto;"></div>';
 
             try {
-                // 1. 내 친구 목록 가져오기
-                const friendsSnap = await db.ref(`friends/${currentUser.uid}`).once('value');
-                myFriendIds = friendsSnap.val() || {};
+                // [수정] 1. 친구 목록 가져오기 제거
 
                 // 2. 현재 접속자 목록 가져오기
                 const presenceSnap = await presenceRef.once('value');
                 if (!presenceSnap.exists()) {
-                    friendInviteListContainer.innerHTML = '<p style="text-align:center; padding: 20px;">현재 접속 중인 친구가 없습니다.</p>';
+                    friendInviteListContainer.innerHTML = '<p style="text-align:center; padding: 20px;">현재 접속 중인 유저가 없습니다.</p>';
                     return;
                 }
                 const onlineUserIds = Object.keys(presenceSnap.val());
@@ -1571,15 +1607,15 @@ if (inviteBtn) {
                 // 3. 현재 방에 있는 유저 목록
                 const playerIdsInRoom = Object.keys(currentRoomData.players || {});
 
-                // 4. 필터링: (접속중 && 내 친구 && 이 방에 없음)
+                // 4. [수정] 필터링: (접속중 && 이 방에 없음)
                 const targetUids = onlineUserIds.filter(uid => 
-                    myFriendIds[uid] &&                     // 내 친구이고
+                    // myFriendIds[uid] &&  <-- 친구 조건 제거
                     uid !== currentUser.uid &&              // 내가 아니고
                     !playerIdsInRoom.includes(uid)          // 이 방에 없고
                 );
 
                 if (targetUids.length === 0) {
-                    friendInviteListContainer.innerHTML = '<p style="text-align:center; padding: 20px;">현재 접속 중인 친구가 없습니다.</p>';
+                    friendInviteListContainer.innerHTML = '<p style="text-align:center; padding: 20px;">초대할 유저가 없습니다.</p>';
                     return;
                 }
 
