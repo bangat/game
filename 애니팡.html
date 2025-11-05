@@ -496,6 +496,64 @@
     }
 }
 
+/* [수정] '다시하기' 상태 목록 스타일 (순위/점수 통합) */
+        #rematch-status-list {
+            text-align: left;
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #FFFAE0;
+            border-radius: 10px;
+            border: 2px solid var(--panel-border);
+            font-size: 1.0em; /* 폰트 크기 살짝 조정 */
+            line-height: 1.8;
+            display: flex;
+            flex-direction: column;
+            gap: 8px; /* 줄 간격 */
+        }
+        .rematch-player-row {
+            display: flex;
+            justify-content: space-between; /* 양쪽 정렬 */
+            align-items: center;
+        }
+        .rematch-player-row .player-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 900;
+        }
+        .rematch-player-row .player-rank {
+            color: var(--primary-color);
+            min-width: 25px; /* '1위' '2위' 자리 맞춤 */
+        }
+        .rematch-player-row .player-name {
+            color: var(--text-color-dark);
+        }
+        .rematch-player-row .player-score {
+            font-size: 0.9em;
+            color: #9A6A3A;
+        }
+        .rematch-player-row .player-you {
+            font-size: 0.8em;
+            background-color: var(--primary-color);
+            color: white;
+            padding: 2px 5px;
+            border-radius: 5px;
+            font-weight: 900;
+        }
+
+        #rematch-status-list .status-text {
+            font-weight: 900;
+            color: #ccc; /* 기본 '대기' 색상 (안보이게) */
+            transition: all 0.3s ease;
+            font-size: 1.1em;
+            min-width: 50px; /* 'Ready' 공간 확보 */
+            text-align: right;
+        }
+        #rematch-status-list .status-text.ready {
+            color: #28a745; /* 'Ready' 초록색 */
+            text-shadow: 0 0 5px rgba(40, 167, 69, 0.5);
+        }
+
 @keyframes mega-rainbow {
     0% { 
         transform: translate(-50%, -50%) scale(0); 
@@ -563,9 +621,9 @@
                  <h2>게임 종료!</h2>
              </div>
              <div class="modal-body">
-                <p id="final-rank-title" style="font-size: 1.2em; margin-bottom: 15px;">🏆 최종 순위 🏆</p>
-                <div id="final-ranking-list">
-                   </div>
+<p id="rematch-title" style="font-size: 1.2em; margin-bottom: 15px;">🏆최종 순위🏆</p>
+                <div id="rematch-status-list">
+                    </div>
                 <hr style="margin: 15px 0; border: 1px solid var(--panel-border);">
                 <p style="font-size: 1.1em; font-weight: 700;">내 점수</p>
                 <p id="final-score" style="margin-bottom: 0;">0</p>
@@ -1454,27 +1512,38 @@ async function createDoubleRainbowTest() {
                     }
                     updatePlayerStats(didIWin, myFinalScore);
 
-                    finalRankingList.innerHTML = '';
+                    // [수정] '다시하기' 상태 목록과 '순위' 목록을 하나로 통합
+                    const rematchStatusList = document.getElementById('rematch-status-list');
+                    rematchStatusList.innerHTML = ''; // 목록 초기화
+
                     sortedPlayers.forEach((player, index) => {
                         const rank = index + 1;
                         const nickname = player.nickname || 'Unknown';
-                        const score = player.score || 0;
-                        const p = document.createElement('p');
-                        let rankText = `${rank}위: ${nickname} (${score.toLocaleString()}점)`;
-                        if (player.uid === playerUid) {
-                            rankText = `<strong>${rankText} (YOU)</strong>`;
-                            finalScoreEl.textContent = `${score.toLocaleString()} 점`;
-                        }
-                        p.innerHTML = rankText;
-                        finalRankingList.appendChild(p);
+                        const scoreVal = player.score || 0;
+                        const scoreText = `(${scoreVal.toLocaleString()}점)`;
+                        const isMe = (player.uid === playerUid);
 
-                        // [버그 수정] 게스트 재접속 시 로컬 score(0점)가 아닌,
-                        // Firebase에서 가져온 player.score를 사용해야 함
-                        if (player.uid === playerUid) {
-                            finalScoreEl.textContent = `${player.score.toLocaleString()} 점`;
-                        }
+                        const row = document.createElement('div');
+                        row.className = 'rematch-player-row';
 
+                        let playerInfoHTML = `
+                            <span class="player-info">
+                                <span class="player-rank">${rank}위</span>
+                                <span class="player-name">${nickname}</span>
+                                <span class="player-score">${scoreText}</span>
+                                ${isMe ? '<span class="player-you">YOU</span>' : ''}
+                            </span>
+                        `;
                         
+                        let statusHTML = `<span class="status-text" data-uid="${player.uid}"></span>`;
+
+                        row.innerHTML = playerInfoHTML + statusHTML;
+                        rematchStatusList.appendChild(row);
+
+                        // [유지] 내 최종 점수를 하단 '내 점수' 란에 업데이트
+                        if (isMe) {
+                            finalScoreEl.textContent = `${scoreVal.toLocaleString()} 점`;
+                        }
                     });
 
                     /// ✅ 변경 코드 (버그 수정됨)
@@ -1499,7 +1568,8 @@ async function createDoubleRainbowTest() {
                     newLobbyBtn.addEventListener('click', cleanupAndExit);
                     
                     newRematchBtn.addEventListener('click', () => {
-                        newRematchBtn.textContent = '상대방 기다리는 중...';
+                        // [수정] 텍스트 변경 -> 'Ready' 상태로 변경
+                        newRematchBtn.textContent = 'Ready ✓'; 
                         newRematchBtn.disabled = true;
                         if (roomRef && playerUid) {
                             roomRef.child('rematchRequests/' + playerUid).set(true);
@@ -1512,23 +1582,60 @@ async function createDoubleRainbowTest() {
             }
 
             // [신규] '다시하기' 수신 리스너 (Tetris/ShisenSho 방식)
+            
+            // [수정] 메모리 누수 방지를 위해 리스너 참조를 외부로 이동
+            let rematchRef = null; 
+            
             function listenForRematch() {
                  if (!roomRef) return;
-                 const rematchRef = roomRef.child('rematchRequests');
+
+                 // [수정] 기존 리스너가 있다면 제거 (메모리 누수 방지)
+                 if (rematchRef) {
+                    rematchRef.off();
+                 }
+                 rematchRef = roomRef.child('rematchRequests');
                  
                  rematchRef.on('value', snapshot => {
-                      // [수정] 게임오버 모달이 켜져있을 때만 작동
+                      const requests = snapshot.val() || {}; // [수정] null일 경우 빈 객체
+
+                      // [신규] '다시하기' 상태 목록 UI 업데이트
+                      const allStatusSpans = document.querySelectorAll('#rematch-status-list .status-text');
+                      allStatusSpans.forEach(span => {
+                          const uid = span.dataset.uid;
+                          if (requests.hasOwnProperty(uid)) {
+                              span.textContent = 'Ready';
+                              span.classList.add('ready');
+                          } else {
+                              span.textContent = '';
+                              span.classList.remove('ready');
+                          }
+                      });
+                      
+                      // [신규] 내 버튼 상태 업데이트 (재접속 시 또는 리셋 시)
+                      const myRematchBtn = document.getElementById('rematch-btn');
+                      if (myRematchBtn) { // 버튼이 존재할 때만
+                          if (requests.hasOwnProperty(playerUid)) {
+                              myRematchBtn.disabled = true;
+                              myRematchBtn.textContent = 'Ready ✓';
+                          } else {
+                              myRematchBtn.disabled = false;
+                              myRematchBtn.textContent = '다시하기';
+                          }
+                      }
+                      
+                      // [수정] 모달이 닫혀있거나 데이터가 없으면 리스너 로직 중지
                       if (!snapshot.exists() || !currentRoomData || !currentRoomData.players || !gameOverOverlay.classList.contains('active')) {
                         return;
                       }
 
-                      const requests = snapshot.val();
+                      // (기존 로직) 모든 플레이어가 동의했는지 체크
                       const requestCount = Object.keys(requests).length;
                       const playerCount = Object.keys(currentRoomData.players).length;
 
                       // 모든 플레이어가 동의했고, 내가 호스트라면
                       if (playerCount >= 2 && requestCount === playerCount && isHost) {
-                            rematchRef.off(); // 리스너 정리
+                            if (rematchRef) rematchRef.off(); // [수정] 리스너 정리
+                            rematchRef = null;
                             
                             // [수정] '애니팡' 게임 재시작을 위한 상태값 초기화
                             roomRef.update({
