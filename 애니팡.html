@@ -751,7 +751,7 @@ let hintTimerId = null; // [신규] 힌트 타이머
             let feverGauge = 0;
             const MAX_FEVER_GAUGE = 100; // (게이지 최대치, 100으로 설정)
             let isFeverMode = false;
-            const FEVER_DURATION = 7000; // (피버 지속 시간, 5초 = 5000ms)
+            const FEVER_DURATION = 5000; // [수정] 5초
             let feverTimerId = null;
             // --- 피버 시스템 끝 ---
 
@@ -1759,9 +1759,32 @@ stopSound('bgm'); // [신규] BGM 정지
                 gameWrapper.appendChild(pangiText); // [수정] feverText -> pangiText
                 setTimeout(() => pangiText.remove(), 1000); // [수정] feverText -> pangiText
 
-                // [제거] 불필요한 피버 종료 타이머
-                // feverTimerId = setTimeout(endFeverMode, FEVER_DURATION);
             }
+
+            // [신규] 15콤보 달성 시 "진짜" 피버 모드를 발동시키는 함수
+            function triggerActualFeverMode() {
+                if (isFeverMode) return; // 중복 방지
+
+                console.log("🔥 15콤보 달성! 피버 모드 발동!");
+                isFeverMode = true;
+                gameBoard.classList.add('fever-active');
+                gameAreaFrameEl.classList.add('fever-active');
+
+                // "FEVER!" 텍스트 표시
+                const feverText = document.createElement('div');
+                feverText.className = 'combo-text';
+                feverText.textContent = '🔥 FEVER! 🔥';
+                feverText.style.top = '50%';
+                feverText.style.left = '50%';
+                feverText.style.transform = 'translate(-50%, -50%)';
+                gameWrapper.appendChild(feverText);
+                setTimeout(() => feverText.remove(), 1000); // 1초 뒤 제거
+
+                // [중요] 5초 뒤에 피버 종료
+                if (feverTimerId) clearTimeout(feverTimerId); // 혹시 모를 타이머 제거
+                feverTimerId = setTimeout(endFeverMode, FEVER_DURATION);
+            }
+
 
             function endFeverMode() {
                 console.log("...피버 모드 종료.");
@@ -2381,6 +2404,11 @@ async function handlePangiExplosion(row, col) {
 
 
     currentCombo++;
+
+    // [신규] 15콤보 달성 시 피버 모드 발동
+    if (currentCombo === 15 && !isFeverMode) {
+        triggerActualFeverMode();
+    }
 
     const scoreMultiplier = isFeverMode ? 1.5 : 1.0;
 
