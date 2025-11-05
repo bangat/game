@@ -499,9 +499,7 @@
     <audio id="swap-sound" src="./sounds/move.wav" preload="auto"></audio>
     <audio id="match-sound" src="./봄버맨사운드/사천성맞춤.mp3" preload="auto"></audio>
     <audio id="gameover-sound" src="./봄버맨사운드/패배.mp3" preload="auto"></audio>
-    <audio id="combo1-sound" src="./sounds/combo1.mp3" preload="auto"></audio>
-    <audio id="combo2-sound" src="./sounds/combo2.mp3" preload="auto"></audio>
-    <audio id="combo3-sound" src="./sounds/combo3.mp3" preload="auto"></audio>
+
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
@@ -529,12 +527,8 @@
             const sounds = {
                 swap: document.getElementById('swap-sound'),
                 match: document.getElementById('match-sound'),
-                gameOver: document.getElementById('gameover-sound'),
-                combo: [
-                    document.getElementById('combo1-sound'),
-                    document.getElementById('combo2-sound'),
-                    document.getElementById('combo3-sound')
-                ]
+                gameOver: document.getElementById('gameover-sound')
+                // [제거] combo 배열 (더 이상 필요 없음)
             };
 
             // [수정] 타일 수 (8x6 = 48개)
@@ -867,14 +861,14 @@
                 
                 // [핵심 수정] 사천성(Shisen-Sho)의 화면 맞춤 렌더링 로직으로 변경
                 
-                // 1. 컨테이너 크기 가져오기
+               // [중요] 레이아웃 변경으로 인해, #game-container의 패딩을 JS에서 읽어야 함
                 const gameContainerStyles = window.getComputedStyle(gameContainer);
-                const containerPaddingTop = parseFloat(gameContainerStyles.paddingTop) || 0;
-                const containerPaddingBottom = parseFloat(gameContainerStyles.paddingBottom) || 0;
+                // const containerPaddingTop = parseFloat(gameContainerStyles.paddingTop) || 0; // [제거]
+                // const containerPaddingBottom = parseFloat(gameContainerStyles.paddingBottom) || 0; // [제거]
                 
                 const containerW = gameContainer.clientWidth;
-                // [수정] 사용 가능한 순수 높이 (컨테이너의 상하 패딩 5px씩 제외)
-                const containerH = gameContainer.clientHeight - containerPaddingTop - containerPaddingBottom; 
+                // [수정] clientHeight는 이미 padding을 포함합니다. (이중 차감 버그 수정)
+                const containerH = gameContainer.clientHeight;
                 
                 if (containerW <= 0 || containerH <= 0) { 
                     console.warn("컨테이너 크기 오류", containerW, containerH);
@@ -903,6 +897,9 @@
                     boardSizeH = maxBoardH;
                     boardSizeW = maxBoardH * boardAspectRatio;
                 }
+                // [핵심 수정] 서브픽셀 잘림 방지를 위해 최종 너비/높이를 정수(내림) 처리
+                boardSizeW = Math.floor(boardSizeW);
+                boardSizeH = Math.floor(boardSizeH);
 
                 // 4. 게임 보드 스타일 설정
                 gameBoard.style.width = `${boardSizeW}px`;
@@ -1568,14 +1565,34 @@
                 } catch(e) {}
             }
             function playComboSound(combo) {
-                playSound('match');
-                if (combo >= 1) {
-                    const comboSound = sounds.combo[Math.min(combo - 1, sounds.combo.length - 1)];
-                    if (comboSound) {
-                        comboSound.currentTime = 0;
-                        comboSound.play().catch(e => {});
+                // [핵심 수정] 콤보가 쌓일수록 'match-sound'의 피치를 높여 재생합니다.
+                
+                // 1. '도' 사운드의 기본 재생 속도 (1.0 = 100%)
+                const basePlaybackRate = 1.0;
+                
+                // 2. 콤보당 피치 상승량 (0.05 = 5%. 12콤보가 되면 1옥타브(약 1.6) 상승)
+                // (이 값을 0.08~0.1로 올리면 음 변화가 더 가파릅니다)
+                const pitchIncreasePerCombo = 0.05; 
+                
+                // 3. 콤보에 따른 최종 재생 속도 계산
+                // 예: 1콤보=1.05, 2콤보=1.10, 3콤보=1.15 ...
+                // 10콤보(max) = 1.5
+                const targetRate = basePlaybackRate + (Math.max(0, combo - 1) * pitchIncreasePerCombo);
+                
+                // 4. 최대/최소 속도 제한 (너무 높거나 낮아지지 않게)
+                const finalRate = Math.max(1.0, Math.min(targetRate, 2.0)); // (최대 2배속)
+
+                try {
+                    const sound = sounds['match']; // 'match' 사운드를 가져옴
+                    if(sound) {
+                        sound.currentTime = 0;
+                        sound.playbackRate = finalRate; // [중요] 계산된 재생 속도(피치) 설정
+                        sound.play().catch(e => {});
                     }
-                }
+                } catch(e) {}
+                
+                // [참고] 기존 콤보1,2,3 사운드는 더 이상 재생하지 않습니다.
+                // (만약 콤보가 특정 수(예: 5)일 때만 다른 소리를 내고 싶다면 여기에 'if'문 추가)
             }
             function animatePop(matches) {
                 matches.forEach(key => {
