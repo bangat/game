@@ -108,12 +108,12 @@
         .header-btn:active { opacity: 0.7; }
         .header-btn.leave { font-size: 2.5em; width: 50px; text-align: left; }
         .header-btn.invite {
-            font-size: 1.0em;
+            font-size: 0.9em; /* [수정] 1.0em -> 0.9em */
             font-weight: 900;
             background-color: var(--secondary-color); /* [수정] secondary 색상 */
             color: var(--text-color-light);
             border-radius: 12px;
-            padding: 10px 16px;
+            padding: 8px 12px; /* [수정] 10px 16px -> 8px 12px */
             border-bottom: 4px solid #379A93; /* [수정] secondary 어두운 버전 */
             box-shadow: none;
             width: auto; /* 고정 폭 제거 */
@@ -395,7 +395,36 @@
 
         /* 3. ✨ [제거] 빈 슬롯 애니메이션 제거 */
         /* (.player-slot-compact .avatar:empty 규칙 없음) */
-
+/* [신규] 토스트 알림 */
+        #toast-container {
+            position: fixed;
+            bottom: 80px; /* 푸터 버튼들 위 */
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            pointer-events: none; /* 클릭 방지 */
+        }
+        .toast-notification {
+            background-color: rgba(0, 0, 0, 0.75);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            opacity: 0;
+            transition: opacity 0.5s, transform 0.5s;
+            animation: toast-fade-in 0.5s forwards, toast-fade-out 0.5s 2.5s forwards;
+        }
+        @keyframes toast-fade-in {
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes toast-fade-out {
+            from { opacity: 1; transform: translateY(0); }
+            to { opacity: 0; transform: translateY(-20px); }
+        }
         /* [수정] 8. 모달 및 오버레이 (대기실 테마 적용) */
         .overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -501,7 +530,7 @@
                 <p id="game-type-header"></p>
             </div>
             <div class="header-buttons-wrapper">
-                <button id="invite-btn" class="header-btn invite">친구초대</button>
+                <button id="invite-btn" class="header-btn invite">카톡초대</button>
                 </div>
         </div>
         
@@ -602,8 +631,8 @@ function kakaoInvite() {
         return;
     }
     
-    // [수정] index.html을 직접 가리키는 고정 URL로 변경
-    const inviteURL = `https://bangat.github.io/game/index.html?roomId=${roomRef.key}`;
+    // [수정] index.html -> 대기실.html로 변경 (사용자 요청)
+    const inviteURL = `https://bangat.github.io/game/대기실.html?roomId=${roomRef.key}`;
     console.log('kakaoInvite: 생성된 URL:', inviteURL);
     console.log('Kakao.Share.sendDefault 호출 시도...');
     
@@ -809,6 +838,23 @@ function kakaoInvite() {
             alertModalOkBtn.addEventListener('click', () => {
                 alertModal.classList.remove('active');
             });
+        }
+
+        // ✨ [신규] 공용 토스트 알림 표시 함수
+        function showToast(message) {
+            const toastContainer = document.getElementById('toast-container');
+            if (!toastContainer) return;
+
+            const toast = document.createElement('div');
+            toast.className = 'toast-notification';
+            toast.textContent = message;
+            
+            toastContainer.appendChild(toast);
+
+            // 3초 후 DOM에서 제거
+            setTimeout(() => {
+                toast.remove();
+            }, 3000);
         }
 
         // ✨ [신규] 공용 알림 모달 표시 함수
@@ -1359,7 +1405,7 @@ const inviteBtn = document.getElementById('invite-btn');
         const copyInviteBtn = document.createElement('button');
         copyInviteBtn.id = 'copy-invite-btn';
         copyInviteBtn.className = 'header-btn invite'; // 스타일 재사용
-        copyInviteBtn.textContent = '링크복사';
+        copyInviteBtn.textContent = '친구초대';
         // 스타일 오버라이드 (악센트 색상 사용)
         copyInviteBtn.style.backgroundColor = 'var(--accent-color)';
         copyInviteBtn.style.color = 'var(--text-color-dark)';
@@ -1371,22 +1417,22 @@ const inviteBtn = document.getElementById('invite-btn');
 
         copyInviteBtn.addEventListener('click', () => {
             if (!roomRef) return;
-            // ✨ [수정] 사용자가 요청한 고정 URL을 기반으로 초대 링크 생성
-            const inviteURL = `https://bangat.github.io/game/index.html?roomId=${roomRef.key}`;
+            // ✨ [수정] index.html -> 대기실.html로 변경 (사용자 요청)
+            const inviteURL = `https://bangat.github.io/game/대기실.html?roomId=${roomRef.key}`;
             
             if (navigator.clipboard) {
                 navigator.clipboard.writeText(inviteURL).then(() => {
-                    // ✨ [수정] alert -> showAlert
-                    showAlert('초대 링크가 복사되었습니다!');
+                    // ✨ [수정] showAlert -> showToast
+                    showToast('초대 링크가 복사되었습니다!');
                 }).catch(err => {
                     console.error('클립보드 복사 실패:', err);
-                    // ✨ [수정] alert -> showAlert
-                    showAlert('링크 복사에 실패했습니다.');
+                    // ✨ [수정] showAlert -> showToast
+                    showToast('링크 복사에 실패했습니다.');
                 });
             } else {
                 // 구형 브라우저 fallback
-                // ✨ [수정] alert -> showAlert
-                showAlert('링크를 복사할 수 없습니다.');
+                // ✨ [수정] showAlert -> showToast
+                showToast('링크를 복사할 수 없습니다.');
             }
         });
 
@@ -1410,8 +1456,8 @@ if (inviteBtn) {
     
 
 </script>
+<div id="toast-container"></div>
 
-  
 <div id="confirm-exit-modal" class="overlay">
     <div class="modal-content" style="max-width: 350px;">
         <div class="modal-body">
