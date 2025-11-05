@@ -247,6 +247,7 @@
             transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), 
                         opacity 0.2s ease,
                         box-shadow 0.2s ease;
+            aspect-ratio: 1 / 1; /* [핵심 수정] 타일이 1:1 비율을 갖도록 강제 (사천성 방식) */
         }
         .tile:active {
             box-shadow: inset 1px 1px 2px rgba(87, 65, 65, 0.2), 
@@ -859,18 +860,20 @@
                 return TILE_EMOJIS[Math.floor(Math.random() * TILE_EMOJIS.length)];
             }
 
-            // [수정] "타일 안맞음" 버그 해결 (JS 로직은 수정 없이 그대로 작동)
+          // [수정] "타일 안맞음" 버그 해결 (JS 로직은 수정 없이 그대로 작동)
             function renderBoard() {
                 gameBoard.innerHTML = '';
                 tileElements = [];
                 
-                // [중요] 레이아웃 변경으로 인해, #game-container의 패딩을 JS에서 읽어야 함
+                // [핵심 수정] 사천성(Shisen-Sho)의 화면 맞춤 렌더링 로직으로 변경
+                
+                // 1. 컨테이너 크기 가져오기
                 const gameContainerStyles = window.getComputedStyle(gameContainer);
                 const containerPaddingTop = parseFloat(gameContainerStyles.paddingTop) || 0;
                 const containerPaddingBottom = parseFloat(gameContainerStyles.paddingBottom) || 0;
                 
                 const containerW = gameContainer.clientWidth;
-                // [수정] 사용 가능한 높이는 컨테이너 높이에서 상하 패딩을 뺀 값
+                // [수정] 사용 가능한 순수 높이 (컨테이너의 상하 패딩 5px씩 제외)
                 const containerH = gameContainer.clientHeight - containerPaddingTop - containerPaddingBottom; 
                 
                 if (containerW <= 0 || containerH <= 0) { 
@@ -880,37 +883,45 @@
                     return; 
                 }
 
-                // [수정] 계산에 필요한 모든 CSS 값
-                const gap = 2; // grid-gap
-                const boardPadding = 4; // #game-board padding
-                const boardBorder = 2; // [수정] #game-board border (4->2)
+                // 2. 보드 크기 계산 (사천성 로직)
+                const maxBoardW = containerW; // 사용 가능한 최대 너비
+                const maxBoardH = containerH; // 사용 가능한 최대 높이
+                let boardSizeW, boardSizeH;
                 
-                // [수정] 컨테이너 자체 패딩(10)은 이제 JS 계산에 불필요함
-                // const containerPadding = 10; 
+                const cellAspectRatio = 1; // 타일 비율 (1:1)
+                // [핵심] Anipang의 ROWS(8), COLS(6) 사용
+                const boardAspectRatio = (COLS * cellAspectRatio) / ROWS; // (6*1)/8 = 0.75
                 
-                const availableW = containerW; // [수정] game-container의 패딩은 0 (좌우)
-                const availableH = containerH; // [수정] game-container의 패딩은 0 (상하, 위에서 뺌)
-
-                const tileW_calc = (availableW - (boardPadding * 2) - (boardBorder * 2) - (COLS - 1) * gap) / COLS;
-                const tileH_calc = (availableH - (boardPadding * 2) - (boardBorder * 2) - (ROWS - 1) * gap) / ROWS;
-
-                const tileSize = Math.floor(Math.min(tileW_calc, tileH_calc));
-                
-                if (tileSize <= 0) { 
-                    console.warn("타일 크기 계산 오류", tileSize);
-                    return; 
+                // 3. 컨테이너와 보드의 종횡비 비교
+                if ((maxBoardW / boardAspectRatio) <= maxBoardH) {
+                    // 너비가 기준일 때 계산된 높이가 컨테이너 높이보다 작거나 같음
+                    // (대부분의 모바일 세로 모드)
+                    boardSizeW = maxBoardW;
+                    boardSizeH = maxBoardW / boardAspectRatio;
+                } else {
+                    // 높이가 기준 (가로 모드 또는 정사각형에 가까운 화면)
+                    boardSizeH = maxBoardH;
+                    boardSizeW = maxBoardH * boardAspectRatio;
                 }
-                
-                const finalBoardW = (tileSize * COLS) + (COLS - 1) * gap + (boardPadding * 2) + (boardBorder * 2);
-                const finalBoardH = (tileSize * ROWS) + (ROWS - 1) * gap + (boardPadding * 2) + (boardBorder * 2);
 
-                gameBoard.style.width = `${finalBoardW}px`;
-                gameBoard.style.height = `${finalBoardH}px`; 
-                gameBoard.style.gridTemplateColumns = `repeat(${COLS}, ${tileSize}px)`; 
-                gameBoard.style.gridTemplateRows = `repeat(${ROWS}, ${tileSize}px)`; 
+                // 4. 게임 보드 스타일 설정
+                gameBoard.style.width = `${boardSizeW}px`;
+                gameBoard.style.height = `${boardSizeH}px`; 
+                // [핵심] 1fr 단위를 사용하여 CSS의 aspect-ratio가 작동하도록 함
+                gameBoard.style.gridTemplateColumns = `repeat(${COLS}, 1fr)`; 
+                gameBoard.style.gridTemplateRows = `repeat(${ROWS}, 1fr)`; 
                 
-                const iconSize = tileSize * 0.7; // 폰트 크기
+                // 5. 타일 폰트 크기 계산
+                // CSS에서 padding(4px), border(2px), gap(2px) 값을 읽어와야 함
+                const boardPadding = parseFloat(window.getComputedStyle(gameBoard).paddingLeft) || 4;
+                const boardBorder = parseFloat(window.getComputedStyle(gameBoard).borderLeftWidth) || 2;
+                const gap = parseFloat(window.getComputedStyle(gameBoard).gap) || 2;
 
+                // 순수 타일 하나의 너비 (CSS aspect-ratio로 인해 너비만 계산하면 됨)
+                const currentTileSize = (boardSizeW - (boardPadding * 2) - (boardBorder * 2) - (COLS - 1) * gap) / COLS;
+                const iconSize = currentTileSize * 0.7; // 폰트 크기
+
+                // 6. 타일 생성 (Anipang 기존 로직)
                 for (let r = 0; r < ROWS; r++) {
                     const rowElements = [];
                     for (let c = 0; c < COLS; c++) {
@@ -919,7 +930,7 @@
                         tile.dataset.row = r;
                         tile.dataset.col = c;
                         tile.textContent = board[r][c];
-                        tile.style.fontSize = `${iconSize}px`; 
+                        tile.style.fontSize = `${iconSize}px`; // [수정] 계산된 아이콘 크기 적용
                         gameBoard.appendChild(tile);
                         rowElements.push(tile);
                         tile.addEventListener('pointerdown', handleDragStart);
