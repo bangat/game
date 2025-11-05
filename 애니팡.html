@@ -556,29 +556,6 @@
             color: #28a745; /* 'Ready' 초록색 */
             text-shadow: 0 0 5px rgba(40, 167, 69, 0.5);
         }
-/* [신규] 줄무늬 타일 스타일 */
-        .tile.striped-h {
-            background-image: repeating-linear-gradient(
-                to bottom,
-                transparent,
-                transparent 8px,
-                rgba(255, 255, 255, 0.5) 10px,
-                rgba(255, 255, 255, 0.5) 18px,
-                transparent 20px
-            );
-            background-size: 100% 30px;
-        }
-        .tile.striped-v {
-            background-image: repeating-linear-gradient(
-                to right,
-                transparent,
-                transparent 8px,
-                rgba(255, 255, 255, 0.5) 10px,
-                rgba(255, 255, 255, 0.5) 18px,
-                transparent 20px
-            );
-            background-size: 30px 100%;
-        }
 
 @keyframes mega-rainbow {
     0% { 
@@ -713,7 +690,6 @@
 const CROSS_EXPLOSION_BONUS = 500; // 십자가 폭발 보너스 점수
 const RAINBOW_TILE = '🌈'; // 레인보우 타일 이모지
 const RAINBOW_BONUS = 2000; // 레인보우 폭발 보너스 점수
-const STRIPED_BONUS = 200; // [신규] 줄무늬 타일 보너스 점수
 
             let board = []; 
             let tileElements = []; 
@@ -1789,21 +1765,6 @@ stopSound('bgm'); // [신규] BGM 정지
     isProcessing = true;
 
     playSound('swap');
-
-    // [신규] 줄무늬 타일 폭발 감지
-    const tile1Data = board[r1][c1];
-    const tile2Data = board[r2][c2];
-
-    if (tile1Data && (tile1Data.endsWith('H') || tile1Data.endsWith('V'))) {
-        await handleStripedSwap(r1, c1, tile1Data.endsWith('H') ? 'H' : 'V');
-        isProcessing = false;
-        return;
-    }
-    if (tile2Data && (tile2Data.endsWith('H') || tile2Data.endsWith('V'))) {
-        await handleStripedSwap(r2, c2, tile2Data.endsWith('H') ? 'H' : 'V');
-        isProcessing = false;
-        return;
-    }
     
     // 레인보우 타일과 일반 타일 교환 감지
     const tile1 = board[r1][c1];
@@ -1955,70 +1916,6 @@ async function handleDoubleRainbow(r1, c1, r2, c2) {
     }
 }
 
-// [신규] 줄무늬 타일과 일반 타일 교환 (줄/열 전체 제거)
-async function handleStripedSwap(row, col, direction) {
-    currentCombo++;
-    
-    const matchingTiles = new Set();
-    
-    // 줄무늬 타일 자신도 제거
-    matchingTiles.add(`${row}-${col}`);
-
-    if (direction === 'H') {
-        // 가로줄(Row) 전체 제거
-        for (let c = 0; c < COLS; c++) {
-            if (board[row][c]) matchingTiles.add(`${row}-${c}`);
-        }
-    } else {
-        // 세로줄(Column) 전체 제거
-        for (let r = 0; r < ROWS; r++) {
-            if (board[r][col]) matchingTiles.add(`${r}-${col}`);
-        }
-    }
-    
-    const scoreMultiplier = isFeverMode ? 1.5 : 1.0;
-    const baseScore = matchingTiles.size * 30; // 줄무늬 기본 점수
-    const comboBonus = currentCombo * 20;
-    const turnScore = Math.round((baseScore + comboBonus + STRIPED_BONUS) * scoreMultiplier);
-    
-    score += turnScore;
-    
-    showStripedExplosion(row, col, direction); // 폭발 이펙트
-    showComboText(currentCombo, matchingTiles);
-    showComboScore(turnScore);
-    
-    if (!isFeverMode) {
-        const gaugeGain = matchingTiles.size * 1.0; // 게이지 획득
-        feverGauge = Math.min(MAX_FEVER_GAUGE, feverGauge + gaugeGain);
-        updateFeverGaugeUI();
-        if (feverGauge >= MAX_FEVER_GAUGE) {
-            startFeverMode();
-        }
-    }
-    
-    updateScoreUI();
-    if (playerRef) { playerRef.child('score').set(score); }
-    playComboSound(currentCombo);
-    
-    await animatePop(matchingTiles);
-    removeMatches(matchingTiles);
-    
-    const { droppedTilesMap } = dropTiles();
-    const newTilesMap = fillTopTiles();
-    await animateDrops(droppedTilesMap, newTilesMap);
-    
-    const newMatchData = findAllMatches();
-    if (newMatchData.matches.size > 0) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-        await processMatchesAndCascade(newMatchData);
-    } else {
-        currentCombo = 0;
-        if (!checkForPossibleMoves()) {
-            await handleNoMoreMoves();
-        }
-    }
-}
-
 // 레인보우 타일 생성 시 효과
 function showRainbowEffect(rainbowTiles) {
     rainbowTiles.forEach(({ row, col }) => {
@@ -2133,87 +2030,6 @@ function showDoubleRainbowEffect(r1, c1, r2, c2) {
     setTimeout(() => explosionText.remove(), 1000);
 }
 
-// [신규] 줄무늬 타일 생성 시 효과
-function showStripedEffect(stripedTiles) {
-    stripedTiles.forEach(({ row, col }) => {
-        if (!tileElements[row] || !tileElements[row][col]) return;
-        
-        const tile = tileElements[row][col];
-        const rect = tile.getBoundingClientRect();
-        const boardRect = gameBoard.getBoundingClientRect();
-        const wrapperRect = gameWrapper.getBoundingClientRect();
-        
-        const centerTop = (rect.top - boardRect.top) + (rect.height / 2) + boardRect.top - wrapperRect.top;
-        const centerLeft = (rect.left - boardRect.left) + (rect.width / 2) + boardRect.left - wrapperRect.left;
-
-        const stripedText = document.createElement('div');
-        stripedText.className = 'combo-text';
-        stripedText.textContent = '줄무늬!';
-        stripedText.style.top = `${centerTop}px`;
-        stripedText.style.left = `${centerLeft}px`;
-        stripedText.style.transform = 'translate(-50%, -50%)';
-        stripedText.style.fontSize = '2.2em';
-        stripedText.style.color = '#fff';
-        stripedText.style.textShadow = '2px 2px 5px rgba(0,0,0,0.8)';
-        
-        gameWrapper.appendChild(stripedText);
-        setTimeout(() => stripedText.remove(), 800);
-    });
-}
-
-// [신규] 줄무늬 타일 폭발 시 효과
-function showStripedExplosion(row, col, direction) {
-    if (!tileElements[row] || !tileElements[row][col]) return;
-    
-    const centerTile = tileElements[row][col];
-    const rect = centerTile.getBoundingClientRect();
-    const boardRect = gameBoard.getBoundingClientRect();
-    const wrapperRect = gameWrapper.getBoundingClientRect();
-    
-    const centerTop = (rect.top - boardRect.top) + (rect.height / 2) + boardRect.top - wrapperRect.top;
-    const centerLeft = (rect.left - boardRect.left) + (rect.width / 2) + boardRect.left - wrapperRect.left;
-
-    const line = document.createElement('div');
-    line.style.position = 'absolute';
-    line.style.top = `${centerTop}px`;
-    line.style.left = `${centerLeft}px`;
-    line.style.background = 'linear-gradient(90deg, #FFD700, #FF6B6B, #FFD700)';
-    line.style.boxShadow = '0 0 20px #FFD700';
-    line.style.pointerEvents = 'none';
-    line.style.zIndex = '150';
-    line.style.transform = 'translate(-50%, -50%)';
-    line.style.opacity = '0';
-
-    if (direction === 'H') { // 가로 폭발
-        line.style.width = '300%';
-        line.style.height = '6px';
-        line.style.animation = 'line-explode-h 0.5s ease-out forwards';
-    } else { // 세로 폭발
-        line.style.width = '6px';
-        line.style.height = '300%';
-        line.style.animation = 'line-explode-v 0.5s ease-out forwards';
-    }
-    
-    gameWrapper.appendChild(line);
-    setTimeout(() => line.remove(), 500);
-
-    // 키프레임 동적 추가 (CSS에 추가해도 됨)
-    if (!document.getElementById('line-explode-frames')) {
-        const style = document.createElement('style');
-        style.id = 'line-explode-frames';
-        style.textContent = `
-            @keyframes line-explode-h {
-                0% { transform: translate(-50%, -50%) scaleX(0); opacity: 1; }
-                100% { transform: translate(-50%, -50%) scaleX(1); opacity: 0; }
-            }
-            @keyframes line-explode-v {
-                0% { transform: translate(-50%, -50%) scaleY(0); opacity: 1; }
-                100% { transform: translate(-50%, -50%) scaleY(1); opacity: 0; }
-            }
-        `;
-        document.head.appendChild(style);
-    }
-}
 
             function swapData(r1, c1, r2, c2) {
                 const temp = board[r1][c1];
@@ -2282,7 +2098,6 @@ function showStripedExplosion(row, col, direction) {
           function findAllMatches() {
     const matches = new Set();
     const crossExplosions = [];
-    const stripedTiles = []; // [신규] 줄무늬 타일 위치 저장
     const rainbowTiles = []; // 레인보우 타일 위치 저장
     
     // 1. 가로 방향 매칭 (5개 이상 감지)
@@ -2293,21 +2108,18 @@ function showStripedExplosion(row, col, direction) {
                 continue;
             }
             
-         const matchLength = c - matchStart;
+            const matchLength = c - matchStart;
             if (matchLength >= 3) {
                 for (let i = matchStart; i < c; i++) {
                     matches.add(`${r}-${i}`);
                 }
                 
-                if (matchLength === 4) { // [신규] 4-Match (줄무늬)
-                    const centerCol = matchStart + 1; // 0,1,2,3 -> 1번 인덱스에 생성
-                    stripedTiles.push({ row: r, col: centerCol, direction: 'V', emoji: board[r][matchStart] }); // 가로 매치는 세로 폭발(V)
-                } else if (matchLength === 5) { // [수정] else if
-                    const centerCol = matchStart + Math.floor(matchLength / 2);
-                    crossExplosions.push({ row: r, col: centerCol });
-                } else if (matchLength >= 6) { // [수정] else if
+                if (matchLength >= 6) {
                     const centerCol = matchStart + Math.floor(matchLength / 2);
                     rainbowTiles.push({ row: r, col: centerCol });
+                } else if (matchLength >= 5) {
+                    const centerCol = matchStart + Math.floor(matchLength / 2);
+                    crossExplosions.push({ row: r, col: centerCol });
                 }
             }
             matchStart = c;
@@ -2318,15 +2130,12 @@ function showStripedExplosion(row, col, direction) {
             for (let i = matchStart; i < COLS; i++) {
                 matches.add(`${r}-${i}`);
             }
-            if (matchLength === 4) { // [신규] 4-Match (줄무늬)
-                const centerCol = matchStart + 1;
-                stripedTiles.push({ row: r, col: centerCol, direction: 'V', emoji: board[r][matchStart] }); // 가로 매치는 세로 폭발(V)
-            } else if (matchLength === 5) { // [수정] else if
-                const centerCol = matchStart + Math.floor(matchLength / 2);
-                crossExplosions.push({ row: r, col: centerCol });
-            } else if (matchLength >= 6) { // [수정] else if
+            if (matchLength >= 6) {
                 const centerCol = matchStart + Math.floor(matchLength / 2);
                 rainbowTiles.push({ row: r, col: centerCol });
+            } else if (matchLength >= 5) {
+                const centerCol = matchStart + Math.floor(matchLength / 2);
+                crossExplosions.push({ row: r, col: centerCol });
             }
         }
     }
@@ -2345,15 +2154,12 @@ function showStripedExplosion(row, col, direction) {
                     matches.add(`${i}-${c}`);
                 }
                 
-                if (matchLength === 4) { // [신규] 4-Match (줄무늬)
-                    const centerRow = matchStart + 1;
-                    stripedTiles.push({ row: centerRow, col: c, direction: 'H', emoji: board[matchStart][c] }); // 세로 매치는 가로 폭발(H)
-                } else if (matchLength === 5) { // [수정] else if
-                    const centerRow = matchStart + Math.floor(matchLength / 2);
-                    crossExplosions.push({ row: centerRow, col: c });
-                } else if (matchLength >= 6) { // [수정] else if
+                if (matchLength >= 6) {
                     const centerRow = matchStart + Math.floor(matchLength / 2);
                     rainbowTiles.push({ row: centerRow, col: c });
+                } else if (matchLength >= 5) {
+                    const centerRow = matchStart + Math.floor(matchLength / 2);
+                    crossExplosions.push({ row: centerRow, col: c });
                 }
             }
             matchStart = r;
@@ -2364,15 +2170,12 @@ function showStripedExplosion(row, col, direction) {
             for (let i = matchStart; i < ROWS; i++) {
                 matches.add(`${i}-${c}`);
             }
-            if (matchLength === 4) { // [신규] 4-Match (줄무늬)
-                const centerRow = matchStart + 1;
-                stripedTiles.push({ row: centerRow, col: c, direction: 'H', emoji: board[matchStart][c] }); // 세로 매치는 가로 폭발(H)
-            } else if (matchLength === 5) { // [수정] else if
-                const centerRow = matchStart + Math.floor(matchLength / 2);
-                crossExplosions.push({ row: centerRow, col: c });
-            } else if (matchLength >= 6) { // [수정] else if
+            if (matchLength >= 6) {
                 const centerRow = matchStart + Math.floor(matchLength / 2);
                 rainbowTiles.push({ row: centerRow, col: c });
+            } else if (matchLength >= 5) {
+                const centerRow = matchStart + Math.floor(matchLength / 2);
+                crossExplosions.push({ row: centerRow, col: c });
             }
         }
     }
@@ -2387,7 +2190,7 @@ function showStripedExplosion(row, col, direction) {
         }
     });
     
-    return { matches, crossExplosions, rainbowTiles, stripedTiles }; // [수정] stripedTiles 반환
+    return { matches, crossExplosions, rainbowTiles };
 }
             
           async function processMatchesAndCascade(matchData) {
@@ -2400,7 +2203,6 @@ function showStripedExplosion(row, col, direction) {
     const matches = matchData.matches || matchData;
     const crossExplosions = matchData.crossExplosions || [];
     const rainbowTiles = matchData.rainbowTiles || [];
-    const stripedTiles = matchData.stripedTiles || []; // [신규]
     
     currentCombo++;
 
@@ -2410,9 +2212,8 @@ function showStripedExplosion(row, col, direction) {
     const comboBonus = currentCombo * 20;
     const crossBonus = crossExplosions.length * CROSS_EXPLOSION_BONUS;
     const rainbowBonus = rainbowTiles.length * RAINBOW_BONUS;
-    const stripedBonus = stripedTiles.length * STRIPED_BONUS; // [신규]
     
-    const turnScore = Math.round((baseScore + comboBonus + crossBonus + rainbowBonus + stripedBonus) * scoreMultiplier); // [수정]
+    const turnScore = Math.round((baseScore + comboBonus + crossBonus + rainbowBonus) * scoreMultiplier);
     score += turnScore;
     
     if (crossExplosions.length > 0) {
@@ -2423,10 +2224,7 @@ function showStripedExplosion(row, col, direction) {
     if (rainbowTiles.length > 0) {
         showRainbowEffect(rainbowTiles);
     }
-    if (stripedTiles.length > 0) {
-        showStripedEffect(stripedTiles); // [신규] (이펙트 함수는 6단계에서 생성)
-    }
-
+    
     showComboText(currentCombo, matches);
     showComboScore(turnScore);
 
@@ -2451,15 +2249,6 @@ function showStripedExplosion(row, col, direction) {
     rainbowTiles.forEach(({ row, col }) => {
         board[row][col] = RAINBOW_TILE;
     });
-
-    // [신규] 줄무늬 타일 생성
-    stripedTiles.forEach(({ row, col, direction, emoji }) => {
-        // 십자가/레인보우가 같은 자리에 생성되는 것 방지
-        if (board[row][col] && !board[row][col].includes(RAINBOW_TILE)) { 
-            board[row][col] = emoji + direction; // e.g., '🐸H'
-            matches.delete(`${row}-${col}`); // [중요] 이 타일은 터지지 않음
-        }
-    });
     
     const { droppedTilesMap } = dropTiles();
     const newTilesMap = fillTopTiles();
@@ -2474,7 +2263,7 @@ function showStripedExplosion(row, col, direction) {
         // [수정] 콤보 즉시 리셋 대신, 3초 유지 타이머 시작
         // currentCombo = 0; // [제거]
         
-        console.log(`콤보 ${currentCombo} 종료. 2초간 유지...`);
+        console.log(`콤보 ${currentCombo} 종료. 3초간 유지...`);
         if (comboTimerId) clearTimeout(comboTimerId); // 혹시 모를 타이머 정리
         comboTimerId = setTimeout(() => {
             console.log("콤보 유지시간 종료. 콤보 리셋.");
@@ -2494,6 +2283,7 @@ function showStripedExplosion(row, col, direction) {
                     myScoreValueEl.textContent = score.toLocaleString();
                 }
             }
+
             // [신규] BGM 정지를 위한 헬퍼 함수
             function stopSound(id) {
                 try {
@@ -2504,6 +2294,7 @@ function showStripedExplosion(row, col, direction) {
                     }
                 } catch(e) {}
             }
+
 
             function playSound(id) {
                 try {
@@ -2611,34 +2402,6 @@ function showStripedExplosion(row, col, direction) {
                 }
                 return newTilesMap;
             }
-
-            // [신규] 타일 데이터(e.g. '🐸H')를 기반으로 DOM의 텍스트와 CSS 클래스를 업데이트하는 헬퍼 함수
-            function updateTileAppearance(tile, tileData) {
-                let emoji = tileData;
-                let type = 'normal';
-
-                if (tileData === RAINBOW_TILE) {
-                    type = 'rainbow';
-                } else if (tileData && tileData.endsWith('H')) {
-                    emoji = tileData[0]; // '🐸H' -> '🐸'
-                    type = 'striped-h';
-                } else if (tileData && tileData.endsWith('V')) {
-                    emoji = tileData[0]; // '🐸V' -> '🐸'
-                    type = 'striped-v';
-                }
-                
-                tile.textContent = emoji;
-
-                // 기존 애니메이션 클래스(fall, new-tile-anim)를 보존하면서 클래스 리셋
-                const preserveClasses = [];
-                if (tile.classList.contains('fall')) preserveClasses.push('fall');
-                if (tile.classList.contains('new-tile-anim')) preserveClasses.push('new-tile-anim');
-                
-                tile.className = 'tile'; // 기본 클래스로 리셋
-                if (type !== 'normal') tile.classList.add(type); // 특수 타일 클래스 추가
-                preserveClasses.forEach(c => tile.classList.add(c)); // 애니메이션 클래스 복원
-            }
-
           
           // [수정] "고스트 터치" "입력 오류" "버벅임" 모두 해결한 최종 함수 (v2)
             async function animateDrops(droppedTilesMap, newTilesMap) {
@@ -2676,22 +2439,21 @@ function showStripedExplosion(row, col, direction) {
                              continue; 
                         }
 
-                        // tile.textContent = tileData; // [제거]
+                        tile.textContent = tileData; // [수정] 데이터(이모지) 강제 일치
                         tile.dataset.row = r; // [수정] dataset 강제 일치
                         tile.dataset.col = c; // [수정] dataset 강제 일치
-                        updateTileAppearance(tile, tileData); // [신규] 헬퍼 함수로 DOM 외형 업데이트
                         newTileElements[r][c] = tile; // 새 2D 배열에 할당
 
                         if (newTilesMap.has(key)) {
                             // '새로 생긴 타일'
-                            tile.classList.add('fall', 'new-tile-anim'); // [수정] 클래스 추가
+                            tile.className = 'tile fall new-tile-anim'; // [수정] .new -> .new-tile-anim
                             const startY = -(r + 2) * tileSize;
                             tile.style.transform = `translateY(${startY}px)`;
 
                         } else if (droppedTilesMap.has(key)) {
                             // '떨어진 타일'
                             const startRow = droppedTilesMap.get(key); // 데이터가 있던 '행'
-                            tile.classList.add('fall'); // [수정] 클래스 추가
+                            tile.className = 'tile fall';
                             // (r=5, startRow=2) -> 3칸 이동
                             const dropDistance = (r - startRow) * tileSize;
                             // [수정] 버그 방지: 떨어지는 거리가 0일 수 없음 (로직상)
@@ -2701,13 +2463,13 @@ function showStripedExplosion(row, col, direction) {
                                 tile.style.transform = `translateY(${dropDistance}px)`;
                             } else {
                                 // 이 타일은 실제로는 움직이지 않은 타일임
-                                tile.classList.remove('fall'); // [수정] fall 클래스 제거
+                                tile.className = 'tile';
                                 tile.style.transform = '';
                             }
                             
                         } else {
                             // '가만히 있는 타일'
-                            // (updateTileAppearance가 이미 'tile' 클래스를 설정했으므로 추가 작업 불필요)
+                            tile.className = 'tile'; // [수정] fall 클래스 제거
                             tile.style.transform = ''; // [수정] transform 초기화
                         }
                     }
@@ -2767,8 +2529,7 @@ if (fallTiles.length > 0) {
                     for (let c = 0; c < COLS; c++) {
                         if (tileElements[r][c]) {
                             const tile = tileElements[r][c];
-                            // [수정] 헬퍼 함수를 호출하여 줄무늬/레인보우 클래스 보존
-                            updateTileAppearance(tile, board[r][c]); 
+                            tile.className = 'tile';
                             tile.style.transform = '';
                             gameBoard.appendChild(tile); // DOM 이동 (빠름)
                         }
@@ -2949,9 +2710,8 @@ function showCrossExplosion(crossExplosions) {
     for (let r = 0; r < ROWS; r++) {
         for (let c = 0; c < COLS; c++) {
             if(tileElements[r][c]) {
-                // [수정] 헬퍼 함수 사용
-                updateTileAppearance(tileElements[r][c], board[r][c]); 
-                tileElements[r][c].classList.add('new-tile-anim'); // [수정] new -> new-tile-anim
+                tileElements[r][c].textContent = board[r][c];
+                tileElements[r][c].className = 'tile new'; 
                 tileElements[r][c].dataset.row = r;
                 tileElements[r][c].dataset.col = c;
             }
@@ -2962,8 +2722,7 @@ function showCrossExplosion(crossExplosions) {
     for (let r = 0; r < ROWS; r++) {
         for (let c = 0; c < COLS; c++) {
             if(tileElements[r][c]) {
-                // [수정] 헬퍼 함수를 사용하여 클래스 리셋 (특수 타일 클래스 보존)
-                updateTileAppearance(tileElements[r][c], board[r][c]);
+                tileElements[r][c].className = 'tile';
             }
         }
     }
@@ -3016,7 +2775,6 @@ function showCrossExplosion(crossExplosions) {
                 console.log("Cleanup and Exit called");
                 isExiting = true; // 모든 리스너 중지 플래그
                 stopSound('bgm'); // [신규] BGM 정지
-                
                 if (timerId) clearInterval(timerId);
                 if (feverTimerId) clearTimeout(feverTimerId);
 
