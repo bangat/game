@@ -443,6 +443,37 @@
                 border-color: var(--primary-color);
             }
         }
+
+        @keyframes cross-explosion {
+    0% { 
+        opacity: 0; 
+        height: 0; 
+    }
+    30% { 
+        opacity: 1; 
+        height: 200%; 
+    }
+    100% { 
+        opacity: 0; 
+        height: 200%; 
+    }
+}
+
+@keyframes center-burst {
+    0% { 
+        transform: translate(-50%, -50%) scale(0); 
+        opacity: 1; 
+    }
+    50% { 
+        transform: translate(-50%, -50%) scale(3); 
+        opacity: 0.8; 
+    }
+    100% { 
+        transform: translate(-50%, -50%) scale(5); 
+        opacity: 0; 
+    }
+}
+
     </style>
 </head>
 <body>
@@ -543,8 +574,11 @@
             const ROWS = 8;
             const COLS = 6;
             // [수정] 이모지 (5개 동물)
-            const TILE_EMOJIS = ['🐣', '🐼', '🦧', '🐷', '🧟']; 
+            const TILE_EMOJIS = ['🍒', '🍓', '🍍', '🍇', '🍋‍🟩']; 
             const GAME_TIME = 60; // [수정] 5초 -> 60초 (원래대로)
+
+            // [신규] 5-Match 십자가 폭발용 변수
+const CROSS_EXPLOSION_BONUS = 500; // 십자가 폭발 보너스 점수
 
             let board = []; 
             let tileElements = []; 
@@ -830,27 +864,29 @@ loadingOverlay.querySelector('p').textContent = "다른 플레이어를 기다�
                 renderBoard();
             }
 
-            function createBoardData() {
-                board = [];
-                for (let r = 0; r < ROWS; r++) { // ROWS = 8
-                    const row = [];
-                    for (let c = 0; c < COLS; c++) { // COLS = 6
-                        let newEmoji;
-                        do {
-                            newEmoji = getRandomEmoji();
-                        } while (
-                            (c >= 2 && newEmoji === row[c - 1] && newEmoji === row[c - 2]) ||
-                            (r >= 2 && newEmoji === board[r - 1][c] && newEmoji === board[r - 2][c])
-                        );
-                        row.push(newEmoji);
-                    }
-                    board.push(row);
-                }
-                const initialMatches = findAllMatches();
-                if (initialMatches.size > 0) {
-                    createBoardData(); 
-                }
-            }
+          function createBoardData() {
+    board = [];
+    for (let r = 0; r < ROWS; r++) {
+        const row = [];
+        for (let c = 0; c < COLS; c++) {
+            let newEmoji;
+            do {
+                newEmoji = getRandomEmoji();
+            } while (
+                (c >= 2 && newEmoji === row[c - 1] && newEmoji === row[c - 2]) ||
+                (r >= 2 && newEmoji === board[r - 1][c] && newEmoji === board[r - 2][c])
+            );
+            row.push(newEmoji);
+        }
+        board.push(row);
+    }
+    const initialMatchData = findAllMatches();
+    if (initialMatchData.matches.size > 0) {
+        createBoardData(); 
+    }
+}
+
+
             function getRandomEmoji() {
                 return TILE_EMOJIS[Math.floor(Math.random() * TILE_EMOJIS.length)];
             }
@@ -1389,33 +1425,29 @@ const iconSize = Math.floor(currentTileSize * 0.7); // 아이콘 크기도 정�
             // ------------------------------------
             
             async function attemptSwap(r1, c1, r2, c2) {
-                if (isProcessing) return;
-                isProcessing = true; // [수정] 입력 잠금
+    if (isProcessing) return;
+    isProcessing = true;
 
-                playSound('swap');
-                swapData(r1, c1, r2, c2); // 1. 데이터 스왑
-                await animateSwap(r1, c1, r2, c2); // 2. DOM 스왑 (애니메이션 대기)
-                
-                const matches = findAllMatches();
-                
-                if (matches.size > 0) {
-                    // --- 매칭 성공 ---
-                    if (isFeverMode) {
-                        // [신규] 피버 모드: 백그라운드에서 처리하고 즉시 입력 잠금 해제
-                        processMatchesAndCascade(matches);
-                        isProcessing = false;
-                    } else {
-                        // [기존] 일반 모드: 연쇄 폭발이 끝날 때까지 대기
-                        await processMatchesAndCascade(matches);
-                        isProcessing = false;
-                    }
-                } else {
-                    // --- 매칭 실패 ---
-                    // (피버 모드용으로 수정된 animateInvalidSwap 함수가 호출됨)
-                    await animateInvalidSwap(r1, c1, r2, c2); 
-                    isProcessing = false;
-                }
-            }
+    playSound('swap');
+    swapData(r1, c1, r2, c2);
+    await animateSwap(r1, c1, r2, c2);
+    
+    const matchData = findAllMatches();
+    
+    if (matchData.matches.size > 0) {
+        if (isFeverMode) {
+            processMatchesAndCascade(matchData);
+            isProcessing = false;
+        } else {
+            await processMatchesAndCascade(matchData);
+            isProcessing = false;
+        }
+    } else {
+        await animateInvalidSwap(r1, c1, r2, c2); 
+        isProcessing = false;
+    }
+}
+
             function swapData(r1, c1, r2, c2) {
                 const temp = board[r1][c1];
                 board[r1][c1] = board[r2][c2];
@@ -1479,82 +1511,155 @@ const iconSize = Math.floor(currentTileSize * 0.7); // 아이콘 크기도 정�
                 swapData(r1, c1, r2, c2); // 데이터 원위치
                 await animateSwap(r2, c2, r1, c1); // DOM 원위치 (빠른 복귀)
             }
-            function findAllMatches() {
-                const matches = new Set();
-                for (let r = 0; r < ROWS; r++) {
-                    for (let c = 0; c < COLS - 2; c++) {
-                        if (board[r][c] && board[r][c] === board[r][c+1] && board[r][c] === board[r][c+2]) {
-                            matches.add(`${r}-${c}`);
-                            matches.add(`${r}-${c+1}`);
-                            matches.add(`${r}-${c+2}`);
-                        }
-                    }
-                }
-                for (let c = 0; c < COLS; c++) {
-                    for (let r = 0; r < ROWS - 2; r++) {
-                        if (board[r][c] && board[r][c] === board[r+1][c] && board[r][c] === board[r+2][c]) {
-                            matches.add(`${r}-${c}`);
-                            matches.add(`${r+1}-${c}`);
-                            matches.add(`${r+2}-${c}`);
-                        }
-                    }
-                }
-                return matches;
+            // ✅ 변경 코드
+function findAllMatches() {
+    const matches = new Set();
+    const crossExplosions = []; // [신규] 십자가 폭발 위치 저장
+    
+    // 1. 가로 방향 매칭 (5개 이상 감지)
+    for (let r = 0; r < ROWS; r++) {
+        let matchStart = 0;
+        for (let c = 1; c < COLS; c++) {
+            // 같은 타일이 계속되면 pass
+            if (board[r][c] && board[r][c] === board[r][matchStart]) {
+                continue;
             }
             
-            async function processMatchesAndCascade(matches) {
-                // if (isProcessing === false) isProcessing = true; // [삭제] 상태 관리 중복 제거
-                currentCombo++;
-
-                // --- ✨ [신규] 피버 점수 적용 ---
-                const scoreMultiplier = isFeverMode ? 1.5 : 1.0;
-                // --- 피버 점수 끝 ---
-
-                const baseScore = matches.size * 10;
-                const comboBonus = currentCombo * 20;
-                const turnScore = Math.round((baseScore + comboBonus) * scoreMultiplier); // [수정] scoreMultiplier 곱하기 및 반올림
-                score += turnScore;
-                
-                showComboText(currentCombo, matches);
-                showComboScore(turnScore); // 1.5배 적용된 점수 표시
-
-                // --- ✨ [신규] 피버 게이지 획득 ---
-                if (!isFeverMode) { // 피버 모드가 아닐 때만 게이지 획득
-                    // 콤보가 높을수록, 많이 터뜨릴수록 게이지 많이 참
-                    const gaugeGain = (matches.size * 0.5) + (currentCombo * 1.5); 
-                    feverGauge = Math.min(MAX_FEVER_GAUGE, feverGauge + gaugeGain);
-                    updateFeverGaugeUI();
-
-                    // 게이지가 찼는지 확인
-                    if (feverGauge >= MAX_FEVER_GAUGE) {
-                        startFeverMode();
-                    }
+            // 매치가 끊겼을 때 처리
+            const matchLength = c - matchStart;
+            if (matchLength >= 3) {
+                // 3개 이상 매칭
+                for (let i = matchStart; i < c; i++) {
+                    matches.add(`${r}-${i}`);
                 }
-                // --- 피버 게이지 끝 ---
-
-                updateScoreUI(); 
-                if (playerRef) { playerRef.child('score').set(score); }
-                playComboSound(currentCombo);
                 
-                await animatePop(matches);
-                removeMatches(matches);
-                const { droppedTilesMap } = dropTiles();
-                const newTilesMap = fillTopTiles();
-                
-                // [수정] "고스트 터치" "버벅임" 해결
-                await animateDrops(droppedTilesMap, newTilesMap);
-                
-                const newMatches = findAllMatches();
-                if (newMatches.size > 0) {
-                    await new Promise(resolve => setTimeout(resolve, 100)); 
-                    await processMatchesAndCascade(newMatches);
-                } else {
-                    currentCombo = 0;
-                    if (!checkForPossibleMoves()) {
-                        await handleNoMoreMoves();
-                    }
+                // [신규] 5개 이상이면 십자가 폭발 추가
+                if (matchLength >= 5) {
+                    const centerCol = matchStart + Math.floor(matchLength / 2);
+                    crossExplosions.push({ row: r, col: centerCol });
                 }
             }
+            matchStart = c;
+        }
+        
+        // 줄 끝까지 매칭된 경우
+        const matchLength = COLS - matchStart;
+        if (matchLength >= 3) {
+            for (let i = matchStart; i < COLS; i++) {
+                matches.add(`${r}-${i}`);
+            }
+            if (matchLength >= 5) {
+                const centerCol = matchStart + Math.floor(matchLength / 2);
+                crossExplosions.push({ row: r, col: centerCol });
+            }
+        }
+    }
+    
+    // 2. 세로 방향 매칭 (5개 이상 감지)
+    for (let c = 0; c < COLS; c++) {
+        let matchStart = 0;
+        for (let r = 1; r < ROWS; r++) {
+            if (board[r][c] && board[r][c] === board[matchStart][c]) {
+                continue;
+            }
+            
+            const matchLength = r - matchStart;
+            if (matchLength >= 3) {
+                for (let i = matchStart; i < r; i++) {
+                    matches.add(`${i}-${c}`);
+                }
+                
+                // [신규] 5개 이상이면 십자가 폭발 추가
+                if (matchLength >= 5) {
+                    const centerRow = matchStart + Math.floor(matchLength / 2);
+                    crossExplosions.push({ row: centerRow, col: c });
+                }
+            }
+            matchStart = r;
+        }
+        
+        const matchLength = ROWS - matchStart;
+        if (matchLength >= 3) {
+            for (let i = matchStart; i < ROWS; i++) {
+                matches.add(`${i}-${c}`);
+            }
+            if (matchLength >= 5) {
+                const centerRow = matchStart + Math.floor(matchLength / 2);
+                crossExplosions.push({ row: centerRow, col: c });
+            }
+        }
+    }
+    
+    // 3. [신규] 십자가 폭발 처리
+    crossExplosions.forEach(({ row, col }) => {
+        // 가로줄 전체 추가
+        for (let c = 0; c < COLS; c++) {
+            if (board[row][c]) matches.add(`${row}-${c}`);
+        }
+        // 세로줄 전체 추가
+        for (let r = 0; r < ROWS; r++) {
+            if (board[r][col]) matches.add(`${r}-${col}`);
+        }
+    });
+    
+    // 4. [신규] 십자가 폭발 정보 반환
+    return { matches, crossExplosions };
+}
+            
+            async function processMatchesAndCascade(matchData) {
+    const matches = matchData.matches || matchData;
+    const crossExplosions = matchData.crossExplosions || [];
+    
+    currentCombo++;
+
+    const scoreMultiplier = isFeverMode ? 1.5 : 1.0;
+
+    const baseScore = matches.size * 10;
+    const comboBonus = currentCombo * 20;
+    const crossBonus = crossExplosions.length * CROSS_EXPLOSION_BONUS;
+    
+    const turnScore = Math.round((baseScore + comboBonus + crossBonus) * scoreMultiplier);
+    score += turnScore;
+    
+    if (crossExplosions.length > 0) {
+        showCrossExplosion(crossExplosions);
+    }
+    
+    showComboText(currentCombo, matches);
+    showComboScore(turnScore);
+
+    if (!isFeverMode) {
+        const gaugeGain = (matches.size * 0.5) + (currentCombo * 1.5); 
+        feverGauge = Math.min(MAX_FEVER_GAUGE, feverGauge + gaugeGain);
+        updateFeverGaugeUI();
+
+        if (feverGauge >= MAX_FEVER_GAUGE) {
+            startFeverMode();
+        }
+    }
+
+    updateScoreUI(); 
+    if (playerRef) { playerRef.child('score').set(score); }
+    playComboSound(currentCombo);
+    
+    await animatePop(matches);
+    removeMatches(matches);
+    const { droppedTilesMap } = dropTiles();
+    const newTilesMap = fillTopTiles();
+    
+    await animateDrops(droppedTilesMap, newTilesMap);
+    
+    const newMatchData = findAllMatches();
+    if (newMatchData.matches.size > 0) {
+        await new Promise(resolve => setTimeout(resolve, 100)); 
+        await processMatchesAndCascade(newMatchData);
+    } else {
+        currentCombo = 0;
+        if (!checkForPossibleMoves()) {
+            await handleNoMoreMoves();
+        }
+    }
+}
 
             function updateScoreUI() {
                 const myScoreValueEl = multiplayerScoreboard.querySelector('.my-score .value');
@@ -1825,6 +1930,82 @@ if (fallTiles.length > 0) {
                 }, 800);
             }
 
+            // [신규] 십자가 폭발 이펙트
+function showCrossExplosion(crossExplosions) {
+    crossExplosions.forEach(({ row, col }) => {
+        if (!tileElements[row] || !tileElements[row][col]) return;
+        
+        const centerTile = tileElements[row][col];
+        const rect = centerTile.getBoundingClientRect();
+        const boardRect = gameBoard.getBoundingClientRect();
+        const wrapperRect = gameWrapper.getBoundingClientRect();
+        
+        // 중심 좌표 계산
+        const centerTop = (rect.top - boardRect.top) + (rect.height / 2) + boardRect.top - wrapperRect.top;
+        const centerLeft = (rect.left - boardRect.left) + (rect.width / 2) + boardRect.left - wrapperRect.left;
+        
+        // 십자가 4방향 폭발 라인
+        const directions = [
+            { angle: 0, length: '200%' },    // 오른쪽
+            { angle: 90, length: '200%' },   // 아래
+            { angle: 180, length: '200%' },  // 왼쪽
+            { angle: 270, length: '200%' }   // 위
+        ];
+        
+        directions.forEach(({ angle, length }) => {
+            const line = document.createElement('div');
+            line.style.position = 'absolute';
+            line.style.top = `${centerTop}px`;
+            line.style.left = `${centerLeft}px`;
+            line.style.width = '4px';
+            line.style.height = length;
+            line.style.background = 'linear-gradient(180deg, #FFD700, #FF6B6B, transparent)';
+            line.style.transformOrigin = 'top center';
+            line.style.transform = `rotate(${angle}deg)`;
+            line.style.opacity = '0';
+            line.style.pointerEvents = 'none';
+            line.style.zIndex = '150';
+            line.style.animation = 'cross-explosion 0.5s ease-out forwards';
+            line.style.boxShadow = '0 0 10px #FFD700';
+            
+            gameWrapper.appendChild(line);
+            setTimeout(() => line.remove(), 500);
+        });
+        
+        // 중심 폭발 이펙트
+        const centerBurst = document.createElement('div');
+        centerBurst.style.position = 'absolute';
+        centerBurst.style.top = `${centerTop}px`;
+        centerBurst.style.left = `${centerLeft}px`;
+        centerBurst.style.width = '20px';
+        centerBurst.style.height = '20px';
+        centerBurst.style.borderRadius = '50%';
+        centerBurst.style.background = 'radial-gradient(circle, #FFD700, #FF6B6B)';
+        centerBurst.style.transform = 'translate(-50%, -50%) scale(0)';
+        centerBurst.style.pointerEvents = 'none';
+        centerBurst.style.zIndex = '151';
+        centerBurst.style.animation = 'center-burst 0.5s ease-out forwards';
+        centerBurst.style.boxShadow = '0 0 20px #FFD700';
+        
+        gameWrapper.appendChild(centerBurst);
+        setTimeout(() => centerBurst.remove(), 500);
+        
+        // "CROSS!" 텍스트
+        const crossText = document.createElement('div');
+        crossText.className = 'combo-text';
+        crossText.textContent = '💥 CROSS! 💥';
+        crossText.style.top = `${centerTop}px`;
+        crossText.style.left = `${centerLeft}px`;
+        crossText.style.transform = 'translate(-50%, -50%)';
+        crossText.style.fontSize = '2em';
+        crossText.style.color = '#FFD700';
+        crossText.style.textShadow = '2px 2px 8px rgba(255,107,107,0.8)';
+        
+        gameWrapper.appendChild(crossText);
+        setTimeout(() => crossText.remove(), 800);
+    });
+}
+
             // ------------------------------------
             // 8. 셔플 로직 (기존과 동일)
             // ------------------------------------
@@ -1842,57 +2023,53 @@ if (fallTiles.length > 0) {
                 return false; 
             }
             function checkMove(r1, c1, r2, c2) {
-                swapData(r1, c1, r2, c2);
-                const matches = findAllMatches();
-                swapData(r1, c1, r2, c2); 
-                return matches.size > 0;
-            }
+    swapData(r1, c1, r2, c2);
+    const matchData = findAllMatches();
+    swapData(r1, c1, r2, c2); 
+    return matchData.matches.size > 0;
+}
             async function handleNoMoreMoves() {
-                console.log("더 이상 움직일 수 없음! 셔플합니다.");
-                // isProcessing = true; // [삭제] 상태 관리 중복 제거
-                
-                const shuffleText = document.createElement('div');
-                shuffleText.className = 'combo-text';
-                shuffleText.textContent = 'SHUFFLE!';
-                shuffleText.style.top = '50%';
-                shuffleText.style.left = '50%';
-                shuffleText.style.transform = 'translate(-50%, -50%)';
-                gameWrapper.appendChild(shuffleText);
-                setTimeout(() => shuffleText.remove(), 800);
-                
-                await new Promise(resolve => setTimeout(resolve, 300));
+    console.log("더 이상 움직일 수 없음! 셔플합니다.");
+    
+    const shuffleText = document.createElement('div');
+    shuffleText.className = 'combo-text';
+    shuffleText.textContent = 'SHUFFLE!';
+    shuffleText.style.top = '50%';
+    shuffleText.style.left = '50%';
+    shuffleText.style.transform = 'translate(-50%, -50%)';
+    gameWrapper.appendChild(shuffleText);
+    setTimeout(() => shuffleText.remove(), 800);
+    
+    await new Promise(resolve => setTimeout(resolve, 300));
 
-                shuffleBoard(); 
+    shuffleBoard(); 
 
-                // [수정] 셔플 후 DOM/배열 완벽 동기화
-                for (let r = 0; r < ROWS; r++) {
-                    for (let c = 0; c < COLS; c++) {
-                        if(tileElements[r][c]) {
-                            tileElements[r][c].textContent = board[r][c];
-                            tileElements[r][c].className = 'tile new'; 
-                            tileElements[r][c].dataset.row = r; // dataset 동기화
-                            tileElements[r][c].dataset.col = c;
-                        }
-                    }
-                }
-                await new Promise(resolve => setTimeout(resolve, 300));
-
-                // 스타일 초기화
-                for (let r = 0; r < ROWS; r++) {
-                    for (let c = 0; c < COLS; c++) {
-                        if(tileElements[r][c]) {
-                            tileElements[r][c].className = 'tile';
-                        }
-                    }
-                }
-                
-                const matches = findAllMatches();
-                if (matches.size > 0) {
-                    await processMatchesAndCascade(matches);
-                }
-                
-                // isProcessing = false; // [삭제] 모든 로직이 끝난 후 'attemptSwap' 함수가 처리하도록 변경
+    for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+            if(tileElements[r][c]) {
+                tileElements[r][c].textContent = board[r][c];
+                tileElements[r][c].className = 'tile new'; 
+                tileElements[r][c].dataset.row = r;
+                tileElements[r][c].dataset.col = c;
             }
+        }
+    }
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+            if(tileElements[r][c]) {
+                tileElements[r][c].className = 'tile';
+            }
+        }
+    }
+    
+    const matchData = findAllMatches();
+    if (matchData.matches.size > 0) {
+        await processMatchesAndCascade(matchData);
+    }
+}
+
             function shuffleBoard() {
                 console.log("보드 데이터 셔플 중...");
                 createBoardData(); 
