@@ -2119,7 +2119,21 @@ stopSound('bgm'); // [신규] BGM 정지
     const tile1 = board[r1][c1];
     const tile2 = board[r2][c2];
     
-    // 1a. 팡이(폭탄) 스왑
+    // 1a. 💣 팡이(폭탄) + 팡이(폭탄) 스왑 [🔥 신규 로직]
+    if (tile1 === '💣' && tile2 === '💣') {
+        await handleDoublePangiExplosion(r1, c1, r2, c2);
+        isProcessing = false;
+        return;
+    }
+    
+    // 1b. ⭐️ 별 팡이 + 별 팡이 스왑 [🔥 신규 로직]
+    if (tile1 === 'star' && tile2 === 'star') {
+        await handleDoubleStarPangiExplosion(r1, c1, r2, c2);
+        isProcessing = false;
+        return;
+    }
+    
+    // 1c. 팡이(폭탄) 스왑 (일반 타일과의 스왑, 기존 로직)
     if (tile1 === '💣') {
         await handlePangiExplosion(r1, c1);
         isProcessing = false;
@@ -2131,7 +2145,7 @@ stopSound('bgm'); // [신규] BGM 정지
         return;
     }
 
-    // 1b. 별 팡이 스왑
+    // 1d. 별 팡이 스왑 (일반 타일과의 스왑, 기존 로직)
     if (tile1 === 'star') {
         await handleStarPangiExplosion(r1, c1);
         isProcessing = false;
@@ -2143,7 +2157,7 @@ stopSound('bgm'); // [신규] BGM 정지
         return;
     }
     
-    // 1c. 레인보우 + 일반 스왑
+    // 1e. 레인보우 + 일반 스왑 (기존 로직)
     if (tile1 === RAINBOW_TILE && tile2 !== RAINBOW_TILE) {
         await handleRainbowSwap(r1, c1, tile2);
         isProcessing = false;
@@ -2155,7 +2169,7 @@ stopSound('bgm'); // [신규] BGM 정지
         return;
     }
     
-    // 1d. 레인보우 + 레인보우 스왑
+    // 1f. 레인보우 + 레인보우 스왑 (기존 로직)
     if (tile1 === RAINBOW_TILE && tile2 === RAINBOW_TILE) {
         await handleDoubleRainbow(r1, c1, r2, c2);
         isProcessing = false;
@@ -2263,6 +2277,60 @@ async function handleRainbowSwap(rainbowRow, rainbowCol, targetColor) {
                 await handleNoMoreMoves();
             }
         }
+    }
+}
+
+// [신규] ⭐️ 별 팡이 2개 교환 (보드 전체 제거)
+async function handleDoubleStarPangiExplosion(r1, c1, r2, c2) {
+    currentCombo++;
+    playExplosionVFX(); 
+    playSound('victory'); // 승리 사운드와 비슷한 강력한 효과음 사용
+    
+    const allTiles = new Set();
+    
+    // 보드의 모든 타일 제거
+    for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+            if (board[r][c]) {
+                allTiles.add(`${r}-${c}`);
+            }
+        }
+    }
+    
+    const DOUBLE_STAR_BONUS = 5000; // [신규] 보너스 5000점
+    const scoreMultiplier = 1.0; 
+    const baseScore = allTiles.size * 100;
+    const turnScore = Math.round((baseScore + DOUBLE_STAR_BONUS) * scoreMultiplier);
+    
+    score += turnScore;
+    
+    // [신규] 더블 레인보우 이펙트 재활용
+    showDoubleRainbowEffect(r1, c1, r2, c2); 
+    showComboScore(turnScore);
+    
+    // [신규] 피버 게이지 강제 발동 로직 제거 (더블 스타는 한 번에 게임 오버급)
+    // feverGauge = MAX_FEVER_GAUGE;
+    // updateFeverGaugeUI();
+    // startFeverMode();
+
+    updateScoreUI();
+    if (playerRef) { playerRef.child('score').set(score); }
+    
+    await animatePop(allTiles);
+    removeMatches(allTiles);
+    
+    const { droppedTilesMap } = dropTiles();
+    const newTilesMap = fillTopTiles();
+    
+    // 후처리 로직 (더블 레인보우 로직 재활용)
+    if (isFeverMode) {
+        animateDrops(droppedTilesMap, newTilesMap);
+        currentCombo = 0;
+        if (!checkForPossibleMoves()) { handleNoMoreMoves(); }
+    } else {
+        await animateDrops(droppedTilesMap, newTilesMap);
+        currentCombo = 0;
+        if (!checkForPossibleMoves()) { await handleNoMoreMoves(); }
     }
 }
 
@@ -2416,6 +2484,82 @@ function showRainbowExplosion(rainbowRow, rainbowCol, targetColor) {
                 style.remove();
             }, 800);
         }, i * 20);
+    }
+}
+// [신규] 💣 팡이(폭탄) 2개 스왑 처리 함수
+async function handleDoublePangiExplosion(r1, c1, r2, c2) {
+    currentCombo++;
+    playExplosionVFX();
+    playSound('bomb-explode-sound'); // 팡이 폭발 효과음
+
+    const matchingTiles = new Set();
+    
+    // 1. 스왑된 두 팡이의 2x2 영역 계산 (r_min, r_max, c_min, c_max)
+    const r_min = Math.min(r1, r2);
+    const r_max = Math.max(r1, r2);
+    const c_min = Math.min(c1, c2);
+    const c_max = Math.max(c1, c2);
+
+    // 2. 가로 2줄 모두 추가 (r_min 행, r_max 행)
+    for (let c = 0; c < COLS; c++) {
+        if (board[r_min][c]) matchingTiles.add(`${r_min}-${c}`);
+        if (board[r_max][c]) matchingTiles.add(`${r_max}-${c}`);
+    }
+
+    // 3. 세로 2줄 모두 추가 (c_min 열, c_max 열)
+    for (let r = 0; r < ROWS; r++) {
+        if (board[r][c_min]) matchingTiles.add(`${r}-${c_min}`);
+        if (board[r][c_max]) matchingTiles.add(`${r}-${c_max}`);
+    }
+    
+    // 4. [신규] 보너스 점수 계산
+    const DOUBLE_PANGI_BONUS = 3000;
+    const scoreMultiplier = 1.0;
+    const baseScore = matchingTiles.size * 50;
+    const comboBonus = currentCombo * 20;
+    const turnScore = Math.round((baseScore + comboBonus + DOUBLE_PANGI_BONUS) * scoreMultiplier);
+    
+    score += turnScore;
+    
+    showCrossExplosion([{ row: r1, col: c1 }, { row: r2, col: c2 }]); // 이펙트 재활용
+    showComboText(currentCombo, matchingTiles);
+    showComboScore(turnScore);
+    
+    updateScoreUI();
+    if (playerRef) { playerRef.child('score').set(score); }
+    playComboSound(currentCombo);
+    
+    await animatePop(matchingTiles);
+    removeMatches(matchingTiles);
+    
+    const { droppedTilesMap } = dropTiles();
+    const newTilesMap = fillTopTiles();
+
+    // 5. 후처리 로직 (피버/일반 모드 분기)
+    if (isFeverMode) {
+        animateDrops(droppedTilesMap, newTilesMap);
+        const newMatchData = findAllMatches();
+        if (newMatchData.matches.size > 0) { runCascade(newMatchData); }
+        else {
+            const gracePeriod = getComboGracePeriod(currentCombo);
+            if (comboTimerId) clearTimeout(comboTimerId);
+            comboTimerId = setTimeout(() => { currentCombo = 0; comboTimerId = null; }, gracePeriod); 
+            startHintTimer(); 
+            if (!checkForPossibleMoves()) { handleNoMoreMoves(); }
+        }
+    } else {
+        await animateDrops(droppedTilesMap, newTilesMap);
+        const newMatchData = findAllMatches();
+        if (newMatchData.matches.size > 0) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            await runCascade(newMatchData);
+        } else {
+            const gracePeriod = getComboGracePeriod(currentCombo);
+            if (comboTimerId) clearTimeout(comboTimerId);
+            comboTimerId = setTimeout(() => { currentCombo = 0; comboTimerId = null; }, gracePeriod); 
+            startHintTimer(); 
+            if (!checkForPossibleMoves()) { await handleNoMoreMoves(); }
+        }
     }
 }
 
