@@ -1151,38 +1151,60 @@ function kakaoInvite() {
             }
         }
 
-        // --- ✨ [신규] TTS 목소리 목록 로드 및 설정 ---
+        // --- ✨ [수정] TTS 목소리 목록 로드 (강력한 재시도 로직 포함) ---
         let voiceList = []; // 음성 목록 캐시
+        let voiceLoadAttempts = 0; // [신규] 로드 시도 횟수
 
         function populateVoiceList() {
             if (!synthesis) return;
-            
+
             voiceList = synthesis.getVoices();
+            
+            // [신규] 목록이 비어있거나, 한국어 음성이 없으면 재시도
+            const koreanVoices = voiceList.filter(voice => voice.lang === 'ko-KR' || voice.lang.startsWith('ko-'));
+
+            if (koreanVoices.length === 0 && voiceLoadAttempts < 5) {
+                voiceLoadAttempts++;
+                console.warn(`TTS 목소리 목록이 비어있거나 한국어 음성이 없습니다. ${voiceLoadAttempts}번째 재시도... (엔진 깨우는 중)`);
+                
+                // 0.1초 후에 엔진을 깨우고, 0.5초 후에 목록을 다시 로드
+                setTimeout(primeTTSEngine, 100); 
+                setTimeout(populateVoiceList, 500); 
+                return; // 지금은 목록을 채우지 않음
+            }
+
+            console.log(`TTS 목소리 ${voiceList.length}개 로드됨. (한국어 ${koreanVoices.length}개)`);
+
             ttsVoiceSelect.innerHTML = '<option value="">기본 목소리 (브라우저)</option>'; // 초기화
             
             const savedVoiceURI = localStorage.getItem(TTS_VOICE_KEY);
 
-            voiceList
-                .filter(voice => voice.lang === 'ko-KR') // 한국어 목소리만 필터링
-                .forEach(voice => {
-                    const option = document.createElement('option');
-                    option.textContent = `${voice.name} (${voice.lang})`;
-                    option.value = voice.voiceURI;
-                    
-                    if (voice.voiceURI === savedVoiceURI) {
-                        option.selected = true; // 저장된 목소리 선택
-                    }
-                    
-                    ttsVoiceSelect.appendChild(option);
-                });
+            koreanVoices.forEach(voice => { // [수정] 필터링된 한국어 목록 사용
+                const option = document.createElement('option');
+                option.textContent = `${voice.name} (${voice.lang})`;
+                option.value = voice.voiceURI;
+                
+                if (voice.voiceURI === savedVoiceURI) {
+                    option.selected = true; // 저장된 목소리 선택
+                }
+                
+                ttsVoiceSelect.appendChild(option);
+            });
         }
 
         // (중요) 음성 목록은 비동기적으로 로드됩니다.
         if(synthesis) {
-            populateVoiceList(); // 즉시 실행 (캐시된 목록이 있을 경우)
+            // [수정] onvoiceschanged 핸들러를 먼저 설정합니다.
             if (synthesis.onvoiceschanged !== undefined) {
-                synthesis.onvoiceschanged = populateVoiceList; // 목록 변경 시 다시 로드
+                synthesis.onvoiceschanged = populateVoiceList;
             }
+            
+            // [수정] 그리고 *즉시* 로드를 시도합니다 (재시도 로직이 포함된 새 함수).
+            populateVoiceList();
+
+        } else if (chatSettingsBtn) {
+            // [신규] TTS가 아예 지원 안되면 설정 버튼 숨김
+            chatSettingsBtn.style.display = 'none';
         }
 
 // 설정(⚙️) 버튼 클릭 -> 모달 열기
@@ -1812,6 +1834,28 @@ function cancelMyOnDisconnectHandler() {
 
             // 3. 웃음소리만 변환되었거나, 변환이 필요 없는 텍스트 반환
             return processedText;
+        }
+
+        // [신규] TTS 엔진을 "깨우는" (Prime) 함수
+        // (iOS/Safari에서 고품질 음성 목록을 불러오기 위한 핵/트릭)
+        function primeTTSEngine() {
+            if (!synthesis) return;
+            
+            // .speak()를 한 번 호출해야만
+            // 비동기적으로 로드되는 전체 음성 목록이 'onvoiceschanged' 이벤트를 트리거합니다.
+            const emptyUtterance = new SpeechSynthesisUtterance('');
+            emptyUtterance.lang = 'ko-KR';
+            
+            // 에러가 나도 무시합니다 (자동재생 정책 등)
+            try {
+                // (참고) 이 시점에 synthesis.pause(), synthesis.resume()을
+                // 호출해야만 목록이 로드되는 구형 안드로이드 기기도 있습니다.
+                synthesis.pause();
+                synthesis.resume();
+                synthesis.speak(emptyUtterance);
+            } catch (e) {
+                console.warn("TTS 엔진 '깨우기' 실패 (자동재생 정책일 수 있음):", e);
+            }
         }
 
         function sendMessage(content) {
