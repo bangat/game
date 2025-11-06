@@ -9,6 +9,7 @@
     <link rel="manifest" href="manifest.json">
     <link href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff" as="font" type="font/woff" crossorigin>
     
+    <script src="레벨업.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
@@ -3607,7 +3608,7 @@ shockwave.style.width = `${rect.width * 3}px`; // [수정] 타일 3배 크기 (5
                 // 'win', 'loss', 'draw' 중 하나
                 const result = (didIWin === null) ? 'draws' : (didIWin ? 'wins' : 'losses');
                 
-                // [수정] 'candysoap' 경로로 변경
+                // 1. (게임 파일의 책임) 'candysoap' 전용 스탯 업데이트
                 const userStatsRef = db.ref('users').child(playerUid).child('gameStats/candysoap');
 
                 userStatsRef.transaction(currentStats => {
@@ -3616,20 +3617,19 @@ shockwave.style.width = `${rect.width * 3}px`; // [수정] 타일 3배 크기 (5
                     }
                     currentStats.plays = (currentStats.plays || 0) + 1;
                     currentStats[result] = (currentStats[result] || 0) + 1;
-                    // [수정] 'score' (전역 변수) 대신 'finalScore' (매개변수) 사용
                     currentStats.highscore = Math.max(currentStats.highscore || 0, finalScore); 
                     return currentStats;
                 });
                 
-                // 경험치 및 포인트 지급 (테트리스와 동일하게)
+                // 2. (게임 파일의 책임) '애니팡' 보상 계산
                 let expGained = 50, pointsGained = 50;
                 if(didIWin === true) { expGained = 150; pointsGained = 100; } // 1등
-                else if (didIWin === null) { expGained = 75; pointsGained = 75; } // 무승부 (현재 애니팡엔 없음)
+                else if (didIWin === null) { expGained = 75; pointsGained = 75; } // 무승부
                 // 2~4등은 기본 점수
                 
-                const userProfileRef = db.ref('users').child(playerUid).child('profile');
-                userProfileRef.child('exp').transaction(exp => (exp || 0) + expGained);
-                userProfileRef.child('points').transaction(points => (points || 0) + pointsGained);
+                // 3. (레벨업.js의 책임) 중앙 레벨업 함수 호출
+                // (db, playerUid, expGained, pointsGained)
+                applyExpAndPoints(db, playerUid, expGained, pointsGained);
             }
 
             // [신규] '사천성' 방식의 안전한 나가기 함수

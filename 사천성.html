@@ -251,6 +251,104 @@
         .score-avatar .avatar { width: 32px; height: 32px; font-size: 1.5em; display:flex; justify-content:center; align-items:center; border-radius: 8px; overflow:hidden; }
         .score-avatar .avatar img { width: 100%; height: 100%; object-fit: contain; }
 
+       /* ---------------------------------- */
+        /* [신규] 애니팡 모달 스타일 (사천성 적용) */
+        #final-score {
+            font-size: 2.0em;
+            font-weight: 900;
+            color: var(--primary-color);
+            margin-bottom: 0px;
+        }
+        #rematch-status-list {
+            text-align: left;
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #FFFAE0;
+            border-radius: 10px;
+            border: 2px solid var(--panel-border);
+            font-size: 1.0em;
+            line-height: 1.8;
+            display: flex;
+            flex-direction: column;
+            gap: 8px; /* 줄 간격 */
+        }
+        .rematch-player-row {
+            display: flex;
+            justify-content: space-between; /* 양쪽 정렬 */
+            align-items: center;
+        }
+        .rematch-player-row .player-info {
+            font-weight: 900;
+            /* [신규] 닉네임이 길어질 때를 대비해 min-width 추가 */
+            min-width: 0;
+            flex-grow: 1; /* [신규] 남은 공간 차지 */
+            margin-right: 8px; /* [신규] 상태 텍스트와의 간격 */
+        }
+        
+        /* [수정] 1위, 2위 텍스트 (블록으로 변경) */
+        .rematch-player-row .player-rank {
+            display: block; /* 첫 번째 줄 차지 */
+            color: var(--primary-color);
+            font-size: 1.1em; /* [신규] 랭크 텍스트 살짝 키움 */
+            margin-bottom: 2px; /* [신규] 두 번째 줄과의 간격 */
+        }
+        
+        /* [수정] 2번째 줄 (레벨, 이름, 점수)을 flex로 묶음 */
+        .rematch-player-row .player-details-line {
+            display: flex;
+            align-items: baseline; /* 텍스트 베이스라인 정렬 */
+            gap: 6px;
+        }
+
+        /* [신규] 모달 내 레벨 표시 (요청 사항) */
+        .rematch-player-row .player-level {
+            font-size: 0.9em;
+            font-weight: 700;
+            color: #9A6A3A;
+            opacity: 0.9;
+            flex-shrink: 0; /* [신규] 줄어들지 않게 */
+        }
+        .rematch-player-row .player-name {
+            color: var(--text-color-dark);
+            /* [신규] 이름이 길면 줄어들도록 */
+            flex-grow: 1;
+            flex-shrink: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            min-width: 30px; /* [신규] 최소 너비 */
+        }
+        .rematch-player-row.my-row .player-name { 
+            color: var(--primary-color);
+            text-shadow: 0 0 5px rgba(255, 107, 107, 0.5);
+        }
+        
+        /* [수정] 점수 (flex 아이템으로 변경) */
+        .rematch-player-row .player-score {
+            font-size: 0.9em;
+            color: #9A6A3A;
+            padding-left: 0; /* [수정] 들여쓰기 제거 */
+            flex-shrink: 0; /* [신규] 줄어들지 않게 */
+            white-space: nowrap; /* [신규] 줄바꿈 방지 */
+        }
+        
+        /* [수정] 상태 텍스트 (줄어들지 않도록) */
+        #rematch-status-list .status-text {
+            font-weight: 900;
+            color: #ccc;
+            transition: all 0.3s ease;
+            font-size: 1.1em;
+            min-width: 50px; /* 'Ready' 공간 확보 */
+            text-align: right;
+            flex-shrink: 0; /* [신규] 좁은 화면에서 줄어들지 않음 */
+        }
+        #rematch-status-list .status-text.ready {
+            color: #28a745; /* 'Ready' 초록색 */
+            text-shadow: 0 0 5px rgba(40, 167, 69, 0.5);
+        }
+        /* [신규 스타일 종료] */
+        /* ---------------------------------- */
+
         /* 상호 전적 (유지) */
         .h2h-stats {
             text-align: center; font-weight: 700; font-size: 1.0em; 
@@ -474,6 +572,7 @@
 
 
     <script src="아바타.js"></script>
+    <script src="레벨업.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
@@ -1967,7 +2066,7 @@
                                  currentStats = { [sortedIds[0]]: 0, [sortedIds[1]]: 0, draws: 0 };
                              }
                              
-                             // 이번 판 결과 누적 (무승부가 없으므로 승/패만)
+                             // 이번 판 결과 누적 (무승부 없음)
                              if (iWon) { // 내가 이겼으면
                                  currentStats[myPlayerId] = (currentStats[myPlayerId] || 0) + 1;
                              } else { // 내가 졌으면 (상대가 이겼으면)
@@ -1994,57 +2093,88 @@
                  }
                  // ✨ [신규] H2H 로직 종료
 
-                 // 점수판 HTML (playerStates 기반)
-                 const scoresHTML = playerIds.map(id => {
-                     const player = players[id];
-                     const state = playerStates[id] || { gauge: 0 };
-                     const score = Math.round(state.gauge); // 게이지 = 점수 (0-100)
-                     const isWinner = (id === myPlayerId && iWon) || (id !== myPlayerId && !iWon);
-                     const scoreClass = isWinner ? 'winner' : 'loser';
-                     
-                     const avatarSet = AVATAR_SETS[player.avatar];
-                     let avatarHTML = '';
-                     if (avatarSet) avatarHTML = `<img src="${avatarSet.front}" alt="avatar">`;
-                     else if (player.avatar && (player.avatar.startsWith('http') || player.avatar.includes('.'))) avatarHTML = `<img src="${escapeHTML(player.avatar)}" alt="avatar">`;
-                     else avatarHTML = escapeHTML(player.avatar || '❓');
+              // [수정] 애니팡 스타일 순위표 생성
+                const sortedPlayers = playerIds.map(id => {
+                    const player = players[id] || {};
+                    const state = playerStates[id] || { gauge: 0 };
+                    return {
+                        uid: id,
+                        nickname: player.nickname || 'Unknown',
+                        avatar: player.avatar || '❓',
+                        level: player.level || 1, // [신규] 레벨 데이터
+                        score: Math.round(state.gauge) // 0-100
+                    };
+                }).sort((a, b) => b.score - a.score); // 점수 기준 내림차순
 
-                     return `<div class="score-row ${scoreClass}">
-                                 <span class="score-avatar"><div class="avatar">${avatarHTML}</div> ${escapeHTML(player.nickname || 'Unknown')}</span>
-                                 <span>${score} 점</span>
-                             </div>`;
-                 }).join('');
+                const scoresHTML = sortedPlayers.map((player, index) => {
+                    const rank = index + 1;
+                    const isMe = (player.uid === myPlayerId);
+                    const myRowClass = isMe ? 'my-row' : '';
+                    
+                    // [수정] HTML 구조 변경 (2줄 레이아웃)
+                    return `
+                        <div class="rematch-player-row ${myRowClass}">
+                            <span class="player-info">
+                                <span class="player-rank">${rank}위</span> <span class="player-details-line"> <span class="player-level">Lv.${player.level}</span>
+                                    <span class="player-name">${escapeHTML(player.nickname)}</span>
+                                    <span class="player-score">(${player.score.toLocaleString()}점)</span>
+                                </span>
+                            </span>
+                            <span class="status-text" data-uid="${player.uid}"></span>
+                        </div>
+                    `;
+                }).join('');
+                
+                // [수정] 내 최종 점수 계산
+                
+                const myState = playerStates[myPlayerId] || { gauge: 0 };
+                const myFinalScore = Math.round(myState.gauge);
 
-                 // ... (상호 전적 로직은 동일) ...
-
-                 // 모달 채우기
+                 // [수정] 모달 HTML을 애니팡 스타일로 교체
                  gameOverOverlay.innerHTML = `
                      <div class="modal-content">
                          <div class="modal-header"><h2>${resultText}</h2></div>
                          <div class="modal-body">
+                             <p id="rematch-title" style="font-size: 1.2em; margin-bottom: 15px;">🏆최종 순위🏆</p>
                              <div id="h2h-stats-placeholder"></div>
-                             <div id="score-board">${scoresHTML}</div>
-                              <div class="modal-buttons">
-                                 <button id="rematch-btn" class="menu-btn secondary">다시 하기</button>
-                                 <button id="lobby-btn" class="menu-btn primary">대기실로</button>
+                             <div id="rematch-status-list">
+                                 ${scoresHTML}
                              </div>
+                             <hr style="margin: 15px 0; border: 1px solid var(--panel-border);">
+                             <p style="font-size: 1.1em; font-weight: 700;">내 점수</p>
+                             <p id="final-score">${myFinalScore.toLocaleString()} 점</p>
+                         </div>
+                         <div class="modal-footer">
+                             <button id="rematch-btn" class="menu-btn secondary">다시하기</button>
+                             <button id="lobby-btn" class="menu-btn primary">대기실로</button>
                          </div>
                      </div>`;
                  gameOverOverlay.classList.add('active');
                  
-                 // ... (버튼 리스너 및 재시작 리스너는 동일) ...
+                 // [수정] '다시하기' 버튼 리스너 (애니팡 '준비' 토글 방식)
                  document.getElementById('lobby-btn').addEventListener('click', cleanupAndExit);
-                 // ✨ [신규] H2H 리스너 호출
+                 
+                 const rematchBtn = document.getElementById('rematch-btn');
+                 rematchBtn.addEventListener('click', () => {
+                     // 'amIReadyForRematch'는 listenForRematch 함수 스코프에 있습니다.
+                     if (roomRef && myPlayerId) {
+                         if (amIReadyForRematch) { // 현재 '준비완료' 상태면
+                             roomRef.child('rematchRequests/' + myPlayerId).remove(); // '준비 해제'
+                         } else { // '대기' 상태면
+                             roomRef.child('rematchRequests/' + myPlayerId).set(true); // '준비 완료'
+                         }
+                     }
+                 });
+
+                 // ✨ [신규] H2H 리스너 호출 (기존 유지)
                  if (playerIds.length === 2) {
                     listenForH2HDisplay(); 
                  }
-                 const rematchBtn = document.getElementById('rematch-btn');
-                 rematchBtn.addEventListener('click', () => {
-                     rematchBtn.textContent = '상대방 기다리는 중...';
-                     rematchBtn.disabled = true;
-                     roomRef.child('rematchRequests/' + myPlayerId).set(true);
-                 });
+                 // 재시작 리스너 (기존 유지)
                  listenForRematch();
             }
+
+
 // ✨ [신규] 영구 H2H 전적을 모달에 표시하는 리스너
             function listenForH2HDisplay() {
                  // displayH2HStats 경로를 구독
@@ -2079,33 +2209,103 @@
                          placeholder.innerHTML = h2hHTML;
                      }
                  });
-            }
+           }
+
+            // [수정] 애니팡 방식 '다시하기' 리스너를 위한 전역 변수
+            let rematchRef = null; 
+            let amIReadyForRematch = false; // '준비완료' 상태 추적
+
             function listenForRematch() {
-                 // ... (기존과 동일) ...
                  if (!roomRef) return;
-                 const rematchRef = roomRef.child('rematchRequests');
+
+                 // [수정] 기존 리스너가 있다면 제거 (메모리 누수 방지)
+                 if (rematchRef) {
+                    rematchRef.off();
+                 }
+                 rematchRef = roomRef.child('rematchRequests');
+                 
                  rematchRef.on('value', snapshot => {
-                      if (!snapshot.exists() || !currentRoomData || !currentRoomData.players) return;
-                      const requests = snapshot.val();
+                      const requests = snapshot.val() || {}; // null일 경우 빈 객체
+                      amIReadyForRematch = requests.hasOwnProperty(myPlayerId); // 로컬 상태 업데이트
+
+                      // 현재 방에 남아있는 플레이어 목록 (중요)
+                      const playersInRoom = Object.keys(currentRoomData.players || {});
+                      
+                      // '다시하기' 상태 목록 UI 업데이트
+                      const allStatusSpans = document.querySelectorAll('#rematch-status-list .status-text');
+                      
+                      allStatusSpans.forEach(span => {
+                          const uid = span.dataset.uid;
+                          
+                          if (!playersInRoom.includes(uid)) {
+                              // 1. 방에 없는 유저 (나간 사람)
+                              span.textContent = '퇴장';
+                              span.classList.remove('ready');
+                              span.style.color = 'var(--danger-color)'; // 빨간색
+                              span.style.textShadow = 'none';
+
+                          } else if (requests.hasOwnProperty(uid)) {
+                              // 2. 방에 있고, 준비 완료한 유저
+                              span.textContent = '준비완료!';
+                              span.classList.add('ready');
+                              span.style.color = '#28a745'; // 초록색
+                              span.style.textShadow = '0 0 5px rgba(40, 167, 69, 0.5)';
+                          
+                          } else {
+                              // 3. 방에 있지만, 아직 준비 안 한 유저
+                              span.textContent = ''; // '대기중' (아무것도 표시 안 함)
+                              span.classList.remove('ready');
+                              span.style.color = '#ccc';
+                              span.style.textShadow = 'none';
+                          }
+                      });
+                      
+                      // 내 버튼 상태 업데이트 (재접속 시 또는 리셋 시)
+                      const myRematchBtn = document.getElementById('rematch-btn');
+                      if (myRematchBtn) { // 버튼이 존재할 때만
+                          if (amIReadyForRematch) {
+                              myRematchBtn.disabled = false;
+                              myRematchBtn.textContent = '준비완료! ✓';
+                          } else {
+                              myRematchBtn.disabled = false;
+                              myRematchBtn.textContent = '다시하기';
+                          }
+                      }
+                      
+                      // 모달이 닫혀있거나 데이터가 없으면 리스너 로직 중지
+                      if (!snapshot.exists() || !currentRoomData || !currentRoomData.players || !gameOverOverlay.classList.contains('active')) {
+                        return;
+                      }
+
+                      // (기존 로직) 모든 플레이어가 동의했는지 체크
                       const requestCount = Object.keys(requests).length;
-                      const playerCount = Object.keys(currentRoomData.players).length;
-                      if (requestCount === playerCount && isHost) {
-                            rematchRef.off();
+                      
+                      // "방에 남아있는" 플레이어 수
+                      const playerCountInRoom = playersInRoom.length;
+
+                      // "방에 남아있는" 모든 플레이어가 동의했고, 내가 호스트라면
+                      if (playerCountInRoom >= 2 && requestCount === playerCountInRoom && isHost) {
+                            if (rematchRef) rematchRef.off();
+                            rematchRef = null;
+                            
+                            // [수정] 사천성 게임 재시작을 위한 상태값 초기화
                             roomRef.update({
                                 rematchRequests: null,
                                 status: 'waiting',
-                                gameStarted: false, // [수정]
-                                playerStates: null, // [수정]
-                                attackEvents: null, // [수정]
-                                readyPlayers: null
+                                gameStarted: false, 
+                                playerStates: null, 
+                                attackEvents: null,
+                                displayH2HStats: null, // [신규] H2H 전적 표시기 초기화
+                                readyPlayers: null     
                             });
                       }
                  });
             }
 
             function updatePlayerStats(result) {
-                 // ... (기존과 동일) ...
                  if (!myPlayerId || myPlayerId.startsWith('guest_')) return; 
+                 
+                 // 1. (게임 파일의 책임) 'shisenSho' 전용 스탯 업데이트
                  const userStatsRef = usersRef.child(myPlayerId).child('gameStats/shisenSho');
                  userStatsRef.transaction(stats => {
                      if (stats === null) stats = { wins: 0, losses: 0, draws: 0, plays: 0 };
@@ -2114,16 +2314,17 @@
                      else if (result === 'loss') stats.losses = (stats.losses || 0) + 1;
                      else if (result === 'draw') stats.draws = (stats.draws || 0) + 1;
                      return stats;
-                 }, (error, committed, snapshot) => {
-                      if (committed) {
-                           let expGained = 0, pointsGained = 0;
-                           if (result === 'win') { expGained = 100; pointsGained = 150; }
-                           else if (result === 'loss') { expGained = 20; pointsGained = 50; }
-                           else { expGained = 40; pointsGained = 75; } 
-                           usersRef.child(myPlayerId).child('profile/exp').transaction(exp => (exp || 0) + expGained);
-                           usersRef.child(myPlayerId).child('profile/points').transaction(points => (points || 0) + pointsGained);
-                      }
                  });
+                 
+                 // 2. (게임 파일의 책임) 이 게임의 보상 계산
+                 let expGained = 0, pointsGained = 0;
+                 if (result === 'win') { expGained = 100; pointsGained = 150; }
+                 else if (result === 'loss') { expGained = 20; pointsGained = 50; }
+                 else { expGained = 40; pointsGained = 75; } // 무승부/기타
+
+                 // 3. (레벨업.js의 책임) 중앙 레벨업 함수 호출
+                 // (db, myPlayerId, expGained, pointsGained)
+                 applyExpAndPoints(db, myPlayerId, expGained, pointsGained);
              }
              
             function cleanupAndExit() {
