@@ -261,6 +261,63 @@
             outline: none;
             border-color: var(--primary-color);
         }
+        /* [수정] 채팅 입력창 (버튼 3개 공간 확보) */
+        #chat-input {
+            /* 마이크+설정+이모지+전송 버튼 영역 확보 */
+            padding-right: 190px; 
+        }
+
+        /* [신규] 채팅 설정 톱니바퀴 버튼 */
+        #chat-settings-btn {
+            font-size: 1.6em; background: none; border: none;
+            cursor: pointer; padding: 5px;
+            color: var(--text-color-dark);
+            transition: color 0.2s, transform 0.2s;
+            position: absolute;
+            right: 150px; /* 마이크(115px) 좌측 */
+            top: 50%; transform: translateY(-50%);
+            z-index: 5;
+        }
+        #chat-settings-btn:active {
+             transform: translateY(-50%) scale(0.9);
+        }
+
+        /* [수정] 마이크 버튼 위치 (설정 버튼으로 인해 이동) */
+        #mic-btn {
+             right: 115px; /* 이모지(80px) 좌측 */
+        }
+        /* [수정] 채팅 입력창 (마이크/이모지 버튼 공간 확보) */
+        #chat-input {
+            padding-right: 150px; /* 마이크+이모지+전송 버튼 영역 확보 */
+        }
+        
+        /* [신규] 음성 채팅 마이크 버튼 */
+        #mic-btn {
+            font-size: 1.6em; background: none; border: none;
+            cursor: pointer; padding: 5px;
+            color: var(--text-color-dark);
+            transition: color 0.2s, transform 0.2s;
+            position: absolute;
+            right: 115px; /* 이모지(80px) 좌측 */
+            top: 50%; transform: translateY(-50%);
+            z-index: 5;
+        }
+        #mic-btn:active {
+             transform: translateY(-50%) scale(0.9);
+        }
+        #mic-btn.recording {
+            color: var(--primary-color);
+            animation: pulse-red 1.5s infinite;
+        }
+        @keyframes pulse-red {
+            0% { transform: translateY(-50%) scale(1); }
+            50% { transform: translateY(-50%) scale(1.1); }
+            100% { transform: translateY(-50%) scale(1); }
+        }
+        /* [수정] 마이크 버튼과 겹치지 않게 이모지 버튼 z-index 수정 */
+        #emoji-toggle-btn {
+             z-index: 5;
+        }
         #send-chat-btn {
             padding: 0 20px; /* [수정] */
             font-size: 1em; /* [수정] */
@@ -646,7 +703,9 @@
             
             <div id="chat-controls">
                 <input type="text" id="chat-input" placeholder="메시지를 입력하세요..." maxlength="50" autocomplete="off">
+              <button id="mic-btn">🎙️</button>
                 <button id="emoji-toggle-btn">😀</button>
+                <button id="chat-settings-btn">⚙️</button>
                 <div id="emoji-popover">
                     <button>👍</button><button>😂</button><button>😮</button><button>👋</button>
                     <button>😏</button><button>👌</button><button>😭</button><button>🤗</button>
@@ -928,6 +987,20 @@ function kakaoInvite() {
         const leaveRoomBtn = document.getElementById('leave-room-btn');
         const emojiToggleBtn = document.getElementById('emoji-toggle-btn');
         const emojiPopover = document.getElementById('emoji-popover');
+       const micBtn = document.getElementById('mic-btn'); // ✨ [신규] 마이크 버튼
+        
+        // ✨ [신규] Web Speech API (STT / TTS)
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const recognition = SpeechRecognition ? new SpeechRecognition() : null;
+        const synthesis = window.speechSynthesis;
+
+        // ✨ [신규] TTS 설정 관련 DOM
+        const chatSettingsBtn = document.getElementById('chat-settings-btn');
+        const ttsSettingsModal = document.getElementById('tts-settings-modal');
+        const ttsVoiceSelect = document.getElementById('tts-voice-select');
+        const ttsSettingsCloseBtn = document.getElementById('tts-settings-close-btn');
+        const TTS_VOICE_KEY = 'gameLobbyVoiceURI'; // localStorage 키
+
         // ✨ [신규] 알림 모달 변수
         const alertModal = document.getElementById('alert-modal');
         const alertModalMessage = document.getElementById('alert-modal-message');
@@ -945,6 +1018,144 @@ function kakaoInvite() {
             });
         }
 
+        // ✨ [신규] STT/TTS 기능 초기화
+        if (recognition && micBtn) {
+            recognition.lang = 'ko-KR';
+            recognition.continuous = false;
+            recognition.interimResults = false;
+
+            // 1. 음성 인식이 성공했을 때
+            recognition.onresult = (event) => {
+                const text = event.results[0][0].transcript;
+                console.log('인식된 텍스트:', text);
+                
+                // [핵심] 인식된 텍스트를 "채팅 전송" 함수로 보냄
+                sendMessage(text); 
+            };
+
+            // 2. 음성 인식이 끝나면 버튼 복구
+            recognition.onend = () => {
+                micBtn.classList.remove('recording');
+                micBtn.disabled = false;
+            };
+
+            // 3. 에러 처리
+            recognition.onerror = (event) => {
+                console.error('음성 인식 에러:', event.error);
+                if (event.error === 'no-speech') {
+                    showToast('음성이 들리지 않아요.');
+                } else if (event.error === 'not-allowed') {
+                    showAlert('마이크 권한이 필요합니다. 브라우저 설정을 확인해주세요.');
+                } else {
+                    showToast('음성 인식 중 오류가 발생했습니다.');
+                }
+                micBtn.classList.remove('recording');
+                micBtn.disabled = false;
+            };
+
+            // 4. 마이크 버튼 클릭 이벤트
+            micBtn.addEventListener('click', () => {
+                if (!currentUser) return; // 로그인 체크
+
+                if (micBtn.classList.contains('recording')) {
+                    // 녹음 중일 때 누르면 중지
+                    recognition.stop();
+                } else {
+                    // 녹음 시작
+                    try {
+                        recognition.start();
+                        micBtn.classList.add('recording');
+                        micBtn.disabled = true; // 녹음 중 비활성화
+                        showToast('듣고 있어요... 🎙️');
+                    } catch(e) {
+                        console.error("인식 시작 에러", e);
+                        if (e.name === 'NotAllowedError') {
+                             showAlert('마이크 권한이 필요합니다. 브라우저 설정을 확인해주세요.');
+                        } else {
+                             showToast('음성 인식을 시작할 수 없습니다.');
+                        }
+                    }
+                }
+            });
+
+        } else {
+            // STT 미지원 브라우저
+            console.warn("이 브라우저는 음성 인식을 지원하지 않습니다.");
+            if (micBtn) {
+                micBtn.style.display = 'none'; // 버튼 숨김
+            }
+        }
+
+        // --- ✨ [신규] TTS 목소리 목록 로드 및 설정 ---
+        let voiceList = []; // 음성 목록 캐시
+
+        function populateVoiceList() {
+            if (!synthesis) return;
+            
+            voiceList = synthesis.getVoices();
+            ttsVoiceSelect.innerHTML = '<option value="">기본 목소리 (브라우저)</option>'; // 초기화
+            
+            const savedVoiceURI = localStorage.getItem(TTS_VOICE_KEY);
+
+            voiceList
+                .filter(voice => voice.lang === 'ko-KR') // 한국어 목소리만 필터링
+                .forEach(voice => {
+                    const option = document.createElement('option');
+                    option.textContent = `${voice.name} (${voice.lang})`;
+                    option.value = voice.voiceURI;
+                    
+                    if (voice.voiceURI === savedVoiceURI) {
+                        option.selected = true; // 저장된 목소리 선택
+                    }
+                    
+                    ttsVoiceSelect.appendChild(option);
+                });
+        }
+
+        // (중요) 음성 목록은 비동기적으로 로드됩니다.
+        if(synthesis) {
+            populateVoiceList(); // 즉시 실행 (캐시된 목록이 있을 경우)
+            if (synthesis.onvoiceschanged !== undefined) {
+                synthesis.onvoiceschanged = populateVoiceList; // 목록 변경 시 다시 로드
+            }
+        }
+
+        // 설정(⚙️) 버튼 클릭 -> 모달 열기
+        if (chatSettingsBtn) {
+            chatSettingsBtn.addEventListener('click', () => {
+                populateVoiceList(); // 모달 열 때마다 목록 갱신
+                ttsSettingsModal.classList.add('active');
+            });
+        }
+        
+        // 모달 닫기 버튼
+        if (ttsSettingsCloseBtn) {
+            ttsSettingsCloseBtn.addEventListener('click', () => {
+                ttsSettingsModal.classList.remove('active');
+            });
+        }
+
+        // 목소리 선택 시 localStorage에 "즉시 저장"
+        if (ttsVoiceSelect) {
+            ttsVoiceSelect.addEventListener('change', () => {
+                const selectedVoiceURI = ttsVoiceSelect.value;
+                if (selectedVoiceURI) {
+                    localStorage.setItem(TTS_VOICE_KEY, selectedVoiceURI);
+                } else {
+                    localStorage.removeItem(TTS_VOICE_KEY); // '기본' 선택 시 저장값 제거
+                }
+                showToast('목소리가 저장되었습니다.');
+                
+                // 테스트 재생
+                const testUtterance = new SpeechSynthesisUtterance('목소리가 저장되었습니다.');
+                const savedVoice = voiceList.find(v => v.voiceURI === selectedVoiceURI);
+                if (savedVoice) {
+                    testUtterance.voice = savedVoice;
+                }
+                testUtterance.lang = 'ko-KR';
+                synthesis.speak(testUtterance);
+            });
+        }
         // [신규] 앱 백그라운드/복귀 시 접속 유지 로직 (pagehide/pageshow로 안정성 강화)
         
         const handleAppHide = () => {
@@ -1233,7 +1444,44 @@ function cancelMyOnDisconnectHandler() {
                 handlePlayerChanges(oldRoomData ? oldRoomData.players : {});
                 loadingOverlay.style.display = 'none';
             });
-            roomRef.child('chat').on('child_added', snapshot => renderChatMessage(snapshot.val()));
+            roomRef.child('chat').on('child_added', snapshot => {
+                const msg = snapshot.val();
+                if (!msg) return;
+
+                renderChatMessage(msg); // 1. 채팅창에 렌더링 (기존 로직)
+                
+                // 2. ✨ [신규] TTS로 메시지 읽어주기
+                if (msg && !msg.isSystem && msg.senderId !== currentUser.uid && synthesis && gameSettings.sfx) {
+                    // 시스템 메시지가 아니고, 내가 보낸게 아니고, TTS가 지원되고, 효과음(sfx) 설정이 켜져있다면
+                    try {
+                        // 이전에 읽던게 있으면 중지
+                        if (synthesis.speaking) {
+                            synthesis.cancel(); 
+                        }
+                        
+                        // --- [수정] '단축어 번역' 함수를 거친 텍스트로 읽기 ---
+                        const processedText = preprocessTextForTTS(msg.content);
+                        const utterance = new SpeechSynthesisUtterance(processedText);
+                        
+                        // --- [수정] 저장된 목소리 적용 ---
+                        const savedVoiceURI = localStorage.getItem(TTS_VOICE_KEY);
+                        if (savedVoiceURI) {
+                            // voiceList는 populateVoiceList() 함수에서 이미 채워짐
+                            const savedVoice = voiceList.find(v => v.voiceURI === savedVoiceURI);
+                            if (savedVoice) {
+                                utterance.voice = savedVoice;
+                            }
+                        }
+                        // --- [수정] 끝 ---
+                        
+                        utterance.lang = 'ko-KR';
+                        utterance.rate = 1.1; // 조금 빠르게
+                        synthesis.speak(utterance);
+                    } catch (e) {
+                        console.error("TTS 실행 오류:", e);
+                    }
+                }
+            });
         }
 
         function handlePlayerChanges(oldPlayers) {
@@ -1453,6 +1701,28 @@ function cancelMyOnDisconnectHandler() {
              }
         }
 
+      // [신규] TTS가 읽기 전에 텍스트를 변환하는 함수 상용구
+        function preprocessTextForTTS(text) {
+            // 1. ㅋ/ㅎ (웃음소리)는 문장 중간에 있어도 변환
+            // (최소 2개 이상 연속될 때만)
+            let processedText = text.replace(/ㅋ{2,}/g, '크크크'); // ㅋㅋㅋ -> 크크크
+            processedText = processedText.replace(/ㅎ{2,}/g, '흐흐흐'); // ㅎㅎㅎ -> 흐흐흐
+
+            // 2. 단축어는 "메시지 전체"가 일치할 때만 변환 (오작동 방지)
+            // (예: "새우ㅇㅇ"가 "새우응응"이 되는 것을 방지)
+            if (processedText === 'ㅎㅇ') return '하이';
+            if (processedText === 'ㅇㅇ') return '이응이응'; // '이응이응'보다 대화의 뜻(Yes)에 맞게 '응응'으로 변환합니다.
+            if (processedText === 'ㄱㄱ') return '고고';
+            if (processedText === 'ㄴㄴ') return '노노'; // (자주 쓰이는 것 추가)
+            if (processedText === 'ㅈㅅ') return '죄송'; // (자주 쓰이는 것 추가)
+            if (processedText === 'ㅋㅋㅋㅋ') return '크크크크'; // (자주 쓰이는 것 추가)
+                        if (processedText === 'ㅋㅋㅋㅋㅋ') return '크크크크'; // (자주 쓰이는 것 추가)
+                        if (processedText === '온대?') return '잘생긴 오빠 온대?'; // (자주 쓰이는 것 추가)
+
+            // 3. 웃음소리만 변환되었거나, 변환이 필요 없는 텍스트 반환
+            return processedText;
+        }
+
         function sendMessage(content) {
             const message = content.trim();
             if (message && roomRef) { // roomRef null 체크
@@ -1610,8 +1880,17 @@ function cancelMyOnDisconnectHandler() {
 
 
         // --- 나머지 이벤트 리스너 연결 ---
-chatInput.addEventListener('focus', () => { setTimeout(() => { lobbyFooter.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, 150); });
-sendChatBtn.addEventListener('click', () => { sendMessage(chatInput.value); chatInput.value = ''; chatInput.focus(); });
+chatInput.addEventListener('focus', () => {
+            // [수정] 키보드가 올라올 때 뷰를 강제로 스크롤하는 대신,
+            // 채팅창 자체를 맨 아래로 스크롤하여 최신 메시지가 보이게 합니다.
+            setTimeout(() => {
+                if (chatContainer) {
+                    chatContainer.scrollTop = chatContainer.scrollHeight;
+                }
+                // lobbyFooter.scrollIntoView... 코드는 삭제합니다.
+            }, 150); // 키보드가 올라오는 시간 잠시 대기
+        });
+        sendChatBtn.addEventListener('click', () => { sendMessage(chatInput.value); chatInput.value = ''; chatInput.focus(); });
 chatInput.addEventListener('keypress', e => { if (e.key === 'Enter') { sendMessage(chatInput.value); chatInput.value = ''; e.preventDefault(); }});
 
 // 친구초대 버튼 이벤트 연결
@@ -1850,6 +2129,26 @@ if (inviteBtn) {
     </div>
     <div id="console-output" style="padding: 10px; overflow-y: scroll; flex-grow: 1;"></div>
     <button id="open-console-btn" style="display: none; position: fixed; bottom: 10px; right: 10px; padding: 5px 10px; background-color: var(--primary-color); color: white; border: none; border-radius: 5px; z-index: 9998; cursor: pointer;">콘솔 열기</button>
+</div>
+
+<div id="tts-settings-modal" class="overlay">
+    <div class="modal-content" style="max-width: 350px;">
+        <div class="modal-header" style="background-color: var(--primary-color); border-bottom-color: #C04A4A;">
+            <h2 style="color: white; flex-grow: 1; text-align: center;">채팅 음성 설정</h2>
+        </div>
+        <div class="modal-body" style="text-align: left; padding: 20px;">
+            <label for="tts-voice-select" style="font-weight: 700; font-size: 0.9em; margin-bottom: 8px; display: block;">목소리 선택 (한국어)</label>
+            <select id="tts-voice-select" style="width: 100%; padding: 10px; font-size: 1em; border-radius: 8px; border: 2px solid var(--text-color-dark); font-family: 'GmarketSans', sans-serif;">
+                <option value="">기본 목소리 (브라우저)</option>
+                </select>
+            <p style="font-size: 0.8em; color: #666; margin-top: 10px;">
+                목록은 사용 중인 브라우저/OS(Siri, Google 등)에 따라 다르게 표시됩니다.
+            </p>
+        </div>
+        <div class="modal-footer">
+            <button id="tts-settings-close-btn" class="menu-btn secondary" style="width: 100%;">닫기</button>
+        </div>
+    </div>
 </div>
 </body>
 </html>
