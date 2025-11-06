@@ -926,6 +926,38 @@ function kakaoInvite() {
             });
         }
 
+        // [신규] 앱 백그라운드/복귀 시 접속 유지 로직 (대기실과 동일)
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'hidden') {
+                // 앱이 숨겨짐 -> 5분 타이머 시작
+                console.log('[Presence] 게임방 숨김. 5분 타이머 시작.');
+                if (presenceTimeout) clearTimeout(presenceTimeout);
+                
+                // [중요] 즉시 onDisconnect 핸들러를 *취소*함
+                // (Firebase가 연결을 끊기 전에 우리가 먼저 취소)
+                cancelMyOnDisconnectHandler(); 
+                
+                presenceTimeout = setTimeout(() => {
+                    console.log('[Presence] 5분 경과. 게임방에서 나갑니다.');
+                    // 5분 지나면 onDisconnect가 없어도 수동으로 나감
+                    cleanupAndExit();
+                }, 300000); // 5분 (300,000ms)
+                
+            } else if (document.visibilityState === 'visible') {
+                // 앱이 다시 보임 -> 타이머 취소
+                console.log('[Presence] 게임방 활성화. 5분 타이머 취소.');
+                if (presenceTimeout) {
+                    clearTimeout(presenceTimeout);
+                    presenceTimeout = null;
+                }
+                
+                // [중요] onDisconnect 핸들러를 *즉시 다시 설정*함
+                // (Firebase의 on('value')가 다시 실행되며 어차피 호출되지만,
+                //  연결 복구 즉시 설정하는 것이 가장 안전함)
+                setMyOnDisconnectHandler();
+            }
+        });
+
         // ✨ [신규] 공용 토스트 알림 표시 함수
         function showToast(message) {
             const toastContainer = document.getElementById('toast-container');
