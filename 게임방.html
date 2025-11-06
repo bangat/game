@@ -954,6 +954,8 @@ function kakaoInvite() {
 let currentUser, myNickname, myAvatar, myBombSkin, isHost;
 let myEntryEffect = null; // ✨ [신규] 입장 이펙트 저장용
 let previousPlayerNicks = {};
+
+let presenceTimeout = null; // [신규] 백그라운드 유예 시간 타이머
 // ✨ [신규] 친구 접속 감지 리스너
 let friendStatusListener = null;
 let friendStatusRef = null;
@@ -1051,6 +1053,38 @@ availableGames = [
             }
         });
 
+        // [신규] onDisconnect 핸들러를 (재)설정하는 함수
+function setMyOnDisconnectHandler() {
+    if (!roomRef || !currentUser) return; // 방어 코드
+
+    // 기존 핸들러가 있다면 일단 모두 취소
+    cancelMyOnDisconnectHandler();
+
+    if (isHost) {
+        hostOnDisconnect = roomRef.onDisconnect();
+        hostOnDisconnect.remove();
+        console.log('[Presence] 호스트 onDisconnect 설정됨 (즉시 제거)');
+    } else {
+        playerOnDisconnect = roomRef.child('players/' + currentUser.uid).onDisconnect();
+        playerOnDisconnect.remove();
+        console.log('[Presence] 게스트 onDisconnect 설정됨 (즉시 제거)');
+    }
+}
+
+// [신규] onDisconnect 핸들러를 취소하는 함수
+function cancelMyOnDisconnectHandler() {
+    if (hostOnDisconnect) {
+        try { hostOnDisconnect.cancel(); } catch(e) {}
+        hostOnDisconnect = null;
+        console.log('[Presence] 호스트 onDisconnect 취소됨');
+    }
+    if (playerOnDisconnect) {
+        try { playerOnDisconnect.cancel(); } catch(e) {}
+        playerOnDisconnect = null;
+        console.log('[Presence] 게스트 onDisconnect 취소됨');
+    }
+}
+
         function initializeRoom() {
             const urlParams = new URLSearchParams(window.location.search);
             const roomId = urlParams.get('roomId');
@@ -1126,24 +1160,8 @@ availableGames = [
 
                 isHost = currentRoomData.hostId === currentUser.uid; // 데이터 변경 시 isHost 재확인
 
-                // onDisconnect 설정
-                if (isHost) {
-                    if (playerOnDisconnect) playerOnDisconnect.cancel(); // 게스트 핸들러 취소
-                    // hostOnDisconnect 변수에 할당하기 전에 기존 핸들러 취소 시도
-                    if(hostOnDisconnect) {
-                        try { hostOnDisconnect.cancel(); } catch(e) { console.warn("기존 호스트 onDisconnect 취소 실패:", e); }
-                    }
-                    hostOnDisconnect = roomRef.onDisconnect();
-                    hostOnDisconnect.remove();
-                } else {
-                    if (hostOnDisconnect) hostOnDisconnect.cancel(); // 호스트 핸들러 취소
-                    // playerOnDisconnect 변수에 할당하기 전에 기존 핸들러 취소 시도
-                    if(playerOnDisconnect) {
-                         try { playerOnDisconnect.cancel(); } catch(e) { console.warn("기존 플레이어 onDisconnect 취소 실패:", e); }
-                    }
-                    playerOnDisconnect = roomRef.child('players/' + currentUser.uid).onDisconnect();
-                    playerOnDisconnect.remove();
-                }
+               // onDisconnect 설정 (Firebase 연결이 복구될 때마다 호출됨)
+                setMyOnDisconnectHandler();
 
                 updateUI();
                 handlePlayerChanges(oldRoomData ? oldRoomData.players : {});
