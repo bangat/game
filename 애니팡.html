@@ -698,9 +698,44 @@
         box-shadow: 0 0 30px 20px rgba(255, 215, 0, 0);
         border: 2px solid rgba(255, 215, 0, 0.5);
     }
+
+    
 }
-
-
+/* --- [신규] 게임 종료 모달 마이크 버튼 --- */
+        #rematch-mic-btn {
+            position: absolute;
+            right: 10px; /* 오른쪽 끝에서 10px */
+            top: 50%;
+            transform: translateY(-50%);
+            
+            font-size: 1.4em; /* 컴팩트한 크기 */
+            background-color: rgba(0,0,0,0.1); /* 헤더보다 살짝 어둡게 */
+            color: white;
+            border: 1px solid rgba(255,255,255,0.5);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            padding: 0;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.2s ease;
+        }
+        #rematch-mic-btn:active {
+            background-color: rgba(0,0,0,0.3);
+            transform: translateY(-50%) scale(0.9);
+        }
+        #rematch-mic-btn.recording {
+            background-color: rgba(255, 255, 255, 0.9); /* 밝은 흰색 */
+            color: var(--primary-color);
+            animation: pulse-red-simple 1.5s infinite;
+        }
+        @keyframes pulse-red-simple {
+            0% { transform: translateY(-50%) scale(1); }
+            50% { transform: translateY(-50%) scale(1.05); }
+            100% { transform: translateY(-50%) scale(1); }
+        }
     </style>
 </head>
 <body>
@@ -744,17 +779,15 @@
 
     <div id="game-over-overlay" class="overlay">
          <div class="modal-content">
-             <div class="modal-header">
-                 <h2>게임 종료!</h2>
+             <div class="modal-header" style="display: flex; align-items: center; justify-content: center; position: relative;">
+                 <h2 style="flex-grow: 1; margin: 0; padding-left: 30px;">🏆최종 순위🏆</h2>
+                 <button id="rematch-mic-btn" class="rematch-mic">🎙️</button>
              </div>
              <div class="modal-body">
-<p id="rematch-title" style="font-size: 1.2em; margin-bottom: 15px;">🏆최종 순위🏆</p>
                 <div id="rematch-status-list">
                     </div>
                 <hr style="margin: 15px 0; border: 1px solid var(--panel-border);">
-                <p style="font-size: 1.1em; font-weight: 700;">내 점수</p>
-                <p id="final-score" style="margin-bottom: 0;">0</p>
-             </div>
+                </div>
              <div class="modal-footer">
                  <button id="rematch-btn" class="menu-btn primary">다시하기</button>
                  <button id="lobby-btn" class="menu-btn secondary">대기실로</button>
@@ -913,6 +946,18 @@ let hintTimerId = null; // [신규] 힌트 타이머
             let countdownStarted = false; // 카운트다운 중복 방지
             let roomValueListener = null; // [신규] 룸 리스너 참조
             let rematchListener = null; // [신규] 리매치 리스너 참조
+
+            // --- [신규] STT/TTS (게임방.html과 동일) ---
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            const recognition = SpeechRecognition ? new SpeechRecognition() : null;
+            const synthesis = window.speechSynthesis;
+            const TTS_VOICE_KEY = 'gameLobbyVoiceURI'; // (게임방과 동일한 키 사용)
+            const TTS_ENABLED_KEY = 'gameLobbyTTSOn'; // (게임방과 동일한 키 사용)
+            // 'false'일 때만 꺼지고, null(최초)이거나 'true'면 켜짐 (기본값: ON)
+            let isTTSOn = localStorage.getItem(TTS_ENABLED_KEY) !== 'false';
+            let voiceList = []; // 음성 목록 캐시
+            let chatListenerRef = null; // [신규] 채팅 리스너 참조
+            // --- [신규] STT/TTS 끝 ---
 
             const firebaseConfig = {
                 apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
@@ -1095,6 +1140,46 @@ roomValueListener = (snapshot) => {
 roomRef.on('value', roomValueListener);
 
 loadingOverlay.querySelector('p').textContent = "다른 플레이어를 기다리는 중...";
+
+// --- [신규] TTS 엔진 깨우기 및 목소리 로드 (게임방.html 로직) ---
+                if (synthesis) {
+                    if (synthesis.onvoiceschanged !== undefined) {
+                        synthesis.onvoiceschanged = populateVoiceList;
+                    }
+                    populateVoiceList(); // 로드 시도
+                }
+
+                // --- [신규] 채팅 수신(TTS) 리스너 등록 ---
+                if (chatListenerRef) chatListenerRef.off(); // 만약을 대비해 기존 리스너 제거
+                chatListenerRef = roomRef.child('chat');
+                
+                chatListenerRef.on('child_added', snapshot => {
+                    const msg = snapshot.val();
+                    if (!msg) return;
+                    
+                    // [핵심] TTS 재생 로직 (게임방.html과 동일)
+                    if (msg && !msg.isSystem && msg.senderId !== currentUser.uid && synthesis && isTTSOn) {
+                        try {
+                            if (synthesis.speaking) synthesis.cancel(); 
+                            
+                            const processedText = preprocessTextForTTS(msg.content);
+                            const utterance = new SpeechSynthesisUtterance(processedText);
+                            
+                            const savedVoiceURI = localStorage.getItem(TTS_VOICE_KEY);
+                            if (savedVoiceURI) {
+                                const savedVoice = voiceList.find(v => v.voiceURI === savedVoiceURI);
+                                if (savedVoice) utterance.voice = savedVoice;
+                            }
+                            
+                            utterance.lang = 'ko-KR';
+                            utterance.rate = 1.1;
+                            synthesis.speak(utterance);
+                        } catch (e) {
+                            console.error("TTS 실행 오류:", e);
+                        }
+                    }
+                });
+                // --- [신규] TTS 수신 로직 끝 ---
             }
 
             function updateScoreboardUI(players) {
@@ -1724,6 +1809,45 @@ async function createStarPangiTest() {
             function forceGameOver() {
                 if (gameOverOverlay.classList.contains('active')) return;
                 gameOverOverlay.classList.add('active'); // 중복 방지
+
+                // --- [신규] STT(마이크) 기능 초기화 및 버튼 연결 ---
+                const rematchMicBtn = document.getElementById('rematch-mic-btn');
+                if (recognition && rematchMicBtn) {
+                    // 1. 음성 인식이 성공했을 때
+                    recognition.onresult = (event) => {
+                        const text = event.results[0][0].transcript;
+                        // [핵심] 인식된 텍스트를 "채팅 전송" (함수 필요)
+                        if (text) sendMessage(text); // (sendMessage 함수는 아래에 추가)
+                    };
+                    // 2. 음성 인식이 끝나면 버튼 복구
+                    recognition.onend = () => {
+                        rematchMicBtn.classList.remove('recording');
+                        rematchMicBtn.disabled = false;
+                    };
+                    // 3. 에러 처리
+                    recognition.onerror = (event) => {
+                        console.error('STT 에러:', event.error);
+                        rematchMicBtn.classList.remove('recording');
+                        rematchMicBtn.disabled = false;
+                    };
+                    // 4. 마이크 버튼 클릭 이벤트
+                    rematchMicBtn.addEventListener('click', (e) => {
+                        e.stopPropagation(); // 모달 닫힘 방지
+                        if (rematchMicBtn.classList.contains('recording')) {
+                            recognition.stop();
+                        } else {
+                            try {
+                                recognition.start();
+                                rematchMicBtn.classList.add('recording');
+                                rematchMicBtn.disabled = true;
+                            } catch(e) { console.error("STT 시작 에러", e); }
+                        }
+                    });
+                } else if (rematchMicBtn) {
+                    rematchMicBtn.style.display = 'none'; // STT 미지원 시 버튼 숨김
+                }
+                // --- [신규] STT 로직 끝 ---
+
 stopSound('bgm'); // [신규] BGM 정지
                 // [버그 수정] 게임이 정상 종료되었으므로, 호스트의 onDisconnect 핸들러 취소
                 if (isHost && hostStatusDisconnectRef) {
@@ -1764,7 +1888,6 @@ stopSound('bgm'); // [신규] BGM 정지
                     if (!players) {
                         // [수정] players가 null일 때 (방이 삭제됨)
                         finalRankingList.innerHTML = '<p style="text-align: center;">방이 종료되었습니다.</p>';
-                        finalScoreEl.textContent = `${score.toLocaleString()} 점`;
                         return; // [수정] null일 때 여기서 반환
                     }
 
@@ -1825,10 +1948,7 @@ stopSound('bgm'); // [신규] BGM 정지
                         row.innerHTML = playerInfoHTML + statusHTML;
                         rematchStatusList.appendChild(row);
 
-                        // [유지] 내 최종 점수를 하단 '내 점수' 란에 업데이트
-                        if (isMe) {
-                            finalScoreEl.textContent = `${scoreVal.toLocaleString()} 점`;
-                        }
+                        
                     });
 
                     /// ✅ 변경 코드 (버그 수정됨)
@@ -2567,7 +2687,7 @@ async function handleDoublePangiExplosion(r1, c1, r2, c2) {
 function showDoubleRainbowEffect(r1, c1, r2, c2) {
     const explosionText = document.createElement('div');
     explosionText.className = 'combo-text';
-    explosionText.textContent = '🌈더블레인보우🌈';
+    explosionText.textContent = '더블팡!!';
     explosionText.style.top = '50%';
     explosionText.style.left = '50%';
     explosionText.style.transform = 'translate(-50%, -50%)';
@@ -3136,7 +3256,49 @@ startHintTimer(); // [신규] 힌트 타이머 시작
                 isCascading = false;
             }
 
+            // [신규] TTS가 읽기 전에 텍스트를 변환하는 함수
+            function preprocessTextForTTS(text) {
+                let processedText = text.replace(/ㅋ{2,}/g, '크크크'); 
+                processedText = processedText.replace(/ㅎ{2,}/g, '흐흐흐');
+                if (processedText === 'ㅎㅇ') return '하이';
+                if (processedText === 'ㅇㅇ') return '응응';
+                if (processedText === 'ㄱㄱ') return '고고';
+                if (processedText === 'ㄴㄴ') return '노노';
+                if (processedText === 'ㅈㅅ') return '죄송';
+                return processedText;
+            }
 
+            // [신규] TTS 엔진을 "깨우는" (Prime) 함수
+            function primeTTSEngine() {
+                if (!synthesis) return;
+                const emptyUtterance = new SpeechSynthesisUtterance('');
+                emptyUtterance.lang = 'ko-KR';
+                try {
+                    synthesis.pause();
+                    synthesis.resume();
+                    synthesis.speak(emptyUtterance);
+                } catch (e) {}
+            }
+            
+            // [신규] TTS 목소리 목록 로드 (선택 UI는 없지만, 저장된 목소리를 찾기 위해 필요)
+            let voiceLoadAttempts = 0;
+            function populateVoiceList() {
+                if (!synthesis) return;
+                voiceList = synthesis.getVoices();
+                const koreanVoices = voiceList.filter(voice => voice.lang === 'ko-KR' || voice.lang.startsWith('ko-'));
+
+                if (koreanVoices.length === 0 && voiceLoadAttempts < 5) {
+                    voiceLoadAttempts++;
+                    setTimeout(primeTTSEngine, 100); 
+                    setTimeout(populateVoiceList, 500); 
+                    return;
+                }
+                
+                if (koreanVoices.length > 0) {
+                     console.log(`TTS: 한국어 목소리 ${koreanVoices.length}개 로드 완료.`);
+                }
+            }
+            
             function updateScoreUI() {
                 const myScoreValueEl = multiplayerScoreboard.querySelector('.my-score .value');
                 if (myScoreValueEl) {
@@ -3745,6 +3907,19 @@ shockwave.style.width = `${rect.width * 3}px`; // [수정] 타일 3배 크기 (5
                 createBoardData(); 
             }
 
+            // [신규] STT가 사용할 채팅 전송 함수 (게임방.html과 동일)
+            function sendMessage(content) {
+                const message = content.trim();
+                if (message && roomRef && currentUser) { // roomRef, currentUser null 체크
+                    roomRef.child('chat').push({
+                        senderId: currentUser.uid, 
+                        // senderNickname: (닉네임 정보가 여기 없으므로 생략. 게임방에서 보낸 닉네임 사용)
+                        content: message, 
+                        timestamp: firebase.database.ServerValue.TIMESTAMP
+                    });
+                }
+            }
+
             // [신규] 게임 스탯 업데이트 함수 (테트리스.html에서 가져와 수정)
             function updatePlayerStats(didIWin, finalScore) { 
                 if (!playerUid || playerUid.startsWith('guest_')) return;
@@ -3791,7 +3966,7 @@ shockwave.style.width = `${rect.width * 3}px`; // [수정] 타일 3배 크기 (5
 
                 if (roomRef && playerUid) {
                     roomRef.off(); // [핵심] 이 클라이언트의 'roomRef.on('value')' 리스너 중지
-
+if (chatListenerRef) chatListenerRef.off(); // [신규] 채팅 리스너 중지
                     if (isHost) {
                         console.log("Host removing room...");
                         removePromise = roomRef.remove();
