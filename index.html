@@ -543,47 +543,16 @@
         auth.onAuthStateChanged(user => {
             if (user) {
                 // 사용자가 로그인된 상태
-                usersRef.child(user.uid).once('value').then(snapshot => {
-                    if (snapshot.exists()) {
-                        const userData = snapshot.val();
-                        // 필요한 정보를 localStorage에 저장
-                        localStorage.setItem('myPlayerId', user.uid);
-                        localStorage.setItem('userNickname', userData.profile.nickname);
-                        localStorage.setItem('userAvatar', userData.profile.avatar);
+                
+                // [핵심 수정] DB에서 프로필을 읽어오는 것을 "기다리지 않습니다."
+                // 로그인(인증)만 확인되면, "즉시" 대기실로 보냅니다.
+                // (대기실.html이 DB에서 프로필을 읽고 localStorage를 설정할 것입니다)
+                console.log('로그인(인증) 확인. 즉시 대기실로 이동합니다.');
+                
+                // [중요] 초대장(roomId)은 sessionStorage에 있으므로
+                // 대기실.html이 읽어서 처리할 것입니다.
+                window.location.replace('대기실.html');
 
-                        // [수정] 3. 로그인 성공 시, 저장된 초대장이 있는지 확인
-                        const invitedRoomId = sessionStorage.getItem('invitedRoomId');
-                        
-                        // --- [신규] PWA 설치 모달 표시 조건 확인 ---
-                       // --- [신규] PWA 설치 모달 표시 조건 확인 ---
-                        const isStandalone = window.matchMedia('(display-mode: fullscreen)').matches || window.navigator.standalone || localStorage.getItem('pwaInstalled') === 'true';
-                        const pwaModalDismissed = sessionStorage.getItem('pwaModalDismissed') === 'true';
-                        const shouldShowPwaModal = !isStandalone && !pwaModalDismissed;
-                        // ------------------------------------------
-
-                        if (invitedRoomId) {
-                            // [수정] 4. 초대장이 있으면 -> 게임방으로 이동 (PWA 모달보다 우선)
-                            console.log(`초대장(${invitedRoomId})을 사용하여 게임방으로 이동합니다.`);
-                            sessionStorage.removeItem('invitedRoomId'); // 사용했으니 삭제
-                            window.location.replace(`게임방.html?roomId=${invitedRoomId}`);
-                        
-                        } else if (shouldShowPwaModal) {
-                            // [신규] 5. 초대장이 없고, PWA 모달을 띄워야 하면 -> 대기실로 "가지 않고" 대기
-                            console.log('PWA 설치 모달을 띄우기 위해 index.html에 머무릅니다.');
-                            // DOMContentLoaded의 PWA 모달 로직이 실행될 것임.
-                            
-                        } else {
-                            // [수정] 6. 초대장도 없고, PWA 모달 띄울 필요도 없으면 -> 대기실로 이동
-                            console.log('초대장 없음, PWA 모달 불필요. 대기실로 이동합니다.');
-                            sessionStorage.removeItem('invitedRoomId');
-                            window.location.replace('대기실.html');
-                        }
-
-                    } else {
-                        // DB에 유저 정보가 없는 비정상적인 경우, 로그아웃 처리
-                        auth.signOut();
-                    }
-                });
             } else {
                 // 사용자가 로그아웃된 상태라면, 로딩 화면을 숨기고 로그인 폼을 보여줍니다.
                 loadingView.style.display = 'none';

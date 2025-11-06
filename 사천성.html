@@ -686,7 +686,7 @@
             let isFirewallActive = false; // 방화벽 활성화 상태
             
             // 게임 설정 (플레이어 수에 따라 JS에서 변경)
-            let BOARD_ROWS = 8;
+            let BOARD_ROWS = 7;
             let BOARD_COLS = 6;
             let TILE_COUNT = BOARD_ROWS * BOARD_COLS;
             
@@ -952,10 +952,10 @@
             // ------------------------------------
             function setBoardDimensions(playerCount) {
                 if (playerCount >= 3) {
-                    BOARD_ROWS = 10; // 3~4인
+                    BOARD_ROWS = 8; // 3~4인
                     BOARD_COLS = 6;
                 } else {
-                    BOARD_ROWS = 8; // 2인
+                    BOARD_ROWS = 7; // 2인
                     BOARD_COLS = 6;
                 }
                 TILE_COUNT = BOARD_ROWS * BOARD_COLS;
@@ -1138,12 +1138,24 @@
                             isGameLive = false;
                             gameOverFlag = true;
                             
-                            // [수정] 내가 승리 + "게임 종료" 상태를 Firebase에 전송
-                            roomRef.update({
-                                'status': 'gameOver',
-                                [`playerStates/${myPlayerId}/isDead`]: false,
-                                [`playerStates/${myPlayerId}/gauge`]: 100
+                            // [버그 수정] 내가 승리! (나=false, 나머지=true)
+                            const updates = { 'status': 'gameOver' };
+                            
+                            // 1. 현재 방의 모든 플레이어 ID를 가져옴
+                            const playerIds = Object.keys(currentRoomData.players || {});
+                            
+                            playerIds.forEach(id => {
+                                if (id === myPlayerId) {
+                                    // 2. 나는 '승리' (isDead: false)
+                                    updates[`playerStates/${id}/isDead`] = false;
+                                    updates[`playerStates/${id}/gauge`] = 100; // 게이지 100%
+                                } else {
+                                    // 3. 나머지는 '패배' (isDead: true)
+                                    updates[`playerStates/${id}/isDead`] = true;
+                                }
                             });
+                            
+                            roomRef.update(updates);
                             
                             // 0.5초 후 승리 화면 표시는 로컬에서 동일하게 실행 (Firebase on()이 처리하겠지만, 로컬 즉시 반응을 위해 둠)
                             setTimeout(() => showGameOverScreen(true), 500);

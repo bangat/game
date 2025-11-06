@@ -1636,6 +1636,29 @@ const inviteSound = document.getElementById('invite-sound');
 
             auth.onAuthStateChanged(user => {
                 if (user) {
+                    
+                    // [수정] 1. (초대장) "URL" 또는 "sessionStorage"에서 roomId를 확인
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const urlRoomId = urlParams.get('roomId');
+                    // (index.html에서 로그인한 경우 sessionStorage에 저장됨)
+                    const sessionRoomId = sessionStorage.getItem('invitedRoomId');
+                    
+                    const invitedRoomId = urlRoomId || sessionRoomId; // 둘 중 하나라도 있으면 입장
+
+                    if (invitedRoomId) {
+                        // 2. (초대장) roomId가 있으면, "즉시" 게임방으로 이동
+                        console.log(`[초대장] ${invitedRoomId} 방으로 즉시 이동합니다.`);
+                        
+                        // [중요] 사용했으므로 sessionStorage에서 삭제
+                        sessionStorage.removeItem('invitedRoomId'); 
+                        
+                        // [중요] URL에 있던 roomId=... 파라미터를 정리하고 이동
+                        history.replaceState(null, '', '대기실.html'); // URL에서 roomId 제거
+                        window.location.replace(`게임방.html?roomId=${invitedRoomId}`);
+                        return; // [중요] auth 리스너의 나머지 로직(대기실 표시)을 중단
+                    }
+                    
+                    // 3. (기존 로직) 초대장이 없을 때만 대기실 로직 실행
                     myPresenceRef = presenceRef.child(user.uid);
                     myPresenceRef.set(true);
                     myPresenceRef.onDisconnect().remove();
@@ -1645,20 +1668,30 @@ const inviteSound = document.getElementById('invite-sound');
                         updateConcurrentUsers(userCount);
                     });
 
-                    // [수정] 알림 리스너 호출
-                    listenToNotifications(user.uid);
-
+                    // [수정] 4. (index.html에서 이동됨) DB에서 프로필을 읽고 localStorage에 저장
                     currentUser = user;
                     cleanupMyGhostRooms(user.uid);
                     usersRef.child(user.uid).on('value', snapshot => {
                         if (snapshot.exists()) {
                             currentUserData = snapshot.val();
                             myFriendIds = currentUserData.friends || {};
+
+                            // [신규] localStorage 설정 (index.html에서 이동)
+                            localStorage.setItem('myPlayerId', user.uid);
+                            localStorage.setItem('userNickname', currentUserData.profile.nickname);
+                            localStorage.setItem('userAvatar', currentUserData.profile.avatar);
                             
                             updateLobbyUI();
                             if (!roomListener) listenToRooms();
                             checkDailyLogin(user.uid, currentUserData.profile);
                             listenToLobbyChat();
+                            
+                            // [수정] 알림 리스너는 여기서(프로필 로드 후) 호출
+                            listenToNotifications(user.uid);
+                        } else {
+                            // [신규] DB에 프로필이 없는 비정상적 상황
+                            console.error("인증은 되었으나 DB에 프로필이 없습니다. 로그아웃합니다.");
+                            auth.signOut(); // (auth.signOut()은 onAuthStateChanged를 다시 호출)
                         }
                     });
                 } else {
