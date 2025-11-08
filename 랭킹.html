@@ -340,7 +340,8 @@
                 rankingContent.innerHTML = `<div class="spinner"></div>`;
                 
                 // [추가] 점수(rating) 기반 랭킹 게임 ID 목록
-                const highscoreBasedGames = ['quiz', 'tetris', 'candysoap']; // [수정] 퀴즈, 테트리스, 애니팡은 highscore 기준
+                const highscoreBasedGames = ['quiz', 'tetris']; // [수정] candysoap 제거
+const rankBasedGames = ['candysoap']; // [신규] candysoap는 1위 횟수(rank1)로 정렬 // [수정] 퀴즈, 테트리스, 애니팡은 highscore 기준
 
                 usersRef.once('value', snapshot => {
                 let users = [];
@@ -357,8 +358,39 @@
                     if (gameId === 'points') {
                         // 1. 통합 랭킹 (포인트)
                         users.sort((a, b) => (b.profile.points || 0) - (a.profile.points || 0));
-                    } else if (highscoreBasedGames.includes(gameId)) { // [수정] highscore 기반 게임
-                        // 2. 퀴즈/테트리스 랭킹 (최고점수)
+                    } else if (rankBasedGames.includes(gameId)) { // [신규]
+                        // 2. 애니팡 랭킹 (1위 횟수 > 2위 횟수 순)
+                        users = users.filter(user => user.gameStats?.[gameId]?.plays > 0);
+                        users.sort((a, b) => {
+                            const statsA = a.gameStats?.[gameId] || { rank1: 0, rank2: 0 };
+                            const statsB = b.gameStats?.[gameId] || { rank1: 0, rank2: 0 };
+                            
+                            // 1순위: 1위 횟수 (내림차순)
+                            if (statsB.rank1 !== statsA.rank1) {
+                                return (statsB.rank1 || 0) - (statsA.rank1 || 0);
+                            }
+                            // 2순위: 2위 횟수 (내림차순)
+                            return (statsB.rank2 || 0) - (statsA.rank2 || 0);
+                        });
+                        } else if (rankBasedGames.includes(gameId)) { // [신규]
+    // 2. 애니팡 랭킹 (1위 횟수 > 2위 횟수 순)
+    users = users.filter(user => user.gameStats?.[gameId]?.plays > 0);
+    users.sort((a, b) => {
+        const statsA = a.gameStats?.[gameId] || { rank1: 0, rank2: 0 };
+        const statsB = b.gameStats?.[gameId] || { rank1: 0, rank2: 0 };
+
+        // 1순위: 1위 횟수 (내림차순)
+        if (statsB.rank1 !== statsA.rank1) {
+            return (statsB.rank1 || 0) - (statsA.rank1 || 0);
+        }
+        // 2순위: 2위 횟수 (내림차순)
+        return (statsB.rank2 || 0) - (statsA.rank2 || 0);
+    });
+} else if (highscoreBasedGames.includes(gameId)) { // [수정] highscore 기반 게임
+    // 3. 퀴즈/테트리스 랭킹 (최고점수)
+    
+                    } else if (highscoreBasedGames.includes(gameId)) { // [수정]
+                        // 3. 퀴즈/테트리스 랭킹 (최고점수)
                         users = users.filter(user => user.gameStats?.[gameId]?.plays > 0);
                         users.sort((a, b) => (b.gameStats?.[gameId]?.highscore || 0) - (a.gameStats?.[gameId]?.highscore || 0));
                     } else {
@@ -392,8 +424,9 @@ if (avatarSet) {
 }
                         
                         let statsHTML = '';
-                       // [추가] 점수(rating) 기반 랭킹 게임 ID 목록 (loadRanking과 동일)
-                        const highscoreBasedGames = ['quiz', 'tetris', 'candysoap']; // [수정] 퀴즈, 테트리스, 애니팡
+                       // [수정] highscore 기반 랭킹 게임 ID 목록
+                        const highscoreBasedGames = ['quiz', 'tetris']; // [수정] candysoap 제거
+                        const rankBasedGames = ['candysoap']; // [신규]
 
                         if (gameId === 'points') {
                             const totalWins = Object.values(gameStats || {}).reduce((sum, game) => sum + (game.wins || 0), 0);
@@ -417,6 +450,18 @@ if (avatarSet) {
                                 <div class="stat-item wins">${wins}승</div>
                                 <div class="stat-item losses">${losses}패</div>
                                 <div class="stat-item plays">${plays}회</div>`;
+                        } else if (rankBasedGames.includes(gameId)) { // [신규] 애니팡 랭킹 UI
+                            const game = gameStats?.[gameId] || {};
+                            const rank1 = game.rank1 || 0;
+                            const rank2 = game.rank2 || 0;
+                            const rank3 = game.rank3 || 0;
+                            const rank4 = game.rank4 || 0;
+                            statsHTML = `
+                                <div class="stat-item" style="background-color: #FFF8E1; color: #856200; border-color: #FFECB3;">🥇 ${rank1}</div>
+                                <div class="stat-item" style="background-color: #F5F5F5; color: #424242; border-color: #E0E0E0;">🥈 ${rank2}</div>
+                                <div class="stat-item" style="background-color: #FFF3E0; color: #8D5A21; border-color: #FFCC80;">🥉 ${rank3}</div>
+                                <div class="stat-item" style="background-color: #EEEEEE; color: #616161; border-color: #E0E0E0;">${rank4}</div>
+                            `;
                         } else {
                             // [수정] 점수 표시 로직 분리
                             const game = gameStats?.[gameId] || { wins: 0, losses: 0, draws: 0, plays: 0, rating: 0 };

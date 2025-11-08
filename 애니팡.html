@@ -778,6 +778,37 @@
             to { opacity: 0; transform: translateY(-20px); }
         }
 
+        /* [신규] 게임 종료 모달 채팅창 말풍선 스타일 */
+#rematch-chat-messages .chat-msg {
+    margin-bottom: 5px;
+    word-wrap: break-word;
+}
+#rematch-chat-messages .chat-msg strong {
+    color: var(--primary-color);
+    margin-right: 5px;
+}
+#rematch-chat-messages .chat-msg.my-message strong {
+    color: var(--secondary-color);
+}
+#rematch-chat-messages .system-message {
+    font-style: italic;
+    color: #888;
+    text-align: center;
+    font-size: 0.9em;
+    margin: 5px 0;
+}
+/* [신규] STT 녹음 중 버튼 효과 */
+#rematch-chat-stt-btn.recording {
+    background-color: var(--primary-color);
+    color: white;
+    animation: pulse-red-simple 1.5s infinite;
+}
+@keyframes pulse-red-simple {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
     </style>
 </head>
 <body>
@@ -819,23 +850,29 @@
     <div id="info-overlay" class="overlay"> <div id="countdown-number">3</div>
     </div>
 
-    <div id="game-over-overlay" class="overlay">
-         <div class="modal-content">
-             <div class="modal-header" style="display: flex; align-items: center; justify-content: center; position: relative;">
-                 <h2 style="flex-grow: 1; margin: 0; padding-left: 30px;">🏆최종 순위🏆</h2>
-                 <button id="rematch-mic-btn" class="rematch-mic">🎙️</button>
-             </div>
-             <div class="modal-body">
-                <div id="rematch-status-list">
-                    </div>
-                <hr style="margin: 15px 0; border: 1px solid var(--panel-border);">
-                </div>
-             <div class="modal-footer">
-                 <button id="rematch-btn" class="menu-btn primary">다시하기</button>
-                 <button id="lobby-btn" class="menu-btn secondary">대기실로</button>
-             </div>
+   <div id="game-over-overlay" class="overlay">
+     <div class="modal-content">
+         <div class="modal-header" style="display: flex; align-items: center; justify-content: center; position: relative;">
+             <h2 style="flex-grow: 1; margin: 0; padding-left: 30px;">🏆최종 순위🏆</h2>
+             <button id="rematch-tts-btn" class="rematch-mic">🔊</button>
          </div>
-    </div>
+         <div class="modal-body" style="position: relative;">
+            <div id="rematch-status-list">
+                </div>
+            
+            <div id="rematch-chat-messages" style="height: 100px; overflow-y: scroll; background: #FFFAE0; border: 2px solid var(--panel-border); border-radius: 10px; padding: 10px; margin-top: 5px; text-align: left; font-size: 0.9em; line-height: 1.5;">
+                </div>
+            
+            <button id="rematch-chat-open-btn" class="menu-btn secondary" style="position: absolute; right: 15px; bottom: 15px; width: 50px; height: 50px; border-radius: 50%; padding: 0; font-size: 1.5em; box-shadow: 0 4px 8px rgba(0,0,0,0.2);">💬</button>
+
+         </div>
+         <div class="modal-footer">
+             <button id="rematch-btn" class="menu-btn primary">다시하기</button>
+             <button id="lobby-btn" class="menu-btn secondary">대기실로</button>
+         </div>
+     </div>
+</div>
+
 
     <div id="vfx-flash-overlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: white; opacity: 0; pointer-events: none; z-index: 199;"></div>
 <div id="toast-container"></div>
@@ -911,6 +948,13 @@
             const gameWrapper = document.getElementById('game-wrapper'); 
             const gameAreaFrameEl = document.getElementById('game-area-frame'); // [신규] 전체 프레임 참조
             const comboScoreDisplay = document.getElementById('combo-score-display'); 
+         // DOMContentLoaded 최상단에 추가
+const rematchChatInputModal = document.getElementById('rematch-chat-input-modal');
+const rematchChatInput = document.getElementById('rematch-chat-input');
+const rematchChatSendBtn = document.getElementById('rematch-chat-send-btn');
+const rematchChatSttBtn = document.getElementById('rematch-chat-stt-btn');
+const rematchChatOpenBtn = document.getElementById('rematch-chat-open-btn'); // 👈 이렇게 변경
+const rematchChatMessages = document.getElementById('rematch-chat-messages');
 
             const sounds = {
                 swap: document.getElementById('swap-sound'),
@@ -1013,6 +1057,7 @@ let hintTimerId = null; // [신규] 힌트 타이머
             let playerUid = null;
             let playerRef = null;
             let roomRef = null;
+            let rematchPlayerList = null; // [### 신규 ###] 게임 종료 모달 전용 플레이어 목록
             let allPlayersRef = null;
             let statusRef = null; // [신규] status 리스너 전용 참조
             let isHost = false; 
@@ -1258,31 +1303,36 @@ loadingOverlay.querySelector('p').textContent = "다른 플레이어를 기다�
                 chatListenerRef = roomRef.child('chat');
                 
                 chatListenerRef.on('child_added', snapshot => {
-                    const msg = snapshot.val();
-                    if (!msg) return;
-                    
-                    // [핵심] TTS 재생 로직 (게임방.html과 동일)
-                    if (msg && !msg.isSystem && msg.senderId !== currentUser.uid && synthesis && isTTSOn) {
-                        try {
-                            if (synthesis.speaking) synthesis.cancel(); 
-                            
-                            const processedText = preprocessTextForTTS(msg.content);
-                            const utterance = new SpeechSynthesisUtterance(processedText);
-                            
-                            const savedVoiceURI = localStorage.getItem(TTS_VOICE_KEY);
-                            if (savedVoiceURI) {
-                                const savedVoice = voiceList.find(v => v.voiceURI === savedVoiceURI);
-                                if (savedVoice) utterance.voice = savedVoice;
-                            }
-                            
-                            utterance.lang = 'ko-KR';
-                            utterance.rate = 1.1;
-                            synthesis.speak(utterance);
-                        } catch (e) {
-                            console.error("TTS 실행 오류:", e);
-                        }
-                    }
-                });
+    const msg = snapshot.val();
+    if (!msg) return;
+    
+    // [신규] 1. 게임 종료 모달이 열려있으면 채팅창에 렌더링
+    if (gameOverOverlay.classList.contains('active')) {
+        renderRematchChatMessage(msg);
+    }
+
+    // [유지] 2. TTS 재생 로직 (기존과 동일)
+    if (msg && !msg.isSystem && msg.senderId !== currentUser.uid && synthesis && isTTSOn) {
+        try {
+            if (synthesis.speaking) synthesis.cancel(); 
+            
+            const processedText = preprocessTextForTTS(msg.content);
+            const utterance = new SpeechSynthesisUtterance(processedText);
+            
+            const savedVoiceURI = localStorage.getItem(TTS_VOICE_KEY);
+            if (savedVoiceURI) {
+                const savedVoice = voiceList.find(v => v.voiceURI === savedVoiceURI);
+                if (savedVoice) utterance.voice = savedVoice;
+            }
+            
+            utterance.lang = 'ko-KR';
+            utterance.rate = 1.1;
+            synthesis.speak(utterance);
+        } catch (e) {
+            console.error("TTS 실행 오류:", e);
+        }
+    }
+});
                 // --- [신규] TTS 수신 로직 끝 ---
                 // --- [신규] 🧱 방해 타일 공격 수신 리스너 ---
                 // (참고: setupGlobalNotificationListeners와 달리, 이 리스너는 게임 방에만 해당됨)
@@ -1329,6 +1379,35 @@ loadingOverlay.querySelector('p').textContent = "다른 플레이어를 기다�
                     multiplayerScoreboard.appendChild(statBox);
                 }
             }
+
+// [신규] 게임 종료 모달 채팅창 렌더링 함수
+function renderRematchChatMessage(msg) {
+    if (!rematchChatMessages) return; 
+
+    const msgEl = document.createElement('div');
+    
+    if (msg.isSystem) {
+        msgEl.className = 'system-message';
+        msgEl.textContent = msg.content;
+    } 
+    // [### 버그 수정 ###] currentRoomData.players -> rematchPlayerList
+    else if (rematchPlayerList && rematchPlayerList[msg.senderId]) { 
+        const senderInfo = rematchPlayerList[msg.senderId]; // <-- 여기서 수정됨
+        const isMe = msg.senderId === playerUid;
+        
+        msgEl.className = 'chat-msg';
+        if (isMe) msgEl.classList.add('my-message');
+        
+        msgEl.innerHTML = `<strong>${escapeHTML(senderInfo.nickname)}:</strong> ${escapeHTML(msg.content)}`;
+    } else {
+        // 플레이어 정보를 못 찾았을 때 (방어 코드)
+        msgEl.className = 'system-message';
+        msgEl.textContent = `[...]: ${escapeHTML(msg.content)}`;
+    }
+    
+    rematchChatMessages.appendChild(msgEl);
+    rematchChatMessages.scrollTop = rematchChatMessages.scrollHeight; 
+}
 
             // ------------------------------------
             // 3. 게임 초기화
@@ -1931,205 +2010,250 @@ async function createStarPangiTest() {
             });
         }
 
-            // [수정] "게스트 멈춤" 버그 해결 (리스너 정리)
-            function forceGameOver() {
-                if (gameOverOverlay.classList.contains('active')) return;
-                gameOverOverlay.classList.add('active'); // 중복 방지
+       // [수정] "게스트 멈춤" 버그 해결 (리스너 정리)
+function forceGameOver() {
+    if (gameOverOverlay.classList.contains('active')) return;
 
-                // --- [신규] STT(마이크) 기능 초기화 및 버튼 연결 ---
-                const rematchMicBtn = document.getElementById('rematch-mic-btn');
-                if (recognition && rematchMicBtn) {
-                    // 1. 음성 인식이 성공했을 때
-                    recognition.onresult = (event) => {
-                        const text = event.results[0][0].transcript;
-                        // [핵심] 인식된 텍스트를 "채팅 전송" (함수 필요)
-                        if (text) sendMessage(text); // (sendMessage 함수는 아래에 추가)
-                    };
-                    // 2. 음성 인식이 끝나면 버튼 복구
-                    recognition.onend = () => {
-                        rematchMicBtn.classList.remove('recording');
-                        rematchMicBtn.disabled = false;
-                    };
-                    // 3. 에러 처리
-                    recognition.onerror = (event) => {
-                        console.error('STT 에러:', event.error);
-                        rematchMicBtn.classList.remove('recording');
-                        rematchMicBtn.disabled = false;
-                    };
-                    // 4. 마이크 버튼 클릭 이벤트
-                    rematchMicBtn.addEventListener('click', (e) => {
-                        e.stopPropagation(); // 모달 닫힘 방지
-                        if (rematchMicBtn.classList.contains('recording')) {
-                            recognition.stop();
-                        } else {
-                            try {
-                                recognition.start();
-                                rematchMicBtn.classList.add('recording');
-                                rematchMicBtn.disabled = true;
-                            } catch(e) { console.error("STT 시작 에러", e); }
-                        }
-                    });
-                } else if (rematchMicBtn) {
-                    rematchMicBtn.style.display = 'none'; // STT 미지원 시 버튼 숨김
-                }
-                // --- [신규] STT 로직 끝 ---
+    gameOverOverlay.classList.add('active'); // 중복 방지
 
-stopSound('bgm'); // [신규] BGM 정지
-                // [버그 수정] 게임이 정상 종료되었으므로, 호스트의 onDisconnect 핸들러 취소
-                if (isHost && hostStatusDisconnectRef) {
-                    try {
-                        hostStatusDisconnectRef.cancel();
-                        hostStatusDisconnectRef = null;
-                        console.log("게임 정상 종료: 호스트 onDisconnect 핸들러를 취소했습니다.");
-                    } catch (e) {
-                        console.warn("호스트 onDisconnect 핸들러 취소 실패:", e);
-                    }
-                }
+    // [신규] 2. 채팅 입력 모달 로직
+    // (채팅 전송 함수)
+    function sendRematchChat() {
+        const message = rematchChatInput.value.trim();
+        
+        // [### 버그 수정 ###]
+        // rematchPlayerList에서 내 닉네임을 찾아서 sendMessage에 전달해야 합니다.
+        if (message && rematchPlayerList && rematchPlayerList[playerUid]) {
+            const myNickname = rematchPlayerList[playerUid].nickname;
+            sendMessage(message, myNickname); // 수정된 함수 호출
+        } else if (message) {
+            // 예외 처리: 닉네임을 못찾으면 전송 실패
+            console.error("sendRematchChat: 닉네임을 찾을 수 없어 전송에 실패했습니다.", rematchPlayerList, playerUid);
+            showToast("채팅 전송에 실패했습니다. (정보 없음)");
+        }
+        // [### 수정 끝 ###]
+        
+        rematchChatInput.value = '';
+        rematchChatInputModal.classList.remove('active'); // 전송 후 모달 닫기
+    }
+    
+    // [### 수정 ###] 모달 내부 플로팅 버튼에 이벤트 리스너 연결
+    rematchChatOpenBtn.onclick = () => { 
+        rematchChatInputModal.classList.add('active');
+        rematchChatInput.focus();
+    };
+    
+    // (전송 버튼)
+    rematchChatSendBtn.onclick = sendRematchChat;
+    // (엔터키)
+    rematchChatInput.onkeydown = (e) => {
+        if (e.key === 'Enter' && !e.isComposing) {
+            e.preventDefault();
+            sendRematchChat();
+        }
+    };
+    // (바탕 클릭 시 닫기)
+    rematchChatInputModal.onclick = (e) => {
+        if (e.target === rematchChatInputModal) {
+            rematchChatInputModal.classList.remove('active');
+        }
+    };
 
-                if (timerId) {
-                    clearInterval(timerId);
-                    timerId = null;
-                }
-                isProcessing = true; 
-                loadingOverlay.classList.remove('active');
-                
-                if (!allPlayersRef) {
-                    finalRankingList.innerHTML = '<p style="text-align: center;">방 연결이 끊겼습니다.</p>';
-                    finalScoreEl.textContent = `${score.toLocaleString()} 점`;
-                    return;
-                }
-                
-                allPlayersRef.once('value', (snapshot) => {
-                    // [수정] 콜백 함수 내부에서 리스너 즉시 끄기
-                    if (allPlayersRef) {
-                        allPlayersRef.off();
-                        console.log("결과 모달 표시 완료. allPlayersRef 리스너를 끕니다.");
-                    }
-                    if (statusRef) {
-                        statusRef.off();
-                        console.log("statusRef 리스너를 끕니다.");
-                    }
-                    
-                    const players = snapshot.val();
-                    if (!players) {
-                        // [수정] players가 null일 때 (방이 삭제됨)
-                        finalRankingList.innerHTML = '<p style="text-align: center;">방이 종료되었습니다.</p>';
-                        return; // [수정] null일 때 여기서 반환
-                    }
-
-                    const sortedPlayers = Object.entries(players)
-                        .map(([uid, data]) => ({ uid, ...data }))
-                        .sort((a, b) => (b.score || 0) - (a.score || 0));
-
-                        // [신규] 내 랭킹과 승/패 여부, 최종 점수 확인
-                    let myFinalRank = -1;
-                    let myFinalScore = 0;
-                    
-                    sortedPlayers.forEach((player, index) => {
-                        if (player.uid === playerUid) {
-                            myFinalRank = index + 1;
-                            myFinalScore = player.score || 0;
-                        }
-                    });
-
-                    // [신규] 1등=승리, 2/3/4등=패배 (무승부 없음)
-                    const didIWin = (myFinalRank === 1);
-                    
-                    // [신규] 스탯 업데이트 함수 호출
-                    // [신규] 승/패에 따른 사운드 재생
-                    if (didIWin) {
-                        playSound('victory');
-                    } else {
-                        playSound('gameOver'); // 'gameOver'는 '패배' 사운드입니다.
-                    }
-                    updatePlayerStats(didIWin, myFinalScore);
-
-                    // [수정] '다시하기' 상태 목록과 '순위' 목록을 하나로 통합
-                    const rematchStatusList = document.getElementById('rematch-status-list');
-                    rematchStatusList.innerHTML = ''; // 목록 초기화
-
-                    sortedPlayers.forEach((player, index) => {
-                        const rank = index + 1;
-                        const nickname = player.nickname || 'Unknown';
-                        const scoreVal = player.score || 0;
-                        const scoreText = `(${scoreVal.toLocaleString()}점)`;
-                        const isMe = (player.uid === playerUid);
-
-                        const row = document.createElement('div');
-                        row.className = 'rematch-player-row';
-                        if (isMe) {
-                            row.classList.add('my-row'); // [신규] 내 줄에 클래스 추가
-                        }
-
-                        let playerInfoHTML = `
-                            <span class="player-info">
-                                <span class="player-info-topline"> <span class="player-rank">${rank}위</span>
-                                    <span class="player-name">${nickname}</span>
-                                </span>
-                                <span class="player-score">${scoreText}</span> </span>
-                        `;
-                        
-                        let statusHTML = `<span class="status-text" data-uid="${player.uid}"></span>`;
-
-                        row.innerHTML = playerInfoHTML + statusHTML;
-                        rematchStatusList.appendChild(row);
-
-                        
-                    });
-
-                    /// ✅ 변경 코드 (버그 수정됨)
-                    // [신규] '다시하기' / '대기실로' 버튼 리스너 (Tetris/ShisenSho 방식)
-                    // [수정] 버튼 리스너는 한 번만 등록
-                    
-                    const rematchBtn = document.getElementById('rematch-btn');
-                    const lobbyBtn = document.getElementById('lobby-btn');
-                    
-                    // [핵심 수정] 매번 버튼 상태를 완전히 초기화
-                    rematchBtn.textContent = '다시하기';
-                    rematchBtn.disabled = false;
-                    
-                    // [핵심 수정] 기존 리스너 완전히 제거
-                    const newRematchBtn = rematchBtn.cloneNode(true);
-                    rematchBtn.parentNode.replaceChild(newRematchBtn, rematchBtn);
-                    
-                    const newLobbyBtn = lobbyBtn.cloneNode(true);
-                    lobbyBtn.parentNode.replaceChild(newLobbyBtn, lobbyBtn);
-                    
-                   // [버그 수정] hostCleanupAndCreateNewRoom이 stale(오래된) currentRoomData를
-                    // 참조하지 않도록, 이 시점의 players와 gameType을 직접 전달합니다.
-                    const gameType = currentRoomData.gameType; // 현재 게임 타입 저장
-                    // [핵심 버그 수정] stale state를 피하기 위해 이 시점의 maxPlayers도 저장
-                    const maxPlayers = currentRoomData.maxPlayers || 4; 
-
-                 if (isHost) {
-                   // [### 수정됨 ###]
-                   // '새 방 생성' 대신 '로비 복귀' 함수 호출
-                   newLobbyBtn.addEventListener('click', () => hostReturnToGameLobby(players, gameType));
-                } else {
-                   // [### 수정됨 ###]
-                   // '무조건 나가기' 대신 '시나리오 분기' 함수 호출
-                   newLobbyBtn.addEventListener('click', () => guestHandleReturn(players));
-                }
-                    
-                    newRematchBtn.addEventListener('click', () => {
-                
-
-                        // [신규] '준비완료' 상태 토글 로직
-                        if (roomRef && playerUid) {
-                            if (amIReadyForRematch) { // [수정] 현재 상태가 Ready이면
-                                // '준비 해제' 요청
-                                roomRef.child('rematchRequests/' + playerUid).remove();
-                            } else { // [수정] 현재 상태가 Ready가 아니면
-                                // '준비 완료' 요청
-                                roomRef.child('rematchRequests/' + playerUid).set(true);
-                            }
-                        }
-                    });
-                    
-                    // [신규] '다시하기' 리스너 시작
-                    listenForRematch();
-                });
+    // [신규] 3. STT(마이크) 버튼 로직 (입력 모달 안의 버튼)
+    if (recognition && rematchChatSttBtn) {
+        recognition.onresult = (event) => {
+            const text = event.results[0][0].transcript;
+            rematchChatInput.value = text; // [수정] 입력창에 텍스트 삽입
+            rematchChatSttBtn.classList.remove('recording');
+            rematchChatSttBtn.disabled = false;
+            rematchChatInput.focus();
+        };
+        recognition.onend = () => {
+            rematchChatSttBtn.classList.remove('recording');
+            rematchChatSttBtn.disabled = false;
+        };
+        recognition.onerror = (event) => {
+            console.error('STT 에러:', event.error);
+            rematchChatSttBtn.classList.remove('recording');
+            rematchChatSttBtn.disabled = false;
+        };
+        rematchChatSttBtn.onclick = (e) => {
+            e.stopPropagation();
+            if (rematchChatSttBtn.classList.contains('recording')) {
+                recognition.stop();
+            } else {
+                try {
+                    recognition.start();
+                    rematchChatSttBtn.classList.add('recording');
+                    rematchChatSttBtn.disabled = true;
+                } catch(e) { console.error("STT 시작 에러", e); }
             }
+        };
+    } else if (rematchChatSttBtn) {
+        rematchChatSttBtn.style.display = 'none';
+    }
+
+    // [신규] 4. TTS(음성듣기) 토글 버튼 로직
+    const rematchTtsBtn = document.getElementById('rematch-tts-btn');
+    if (rematchTtsBtn) {
+        rematchTtsBtn.textContent = isTTSOn ? '🔊' : '🔇'; // 현재 상태 아이콘
+        rematchTtsBtn.onclick = (e) => {
+            e.stopPropagation();
+            isTTSOn = !isTTSOn; // 전역 상태 토글
+            localStorage.setItem(TTS_ENABLED_KEY, isTTSOn); // 상태 저장
+            rematchTtsBtn.textContent = isTTSOn ? '🔊' : '🔇'; // 아이콘 변경
+            showToast(isTTSOn ? '채팅 음성 듣기 ON' : '채팅 음성 듣기 OFF');
+            if (!isTTSOn) synthesis.cancel(); // 끄면 현재 TTS 중지
+        };
+    }
+
+    // --- (이하는 기존 forceGameOver 로직) ---
+    stopSound('bgm'); 
+
+    if (isHost && hostStatusDisconnectRef) {
+        try {
+            hostStatusDisconnectRef.cancel();
+            hostStatusDisconnectRef = null;
+            console.log("게임 정상 종료: 호스트 onDisconnect 핸들러를 취소했습니다.");
+        } catch (e) {
+            console.warn("호스트 onDisconnect 핸들러 취소 실패:", e);
+        }
+    }
+
+    if (timerId) {
+        clearInterval(timerId);
+        timerId = null;
+    }
+    isProcessing = true; 
+    loadingOverlay.classList.remove('active');
+    
+    if (!allPlayersRef) {
+        finalRankingList.innerHTML = '<p style="text-align: center;">방 연결이 끊겼습니다.</p>';
+        // finalScoreEl.textContent = `${score.toLocaleString()} 점`; // finalScoreEl이 없으므로 제거
+        return;
+    }
+    
+    allPlayersRef.once('value', (snapshot) => {
+        if (allPlayersRef) {
+            allPlayersRef.off();
+            console.log("결과 모달 표시 완료. allPlayersRef 리스너를 끕니다.");
+        }
+        if (statusRef) {
+            statusRef.off();
+            console.log("statusRef 리스너를 끕니다.");
+        }
+        
+        const players = snapshot.val();
+        if (!players) {
+            finalRankingList.innerHTML = '<p style="text-align: center;">방이 종료되었습니다.</p>';
+            return;
+        }
+
+        // [### 버그 수정 ###]
+        // 1. 이 시점의 플레이어 목록을 채팅방 전용 변수에 확정합니다.
+        rematchPlayerList = players; 
+
+        // 2. 이제 플레이어 목록이 확정되었으니, 채팅 내역을 로드합니다.
+        if (rematchChatMessages) {
+            rematchChatMessages.innerHTML = '<div class="spinner" style="margin: auto; width: 20px; height: 20px;"></div>';
+            roomRef.child('chat').limitToLast(10).once('value', chatSnapshot => { 
+                if (rematchChatMessages) rematchChatMessages.innerHTML = ''; 
+                if (chatSnapshot.exists()) {
+                    chatSnapshot.forEach(childSnap => {
+                        renderRematchChatMessage(childSnap.val()); // 이제 rematchPlayerList를 사용함
+                    });
+                }
+            });
+        }
+        // [### 버그 수정 끝 ###]
+
+        const sortedPlayers = Object.entries(players)
+            .map(([uid, data]) => ({ uid, ...data }))
+            .sort((a, b) => (b.score || 0) - (a.score || 0));
+
+        let myFinalRank = -1;
+        let myFinalScore = 0;
+        
+        sortedPlayers.forEach((player, index) => {
+            if (player.uid === playerUid) {
+                myFinalRank = index + 1;
+                myFinalScore = player.score || 0;
+            }
+        });
+
+        const didIWin = (myFinalRank === 1);
+        
+        if (didIWin) {
+            playSound('victory');
+        } else {
+            playSound('gameOver');
+        }
+        updatePlayerStats(didIWin, myFinalScore, myFinalRank);
+
+        const rematchStatusList = document.getElementById('rematch-status-list');
+        rematchStatusList.innerHTML = ''; 
+
+        sortedPlayers.forEach((player, index) => {
+            const rank = index + 1;
+            const nickname = player.nickname || 'Unknown';
+            const scoreVal = player.score || 0;
+            const scoreText = `(${scoreVal.toLocaleString()}점)`;
+            const isMe = (player.uid === playerUid);
+
+            const row = document.createElement('div');
+            row.className = 'rematch-player-row';
+            if (isMe) {
+                row.classList.add('my-row');
+            }
+
+            let playerInfoHTML = `
+                <span class="player-info">
+                    <span class="player-info-topline"> <span class="player-rank">${rank}위</span>
+                        <span class="player-name">${nickname}</span>
+                    </span>
+                    <span class="player-score">${scoreText}</span> </span>
+            `;
+            
+            let statusHTML = `<span class="status-text" data-uid="${player.uid}"></span>`;
+
+            row.innerHTML = playerInfoHTML + statusHTML;
+            rematchStatusList.appendChild(row);
+        });
+        
+        const rematchBtn = document.getElementById('rematch-btn');
+        const lobbyBtn = document.getElementById('lobby-btn');
+        
+        rematchBtn.textContent = '다시하기';
+        rematchBtn.disabled = false;
+        
+        const newRematchBtn = rematchBtn.cloneNode(true);
+        rematchBtn.parentNode.replaceChild(newRematchBtn, rematchBtn);
+        
+        const newLobbyBtn = lobbyBtn.cloneNode(true);
+        lobbyBtn.parentNode.replaceChild(newLobbyBtn, lobbyBtn);
+        
+        const gameType = currentRoomData.gameType; 
+        const maxPlayers = currentRoomData.maxPlayers || 4; 
+
+         if (isHost) {
+           newLobbyBtn.addEventListener('click', () => hostReturnToGameLobby(players, gameType));
+        } else {
+           newLobbyBtn.addEventListener('click', () => guestHandleReturn(players));
+        }
+        
+        newRematchBtn.addEventListener('click', () => {
+            if (roomRef && playerUid) {
+                if (amIReadyForRematch) { 
+                    roomRef.child('rematchRequests/' + playerUid).remove();
+                } else { 
+                    roomRef.child('rematchRequests/' + playerUid).set(true);
+                }
+            }
+        });
+        
+        listenForRematch();
+    });
+}
 
             // [신규] '다시하기' 수신 리스너 (Tetris/ShisenSho 방식)
             
@@ -4400,12 +4524,12 @@ shockwave.style.width = `${rect.width * 3}px`; // [수정] 타일 3배 크기 (5
             }
 
             // [신규] STT가 사용할 채팅 전송 함수 (게임방.html과 동일)
-            function sendMessage(content) {
+            function sendMessage(content, nickname) { // [### 1. nickname 인자 추가 ###]
                 const message = content.trim();
-                if (message && roomRef && currentUser) { // roomRef, currentUser null 체크
+                if (message && roomRef && currentUser && nickname) { // [### 2. nickname 체크 추가 ###]
                     roomRef.child('chat').push({
                         senderId: currentUser.uid, 
-                        // senderNickname: (닉네임 정보가 여기 없으므로 생략. 게임방에서 보낸 닉네임 사용)
+                        senderNickname: nickname, // [### 3. senderNickname 추가 (버그 수정) ###]
                         content: message, 
                         timestamp: firebase.database.ServerValue.TIMESTAMP
                     });
@@ -4413,7 +4537,7 @@ shockwave.style.width = `${rect.width * 3}px`; // [수정] 타일 3배 크기 (5
             }
 
             // [신규] 게임 스탯 업데이트 함수 (테트리스.html에서 가져와 수정)
-            function updatePlayerStats(didIWin, finalScore) { 
+            function updatePlayerStats(didIWin, finalScore, finalRank) { // [수정] finalRank 매개변수 추가
                 if (!playerUid || playerUid.startsWith('guest_')) return;
                 
                 // 'win', 'loss', 'draw' 중 하나
@@ -4424,11 +4548,41 @@ shockwave.style.width = `${rect.width * 3}px`; // [수정] 타일 3배 크기 (5
 
                 userStatsRef.transaction(currentStats => {
                     if (currentStats === null) {
-                        currentStats = { wins: 0, losses: 0, draws: 0, plays: 0, highscore: 0 };
+                        // [신규] 랭킹 필드 초기화
+                        currentStats = { 
+                            wins: 0, losses: 0, draws: 0, plays: 0, highscore: 0,
+                            rank1: 0, rank2: 0, rank3: 0, rank4: 0
+                        };
                     }
+
+                    // [신규] 기존 유저가 새 필드(rank1~4)가 없을 경우 대비
+                    currentStats.rank1 = (currentStats.rank1 || 0);
+                    currentStats.rank2 = (currentStats.rank2 || 0);
+                    currentStats.rank3 = (currentStats.rank3 || 0);
+                    currentStats.rank4 = (currentStats.rank4 || 0);
+
+                    // 기존 로직
                     currentStats.plays = (currentStats.plays || 0) + 1;
-                    currentStats[result] = (currentStats[result] || 0) + 1;
                     currentStats.highscore = Math.max(currentStats.highscore || 0, finalScore); 
+                    
+                    // [신규] 최종 순위(finalRank)에 따라 해당 랭킹 횟수 증가
+                    if (finalRank === 1) {
+                        currentStats.rank1 += 1;
+                        currentStats.wins = (currentStats.wins || 0) + 1; // 1위 = 승리 (기존 로직 호환)
+                    } else if (finalRank === 2) {
+                        currentStats.rank2 += 1;
+                        currentStats.losses = (currentStats.losses || 0) + 1; // 2~4위 = 패배 (기존 로직 호환)
+                    } else if (finalRank === 3) {
+                        currentStats.rank3 += 1;
+                        currentStats.losses = (currentStats.losses || 0) + 1;
+                    } else if (finalRank === 4) {
+                        currentStats.rank4 += 1;
+                        currentStats.losses = (currentStats.losses || 0) + 1;
+                    } else {
+                        // 1인 솔로 플레이 또는 예외 처리 (기존 승/패 로직 사용)
+                        currentStats[result] = (currentStats[result] || 0) + 1;
+                    }
+
                     return currentStats;
                 });
                 
@@ -4733,5 +4887,18 @@ return attackCount;
             }
         }); // DOMContentLoaded End
     </script>
+
+    <div id="rematch-chat-input-modal" class="overlay" style="background-color: transparent; align-items: flex-end;">
+    <div class="modal-content" style="max-width: 100%; width: 100%; border-radius: 20px 20px 0 0; margin-bottom: 0; padding: 0; border-bottom: none; box-shadow: 0 -5px 20px rgba(0,0,0,0.3);">
+        <div class="modal-body" style="padding: 10px;">
+            <div style="display: flex; gap: 8px;">
+                <input type="text" id="rematch-chat-input" placeholder="채팅 입력..." style="flex-grow: 1; border: 2px solid var(--text-color-dark); border-radius: 12px; padding: 12px; font-size: 1em; font-family: var(--font-main); min-width: 0;">
+                <button id="rematch-chat-stt-btn" class="menu-btn secondary" style="width: 50px; padding: 0; font-size: 1.2em; flex-shrink: 0; border-bottom-width: 4px;">🎙️</button>
+                <button id="rematch-chat-send-btn" class="menu-btn primary" style="width: 70px; padding: 0; flex-shrink: 0; border-bottom-width: 4px;">전송</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 </body>
 </html>
