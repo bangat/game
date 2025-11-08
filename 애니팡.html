@@ -1176,84 +1176,11 @@ roomValueListener = (snapshot) => {
         return;
     }
 
-// 5. 상태별 분기
+    // 5. 상태별 분기
     const status = currentRoomData.status;
     console.log("방 상태 변경:", status);
 
-    // [버그 수정] '다시하기'를 누른 게스트가 'lobby' 신호를 무시하는 문제 해결
-    
-    // 1. (게스트 전용) 'lobby' 신호 감지
-    // 'lobby' 신호는 방장이 '게임방 복귀'를 눌렀다는 명확한 신호입니다.
-    // 이 경우, 내가 '다시하기'를 눌렀는지(amIReadyForRematch)와 *관계없이* 즉시 따라가야 합니다.
-    if (status === 'lobby' && !isHost && gameOverOverlay.classList.contains('active')) {
-        console.log("Host가 로비로 복귀했습니다 (status: 'lobby'). '다시하기' 여부와 관계없이 게임방으로 따라갑니다.");
-        isExiting = true;
-        stopSound('bgm');
-        if (timerId) clearInterval(timerId);
-        if (rematchRef) rematchRef.off(); // 리스너 정리
-        
-        window.location.replace(`게임방.html?roomId=${currentRoomId}`);
-        return; // [중요] 리스너의 나머지 처리를 중단합니다.
-    }
-
-    // 2. (게스트 전용) 'lobby' 신호를 놓친 경우의 레이스 컨디션 방지
-    // '다시하기'를 *누르지 않았는데* 'waiting' 신호가 오면,
-    // 이는 방장이 복귀 후 'waiting'으로 정리한 신호이므로 따라갑니다.
-    if (status === 'waiting' && !isHost && gameOverOverlay.classList.contains('active') && !amIReadyForRematch) {
-        console.log("Host가 로비로 복귀했습니다 (status: 'waiting' 레이스 컨디션). '다시하기'를 누르지 않았으므로 게임방으로 따라갑니다.");
-        isExiting = true;
-        stopSound('bgm');
-        if (timerId) clearInterval(timerId);
-        if (rematchRef) rematchRef.off(); // 리스너 정리
-        
-        window.location.replace(`게임방.html?roomId=${currentRoomId}`);
-        return; // [중요] 리스너의 나머지 처리를 중단합니다.
-    }
-
-
     if (status === 'playing') {
-       if (!timerId && !countdownStarted) {
-            countdownStarted = true; 
-            loadingOverlay.classList.remove('active');
-            infoOverlay.classList.remove('active');
-            startCountdown();
-        }
-    } else if (status === 'finished') {
-        forceGameOver();
-    } else if (status === 'waiting') {
-        
-        // [수정] 이 'waiting' 블록은 이제 '다시하기(Rematch)'를 누른 유저만 진입합니다.
-        // (위의 if문에서 '다시하기' 안 누른 사람들은 모두 걸러졌기 때문)
-        if (gameOverOverlay.classList.contains('active') && amIReadyForRematch) {
-            console.log("[Rematch] 'waiting' 상태 감지. ('다시하기'를 눌렀음) 게임 재시작 준비...");
-            gameOverOverlay.classList.remove('active');
-            gameOverFlag = false;
-            countdownStarted = false; 
-            isProcessing = true; 
-            
-            if (roomRef && playerUid) {
-                roomRef.child('readyPlayers/' + playerUid).set(true);
-            }
-            infoOverlay.classList.add('active');
-        }
-        
-        // '다시하기' 준비 화면을 위한 로직 (그대로 유지)
-        const readyPlayers = currentRoomData.readyPlayers || {};
-        const totalPlayers = Object.keys(currentRoomData.players).length;
-        const readyCount = Object.keys(readyPlayers).length;
-        
-        if (infoOverlay.classList.contains('active')) {
-            infoOverlay.innerHTML = `<div class="spinner"></div><p style="color: white; margin-top: 15px; font-size: 1.1em;">상대방 기다리는 중 (${readyCount}/${totalPlayers})...</p>`;
-        }
-
-        if (isHost && totalPlayers >= 2 && readyCount === totalPlayers) {
-            roomRef.update({
-                status: 'playing',
-                gameStarted: false,
-                readyPlayers: null
-            });
-        }
-    } else if (status === null && !gameOverOverlay.classList.contains('active')) {
        if (!timerId && !countdownStarted) {
             countdownStarted = true; 
             loadingOverlay.classList.remove('active');
@@ -1291,6 +1218,22 @@ roomValueListener = (snapshot) => {
                 readyPlayers: null
             });
         }
+        } else if (status === 'lobby') {
+                // [신규] 방장이 '게임방'으로 복귀하여, 'lobby' 상태로 변경함
+                // 모든 인원을 게임방.html로 이동시킵니다.
+                console.log("[게임 종료] 'lobby' 상태 감지. 게임방.html로 복귀합니다.");
+                isExiting = true;
+                stopSound('bgm');
+                if (timerId) clearInterval(timerId);
+                if (feverTimerId) clearTimeout(feverTimerId);
+
+                // 리스너 정리
+                if (roomRef) roomRef.off();
+                if (chatListenerRef) chatListenerRef.off();
+
+                window.location.replace(`게임방.html?roomId=${currentRoomId}`);
+                return; // [신규]
+
     } else if (status === null && !gameOverOverlay.classList.contains('active')) {
         console.warn("방 상태가 'null'입니다. 호스트가 방을 삭제한 것 같습니다.");
         forceGameOver();
@@ -1695,15 +1638,15 @@ function setupCheatKeys() {
                 case 'b': // B키: 별 팡이 폭발 테스트
                 createStarPangiTest(); // [신규]
                 break;
-                case 'e': // [신규] E키: 강제 게임 종료
-                console.log("🎮 E키: 강제 게임 종료!");
-                gameOver(); // [수정] forceGameOver() -> gameOver()
-                break;
             case 'p': // P키: 점수 +1000점
                 score += 1000;
                 updateScoreUI();
                 if (playerRef) playerRef.child('score').set(score);
                 break;
+                case 'e': // E키: 게임 강제 종료 (End)
+                    console.log('🎮 치트키: 게임 강제 종료 (E)');
+                    gameOver(); // 게임 종료 함수 호출
+                    break;
         }
     });
     
@@ -2152,24 +2095,21 @@ stopSound('bgm'); // [신규] BGM 정지
                     const newLobbyBtn = lobbyBtn.cloneNode(true);
                     lobbyBtn.parentNode.replaceChild(newLobbyBtn, lobbyBtn);
                     
-                   // [핵심 수정] 새 버튼에 리스너 등록
-                    // [핵심 수정] 방장/게스트에 따라 '대기실로' 버튼 기능 분리
-                    
-                    // [버그 수정] hostCleanupAndCreateNewRoom이 stale(오래된) currentRoomData를
+                   // [버그 수정] hostCleanupAndCreateNewRoom이 stale(오래된) currentRoomData를
                     // 참조하지 않도록, 이 시점의 players와 gameType을 직접 전달합니다.
                     const gameType = currentRoomData.gameType; // 현재 게임 타입 저장
-                    
-                    // [핵심 버그 수정] isHost 전역 변수를 믿지 않고, 
-                    // 이 시점의 'currentRoomData'로 방장 여부를 "다시" 확인합니다.
-                    const amIHostNow = (currentRoomData && currentRoomData.hostId === playerUid);
+                    // [핵심 버그 수정] stale state를 피하기 위해 이 시점의 maxPlayers도 저장
+                    const maxPlayers = currentRoomData.maxPlayers || 4; 
 
-                    if (amIHostNow) {
-                        // 방장은 '새 방 만들기' 함수 연결 (데이터 전달)
-                        newLobbyBtn.addEventListener('click', () => hostCleanupAndCreateNewRoom(players, gameType));
-                    } else {
-                        // 게스트는 '그냥 나가기' 함수 연결 (기존 유지)
-                        newLobbyBtn.addEventListener('click', cleanupAndExit);
-                    }
+                 if (isHost) {
+                   // [### 수정됨 ###]
+                   // '새 방 생성' 대신 '로비 복귀' 함수 호출
+                   newLobbyBtn.addEventListener('click', () => hostReturnToGameLobby(players, gameType));
+                } else {
+                   // [### 수정됨 ###]
+                   // '무조건 나가기' 대신 '시나리오 분기' 함수 호출
+                   newLobbyBtn.addEventListener('click', () => guestHandleReturn(players));
+                }
                     
                     newRematchBtn.addEventListener('click', () => {
                 
@@ -2574,6 +2514,148 @@ stopSound('bgm'); // [신규] BGM 정지
         isProcessing = false;
     }
 }
+
+// [신규] 호스트가 "대기실로"를 누를 때 실행되는 함수
+async function hostReturnToGameLobby(playersData, gameType) {
+    if (!isHost || !playersData || !gameType || !playerUid || !roomRef) {
+        console.error("hostReturnToGameLobby: 필수 데이터 누락");
+        cleanupAndExit();
+        return;
+    }
+
+    console.log("방장이 게임방.html로 복귀합니다. 모든 인원이 함께 이동합니다...");
+    isExiting = true;
+    stopSound('bgm');
+    if (timerId) clearInterval(timerId);
+    if (feverTimerId) clearTimeout(feverTimerId);
+
+    try {
+        // 1. 방 상태를 'lobby'로 변경 (게임방.html에서 자동 정리)
+        await roomRef.update({
+            status: 'lobby',
+            // 게임 관련 데이터 초기화
+            gameStarted: false,
+            readyPlayers: null,
+            rematchRequests: null,
+            attacks: null
+        });
+
+        console.log("방 상태를 'lobby'로 변경 완료. 게임방.html로 이동.");
+        
+        // [### 1. onDisconnect 핸들러 수동 취소 (핵심) ###]
+        if (isHost && hostStatusDisconnectRef) {
+            try {
+                hostStatusDisconnectRef.cancel();
+                hostStatusDisconnectRef = null;
+                console.log("Host onDisconnect.cancel() 호출됨.");
+            } catch (e) { console.warn("Host onDisconnect.cancel() 실패:", e); }
+        }
+
+        // [### 2. 리스너 끄기 ###]
+        // [수정] 정확한 리스너 참조로 끄기
+        if (roomRef) roomRef.off('value', roomValueListener); 
+        if (chatListenerRef) chatListenerRef.off();
+        if (rematchRef) rematchRef.off(); // '다시하기' 리스너도 종료
+
+        // [### 3. URL 버그 수정 (newRoomId -> roomRef.key) ###]
+        // 🚨 hostCleanupAndCreateNewRoom 함수에서 newRoomId를 참조하던 버그 수정
+        window.location.replace(`게임방.html?roomId=${roomRef.key}`);
+
+    } catch (error) {
+        console.error("방 상태 변경 실패:", error);
+        cleanupAndExit(); // 실패 시 일반 나가기
+    }
+}
+
+// [신규] 게스트가 "대기실로"를 누를 때 실행되는 함수
+async function guestHandleReturn(playersData) { // [수정] async 추가
+    if (!playersData || !roomRef || !playerUid) {
+        console.error("guestHandleReturn: 필수 데이터 누락");
+        cleanupAndExit(); // Fallback
+        return;
+    }
+
+    const totalPlayers = Object.keys(playersData).length;
+
+   if (totalPlayers === 2) {
+        // 2명 방: 게스트도 게임방.html로 이동 (방장과 함께)
+        console.log("2명 방: 게스트도 게임방.html로 이동합니다. (Host도 이동하도록 status: 'lobby' 설정)");
+
+        try {
+            // [신규] 방장도 이동시키기 위해 status: 'lobby'로 변경
+            await roomRef.update({
+                status: 'lobby',
+                gameStarted: false,
+                readyPlayers: null,
+                rematchRequests: null,
+                attacks: null
+            });
+        } catch (error) {
+            console.error("2명 방(Guest) 'lobby' 상태 변경 실패:", error);
+        }
+
+        isExiting = true;
+        stopSound('bgm');
+        if (timerId) clearInterval(timerId);
+        if (feverTimerId) clearTimeout(feverTimerId);
+        
+        // [### 1. onDisconnect 핸들러 수동 취소 (핵심) ###]
+        if (playerRef) { // (playerRef는 전역에 선언되어 있음)
+            try {
+                playerRef.onDisconnect().cancel();
+                console.log("Guest (2p) onDisconnect.cancel() 호출됨.");
+            } catch (e) { console.warn("Guest (2p) onDisconnect.cancel() 실패:", e); }
+        }
+
+        // [### 2. 리스너 끄기 ###]
+        if (roomRef) roomRef.off('value', roomValueListener);
+        if (chatListenerRef) chatListenerRef.off();
+        if (rematchRef) rematchRef.off(); // '다시하기' 리스너도 종료
+        
+        // [### 3. 게임방.html로 이동 ###]
+        window.location.replace(`게임방.html?roomId=${roomRef.key}`);
+    
+    } else {
+        // 3~4명 방: 게스트 본인만 리스너 정리 후 "게임방.html"로 나감
+        console.log(`${totalPlayers}명 방: 게스트만 게임방.html로 나갑니다. (나머지 인원 유지)`);
+        
+        isExiting = true; 
+        stopSound('bgm'); 
+        if (timerId) clearInterval(timerId);
+        if (feverTimerId) clearTimeout(feverTimerId);
+        
+        // [수정] playerRef가 있는지 확인
+        if (playerRef) {
+            const playerOnDisconnect = playerRef.onDisconnect();
+            if (playerOnDisconnect) { 
+                try { playerOnDisconnect.cancel(); } catch(e) { console.warn("Player onDisconnect cancel failed:", e); } 
+            }
+        }
+
+        let removePromise = Promise.resolve(); 
+
+        if (roomRef && playerUid) {
+            // [수정] 리스너 정리
+            if (roomRef) roomRef.off('value', roomValueListener);
+            if (chatListenerRef) chatListenerRef.off();
+            if (rematchRef) rematchRef.off();
+
+            // 'players' 목록에서 본인만 제거
+            console.log("Guest (3-4p) removing self from players...");
+            removePromise = roomRef.child('players/' + playerUid).remove();
+        }
+
+        // Firebase에서 제거가 완료되면 리디렉션
+        removePromise
+            .catch(e => console.error("Firebase 'players' 노드 제거 실패:", e))
+            .finally(() => {
+                // 대기실.html이 아닌 게임방.html로 리디렉션
+                console.log(`Redirecting to 게임방.html?roomId=${currentRoomId}`); 
+                window.location.replace(`게임방.html?roomId=${currentRoomId}`);
+            });
+    }
+}
+
 
 // 레인보우 타일과 일반 타일 교환 (해당 색상 전체 제거)
 async function handleRainbowSwap(rainbowRow, rainbowCol, targetColor) {
@@ -4359,54 +4441,6 @@ shockwave.style.width = `${rect.width * 3}px`; // [수정] 타일 3배 크기 (5
                 // 3. (레벨업.js의 책임) 중앙 레벨업 함수 호출
                 // (db, playerUid, expGained, pointsGained)
                 applyExpAndPoints(db, playerUid, expGained, pointsGained);
-            }
-
-            // [신규] 1-B. 방장이 '게임 대기실'로 돌아갈 때 실행되는 함수
-          // [신규] 1-B. 방장이 '게임 대기실'로 돌아갈 때 실행되는 함수
-            async function hostReturnToGameRoom() {
-                console.log("방장이 게임 대기실로 복귀합니다... (status: 'lobby' 설정)");
-                isExiting = true; 
-                stopSound('bgm'); 
-                if (timerId) clearInterval(timerId);
-                if (feverTimerId) clearTimeout(feverTimerId);
-
-                // onDisconnect 핸들러 취소
-                if (hostStatusDisconnectRef) { 
-                    try { 
-                        hostStatusDisconnectRef.cancel(); 
-                        hostStatusDisconnectRef = null;
-                        console.log("게임 대기실 복귀: 호스트 onDisconnect 핸들러를 취소했습니다.");
-                    } catch(e) {} 
-                }
-
-                // '다시하기' 리스너가 켜져있을 수 있으므로 끈다.
-                if (rematchRef) {
-                    rematchRef.off();
-                    rematchRef = null;
-                }
-
-                if (roomRef && currentRoomId) {
-                    try {
-                        // [핵심 수정] 'waiting' 대신 'lobby'라는 신호를 보냅니다.
-                        await roomRef.update({
-                            status: 'lobby', // 'waiting' -> 'lobby'
-                            gameStarted: false,
-                            readyPlayers: null,
-                            rematchRequests: null,
-                            attacks: null 
-                        });
-
-                        // 방장은 즉시 게임방으로 이동
-                        window.location.replace(`게임방.html?roomId=${currentRoomId}`);
-
-                    } catch (error) {
-                        console.error("게임 대기실 복귀 실패 (Firebase 업데이트 오류):", error);
-                        cleanupAndExit(); // 실패 시 일반 나가기
-                    }
-                } else {
-                    console.error("게임 대기실 복귀 실패 (roomRef 또는 currentRoomId 없음)");
-                    cleanupAndExit(); // 실패 시 일반 나가기
-                }
             }
 
             // [수정] 1. 방장이 '대기실로'를 누를 때 실행되는 함수
