@@ -1902,14 +1902,31 @@ const inviteSound = document.getElementById('invite-sound');
 
                     snapshot.forEach(child => {
                         const room = { key: child.key, ...child.val() };
+                        
+                        // [규칙 1] 플레이어가 0명인 방 삭제
                         if (!room.players || Object.keys(room.players).length === 0) {
+                            console.log(`[유령방 정리] 플레이어가 0명인 ${room.key} 방을 삭제합니다.`);
                             roomsRef.child(room.key).remove(); 
                             return;
                         }
+
+                        // [규칙 2] 'playing' 상태로 1시간 넘은 방 삭제
                         if (room.status === 'playing' && (now - room.createdAt > oneHour)) {
+                            console.log(`[유령방 정리] 'playing' 상태로 1시간 넘은 ${room.key} 방을 삭제합니다.`);
                             roomsRef.child(room.key).remove();
                             return;
                         }
+
+                        // --- [20분으로 수정된 규칙] ---
+                        // [신규 규칙] 'waiting' 상태로 20분 넘은 방 삭제
+                        const twentyMinutes = 20 * 60 * 1000; // 20분
+                        if (room.status === 'waiting' && (now - room.createdAt > twentyMinutes)) {
+                            console.log(`[유령방 정리] 'waiting' 상태로 20분 넘은 ${room.key} 방을 삭제합니다.`);
+                            roomsRef.child(room.key).remove();
+                            return;
+                        }
+                        // --- [수정 끝] ---
+
                         rooms.push(room);
                     });
                     
