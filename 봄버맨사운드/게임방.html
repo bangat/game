@@ -1,0 +1,2329 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>게임 준비</title>
+    <link rel="manifest" href="manifest.json">
+    <link href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff" as="font" type="font/woff" crossorigin>
+    <style>
+        /* [수정] 1. 대기실 테마 :root */
+        :root {
+            --bg-color: #FFFBEB; /* 따뜻한 크림색 배경 */
+            --primary-color: #FF6B6B; /* 활기찬 코랄색 */
+            --secondary-color: #4ECDC4; /* 상쾌한 틸(teal)색 */
+            --accent-color: #FFD93D; /* 밝은 노란색 */
+            --text-color-dark: #574141; /* 어두운 갈색 */
+            --text-color-light: #ffffff;
+            --danger-color: #F76363;
+            --panel-bg: #FFFFFF;
+            --panel-border: #F0EAD2; /* 연한 베이지색 테두리 */
+            --panel-shadow: #E4DCCF; /* 패널 그림자 */
+            --font-main: 'GmarketSans', sans-serif;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%; height: 100%; overflow: hidden;
+            font-family: var(--font-main);
+            background-color: var(--bg-color); /* [수정] */
+            color: var(--text-color-dark); /* [수정] */
+            -webkit-user-select: none; user-select: none;
+            touch-action: manipulation;
+        }
+
+        /* [수정] 2. 대기실 : 아케이드 버튼 스타일 */
+        .menu-btn {
+            width: 100%; padding: 16px; font-size: 1.25em; font-weight: 900;
+            font-family: var(--font-main);
+            border-radius: 16px; border: none; cursor: pointer;
+            transition: all 0.1s ease-out;
+            border-bottom: 5px solid; /* 3D 효과를 위한 아래쪽 테두리 */
+            text-shadow: 1px 1px 1px rgba(0,0,0,0.1);
+        }
+        .menu-btn:active { transform: translateY(3px); border-bottom-width: 2px; }
+        
+        .menu-btn.primary {
+            background-color: var(--primary-color);
+            color: var(--text-color-light);
+            border-bottom-color: #C04A4A; /* 기본 색상의 어두운 버전 */
+        }
+        .menu-btn.secondary {
+            background-color: var(--secondary-color);
+            color: var(--text-color-light);
+            border-bottom-color: #379A93;
+        }
+        .menu-btn.accent {
+            background-color: var(--accent-color);
+            color: var(--text-color-dark);
+            border-bottom-color: #D1B030;
+            text-shadow: none;
+        }
+         .menu-btn.light {
+            background-color: #F8F9FA;
+            color: var(--text-color-dark);
+            border-bottom-color: #BDBDBD;
+        }
+        .menu-btn:disabled {
+            background-color: #BDBDBD !important;
+            color: #757575 !important;
+            border-bottom-color: #8D8D8D !important;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* [수정] 3. 레이아웃 및 헤더 (대기실 테마 적용) */
+        .game-lobby-container { display: flex; flex-direction: column; width: 100%; height: 100%; margin: 0 auto; background-color: var(--panel-bg); }
+        
+        .game-lobby-header {
+            padding: 15px;
+            border-bottom: 3px solid var(--panel-border); /* [수정] */
+            background-color: #FFFAE0; /* [수정] 대기실 헤더 배경 */
+            color: var(--text-color-dark); /* [수정] */
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .header-title { text-align: center; flex-grow: 1; min-width: 0; }
+        .game-lobby-header h1 {
+            font-size: 1.4em; margin: 0;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .game-lobby-header p {
+            font-size: 0.8em; opacity: 0.8; margin: 2px 0 0;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .header-btn {
+            font-family: 'GmarketSans', sans-serif;
+            background: none; border: none;
+            color: var(--text-color-dark); /* [수정] */
+            font-size: 1.8em; font-weight: 700;
+            cursor: pointer; padding: 0 10px;
+            flex-shrink: 0;
+            transition: opacity 0.2s;
+        }
+        .header-btn:active { opacity: 0.7; }
+        .header-btn.leave { font-size: 2.5em; width: 50px; text-align: left; }
+        .header-btn.invite {
+            font-size: 0.9em; /* [수정] 1.0em -> 0.9em */
+            font-weight: 900;
+            background-color: var(--secondary-color); /* [수정] secondary 색상 */
+            color: var(--text-color-light);
+            border-radius: 12px;
+            padding: 8px 12px; /* [수정] 10px 16px -> 8px 12px */
+            border-bottom: 4px solid #379A93; /* [수정] secondary 어두운 버전 */
+            box-shadow: none;
+            width: auto; /* 고정 폭 제거 */
+            white-space: nowrap; /* 줄바꿈 방지 */
+        }
+        .header-btn.invite:active {
+            transform: translateY(2px);
+            border-bottom-width: 2px;
+        }
+
+        .header-buttons-wrapper {
+            display: flex;
+            flex-shrink: 0;
+            gap: 8px; /* 버튼 사이 간격 */
+        }
+
+        .header-btn.invite:disabled {
+            background-color: #BDBDBD !important;
+            color: #757575 !important;
+            border-bottom-color: #8D8D8D !important;
+            cursor: not-allowed;
+            transform: none;
+        }
+           
+        
+        .game-lobby-main { flex-grow: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+        
+        /* [수정] 4. 플레이어 목록 (대기실 테마 적용) */
+        #player-list-wrapper {
+            padding: 15px;
+            border-bottom: 3px solid var(--panel-border); /* [수정] */
+            background-color: #FFFAE0; /* [수정] */
+            flex-shrink: 0;
+        }
+        #player-list-horizontal { display: flex; overflow-x: auto; gap: 15px; padding-bottom: 10px; }
+        #player-list-horizontal::-webkit-scrollbar { height: 5px; }
+        #player-list-horizontal::-webkit-scrollbar-thumb { background: #ccc; border-radius: 5px; }
+        
+       /* [수정] 5. 플레이어 슬롯 (대기실 테마 적용) */
+.player-slot-compact { flex-shrink: 0; width: 90px; text-align: center; position: relative; /* [수정] 레벨 배지 및 강퇴 버튼의 기준점 */ }
+
+        /* ✨ [신규] 스포트라이트(별가루) 장착 시 아바타 배경 변경 */
+        .player-slot-compact .avatar.effect-spotlight-equipped-bg {
+            background-color: #341f4b; /* ✨ 어두운 밤하늘색 */
+            transition: background-color 0.5s ease;
+        }
+
+        .player-slot-compact .avatar {
+            width: 70px; /* ✨ 60px -> 70px */
+            height: 70px; /* ✨ 60px -> 70px */
+            margin: 0 auto 4px; /* [수정] 8px -> 4px (배지 공간) */
+            background-color: var(--panel-bg); /* [수정] */
+            border-radius: 12px; /* ✨ 12px (사각형) */
+            display: flex; justify-content: center; align-items: center;
+            font-size: 3em; /* ✨ 2em -> 3em (이모지 크기) */
+            position: relative;
+            border: 3px solid var(--text-color-dark); /* [수정] */
+            overflow: hidden; /* ✨ '별가루' 효과를 위해 hidden 추가 */
+        }
+        .player-slot-compact .avatar img { width: 100%; height: 100%; object-fit: contain; /* border-radius: 50% 제거 */ }
+        .player-slot-compact.is-host .avatar {
+            border-color: var(--accent-color); /* [수정] */
+        }
+        .player-slot-compact.is-host .nickname {
+            color: var(--accent-color);
+            text-shadow: 0 0 8px rgba(255, 200, 74, 0.7);
+        }
+        .player-slot-compact .nickname { 
+            font-size: 0.9em; 
+            font-weight: 700; 
+            white-space: nowrap; 
+            overflow: hidden; 
+            text-overflow: ellipsis;
+        }
+        
+        /* [수정] 6. 채팅창 (대기실 테마 적용) */
+        #chat-container {
+            flex-grow: 1; display: flex; flex-direction: column;
+            padding: 10px; overflow-y: auto;
+            background-color: var(--bg-color); /* [수정] */
+        }
+        .chat-message { display: flex; margin-bottom: 12px; max-width: 85%; align-self: flex-start; }
+        .chat-message.my-message { align-self: flex-end; }
+        .chat-message .sender-avatar {
+            width: 36px; height: 36px; border-radius: 50%; font-size: 1.6em;
+            display: flex; justify-content: center; align-items: center;
+            flex-shrink: 0; margin-right: 10px;
+            background-color: var(--panel-bg); /* [수정] */
+            border: 2px solid var(--panel-border); /* [수정] */
+            overflow: hidden; /* [추가] */
+        }
+        .chat-message .sender-avatar img { width: 100%; height: 100%; object-fit: contain; border-radius: 50%; }
+        .chat-message.my-message .sender-avatar { display: none; }
+        .chat-message .msg-body { display: flex; flex-direction: column; }
+        .chat-message .sender {
+            font-weight: 700; font-size: 0.9em;
+            color: var(--primary-color); /* [수정] */
+            margin-bottom: 4px;
+        }
+        .chat-message.my-message .sender { display: none; }
+        .chat-message .content {
+            padding: 10px 14px; border-radius: 12px; /* [수정] */
+            background-color: var(--panel-bg); /* [수정] */
+            border: 2px solid var(--panel-border); /* [수정] */
+            display: inline-block; word-break: break-word; text-align: left;
+        }
+        /* [수정] 내 메시지 (대기실 스타일) */
+        .chat-message.my-message .content {
+            background-color: var(--accent-color);
+            border-color: #D1B030;
+            color: var(--text-color-dark);
+        }
+        .system-message {
+            text-align: center; font-size: 0.85em; font-weight: 700;
+            color: #9A6A3A; /* [수정] */
+            margin: 10px 0;
+            background-color: #FFFAE0; /* [수정] */
+            padding: 5px; border-radius: 8px;
+            border: 2px dashed var(--panel-border); /* [수정] */
+        }
+
+        /* [수정] 7. 채팅 푸터 (대기실 테마 적용) */
+        .game-lobby-footer {
+            padding: 15px; /* [수정] */
+            border-top: 3px solid var(--panel-border); /* [수정] */
+            display: flex; flex-direction: column;
+            flex-shrink: 0;
+            background-color: #FFFAE0; /* [수정] */
+        }
+        #start-game-btn {
+            font-size: 1.1em;
+            padding: 14px;
+        }
+        #chat-controls { display: flex; gap: 8px; align-items: center; position: relative;}
+        #chat-input {
+            flex-grow: 1;
+            border: 2px solid var(--text-color-dark); /* [수정] */
+            background-color: #fff;
+            border-radius: 12px; /* [수정] */
+            padding: 12px; /* [수정] */
+            font-size: 1em; font-family: 'GmarketSans', sans-serif;
+            min-width: 0;
+        }
+        #chat-input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+        /* [수정] 채팅 입력창 (버튼 3개 공간 확보) */
+        #chat-input {
+            /* 마이크+설정+이모지+전송 버튼 영역 확보 */
+            padding-right: 190px; 
+        }
+
+        /* [신규] 채팅 설정 톱니바퀴 버튼 */
+        #chat-settings-btn {
+            font-size: 1.6em; background: none; border: none;
+            cursor: pointer; padding: 5px;
+            color: var(--text-color-dark);
+            transition: color 0.2s, transform 0.2s;
+            position: absolute;
+            right: 150px; /* 마이크(115px) 좌측 */
+            top: 50%; transform: translateY(-50%);
+            z-index: 5;
+        }
+        #chat-settings-btn:active {
+             transform: translateY(-50%) scale(0.9);
+        }
+
+        /* [수정] 마이크 버튼 위치 (설정 버튼으로 인해 이동) */
+        #mic-btn {
+             right: 115px; /* 이모지(80px) 좌측 */
+        }
+        /* --- [신규] TTS 설정 토글 스위치 스타일 --- */
+        .toggle-switch-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        .toggle-switch-label {
+            font-weight: 700;
+            font-size: 0.9em;
+        }
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 50px; /* 너비 */
+            height: 28px; /* 높이 */
+        }
+        .toggle-switch input { 
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 20px; /* 동그라미 높이 */
+            width: 20px; /* 동그라미 너비 */
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+        }
+        input:checked + .slider {
+            background-color: var(--primary-color);
+        }
+        input:focus + .slider {
+            box-shadow: 0 0 1px var(--primary-color);
+        }
+        input:checked + .slider:before {
+            transform: translateX(22px); /* 동그라미 이동 거리 */
+        }
+        .slider.round {
+            border-radius: 34px;
+        }
+        .slider.round:before {
+            border-radius: 50%;
+        }
+        /* --- [신규] 토글 스위치 끝 --- */
+        /* [수정] 채팅 입력창 (마이크/이모지 버튼 공간 확보) */
+        #chat-input {
+            padding-right: 150px; /* 마이크+이모지+전송 버튼 영역 확보 */
+        }
+        
+        /* [신규] 음성 채팅 마이크 버튼 */
+        #mic-btn {
+            font-size: 1.6em; background: none; border: none;
+            cursor: pointer; padding: 5px;
+            color: var(--text-color-dark);
+            transition: color 0.2s, transform 0.2s;
+            position: absolute;
+            right: 115px; /* 이모지(80px) 좌측 */
+            top: 50%; transform: translateY(-50%);
+            z-index: 5;
+        }
+        #mic-btn:active {
+             transform: translateY(-50%) scale(0.9);
+        }
+        #mic-btn.recording {
+            color: var(--primary-color);
+            animation: pulse-red 1.5s infinite;
+        }
+        @keyframes pulse-red {
+            0% { transform: translateY(-50%) scale(1); }
+            50% { transform: translateY(-50%) scale(1.1); }
+            100% { transform: translateY(-50%) scale(1); }
+        }
+        /* [수정] 마이크 버튼과 겹치지 않게 이모지 버튼 z-index 수정 */
+        #emoji-toggle-btn {
+             z-index: 5;
+        }
+        #send-chat-btn {
+            padding: 0 20px; /* [수정] */
+            font-size: 1em; /* [수정] */
+            font-weight: 700; /* [수정] */
+            border-radius: 12px; /* [수정] */
+            border: none;
+            background-color: var(--primary-color);
+            color: white; cursor: pointer;
+            width: auto; /* [수정] */
+            height: 48px; /* [수정] */
+            display:flex; justify-content:center; align-items:center;
+            flex-shrink: 0;
+            border-bottom: 4px solid #C04A4A; /* [수정] */
+        }
+        #send-chat-btn:active {
+            transform: translateY(2px);
+            border-bottom-width: 2px;
+        }
+        #emoji-toggle-btn {
+            font-size: 1.6em; background: none; border: none;
+            cursor: pointer; padding: 5px;
+            color: var(--text-color-dark); /* [수정] */
+            position: absolute; /* [추가] */
+            right: 80px; /* [추가] 전송 버튼 옆 */
+            top: 50%; transform: translateY(-50%);
+        }
+        #emoji-popover {
+            display: none; position: absolute; bottom: calc(100% + 5px); left: 5px;
+            background: var(--panel-bg);
+            border: 3px solid var(--text-color-dark); /* [수정] */
+            border-radius: 12px;
+            box-shadow: 4px 4px 0px 0px var(--text-color-dark); /* [수정] */
+            padding: 10px; grid-template-columns: repeat(4, 1fr);
+            gap: 10px; z-index: 10;
+        }
+        #emoji-popover.active { display: grid; }
+        #emoji-popover button { background: none; border: none; font-size: 1.8em; cursor: pointer; padding: 5px; }
+        
+/* ✨ [수정] 입장 이펙트 스타일 (지속형) */
+        .entry-effect-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; /* 클릭 방지 */
+            z-index: 10;
+        }
+        
+        /* 1. 반짝임 (틸(teal) 색상 깜빡임 효과 - 유지) */
+        @keyframes teal-pulse-anim {
+            0%, 100% {
+                /* ✨ border-color 제거 -> box-shadow + inset shadow */
+                box-shadow: 0 0 10px 2px var(--secondary-color), inset 0 0 10px 2px var(--secondary-color);
+                opacity: 0.6;
+            }
+            50% {
+                box-shadow: 0 0 15px 5px var(--secondary-color), inset 0 0 15px 5px var(--secondary-color);
+                opacity: 1;
+            }
+        }
+        .effect-sparkle-persistent {
+            /* ✨ [수정] box-shadow 방식으로 변경 (overflow:hidden 호환) */
+            top: 0; 
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 12px;
+            /* border: 3px solid transparent; */ /* 제거 */
+            animation: teal-pulse-anim 2.5s ease-in-out infinite; 
+            z-index: 10; /* ✨ '반짝임'이 '별가루'보다 위에 오도록 */
+        }
+        
+        /* 2. 스포트라이트 (✨ '별가루 비' 스타일로 변경) */
+        @keyframes star-fall {
+            0% { 
+                transform: translateY(-20px); /* 슬롯 위에서 시작 */
+                opacity: 0; 
+            }
+            10% { opacity: 1; } /* 나타나기 */
+            90% { opacity: 1; } /* 떨어지기 */
+            100% { 
+                transform: translateY(70px); /* 슬롯(60px) 아래로 사라짐 */
+                opacity: 0; 
+            }
+        }
+        
+        .effect-spotlight-persistent {
+            /* 이 클래스 자체는 컨테이너 역할만 함 */
+            width: 100%;
+            height: 100%;
+            border-radius: 12px; /* ✨ 12px (사각형) */
+            overflow: hidden; /* ✨ 별가루가 원 밖으로 나가지 않게 */
+            z-index: 5; /* ✨ 반짝임보다 아래에 오도록 */
+        }
+
+        /* 2-1. 별가루 입자 (::before) - 빠름 */
+        .effect-spotlight-persistent::before {
+            content: '';
+            position: absolute;
+            top: 0; /* 상단 고정 */
+            left: 50%;
+            width: 2px; /* 입자 크기 */
+            height: 2px;
+            background: #FFF;
+            border-radius: 50%;
+            
+            /* ✨ box-shadow로 여러 개의 별 생성 (가로 60px 범위) */
+            box-shadow: 
+                -20px 10px #FFF, 15px 25px #FFF, 0px 40px #FFF, 
+                -10px 55px #FFF, 25px 5px #FFF, -5px 30px #FFF;
+            
+            animation: star-fall 1.5s linear infinite;
+            animation-delay: -0.5s; /* 즉시 시작 */
+        }
+        
+        /* 2-2. 별가루 입자 (::after) - 느림 (시차) */
+        .effect-spotlight-persistent::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            width: 2px;
+            height: 2px;
+            background: #FFF;
+            border-radius: 50%;
+            
+            /* ✨ 다른 위치에 별 생성 */
+            box-shadow: 
+                10px 18px #FFF, -15px 35px #FFF, 5px 50px #FFF, 
+                -25px 8px #FFF, 20px 22px #FFF, -8px 42px #FFF;
+            
+            animation: star-fall 2.5s linear infinite; /* ✨ 1.5s -> 2.5s (더 느리게) */
+        }
+
+        /* [신규] 친구 초대 모달 */
+        #friend-invite-modal .modal-header {
+            padding: 15px 20px;
+            background-color: var(--secondary-color);
+            color: white;
+            border-bottom: 4px solid #379A93;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+        #friend-invite-modal .modal-header h2 {
+            font-size: 1.25em;
+            margin: 0;
+            color: white;
+            text-align: center;
+            flex-grow: 1;
+        }
+        #friend-invite-modal .modal-header .close-btn {
+            background: none; border: none; color: white;
+            font-size: 2.5em; cursor: pointer;
+            text-shadow: 1px 1px 1px rgba(0,0,0,0.2);
+            position: absolute;
+            left: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            padding: 0 10px;
+            line-height: 1;
+        }
+        #friend-invite-modal .modal-body {
+            padding: 0;
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+
+        /* [신규] 유저 목록 (친구.html 스타일 재사용) */
+        .user-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            padding: 15px;
+        }
+        .user-list-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px;
+            background-color: var(--panel-bg);
+            border: 3px solid var(--panel-border);
+            border-radius: 16px;
+            box-shadow: 4px 4px 0px 0px var(--panel-shadow);
+        }
+        .user-list-avatar {
+            width: 44px; height: 44px; font-size: 2.2em;
+            display: flex; justify-content: center; align-items: center;
+            border-radius: 12px; border: 3px solid var(--text-color-dark);
+            background-color: var(--panel-bg);
+            overflow: hidden; flex-shrink: 0;
+        }
+        .user-list-avatar img { width: 100%; height: 100%; object-fit: contain; }
+        
+        .user-list-nickname {
+            font-weight: 700;
+            font-size: 1.0em;
+            flex-grow: 1; min-width: 0;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .user-item-actions {
+            display: flex; gap: 8px; flex-shrink: 0;
+        }
+        .user-action-btn {
+            font-size: 0.9em;
+            padding: 10px 12px;
+            min-width: 60px;
+            width: auto;
+            border-radius: 12px;
+            border-bottom-width: 4px;
+        }
+
+/* [신규] 아바타 상단 레벨 배지 */
+.player-level-badge {
+    /* [수정] position: absolute 제거 -> inline-block으로 변경 */
+    display: inline-block; /* 텍스트 크기만큼만 너비 차지 (부모의 text-align: center 적용받음) */
+    background-color: var(--primary-color);
+    color: white;
+    font-size: 0.7em; /* [수정] 0.8em -> 0.7em (더 작게) */
+    font-weight: 700;
+    padding: 1px 4px; /* [수정] 2px 6px -> 1px 4px (여백 축소) */
+    border-radius: 6px; /* [수정] 8px -> 6px (모서리 둥글기) */
+    border: 1px solid white; /* [수정] 2px -> 1px (테두리 두께) */
+    box-shadow: 0 1px 2px rgba(0,0,0,0.2); /* [수정] 그림자 축소 */
+    margin-bottom: 3px; /* [수정] 4px -> 3px (닉네임과의 간격) */
+    
+    /* [제거] position: absolute 속성들 */
+    /* position: absolute; */
+    /* top: -10px; */
+    /* left: 50%; */
+    /* transform: translateX(-50%); */
+    /* z-index: 5; */
+}
+/* [신규] 토스트 알림 */
+        #toast-container {
+            position: fixed;
+            top: 20px; /* 상단에서 20px 아래 */
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            pointer-events: none; /* 클릭 방지 */
+        }
+.toast-notification {
+            background-color: rgba(0, 0, 0, 0.75);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            opacity: 0;
+            transition: opacity 0.5s, transform 0.5s;
+            animation: toast-fade-in 0.5s forwards, toast-fade-out 0.5s 2.5s forwards;
+            white-space: nowrap; /* [추가] 줄바꿈 방지 */
+        }
+        @keyframes toast-fade-in {
+            from { opacity: 0; transform: translateY(-20px); } /* 위에서 아래로 */
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes toast-fade-out {
+            from { opacity: 1; transform: translateY(0); }
+            to { opacity: 0; transform: translateY(-20px); }
+        }
+        /* [수정] 8. 모달 및 오버레이 (대기실 테마 적용) */
+        .overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            display: none; /* [수정] */
+            flex-direction: column; justify-content: center; align-items: center;
+            z-index: 200; background-color: rgba(0,0,0,0.6);
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+        }
+        .overlay.active { display: flex; } /* [추가] */
+
+        .modal-content {
+            background: var(--panel-bg);
+            border-radius: 24px;
+            width: 90%; max-width: 420px;
+            overflow: hidden;
+            border: 4px solid var(--text-color-dark);
+            box-shadow: 8px 8px 0px 0px var(--text-color-dark);
+        }
+        .modal-body { padding: 30px 20px 20px; text-align: center; }
+        .modal-body h3 { font-size: 1.4em; margin-bottom: 15px; }
+        .modal-body p { font-size: 0.9em; color: #666; }
+        .modal-footer {
+            display: flex; gap: 10px;
+            padding: 20px;
+            border-top: 3px solid var(--panel-border);
+            background-color: #FFFAE0; /* [수정] */
+        }
+        .modal-footer .menu-btn { margin: 0; font-size: 1.1em; }
+
+        .spinner {
+            border: 5px solid rgba(255,255,255,0.2);
+            border-radius: 50%;
+            border-top: 5px solid var(--accent-color);
+            width: 50px; height: 50px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* 4. [신규] 불타는 등장 (이글이글) */
+        @keyframes flame-anim {
+            0% { box-shadow: 0 5px 12px -5px #F90, 0 8px 15px 0px #F00, 0 5px 20px 5px #F90, 0 2px 5px 0 #FFF; }
+            50% { box-shadow: 0 8px 15px -5px #FFF, 0 10px 20px 5px #F00, 0 8px 25px 10px #F90, 0 5px 10px 0 #FFF; }
+            100% { box-shadow: 0 5px 12px -5px #F90, 0 8px 15px 0px #F00, 0 5px 20px 5px #F90, 0 2px 5px 0 #FFF; }
+        }
+        /* [수정] 셀렉터 변경: .player-slot-compact .avatar */
+        .player-slot-compact .avatar.preview-effect-flames {
+            position: relative; z-index: 1;
+        }
+        .player-slot-compact .avatar.preview-effect-flames::after {
+            content: ''; position: absolute; bottom: -5px; left: 10%;
+            width: 80%; height: 10px; border-radius: 50%;
+            background: transparent;
+            animation: flame-anim 1.2s ease-in-out infinite;
+            z-index: -1;
+        }
+
+        /* 5. [신규] 천사 링 */
+        @keyframes halo-hover-anim {
+            0%, 100% { transform: translateY(0) rotateX(60deg) scale(0.9); opacity: 0.8; }
+            50% { transform: translateY(-8px) rotateX(60deg) scale(1); opacity: 1; }
+        }
+        .effect-angel-halo {
+            position: absolute; top: 0px; left: 50%;
+            transform-origin: center center; width: 40px; height: 15px;
+            margin-left: -20px; border: 3px solid var(--accent-color);
+            border-radius: 50%;
+            background: radial-gradient(ellipse at center, rgba(255,255,0,0.3) 0%, rgba(255,255,255,0) 60%);
+            box-shadow: 0 0 10px 3px var(--accent-color);
+            animation: halo-hover-anim 2s ease-in-out infinite;
+            transform: rotateX(60deg); z-index: 20; 
+        }
+
+        /* 6. [신규] 빙결 */
+        @keyframes frost-anim {
+            0% { opacity: 0.7; box-shadow: 0 0 10px 3px #FFF, 0 0 20px 8px #a7d5ff, inset 0 0 8px 3px #FFF; }
+            50% { opacity: 0.4; box-shadow: 0 0 15px 5px #FFF, 0 0 30px 12px #a7d5ff, inset 0 0 12px 5px #FFF; }
+            100% { opacity: 0.7; box-shadow: 0 0 10px 3px #FFF, 0 0 20px 8px #a7d5ff, inset 0 0 8px 3px #FFF; }
+        }
+        .effect-frozen-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            border-radius: 12px;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.2' numOctaves='3'/%3E%3CfeDiffuseLighting lighting-color='%23a7d5ff' surfaceScale='5'%3E%3CfeDistantLight azimuth='45' elevation='45'/%3E%3C/feDiffuseLighting%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url(%23f)'/%3E%3C/svg%3E");
+            mix-blend-mode: screen; 
+            animation: frost-anim 4s ease-in-out infinite;
+            z-index: 20;
+        }
+    </style>
+    <script src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.2/kakao.min.js"></script>
+</head>
+<body>
+
+    
+
+    <audio id="enter-sound" src="https://blog.kakaocdn.net/dna/dEAY2/dJMb88H2R2G/AAAAAAAAAAAAAAAAAAAAAPg0_H0XgRz8g-U-2Qk-5K2uWlT2sFpA-Vz_86X37x-o/%EC%9E%85%EC%9E%A5%EC%82%AC%EC%9A%B4%EB%93%9C.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=8yD70E4Y6rV3d9W5D%252B19eYd%252BYcM%253D&attach=1&knm=tfile.mp3" preload="auto"></audio>
+    <audio id="leave-sound" src="https://blog.kakaocdn.net/dna/brwD6P/dJMb856J6l3/AAAAAAAAAAAAAAAAAAAAAI1QcI8lW7rA0zH8m8M7p7y7dE0g0-z04sXUqN_S7-kO/%ED%87%B4%EC%9E%A5%EC%82%AC%EC%9A%B4%EB%93%9C.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=8yA7x4n75s5G6j%252B11uA%252BF5hXj8A%253D&attach=1&knm=tfile.mp3" preload="auto"></audio>
+
+    <div class="game-lobby-container">
+        <div class="game-lobby-header">
+            <button id="leave-room-btn" class="header-btn leave">‹</button>
+            <div class="header-title">
+                <h1 id="room-name-header"></h1>
+                <p id="game-type-header"></p>
+            </div>
+            <div class="header-buttons-wrapper">
+                <button id="invite-btn" class="header-btn invite">카톡초대</button>
+                </div>
+        </div>
+        
+        <div class="game-lobby-main">
+            <div id="player-list-wrapper">
+                <div id="player-list-horizontal"></div>
+            </div>
+            <div id="chat-container"></div>
+        </div>
+        
+        <div class="game-lobby-footer">
+            <button id="start-game-btn" class="menu-btn primary" disabled style="display: none; margin-bottom: 10px;">게임 시작</button>
+            
+            <div id="chat-controls">
+                <input type="text" id="chat-input" placeholder="메시지를 입력하세요..." maxlength="50" autocomplete="off">
+              <button id="mic-btn">🎙️</button>
+                <button id="emoji-toggle-btn">😀</button>
+                <button id="chat-settings-btn">⚙️</button>
+                <div id="emoji-popover">
+                    <button>👍</button><button>😂</button><button>😮</button><button>👋</button>
+                    <button>😏</button><button>👌</button><button>😭</button><button>🤗</button>
+                </div>
+                <button id="send-chat-btn">전송</button>
+            </div>
+            </div>
+    </div>
+    
+    <div id="loading-overlay" class="overlay">
+        <div class="spinner"></div>
+    </div>
+
+    <script src="아바타.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    
+   <script>
+    // 전역 변수 선언 (카카오 공유에서 사용)
+    let currentRoomData = null;
+    let roomRef = null;
+    let availableGames = [];
+    
+    // 전역 스코프 함수 정의
+    function escapeHTML(str) {
+        if (typeof str !== 'string') return '';
+        const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+        return str.replace(/[&<>"']/g, m => map[m]);
+    }
+
+    function setScreenHeight() {
+        const vh = window.innerHeight * 0.01;
+        document.documentElement.style.setProperty('--vh', `${vh}px`);
+        const gameLobbyContainer = document.querySelector('.game-lobby-container');
+        if (gameLobbyContainer) {
+            gameLobbyContainer.style.height = `${window.innerHeight}px`;
+        }
+    }
+
+    // F12 차단 등은 DOMContentLoaded 전에 실행될 수 있으므로 전역 유지
+    document.addEventListener('contextmenu', event => event.preventDefault());
+    /* // 디버깅 위해 임시 주석 처리
+    document.addEventListener('keydown', event => {
+       if (event.key === 'F12' ||
+            (event.ctrlKey && event.shiftKey && ['I', 'J', 'C'].includes(event.key.toUpperCase())) ||
+            (event.ctrlKey && event.key.toUpperCase() === 'U')) {
+          event.preventDefault();
+        }
+    });
+    setInterval(() => { try { debugger; } catch (e) {} }, 1000);
+    */
+
+    window.addEventListener('resize', setScreenHeight);
+    window.addEventListener('orientationchange', setScreenHeight);
+    setScreenHeight(); // 페이지 로드 시 즉시 실행
+
+    // 카카오 초대 함수 정의 (전역 유지)
+function kakaoInvite() {
+    console.log('[로그] kakaoInvite 함수 실행 시작됨.');
+    
+    // Kakao SDK 체크
+    if (typeof window.Kakao === 'undefined' || !window.Kakao.isInitialized()) {
+        alert('카카오 SDK가 로드되지 않았거나 초기화에 실패했습니다. 페이지를 새로고침 해보세요.');
+        console.error('kakaoInvite: Kakao SDK가 로드되지 않았거나 초기화되지 않았습니다.');
+        return;
+    }
+    
+    console.log('Kakao SDK 초기화 확인됨.');
+    
+    if (!currentRoomData || !roomRef) {
+        alert("오류: 아직 방 정보가 로드되지 않았습니다. 잠시 후 다시 시도해주세요.");
+        console.error('kakaoInvite: currentRoomData 또는 roomRef가 없습니다.');
+        return;
+    }
+    console.log('방 정보 확인됨.');
+    
+    const game = availableGames.find(g => g.id === currentRoomData.gameType);
+    if (!game) {
+        alert("오류: 알 수 없는 게임입니다.");
+        console.error('kakaoInvite: game을 찾을 수 없습니다.');
+        return;
+    }
+    
+    // [수정] index.html -> 대기실.html로 변경 (사용자 요청)
+    const inviteURL = `https://bangat.github.io/game/대기실.html?roomId=${roomRef.key}`;
+    console.log('kakaoInvite: 생성된 URL:', inviteURL);
+    console.log('Kakao.Share.sendDefault 호출 시도...');
+    
+    try {
+        window.Kakao.Share.sendDefault({
+            objectType: 'feed',
+            content: {
+                title: `[${game.name}] 같이 할 사람!`,
+                description: `'${currentRoomData.roomName}' 방에서 당신을 기다리고 있어요!`,
+                imageUrl: 'https://i.ibb.co/684n0XG/link-Image.png',
+                link: {
+                    mobileWebUrl: inviteURL,
+                    webUrl: inviteURL,
+                },
+            },
+            buttons: [
+                {
+                    title: '게임 참가하기',
+                    link: {
+                        mobileWebUrl: inviteURL,
+                        webUrl: inviteURL,
+                    },
+                },
+            ],
+        });
+        console.log('Kakao.Share.sendDefault 호출 완료.');
+    } catch (e) {
+        console.error('Kakao.Share.sendDefault 실패:', e);
+        alert('카카오톡 공유하기에 실패했습니다.');
+    }
+}
+
+
+    // ✨ [신규] 게임 설정 전역 변수 (대기실과 공유)
+    const defaultSettings = {
+        sfx: true,      // 효과음
+        bgm: true,      // 배경음악
+        vibration: true // 진동
+    };
+    // localStorage에서 설정을 불러오거나, 없으면 기본값 사용
+    let gameSettings = JSON.parse(localStorage.getItem('gameSettings')) || defaultSettings;
+    // localStorage에 최신 상태(기본값 포함)를 저장 (필수는 아니지만, 일관성을 위해)
+    localStorage.setItem('gameSettings', JSON.stringify(gameSettings));
+
+
+    // --- DOMContentLoaded 시작 ---
+    document.addEventListener('DOMContentLoaded', () => {
+        console.log('--- DOMContentLoaded 시작 ---');
+        // --- ✨ [신규] Kakao SDK 초기화 (DOMContentLoaded로 이동) ---
+        try {
+            if (typeof window.Kakao !== 'undefined' && window.Kakao.init) {
+                if (!window.Kakao.isInitialized()) {
+                    window.Kakao.init('eab4e799223cb0d41b51e518546b2405');
+                    console.log('Kakao SDK가 DOMContentLoaded에서 성공적으로 초기화되었습니다.');
+                } else {
+                    console.log('Kakao SDK가 DOMContentLoaded에서 이미 초기화되었음을 확인했습니다.');
+                }
+            } else {
+                console.error('DOMContentLoaded: Kakao SDK 스크립트를 로드했으나, Kakao 객체를 찾을 수 없습니다.');
+            }
+        } catch (e) {
+            console.error("DOMContentLoaded: Kakao SDK 초기화 실패:", e);
+        }
+        // --- ✨ Kakao SDK 초기화 끝 ---
+          
+    
+
+    // --- 인앱 콘솔 기능 (DOMContentLoaded 내부 최상단으로 이동) ---
+        const consoleModal = document.getElementById('console-modal');
+        const consoleOutput = document.getElementById('console-output');
+        const openConsoleBtn = document.getElementById('open-console-btn');
+        const closeConsoleBtn = document.getElementById('close-console-btn');
+        const clearConsoleBtn = document.getElementById('clear-console-btn');
+
+        const originalConsoleLog = console.log;
+        const originalConsoleWarn = console.warn;
+        const originalConsoleError = console.error;
+
+        function addLogToModal(message, type = 'log') {
+             const currentConsoleOutput = document.getElementById('console-output');
+            if (!currentConsoleOutput) {
+                 originalConsoleError("인앱 콘솔 출력 요소를 찾을 수 없습니다.");
+                 return;
+             }
+            const logEntry = document.createElement('div');
+            const now = new Date();
+            const timestamp = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+            logEntry.style.marginBottom = '5px';
+            logEntry.style.borderBottom = '1px solid #444';
+            logEntry.style.paddingBottom = '3px';
+            logEntry.innerHTML = `<span style="color: #888;">[${timestamp}]</span> `;
+            if (type === 'warn') { logEntry.style.color = 'yellow'; logEntry.innerHTML += `<span style="font-weight: bold;">[WARN]</span> `; }
+            else if (type === 'error') { logEntry.style.color = 'red'; logEntry.innerHTML += `<span style="font-weight: bold;">[ERROR]</span> `; }
+            else { logEntry.style.color = 'white'; }
+            if (typeof message === 'object') {
+                try { message = JSON.stringify(message, null, 2); } catch (e) { message = '[Object Circular Structure]'; }
+                const pre = document.createElement('pre');
+                pre.style.margin = '0'; pre.style.display = 'inline'; pre.textContent = message;
+                logEntry.appendChild(pre);
+            } else {
+                const textNode = document.createTextNode(String(message));
+                logEntry.appendChild(textNode);
+            }
+            currentConsoleOutput.appendChild(logEntry);
+            currentConsoleOutput.scrollTop = currentConsoleOutput.scrollHeight;
+        }
+
+        // ✨👇 여기 바로 아래에 테스트 로그 추가 👇✨
+        addLogToModal("!!! 인앱 콘솔 addLogToModal 직접 호출 테스트 !!!", "warn");
+        // ✨👆 테스트 로그 추가 끝 👆✨
+
+
+        console.log = function(...args) {
+            originalConsoleLog.apply(console, args);
+            addLogToModal(args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' '), 'log');
+        };
+        console.warn = function(...args) {
+            originalConsoleWarn.apply(console, args);
+            addLogToModal(args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' '), 'warn');
+        };
+        console.error = function(...args) {
+            originalConsoleError.apply(console, args);
+            addLogToModal(args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' '), 'error');
+        };
+        window.onerror = function(message, source, lineno, colno, error) {
+            const errorMessage = `Uncaught Error: ${message} at ${source}:${lineno}:${colno}`;
+            originalConsoleError(errorMessage, error);
+            addLogToModal(errorMessage, 'error');
+        };
+        window.onunhandledrejection = function(event) {
+            const reason = event.reason instanceof Error ? event.reason.stack || event.reason.message : String(event.reason);
+            const errorMessage = `Unhandled Promise Rejection: ${reason}`;
+            originalConsoleError(errorMessage);
+            addLogToModal(errorMessage, 'error');
+        };
+
+        // 테스트 로그
+        console.log('--- 인앱 콘솔 테스트 로그 (DOMContentLoaded) ---');
+
+        if (openConsoleBtn) { openConsoleBtn.addEventListener('click', () => { if (consoleModal) consoleModal.style.display = 'flex'; openConsoleBtn.style.display = 'none'; }); }
+        if (closeConsoleBtn) { closeConsoleBtn.addEventListener('click', () => { if (consoleModal) consoleModal.style.display = 'none'; if (openConsoleBtn) openConsoleBtn.style.display = 'block'; }); }
+        if (clearConsoleBtn) { // clear 버튼 null 체크
+             clearConsoleBtn.addEventListener('click', () => {
+                 const currentConsoleOutput = document.getElementById('console-output');
+                 if(currentConsoleOutput) currentConsoleOutput.innerHTML = '';
+             });
+        }
+        // --- 인앱 콘솔 기능 끝 ---
+
+
+        // --- 나머지 기존 DOMContentLoaded 코드 시작 ---
+        const confirmExitModal = document.getElementById('confirm-exit-modal');
+        const exitModalSubtext = document.getElementById('exit-modal-subtext');
+
+        history.pushState(null, '', location.href);
+        window.addEventListener('popstate', (e) => {
+             history.pushState(null, '', location.href);
+             // isHost 변수가 여기서 사용될 때 값이 할당되어 있도록 전역 변수로 선언되었는지 확인 필요
+             exitModalSubtext.textContent = isHost ? "방장이 나가면 방이 사라집니다." : "방에서 나가게 됩니다.";
+             confirmExitModal.classList.add('active');
+         });
+        document.getElementById('exit-confirm-btn').addEventListener('click', () => {
+             confirmExitModal.classList.remove('active');
+             cleanupAndExit();
+         });
+        document.getElementById('exit-cancel-btn').addEventListener('click', () => {
+             confirmExitModal.classList.remove('active');
+         });
+
+        let hostOnDisconnect = null;
+        let playerOnDisconnect = null;
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
+            authDomain: "goodluck-7c14b.firebaseapp.com",
+            databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com",
+            projectId: "goodluck-7c14b",
+            storageBucket: "goodluck-7c14b.appspot.com",
+            messagingSenderId: "858281658455",
+            appId: "1:858281658455:web:9131280a459be983933b12"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+        const auth = firebase.auth();
+        const roomsRef = db.ref('rooms');
+        const usersRef = db.ref('users');
+
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const chatContainer = document.getElementById('chat-container');
+        const chatInput = document.getElementById('chat-input');
+        const sendChatBtn = document.getElementById('send-chat-btn');
+        const startGameBtn = document.getElementById('start-game-btn');
+        const leaveRoomBtn = document.getElementById('leave-room-btn');
+        const emojiToggleBtn = document.getElementById('emoji-toggle-btn');
+        const emojiPopover = document.getElementById('emoji-popover');
+       const micBtn = document.getElementById('mic-btn'); // ✨ [신규] 마이크 버튼
+        
+        // ✨ [신규] Web Speech API (STT / TTS)
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const recognition = SpeechRecognition ? new SpeechRecognition() : null;
+        const synthesis = window.speechSynthesis;
+
+        // ✨ [신규] TTS 설정 관련 DOM
+        const chatSettingsBtn = document.getElementById('chat-settings-btn');
+        const ttsSettingsModal = document.getElementById('tts-settings-modal');
+        const ttsVoiceSelect = document.getElementById('tts-voice-select');
+        const ttsSettingsCloseBtn = document.getElementById('tts-settings-close-btn');
+        const TTS_VOICE_KEY = 'gameLobbyVoiceURI'; // localStorage 키
+        // ✨ [신규] TTS ON/OFF 토글
+        const ttsToggle = document.getElementById('tts-toggle-switch');
+        const TTS_ENABLED_KEY = 'gameLobbyTTSOn'; // localStorage 키
+
+        // ✨ [신규] TTS 활성화 상태 (페이지 로드 시 localStorage에서 불러옴)
+        // ✨ [수정] 'false'일 때만 꺼지고, null(최초)이거나 'true'면 켜짐 (기본값: ON)
+        let isTTSOn = localStorage.getItem(TTS_ENABLED_KEY) !== 'false';
+
+        // ✨ [신규] 알림 모달 변수
+        const alertModal = document.getElementById('alert-modal');
+        const alertModalMessage = document.getElementById('alert-modal-message');
+        const alertModalOkBtn = document.getElementById('alert-modal-ok-btn');
+
+        // [신규] 친구 초대 모달
+        const friendInviteModal = document.getElementById('friend-invite-modal');
+        const friendInviteListContainer = document.getElementById('friend-invite-list-container');
+        const friendInviteModalCloseBtn = document.getElementById('friend-invite-modal').querySelector('[data-close]');
+        
+        // ✨ [신규] 알림 모달 "확인" 버튼 리스너
+        if (alertModalOkBtn) {
+            alertModalOkBtn.addEventListener('click', () => {
+                alertModal.classList.remove('active');
+            });
+        }
+
+        // ✨ [신규] STT/TTS 기능 초기화
+        if (recognition && micBtn) {
+            recognition.lang = 'ko-KR';
+            recognition.continuous = false;
+            recognition.interimResults = false;
+
+            // 1. 음성 인식이 성공했을 때
+            recognition.onresult = (event) => {
+                const text = event.results[0][0].transcript;
+                console.log('인식된 텍스트:', text);
+                
+                // [핵심] 인식된 텍스트를 "채팅 전송" 함수로 보냄
+                sendMessage(text); 
+            };
+
+            // 2. 음성 인식이 끝나면 버튼 복구
+            recognition.onend = () => {
+                micBtn.classList.remove('recording');
+                micBtn.disabled = false;
+            };
+
+            // 3. 에러 처리
+            recognition.onerror = (event) => {
+                console.error('음성 인식 에러:', event.error);
+                if (event.error === 'no-speech') {
+                    showToast('음성이 들리지 않아요.');
+                } else if (event.error === 'not-allowed') {
+                    showAlert('마이크 권한이 필요합니다. 브라우저 설정을 확인해주세요.');
+                } else {
+                    showToast('음성 인식 중 오류가 발생했습니다.');
+                }
+                micBtn.classList.remove('recording');
+                micBtn.disabled = false;
+            };
+
+            // 4. 마이크 버튼 클릭 이벤트
+            micBtn.addEventListener('click', () => {
+                if (!currentUser) return; // 로그인 체크
+
+                if (micBtn.classList.contains('recording')) {
+                    // 녹음 중일 때 누르면 중지
+                    recognition.stop();
+                } else {
+                    // 녹음 시작
+                    try {
+                        recognition.start();
+                        micBtn.classList.add('recording');
+                        micBtn.disabled = true; // 녹음 중 비활성화
+                        showToast('듣고 있어요... 🎙️');
+                    } catch(e) {
+                        console.error("인식 시작 에러", e);
+                        if (e.name === 'NotAllowedError') {
+                             showAlert('마이크 권한이 필요합니다. 브라우저 설정을 확인해주세요.');
+                        } else {
+                             showToast('음성 인식을 시작할 수 없습니다.');
+                        }
+                    }
+                }
+            });
+
+        } else {
+            // STT 미지원 브라우저
+            console.warn("이 브라우저는 음성 인식을 지원하지 않습니다.");
+            if (micBtn) {
+                micBtn.style.display = 'none'; // 버튼 숨김
+            }
+        }
+
+        // --- ✨ [수정] TTS 목소리 목록 로드 (강력한 재시도 로직 포함) ---
+        let voiceList = []; // 음성 목록 캐시
+        let voiceLoadAttempts = 0; // [신규] 로드 시도 횟수
+
+        function populateVoiceList() {
+            if (!synthesis) return;
+
+            voiceList = synthesis.getVoices();
+            
+            // [신규] 목록이 비어있거나, 한국어 음성이 없으면 재시도
+            const koreanVoices = voiceList.filter(voice => voice.lang === 'ko-KR' || voice.lang.startsWith('ko-'));
+
+            if (koreanVoices.length === 0 && voiceLoadAttempts < 5) {
+                voiceLoadAttempts++;
+                console.warn(`TTS 목소리 목록이 비어있거나 한국어 음성이 없습니다. ${voiceLoadAttempts}번째 재시도... (엔진 깨우는 중)`);
+                
+                // 0.1초 후에 엔진을 깨우고, 0.5초 후에 목록을 다시 로드
+                setTimeout(primeTTSEngine, 100); 
+                setTimeout(populateVoiceList, 500); 
+                return; // 지금은 목록을 채우지 않음
+            }
+
+            console.log(`TTS 목소리 ${voiceList.length}개 로드됨. (한국어 ${koreanVoices.length}개)`);
+
+            ttsVoiceSelect.innerHTML = '<option value="">기본 목소리 (브라우저)</option>'; // 초기화
+            
+            const savedVoiceURI = localStorage.getItem(TTS_VOICE_KEY);
+
+            koreanVoices.forEach(voice => { // [수정] 필터링된 한국어 목록 사용
+                const option = document.createElement('option');
+                option.textContent = `${voice.name} (${voice.lang})`;
+                option.value = voice.voiceURI;
+                
+                if (voice.voiceURI === savedVoiceURI) {
+                    option.selected = true; // 저장된 목소리 선택
+                }
+                
+                ttsVoiceSelect.appendChild(option);
+            });
+        }
+
+        // (중요) 음성 목록은 비동기적으로 로드됩니다.
+        if(synthesis) {
+            // [수정] onvoiceschanged 핸들러를 먼저 설정합니다.
+            if (synthesis.onvoiceschanged !== undefined) {
+                synthesis.onvoiceschanged = populateVoiceList;
+            }
+            
+            // [수정] 그리고 *즉시* 로드를 시도합니다 (재시도 로직이 포함된 새 함수).
+            populateVoiceList();
+
+        } else if (chatSettingsBtn) {
+            // [신규] TTS가 아예 지원 안되면 설정 버튼 숨김
+            chatSettingsBtn.style.display = 'none';
+        }
+
+// 설정(⚙️) 버튼 클릭 -> 모달 열기
+        if (chatSettingsBtn) {
+            chatSettingsBtn.addEventListener('click', () => {
+                populateVoiceList(); // 모달 열 때마다 목록 갱신
+                
+                // ✨ [수정] 현재 TTS ON/OFF 상태를 토글 스위치에 반영
+                if(ttsToggle) ttsToggle.checked = isTTSOn; 
+                
+                ttsSettingsModal.classList.add('active');
+            });
+        }
+        
+        // 모달 닫기 버튼
+        if (ttsSettingsCloseBtn) {
+            ttsSettingsCloseBtn.addEventListener('click', () => {
+                ttsSettingsModal.classList.remove('active');
+            });
+        }
+
+        // 목소리 선택 시 localStorage에 "즉시 저장"
+        if (ttsVoiceSelect) {
+            ttsVoiceSelect.addEventListener('change', () => {
+                const selectedVoiceURI = ttsVoiceSelect.value;
+                if (selectedVoiceURI) {
+                    localStorage.setItem(TTS_VOICE_KEY, selectedVoiceURI);
+                } else {
+                    localStorage.removeItem(TTS_VOICE_KEY); // '기본' 선택 시 저장값 제거
+                }
+                showToast('목소리가 저장되었습니다.');
+                
+                // 테스트 재생
+                const testUtterance = new SpeechSynthesisUtterance('목소리가 저장되었습니다.');
+                const savedVoice = voiceList.find(v => v.voiceURI === selectedVoiceURI);
+                if (savedVoice) {
+                    testUtterance.voice = savedVoice;
+                }
+                testUtterance.lang = 'ko-KR';
+                synthesis.speak(testUtterance);
+            });
+        }
+
+        // ✨ [신규] TTS ON/OFF 토글 스위치 클릭 이벤트
+        if (ttsToggle) {
+            ttsToggle.addEventListener('change', () => {
+                isTTSOn = ttsToggle.checked; // 전역 변수 업데이트
+                localStorage.setItem(TTS_ENABLED_KEY, isTTSOn); // localStorage에 저장
+                
+                if (isTTSOn) {
+                    showToast('채팅 음성 듣기 ON');
+                    // 켜졌을 때 테스트 재생
+                    const testUtterance = new SpeechSynthesisUtterance('음성 듣기가 켜졌습니다.');
+                    const savedVoiceURI = localStorage.getItem(TTS_VOICE_KEY);
+                    const savedVoice = voiceList.find(v => v.voiceURI === savedVoiceURI);
+                    if (savedVoice) testUtterance.voice = savedVoice;
+                    testUtterance.lang = 'ko-KR';
+                    synthesis.speak(testUtterance);
+                } else {
+                    showToast('채팅 음성 듣기 OFF');
+                    synthesis.cancel(); // 혹시 말하고 있었다면 중지
+                }
+            });
+        }
+        // [신규] 앱 백그라운드/복귀 시 접속 유지 로직 (pagehide/pageshow로 안정성 강화)
+        
+        const handleAppHide = () => {
+            // 이미 타이머가 실행 중이면 (다른 이벤트가 먼저 실행됐다면) 무시
+            if (presenceTimeout) return; 
+
+            console.log('[Presence] 게임방 숨김 (pagehide/hidden). 5분 타이머 시작.');
+            
+            // [### 1. onDisconnect 수동 취소 (핵심 수정) ###]
+            // "나 지금 잠깐 나가는거야, 5분 안에 돌아올게"라고 서버에 알림.
+            // 이 코드를 주석 처리하면, 숨기는 즉시 서버가 튕겨냄.
+            cancelMyOnDisconnectHandler(); 
+            
+            presenceTimeout = setTimeout(() => {
+                console.log('[Presence] 5분 경과. 게임방에서 나갑니다.');
+                cleanupAndExit();
+            }, 300000); // 5분 (300,000ms)
+        };
+
+        const handleAppShow = () => {
+            // 타이머가 없으면 (이미 'show' 이벤트가 처리됐다면) 무시
+            if (!presenceTimeout) return; 
+
+            console.log('[Presence] 게임방 활성화 (pageshow/visible). 5분 타이머 취소.');
+            
+            clearTimeout(presenceTimeout);
+            presenceTimeout = null;
+            
+            // [중요] onDisconnect 핸들러를 *즉시 다시 설정*함
+            setMyOnDisconnectHandler();
+        };
+
+        // 'pagehide'는 앱이 백그라운드로 가거나 닫힐 때 'visibilitychange'보다 안정적
+        window.addEventListener('pagehide', handleAppHide);
+        // 'pageshow'는 앱이 다시 활성화될 때
+        window.addEventListener('pageshow', handleAppShow);
+
+        // 구형 브라우저/일반 탭 전환을 위한 visibilitychange도 유지
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'hidden') {
+                handleAppHide();
+            } else if (document.visibilityState === 'visible') {
+                handleAppShow();
+            }
+        });
+
+        // ✨ [신규] 공용 토스트 알림 표시 함수
+        function showToast(message) {
+            const toastContainer = document.getElementById('toast-container');
+            if (!toastContainer) return;
+
+            const toast = document.createElement('div');
+            toast.className = 'toast-notification';
+            toast.textContent = message;
+            
+            toastContainer.appendChild(toast);
+
+            // 3초 후 DOM에서 제거
+            setTimeout(() => {
+                toast.remove();
+            }, 3000);
+        }
+
+        // ✨ [신규] 공용 알림 모달 표시 함수
+        function showAlert(message) {
+            if (alertModalMessage) alertModalMessage.textContent = message;
+            if (alertModal) alertModal.classList.add('active');
+        }
+        const lobbyFooter = document.querySelector('.game-lobby-footer');
+
+        // 변수 선언 (스코프 상단으로)
+let currentUser, myNickname, myAvatar, myBombSkin, isHost;
+let myEntryEffect = null; // ✨ [신규] 입장 이펙트 
+let myLevel = 1; // ✨ [신규] 레벨 저장용
+let previousPlayerNicks = {};
+
+let presenceTimeout = null; // [신규] 백그라운드 유예 시간 타이머
+// ✨ [신규] 친구 접속 감지 리스너
+let friendStatusListener = null;
+let friendStatusRef = null;
+
+
+// availableGames 정의 (전역으로 이동)
+availableGames = [
+            { id: 'alkkagi', name: '알까기', icon: '⚪', file: '알까기.html', maxPlayers: 2 },
+            { id: 'crossingKnights', name: '크로싱 나이츠', icon: '♞', file: '크로싱나이츠.html', maxPlayers: 2 },
+            { id: 'memoryGame', name: '메모리', icon: '🧠', file: '메모리게임.html', maxPlayers: 4 },
+            { id: 'reversi', name: '리버시', icon: '⚫', file: '리버시.html', maxPlayers: 2 },
+            { id: 'indianpoker', name: '인디언포커', icon: '🃏', file: '인디언포커.html', maxPlayers: 2 },
+            { id: 'candysoap', name: '애니팡', icon: '🍬', file: '애니팡.html', maxPlayers: 4 },
+            { id: 'quiz', name: 'AI 스피드퀴즈', icon: '❓', file: 'ai퀴즈.html', maxPlayers: 4 },
+            { id: 'bomber', name: '크레이지 봄버', icon: '💣', file: '봄버맨.html', maxPlayers: 4 },
+            { id: 'shisenSho', name: '사천성', icon: '🀄', file: '사천성.html', maxPlayers: 4 },
+            { id: 'tetris', name: '테트리스', icon: '🧱', file: '테트리스.html', maxPlayers: 4, color: '#2980b9', canSolo: false }
+        ];
+
+        // ✨ [수정] 게임 설정 로드
+        const defaultSettings = { sfx: true, bgm: true, vibration: true };
+        let gameSettings = JSON.parse(localStorage.getItem('gameSettings')) || defaultSettings;
+        localStorage.setItem('gameSettings', JSON.stringify(gameSettings));
+        
+        const playSound = (id) => {
+            // ✨ [수정] 효과음 설정이 켜져 있을 때만 재생
+            if (!gameSettings.sfx) return;
+
+            const sound = document.getElementById(id);
+            if(sound) {
+                sound.currentTime = 0;
+                sound.play().catch(e => { /* 오류 무시 또는 로깅 */ });
+            }
+        };
+
+        const vibrate = () => {
+            // ✨ [수정] 진동 설정이 켜져 있을 때만 실행
+            if (!gameSettings.vibration) return;
+
+            if ('vibrate' in navigator) {
+                navigator.vibrate(500); // 0.5초 진동
+            }
+        };
+
+        // --- 나머지 함수 정의 (initializeRoom, listenToRoomChanges 등) ---
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                currentUser = user;
+                myNickname = localStorage.getItem('userNickname');
+                myAvatar = localStorage.getItem('userAvatar');
+                if (!myNickname) { auth.signOut(); window.location.replace('index.html'); return; }
+
+                // ✨ [수정] "모든 유저" 접속 감지 리스너 (친구 목록 로드 제거)
+                if (friendStatusListener) {
+                    friendStatusRef.off('child_added', friendStatusListener); // 기존 리스너 제거
+                }
+                
+                friendStatusRef = db.ref('status');
+                friendStatusListener = friendStatusRef.on('child_added', (statusSnap) => {
+                    const onlineUid = statusSnap.key;
+                    
+                    // 1. 접속한 사람이 내가 아니어야 함
+                    if (onlineUid !== currentUser.uid) {
+                        
+                        // 2. (중요) 이 사람이 이미 이 방에 있는지 확인
+                        const playerIdsInRoom = Object.keys(currentRoomData?.players || {});
+                        if (playerIdsInRoom.includes(onlineUid)) {
+                            return; // 이미 방에 있으므로 알림 X
+                        }
+
+                        // 3. 닉네임을 가져와서 토스트 알림
+                        usersRef.child(onlineUid).child('profile/nickname').once('value', (profileSnap) => {
+                            if (profileSnap.exists()) {
+                                showToast(`🔔 ${escapeHTML(profileSnap.val())}님이 게임에 접속했습니다.`);
+                            }
+                        });
+                    }
+                });
+                // --- [수정] 리스너 로직 변경 끝 ---
+
+                // ✨ [수정] bombSkin과 entryEffect를 함께 불러옵니다.
+                usersRef.child(currentUser.uid).child('profile').once('value', snapshot => {
+                    const profile = snapshot.val() || {};
+                    myBombSkin = profile.bombSkin || './봄버맨사운드/물풍선.png';
+                    myEntryEffect = profile.equippedEntryEffect || null; // ✨ 전역 변수에 저장
+                    myLevel = profile.level || 1; // ✨ [신규] 레벨 저장
+                    initializeRoom();
+                }).catch(error => {
+                    console.error("프로필 로드 오류:", error);
+                    myBombSkin = './봄버맨사운드/물풍선.png';
+                    myEntryEffect = null;
+                    initializeRoom();
+                });
+            } else {
+                window.location.href = 'index.html';
+            }
+        });
+
+        // [신규] onDisconnect 핸들러를 (재)설정하는 함수
+function setMyOnDisconnectHandler() {
+    if (!roomRef || !currentUser) return; // 방어 코드
+
+    // 기존 핸들러가 있다면 일단 모두 취소
+    cancelMyOnDisconnectHandler();
+
+    if (isHost) {
+        hostOnDisconnect = roomRef.onDisconnect();
+        hostOnDisconnect.remove();
+        console.log('[Presence] 호스트 onDisconnect 설정됨 (즉시 제거)');
+    } else {
+        playerOnDisconnect = roomRef.child('players/' + currentUser.uid).onDisconnect();
+        playerOnDisconnect.remove();
+        console.log('[Presence] 게스트 onDisconnect 설정됨 (즉시 제거)');
+    }
+}
+
+// [신규] onDisconnect 핸들러를 취소하는 함수
+function cancelMyOnDisconnectHandler() {
+    if (hostOnDisconnect) {
+        try { hostOnDisconnect.cancel(); } catch(e) {}
+        hostOnDisconnect = null;
+        console.log('[Presence] 호스트 onDisconnect 취소됨');
+    }
+    if (playerOnDisconnect) {
+        try { playerOnDisconnect.cancel(); } catch(e) {}
+        playerOnDisconnect = null;
+        console.log('[Presence] 게스트 onDisconnect 취소됨');
+    }
+}
+
+        function initializeRoom() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const roomId = urlParams.get('roomId');
+            const isSoloQuiz = urlParams.get('mode') === 'solo' && roomId === 'solo_quiz_temp';
+
+            if (isSoloQuiz) {
+                const game = availableGames.find(g => g.id === 'quiz');
+                if (game) { window.location.replace(`${game.file}?roomId=${roomId}&mode=solo`); return; }
+            }
+            if (!roomId) { alert("잘못된 접근입니다."); window.location.href = '대기실.html'; return; }
+
+            roomRef = roomsRef.child(roomId);
+            roomRef.once('value', snapshot => {
+                if (!snapshot.exists()) { alert("방을 찾을 수 없습니다."); window.location.href = '대기실.html'; return; }
+
+                const roomData = snapshot.val();
+                const game = availableGames.find(g => g.id === roomData.gameType);
+                const playerCount = roomData.players ? Object.keys(roomData.players).length : 0;
+                const isPlayerAlreadyIn = roomData.players && roomData.players[currentUser.uid];
+
+                if (!isPlayerAlreadyIn && game && playerCount >= game.maxPlayers) { alert("방이 가득 찼습니다."); window.location.href = '대기실.html'; return; }
+
+                isHost = roomData.hostId === currentUser.uid; // isHost 여기서 할당
+
+                // [신규] 방장이 'lobby' 상태의 방으로 복귀한 경우,
+                // 방을 'waiting' 상태로 정리합니다.
+                if (isHost && roomData.status === 'lobby') {
+                    console.log("방장 복귀: 'lobby' 상태를 'waiting'으로 정리합니다.");
+                    roomRef.update({
+                        status: 'waiting',
+                        // 애니팡에서 사용한 초기화 데이터를 여기서도 동일하게 적용
+                        gameStarted: false, 
+                        readyPlayers: null,
+                        rematchRequests: null,
+                        attacks: null
+                    });
+                }
+
+                const myPlayerData = {
+                    nickname: myNickname, avatar: myAvatar, bombSkin: myBombSkin, isHost: isHost,
+                    entryEffect: myEntryEffect, // ✨ [추가]
+                    level: myLevel // ✨ [신규] 레벨 추가
+                };
+
+                roomRef.child('players/' + currentUser.uid).set(myPlayerData).then(() => {
+                    listenToRoomChanges();
+                }).catch(error => {
+                    console.error("Error joining room:", error); alert("방 입장에 실패했습니다."); window.location.href = '대기실.html';
+                });
+            });
+        }
+
+        function listenToRoomChanges() {
+            roomRef.on('value', snapshot => {
+                if (!snapshot.exists()) {
+                     if (!document.querySelector('.overlay.active')) { // 게임 종료 모달 등이 떠 있지 않을 때만 알림
+                        alert("방이 사라졌습니다.");
+                     }
+                     cleanupAndExit();
+                     return;
+                 }
+                const oldRoomData = currentRoomData;
+                currentRoomData = snapshot.val();
+
+                // ✅ 변경 코드 (위 블록 전체 교체)
+if (currentRoomData.status === 'playing') {
+    const game = availableGames.find(g => g.id === currentRoomData.gameType);
+    if (game) {
+        if (isHost) {
+            if(hostOnDisconnect) hostOnDisconnect.cancel();
+            roomRef.onDisconnect().cancel();
+        } else {
+            if(playerOnDisconnect) playerOnDisconnect.cancel();
+            roomRef.child('players/' + currentUser.uid).onDisconnect().cancel();
+        }
+        if(roomRef) roomRef.off();
+        window.location.href = `${game.file}?roomId=${snapshot.key}`;
+    }
+    return;
+}
+
+// 🔹 [신규] 게임 종료 후 복귀 시 'lobby' 상태를 'waiting'으로 초기화
+if (currentRoomData.status === 'lobby') {
+            if (isHost) {
+                console.log("[게임방] 'lobby' 상태 감지. 'waiting'으로 초기화.");
+                roomRef.update({
+                    status: 'waiting',
+            gameStarted: false,
+            readyPlayers: null,
+            rematchRequests: null,
+            attacks: null
+        });
+    }
+   return;
+}
+
+                if (!currentRoomData.players || !currentRoomData.players[currentUser.uid]) {
+                     if (!document.querySelector('.overlay.active')) {
+                        alert("방에서 퇴장되었습니다.");
+                     }
+                     cleanupAndExit();
+                     return;
+                 }
+
+                isHost = currentRoomData.hostId === currentUser.uid; // 데이터 변경 시 isHost 재확인
+
+               // onDisconnect 설정 (Firebase 연결이 복구될 때마다 호출됨)
+                setMyOnDisconnectHandler();
+
+                updateUI();
+                handlePlayerChanges(oldRoomData ? oldRoomData.players : {});
+                loadingOverlay.style.display = 'none';
+            });
+            roomRef.child('chat').on('child_added', snapshot => {
+                const msg = snapshot.val();
+                if (!msg) return;
+
+                renderChatMessage(msg); // 1. 채팅창에 렌더링 (기존 로직)
+                
+                // 2. ✨ [신규] TTS로 메시지 읽어주기
+                if (msg && !msg.isSystem && msg.senderId !== currentUser.uid && synthesis && isTTSOn) {
+                    // 시스템 메시지가 아니고, 내가 보낸게 아니고, TTS가 지원되고, ✨새로운 토글(isTTSOn)이 켜져있다면
+                    try {
+                        // 이전에 읽던게 있으면 중지
+                        if (synthesis.speaking) {
+                            synthesis.cancel(); 
+                        }
+                        
+                        // --- [수정] '단축어 번역' 함수를 거친 텍스트로 읽기 ---
+                        const processedText = preprocessTextForTTS(msg.content);
+                        const utterance = new SpeechSynthesisUtterance(processedText);
+                        
+                        // --- [수정] 저장된 목소리 적용 ---
+                        const savedVoiceURI = localStorage.getItem(TTS_VOICE_KEY);
+                        if (savedVoiceURI) {
+                            // voiceList는 populateVoiceList() 함수에서 이미 채워짐
+                            const savedVoice = voiceList.find(v => v.voiceURI === savedVoiceURI);
+                            if (savedVoice) {
+                                utterance.voice = savedVoice;
+                            }
+                        }
+                        // --- [수정] 끝 ---
+                        
+                        utterance.lang = 'ko-KR';
+                        utterance.rate = 1.1; // 조금 빠르게
+                        synthesis.speak(utterance);
+                    } catch (e) {
+                        console.error("TTS 실행 오류:", e);
+                    }
+                }
+            });
+        }
+
+        function handlePlayerChanges(oldPlayers) {
+            const currentPlayers = currentRoomData.players || {};
+            const oldPlayerIds = Object.keys(oldPlayers);
+            const currentPlayerIds = Object.keys(currentPlayers);
+            const joined = currentPlayerIds.filter(id => !oldPlayerIds.includes(id));
+            const left = oldPlayerIds.filter(id => !currentPlayerIds.includes(id));
+
+            joined.forEach(id => {
+                const joinedPlayer = currentPlayers[id]; // ✨ [수정]
+                if (id !== currentUser.uid && oldPlayerIds.length > 0) {
+                    addSystemMessage(`${joinedPlayer.nickname}님이 입장했습니다.`);
+                    playSound('enter-sound');
+                    vibrate();
+                    // ✨ [신규] 접속한 유저가 친구인지 확인
+                    if (myFriendIds[id]) {
+                        showToast(`🔔 ${escapeHTML(joinedPlayer.nickname)}님이 접속했어요!`);
+                    }
+                    // ✨ [제거] 입장 이펙트 재생 (updateUI가 처리)
+                    // playEntryEffect(id, joinedPlayer.entryEffect);
+                }
+            });
+            left.forEach(id => {
+                const leftPlayerNickname = oldPlayers[id]?.nickname;
+                 if (leftPlayerNickname) {
+                    addSystemMessage(`${leftPlayerNickname}님이 퇴장했습니다.`);
+                    playSound('leave-sound');
+                    vibrate();
+                 }
+            });
+       }
+
+        
+        function updateUI() {
+            const game = availableGames.find(g => g.id === currentRoomData.gameType);
+            document.getElementById('room-name-header').textContent = currentRoomData.roomName;
+            document.getElementById('game-type-header').textContent = game ? `${game.icon} ${game.name}` : '';
+
+            const playerList = document.getElementById('player-list-horizontal');
+            playerList.innerHTML = '';
+            const playerIds = Object.keys(currentRoomData.players || {}); // null 체크 추가
+
+            for (let i = 0; i < (game?.maxPlayers || 0); i++) {
+                const playerId = playerIds[i];
+                const player = playerId ? currentRoomData.players[playerId] : null;
+                const slot = document.createElement('div');
+                slot.className = 'player-slot-compact';
+                
+                if (player) {
+                    slot.dataset.playerId = playerId; // ✨ [유지] 플레이어 ID를 DOM에 저장
+                    if (player.isHost) slot.classList.add('is-host');
+
+                    // 1. 아바타 요소 생성
+                    const avatarEl = document.createElement('div');
+                    avatarEl.className = 'avatar';
+
+                    const avatarSet = AVATAR_SETS[player.avatar];
+                    let avatarHTML = '';
+                    if (avatarSet) { avatarHTML = `<img src="${avatarSet.front}" alt="avatar">`; }
+                    else if (player.avatar && (player.avatar.startsWith('http') || /\.(png|jpg|jpeg|gif|webp)$/i.test(player.avatar))) { avatarHTML = `<img src="${player.avatar}" alt="avatar">`; }
+                    else { avatarHTML = player.avatar || '❓'; }
+                    avatarEl.innerHTML = avatarHTML;
+
+                    // 2. ✨ [신규] 지속형 이펙트 추가 (플레이어 데이터 기반)
+                    const effectId = player.entryEffect;
+
+                    // [신규] 적용 전 초기화
+                    avatarEl.classList.remove('effect-spotlight-equipped-bg', 'preview-effect-flames');
+                    const existingOverlay = avatarEl.querySelector('.entry-effect-overlay, .effect-angel-halo, .effect-frozen-overlay');
+                    if (existingOverlay) {
+                        existingOverlay.remove();
+                    }
+
+                    if (effectId) {
+                        const effectOverlay = document.createElement('div');
+                        effectOverlay.className = 'entry-effect-overlay'; // 기본 클래스
+                        
+                        if (effectId === 'effect_sparkle') {
+                            effectOverlay.classList.add('effect-sparkle-persistent');
+                            avatarEl.appendChild(effectOverlay);
+                        } else if (effectId === 'effect_spotlight') {
+                            effectOverlay.classList.add('effect-spotlight-persistent');
+                            avatarEl.classList.add('effect-spotlight-equipped-bg');
+                            avatarEl.appendChild(effectOverlay);
+                        } else if (effectId === 'effect_flames') {
+                            // '이글이글'은 클래스만 추가 (오버레이 div 없음)
+                            avatarEl.classList.add('preview-effect-flames');
+                        } else if (effectId === 'effect_angel') {
+                            // '천사 링'은 전용 클래스로 div 추가
+                            effectOverlay.className = 'effect-angel-halo';
+                            avatarEl.appendChild(effectOverlay);
+                        } else if (effectId === 'effect_frozen') {
+                            // '빙결'은 전용 클래스로 div 추가
+                            effectOverlay.className = 'effect-frozen-overlay';
+                            avatarEl.appendChild(effectOverlay);
+                        }
+                    }
+                    
+                    // 3. 닉네임 요소 생성 (원래대로)
+                    const nicknameEl = document.createElement('div');
+                    nicknameEl.className = 'nickname';
+                    nicknameEl.textContent = escapeHTML(player.nickname || 'Unknown');
+
+                    // 4. ✨ [신규] 레벨 배지 생성
+                    const level = player.level || 1; // 2.1단계에서 저장한 레벨
+                    const levelBadgeEl = document.createElement('div');
+                    levelBadgeEl.className = 'player-level-badge';
+                    levelBadgeEl.textContent = `Lv.${level}`;
+                    
+                    // 5. 슬롯에 아바타, 레벨 배지, 닉네임 순으로 추가
+                    slot.appendChild(avatarEl);
+                    slot.appendChild(levelBadgeEl); // [수정] 닉네임보다 위로 이동
+                    slot.appendChild(nicknameEl);
+                    
+                    // 5. ✨ [유지] 강퇴 버튼 로직
+                    if (isHost && !player.isHost) {
+                        const kickBtn = document.createElement('button');
+                        kickBtn.textContent = 'X';
+                        kickBtn.style.position = 'absolute';
+                        kickBtn.style.top = '0';
+                        kickBtn.style.right = '0';
+                        kickBtn.style.background = 'var(--danger-color)';
+                        kickBtn.style.color = 'white';
+                        kickBtn.style.border = '1px solid white';
+                        kickBtn.style.borderRadius = '50%';
+                        kickBtn.style.width = '20px';
+                        kickBtn.style.height = '20px';
+                        kickBtn.style.lineHeight = '18px'; // 텍스트 중앙 정렬
+                        kickBtn.style.padding = '0';
+                        kickBtn.style.cursor = 'pointer';
+                        kickBtn.onclick = (e) => {
+                            e.stopPropagation();
+                            if (confirm(`${player.nickname} 님을 강퇴하시겠습니까?`)) {
+                                roomRef.child('players/' + playerId).remove();
+                            }
+                        };
+                        /* slot.style.position = 'relative'; // [제거] 1번 CSS 수정으로 불필요 */
+                        slot.appendChild(kickBtn);
+                    }
+                } else {
+                    // 빈 슬롯
+                    slot.innerHTML = `<div class="avatar"></div><div class="nickname">대기중...</div>`;
+                }
+                playerList.appendChild(slot);
+            }
+
+           if (isHost) {
+                const playerCount = playerIds.length;
+                const minPlayers = (game && game.id === 'quiz' && playerCount === 1) ? 1 : 2; // AI 퀴즈는 1명부터 가능
+                const canStart = game && playerCount >= minPlayers && playerCount <= game.maxPlayers;
+
+                startGameBtn.style.display = 'block';
+                startGameBtn.disabled = !canStart;
+                if (playerCount < minPlayers) { startGameBtn.textContent = `(${minPlayers}명부터 시작 가능)`; }
+                else { startGameBtn.textContent = `게임 시작 (${playerCount}/${game.maxPlayers})`; }
+            } else {
+                startGameBtn.style.display = 'none';
+            }
+        }
+
+        function renderChatMessage(msg) {
+            if (!msg) return;
+            const msgEl = document.createElement('div');
+
+            if (msg.isSystem) {
+                msgEl.className = 'system-message';
+                msgEl.textContent = msg.content;
+            } else {
+                // ✨ 수정: currentRoomData와 players가 존재하는지 먼저 확인
+                if (!currentRoomData || !currentRoomData.players) {
+                    console.warn("renderChatMessage: currentRoomData.players가 아직 준비되지 않았습니다. 메시지:", msg);
+                    return; // players 데이터 없으면 렌더링 중단
+                }
+
+                const senderInfo = currentRoomData.players[msg.senderId];
+                if (!senderInfo) {
+                    console.warn("renderChatMessage: senderInfo를 찾을 수 없습니다. senderId:", msg.senderId);
+                    // 알 수 없는 사용자 처리 (선택 사항)
+                    // msgEl.innerHTML = `<div><strong>Unknown:</strong> ${escapeHTML(msg.content)}</div>`;
+                    return; // senderInfo 없으면 중단
+                }
+
+                msgEl.className = 'chat-message';
+                if (msg.senderId === currentUser.uid) msgEl.classList.add('my-message');
+
+                const avatarSet = AVATAR_SETS[senderInfo.avatar];
+                let avatarHTML = '';
+                if (avatarSet) {
+                    avatarHTML = `<img src="${avatarSet.front}" alt="avatar">`;
+                } else if (senderInfo.avatar && (senderInfo.avatar.startsWith('http') || /\.(png|jpg|jpeg|gif|webp)$/i.test(senderInfo.avatar))) {
+                    avatarHTML = `<img src="${senderInfo.avatar}" alt="avatar">`;
+                } else {
+                    avatarHTML = senderInfo.avatar || '❓'; // 기본값
+                }
+                msgEl.innerHTML = `
+                    <div class="sender-avatar">${avatarHTML}</div>
+                    <div class="msg-body">
+                        <div class="sender">${escapeHTML(senderInfo.nickname || 'Unknown')}</div>
+                        <div class="content">${escapeHTML(msg.content)}</div>
+                    </div>`;
+            }
+
+            // ✨ chatContainer가 존재하는지 확인 후 추가
+            const chatContainer = document.getElementById('chat-container'); // chatContainer 변수 다시 정의 또는 전역/상위 스코프 사용
+            if (chatContainer) {
+                chatContainer.appendChild(msgEl);
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+            } else {
+                console.error("renderChatMessage: chatContainer 요소를 찾을 수 없습니다.");
+            }
+        }
+
+        function addSystemMessage(message) {
+             if (roomRef) { // roomRef null 체크
+                roomRef.child('chat').push({ isSystem: true, content: message, timestamp: firebase.database.ServerValue.TIMESTAMP });
+             }
+        }
+
+      // [신규] TTS가 읽기 전에 텍스트를 변환하는 함수 상용구
+        function preprocessTextForTTS(text) {
+            // 1. ㅋ/ㅎ (웃음소리)는 문장 중간에 있어도 변환
+            // (최소 2개 이상 연속될 때만)
+            let processedText = text.replace(/ㅋ{2,}/g, '크크크'); // ㅋㅋㅋ -> 크크크
+            processedText = processedText.replace(/ㅎ{2,}/g, '흐흐흐'); // ㅎㅎㅎ -> 흐흐흐
+
+            // 2. 단축어는 "메시지 전체"가 일치할 때만 변환 (오작동 방지)
+            // (예: "새우ㅇㅇ"가 "새우응응"이 되는 것을 방지)
+            if (processedText === 'ㅎㅇ') return '하이';
+            if (processedText === 'ㅇㅇ') return '이응이응'; // '이응이응'보다 대화의 뜻(Yes)에 맞게 '응응'으로 변환합니다.
+            if (processedText === 'ㄱㄱ') return '고고';
+            if (processedText === 'ㄴㄴ') return '노노'; // (자주 쓰이는 것 추가)
+            if (processedText === 'ㅈㅅ') return '죄송'; // (자주 쓰이는 것 추가)
+            if (processedText === 'ㅋㅋㅋㅋ') return '크크크크'; // (자주 쓰이는 것 추가)
+                        if (processedText === 'ㅋㅋㅋㅋㅋ') return '크크크크'; // (자주 쓰이는 것 추가)
+                        if (processedText === '온대?') return '잘생긴 오빠 온대?'; // (자주 쓰이는 것 추가)
+
+            // 3. 웃음소리만 변환되었거나, 변환이 필요 없는 텍스트 반환
+            return processedText;
+        }
+
+        // [신규] TTS 엔진을 "깨우는" (Prime) 함수
+        // (iOS/Safari에서 고품질 음성 목록을 불러오기 위한 핵/트릭)
+        function primeTTSEngine() {
+            if (!synthesis) return;
+            
+            // .speak()를 한 번 호출해야만
+            // 비동기적으로 로드되는 전체 음성 목록이 'onvoiceschanged' 이벤트를 트리거합니다.
+            const emptyUtterance = new SpeechSynthesisUtterance('');
+            emptyUtterance.lang = 'ko-KR';
+            
+            // 에러가 나도 무시합니다 (자동재생 정책 등)
+            try {
+                // (참고) 이 시점에 synthesis.pause(), synthesis.resume()을
+                // 호출해야만 목록이 로드되는 구형 안드로이드 기기도 있습니다.
+                synthesis.pause();
+                synthesis.resume();
+                synthesis.speak(emptyUtterance);
+            } catch (e) {
+                console.warn("TTS 엔진 '깨우기' 실패 (자동재생 정책일 수 있음):", e);
+            }
+        }
+
+        function sendMessage(content) {
+            const message = content.trim();
+            if (message && roomRef) { // roomRef null 체크
+                roomRef.child('chat').push({
+                    senderId: currentUser.uid, senderNickname: myNickname, content: message, timestamp: firebase.database.ServerValue.TIMESTAMP
+                });
+            }
+        }
+
+        function startGame() {
+            if (!isHost || !currentRoomData) return; // currentRoomData null 체크
+            const game = availableGames.find(g => g.id === currentRoomData.gameType);
+            if (!game) return;
+
+            console.log('[게임방] 게임 시작 - gameType:', game.id);
+            const playerIds = Object.keys(currentRoomData.players || {}); // null 체크
+            const updates = {};
+
+          if (game.id === 'reversi') {
+                // [리버시] 초기화
+                const initialBoard = Array(64).fill(null);
+                initialBoard[27] = 'white'; initialBoard[28] = 'black';
+                initialBoard[35] = 'black'; initialBoard[36] = 'white';
+
+                playerIds.sort(() => Math.random() - 0.5); // 흑/백 랜덤 배정
+                
+                updates['players/' + playerIds[0] + '/color'] = 'black';
+                updates['players/' + playerIds[1] + '/color'] = 'white';
+                
+                updates.board = initialBoard;
+                updates.turn = 'black'; // 흑돌(black)이 선공
+                updates.passedTurn = false;
+                updates.lastMove = null;
+
+            } else if (game.id === 'memoryGame') {
+                // ✨ [채움] 메모리 게임 초기화
+                const pairCount = playerIds.length <= 2 ? 8 : 10; // 2명=16장(4x4), 3~4명=20장(5x4)
+                const cards = generateCards(pairCount);
+                updates.board = cards;
+                updates.turn = playerIds[0]; // 방장부터
+                updates.scores = {};
+                playerIds.forEach(id => { updates.scores[id] = 0; });
+                updates.flippedIndices = [];
+                updates.matchedPairs = 0;
+                updates.lastPlayer = null; // [추가] 연속 턴 처리를 위한 변수
+
+            } else if (game.id === 'indianpoker') {
+                // ✨ [채움] 인디언 포커 초기화 (칩 세팅)
+                updates.gameState = {};
+                playerIds.forEach(id => {
+                    updates.gameState[id] = {
+                        chips: 30, // 1인당 기본 칩
+                        hand: null,
+                        bet: 0,
+                        status: 'ready' // 'ready', 'betting', 'folded'
+                    };
+                });
+                updates.turn = playerIds[0];
+                updates.pot = 0;
+                updates.round = 1;
+                updates.deck = null; // 덱은 인디언포커.html에서 생성
+
+            } else if (game.id === 'bomber') {
+                // ✨ [채움] 봄버맨 초기화 (플레이어 번호 할당)
+                // 봄버맨.html에서 이 번호를 보고 시작 위치를 결정합니다.
+                playerIds.forEach((id, index) => {
+                    updates['players/' + id + '/playerNum'] = index + 1; // 1, 2, 3, 4
+                });
+                updates.gameData = { status: 'ready' }; // 게임 시작 신호
+                
+            } else if (game.id === 'shisenSho') {
+                // ✨ [유지] 사천성은 shisenSho.html에서 방장이 직접 맵을 생성합니다.
+                /* ... */
+            } else if (game.id === 'tetris') {
+                
+                // ✨ [유지] 테트리스는 tetris.html에서 방장이 직접 맵을 생성합니다.
+                /* ... */
+            } else { 
+                // ✨ [유지] 알까기, 크로싱나이츠 등 (자체 초기화 로직 가정)
+                /* ... */ 
+            }
+            updates.status = 'playing'; // 공통 상태 변경
+
+            console.log('[게임방] Firebase 업데이트 실행:', updates);
+            if (roomRef) { // roomRef null 체크
+                roomRef.update(updates).then(() => {
+                    console.log('[게임방] 업데이트 성공!');
+                }).catch(error => {
+                    console.error('[게임방] 업데이트 실패:', error);
+                });
+            }
+        }
+
+        function generateCards(pairCount) {
+            // 아이콘/이미지 등 (필요에 따라 추가)
+            const icons = [
+                '🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯',
+                '🦁', '🐮', '🐷', '🐸', '🐵', '🐔', '🐧', '🐦', '🐤', '🦅'
+            ]; // 20종류
+            
+            const pairs = [];
+            for (let i = 0; i < pairCount; i++) {
+                const icon = icons[i % icons.length];
+                pairs.push(icon, icon); // 아이콘을 2개씩 넣음
+            }
+
+            // Fisher-Yates shuffle
+            for (let i = pairs.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [pairs[i], pairs[j]] = [pairs[j], pairs[i]];
+            }
+            
+            // Firebase에 저장할 카드 객체 배열 생성
+            return pairs.map((icon, index) => ({
+                id: index,
+                icon: icon,
+                isFlipped: false,
+                isMatched: false
+            }));
+        }
+
+        function cleanupAndExit() {
+            console.log("Cleanup and Exit called");
+            if (roomRef) {
+                try { roomRef.off(); } catch(e) { console.warn("roomRef listener removal failed:", e); }
+            }
+            // onDisconnect 핸들러 취소 시도
+            if (hostOnDisconnect) { try { hostOnDisconnect.cancel(); } catch(e) { console.warn("Host onDisconnect cancel failed:", e); } }
+            if (playerOnDisconnect) { try { playerOnDisconnect.cancel(); } catch(e) { console.warn("Player onDisconnect cancel failed:", e); } }
+// ✨ [신규] 친구 접속 리스너 제거
+            if (friendStatusListener) {
+                try { friendStatusRef.off('child_added', friendStatusListener); } catch(e) { console.warn("Friend status listener removal failed:", e); }
+            }
+            let removePromise = Promise.resolve(); // 기본 Promise
+
+            if (roomRef && currentUser) {
+                if (isHost) {
+                    console.log("Host removing room...");
+                    removePromise = roomRef.remove();
+                } else {
+                    console.log("Guest removing self from players...");
+                    removePromise = roomRef.child('players/' + currentUser.uid).remove();
+                }
+            } else {
+                 console.log("roomRef or currentUser missing, redirecting directly.");
+            }
+
+            removePromise
+                .catch(e => console.error("Firebase remove operation failed:", e)) // 실패 시 로깅
+                .finally(() => {
+                    console.log("Redirecting to 대기실.html");
+                    window.location.replace('대기실.html'); // replace 사용
+                });
+        }
+
+
+        // --- 나머지 이벤트 리스너 연결 ---
+chatInput.addEventListener('focus', () => {
+            // [수정] 키보드가 올라올 때 뷰를 강제로 스크롤하는 대신,
+            // 채팅창 자체를 맨 아래로 스크롤하여 최신 메시지가 보이게 합니다.
+            setTimeout(() => {
+                if (chatContainer) {
+                    chatContainer.scrollTop = chatContainer.scrollHeight;
+                }
+                // lobbyFooter.scrollIntoView... 코드는 삭제합니다.
+            }, 150); // 키보드가 올라오는 시간 잠시 대기
+        });
+        sendChatBtn.addEventListener('click', () => { sendMessage(chatInput.value); chatInput.value = ''; chatInput.focus(); });
+chatInput.addEventListener('keypress', e => { if (e.key === 'Enter') { sendMessage(chatInput.value); chatInput.value = ''; e.preventDefault(); }});
+
+// 친구초대 버튼 이벤트 연결
+const inviteBtn = document.getElementById('invite-btn');
+// ✨ [신규] 초대 링크 복사 버튼
+        const copyInviteBtn = document.createElement('button');
+        copyInviteBtn.id = 'copy-invite-btn';
+        copyInviteBtn.className = 'header-btn invite'; // 스타일 재사용
+        copyInviteBtn.textContent = '친구초대';
+        // 스타일 오버라이드 (악센트 색상 사용)
+        copyInviteBtn.style.backgroundColor = 'var(--accent-color)';
+        copyInviteBtn.style.color = 'var(--text-color-dark)';
+        copyInviteBtn.style.borderBottomColor = '#D1B030';
+        
+// [수정] 카카오 버튼을 감싸는 부모(래퍼)에 추가
+            const inviteBtnContainer = document.getElementById('invite-btn').parentNode;
+            inviteBtnContainer.appendChild(copyInviteBtn);
+
+        copyInviteBtn.addEventListener('click', () => {
+            if (!roomRef) return;
+            // ✨ [수정] index.html -> 대기실.html로 변경 (사용자 요청)
+            const inviteURL = `https://bangat.github.io/game/대기실.html?roomId=${roomRef.key}`;
+            
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(inviteURL).then(() => {
+                    // ✨ [수정] showAlert -> showToast
+                    showToast('초대 링크가 복사되었습니다!');
+                }).catch(err => {
+                    console.error('클립보드 복사 실패:', err);
+                    // ✨ [수정] showAlert -> showToast
+                    showToast('링크 복사에 실패했습니다.');
+                });
+            } else {
+                // 구형 브라우저 fallback
+                // ✨ [수정] showAlert -> showToast
+                showToast('링크를 복사할 수 없습니다.');
+            }
+
+            // --- [신규] 사용자 요청: 링크 복사와 동시에 초대 모달 열기 ---
+            if (gameSettings.sfx) playSound('enter-sound'); // 효과음 재활용
+            loadAndShowInviteModal();
+            // --- [신규] ---
+        });
+
+if (inviteBtn) {
+    inviteBtn.addEventListener('click', kakaoInvite);
+    console.log('친구초대 버튼 이벤트 리스너 연결됨.');
+}
+
+
+
+        startGameBtn.addEventListener('click', startGame);
+        leaveRoomBtn.addEventListener('click', () => { history.back(); });
+        emojiToggleBtn.addEventListener('click', e => { e.stopPropagation(); emojiPopover.classList.toggle('active'); });
+        document.addEventListener('click', () => emojiPopover.classList.remove('active'));
+       emojiPopover.addEventListener('click', e => { if(e.target.tagName === 'BUTTON'){ sendMessage(e.target.textContent); emojiPopover.classList.remove('active'); } });
+
+     
+       // --- [신규] 대기실 친구 초대 로직 ---
+
+        let presenceRef = db.ref('status'); // 접속 상태 참조
+        let myFriendsRef = null;
+        let myFriendIds = {};
+
+        // 2. 모달 닫기 버튼 리스너
+        friendInviteModalCloseBtn.addEventListener('click', () => {
+            friendInviteModal.classList.remove('active');
+        });
+
+        // 3. 초대 모달 열기 및 목록 로드
+        async function loadAndShowInviteModal() {
+            friendInviteModal.classList.add('active');
+            friendInviteListContainer.innerHTML = '<div class="spinner" style="margin: 30px auto;"></div>';
+
+            try {
+                // [수정] 1. 친구 목록 가져오기 제거
+
+                // 2. 현재 접속자 목록 가져오기
+                const presenceSnap = await presenceRef.once('value');
+                if (!presenceSnap.exists()) {
+                    friendInviteListContainer.innerHTML = '<p style="text-align:center; padding: 20px;">현재 접속 중인 유저가 없습니다.</p>';
+                    return;
+                }
+                const onlineUserIds = Object.keys(presenceSnap.val());
+                
+                // 3. 현재 방에 있는 유저 목록
+                const playerIdsInRoom = Object.keys(currentRoomData.players || {});
+
+                // 4. [수정] 필터링: (접속중 && 이 방에 없음)
+                const targetUids = onlineUserIds.filter(uid => 
+                    // myFriendIds[uid] &&  <-- 친구 조건 제거
+                    uid !== currentUser.uid &&              // 내가 아니고
+                    !playerIdsInRoom.includes(uid)          // 이 방에 없고
+                );
+
+                if (targetUids.length === 0) {
+                    friendInviteListContainer.innerHTML = '<p style="text-align:center; padding: 20px;">초대할 유저가 없습니다.</p>';
+                    return;
+                }
+
+                // 5. 프로필 정보 가져오기
+                const profilePromises = targetUids.map(uid => usersRef.child(uid).child('profile').once('value'));
+                const profileSnapshots = await Promise.all(profilePromises);
+
+                friendInviteListContainer.innerHTML = ''; // 목록 비우기
+                profileSnapshots.forEach((snap, index) => {
+                    if (snap.exists()) {
+                        const profile = snap.val();
+                        const uid = targetUids[index];
+                        const itemEl = createInviteListItem(uid, profile);
+                        friendInviteListContainer.appendChild(itemEl);
+                    }
+                });
+
+            } catch (error) {
+                console.error("초대 목록 로드 실패:", error);
+                friendInviteListContainer.innerHTML = '<p style="text-align:center; padding: 20px;">목록을 불러오는 중 오류가 발생했습니다.</p>';
+            }
+        }
+
+        // 4. 초대 목록 아이템 생성
+        function createInviteListItem(uid, profile) {
+            const itemEl = document.createElement('div');
+            itemEl.className = 'user-list-item';
+
+            const avatarSet = AVATAR_SETS[profile.avatar];
+            let avatarHTML = '';
+            if (avatarSet) { avatarHTML = `<img src="${avatarSet.front}" alt="av">`; }
+            else if (profile.avatar && (profile.avatar.startsWith('http') || profile.avatar.includes('.'))) { avatarHTML = `<img src="${profile.avatar}" alt="av">`; }
+            else { avatarHTML = escapeHTML(profile.avatar || '❓'); }
+
+            itemEl.innerHTML = `
+                <div class="user-list-avatar">${avatarHTML}</div>
+                <div class="user-list-nickname">${escapeHTML(profile.nickname)}</div>
+                <div class="user-item-actions">
+                    <button class="menu-btn user-action-btn secondary" data-action="invite" data-uid="${uid}" data-nickname="${escapeHTML(profile.nickname)}">초대</button>
+                </div>
+            `;
+
+            // 5. 초대 버튼에 리스너 추가
+            itemEl.querySelector('[data-action="invite"]').addEventListener('click', (e) => {
+                const btn = e.currentTarget;
+                const targetUid = btn.dataset.uid;
+                const targetNickname = btn.dataset.nickname;
+                
+                // 버튼 비활성화
+                btn.disabled = true;
+                btn.textContent = '초대됨';
+                btn.classList.remove('secondary');
+                btn.classList.add('light');
+
+                // 초대 데이터 생성
+                const game = availableGames.find(g => g.id === currentRoomData.gameType);
+                const inviteData = {
+                    from_uid: currentUser.uid,
+                    from_name: myNickname,
+                    room_id: roomRef.key,
+                    room_name: currentRoomData.roomName,
+                    game_name: game ? game.name : '알 수 없는 게임',
+                    timestamp: firebase.database.ServerValue.TIMESTAMP
+                };
+                
+                // Firebase에 초대장 전송
+                db.ref(`invitations/${targetUid}`).push(inviteData)
+                    .then(() => {
+                        showToast(`${targetNickname}님을 초대했습니다.`);
+                        friendInviteModal.classList.remove('active'); // <-- [신규] 이 줄을 추가하세요
+                    })
+                    .catch((err) => {
+                        showToast('초대 전송에 실패했습니다.');
+                        console.error("초대 실패:", err);
+                        btn.disabled = false; // 실패 시 버튼 복구
+                        btn.textContent = '초대';
+                        btn.classList.remove('light');
+                        btn.classList.add('secondary');
+                    });
+            });
+
+            return itemEl;
+        }
+
+        
+    }); // --- DOMContentLoaded 끝 ---
+
+    
+
+</script>
+<div id="toast-container"></div>
+
+
+<div id="friend-invite-modal" class="overlay">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header">
+                <button class="close-btn" data-close>‹</button>
+                <h2>대기실 친구초대</h2>
+            </div>
+            <div class="modal-body">
+                <div class="user-list" id="friend-invite-list-container">
+                    <div class="spinner" style="margin: 30px auto;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<div id="confirm-exit-modal" class="overlay">
+    <div class="modal-content" style="max-width: 350px;">
+        <div class="modal-body">
+            <h3>대기실로 나가시겠습니까?</h3>
+            <p id="exit-modal-subtext">방장이 나가면 방이 사라집니다.</p>
+        </div>
+        <div class="modal-footer">
+            <button id="exit-cancel-btn" class="menu-btn secondary">취소</button>
+            <button id="exit-confirm-btn" class="menu-btn primary" style="background-color: var(--danger-color); border-bottom-color: #A94442;">확인</button>
+        </div>
+    </div>
+</div>
+
+
+<div id="alert-modal" class="overlay">
+        <div class="modal-content" style="max-width: 350px;">
+            <div class="modal-body">
+                <h3 id="alert-modal-message" style="font-size: 1.1em; margin: 0; line-height: 1.5; word-break: keep-all;"></h3>
+            </div>
+            <div class="modal-footer" style="padding: 20px;">
+                <button id="alert-modal-ok-btn" class="menu-btn primary" style="width: 100%;">확인</button>
+            </div>
+        </div>
+    </div>
+
+<div id="console-modal" style="display: none; position: fixed; bottom: 10px; right: 10px; width: 90%; max-width: 500px; height: 300px; background-color: rgba(0,0,0,0.8); color: white; border: 1px solid #555; border-radius: 8px; z-index: 9999; font-family: monospace; font-size: 12px; flex-direction: column;">
+    <div style="padding: 5px; background-color: #333; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
+        <span>인앱 콘솔</span>
+            <button id="clear-console-btn" style="padding: 2px 5px; font-size: 10px; background-color: #555; color: white; border: none; border-radius: 3px; cursor: pointer; margin-right: 5px;">Clear</button>
+            <button id="close-console-btn" style="padding: 2px 5px; font-size: 10px; background-color: #555; color: white; border: none; border-radius: 3px; cursor: pointer;">X</button>
+        </div>
+    </div>
+    <div id="console-output" style="padding: 10px; overflow-y: scroll; flex-grow: 1;"></div>
+    <button id="open-console-btn" style="display: none; position: fixed; bottom: 10px; right: 10px; padding: 5px 10px; background-color: var(--primary-color); color: white; border: none; border-radius: 5px; z-index: 9998; cursor: pointer;">콘솔 열기</button>
+</div>
+
+<div id="tts-settings-modal" class="overlay">
+    <div class="modal-content" style="max-width: 350px;">
+        <div class="modal-header" style="background-color: var(--primary-color); border-bottom-color: #C04A4A;">
+            <h2 style="color: white; flex-grow: 1; text-align: center;">채팅 음성 설정</h2>
+        </div>
+        <div class="modal-body" style="text-align: left; padding: 20px;">
+            <div class="toggle-switch-container">
+                <label for="tts-toggle-switch" class="toggle-switch-label">채팅 음성 듣기</label>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="tts-toggle-switch">
+                    <span class="slider round"></span>
+                </label>
+            </div>
+            <hr style="border: none; border-top: 2px solid var(--panel-border); margin: 15px 0;">
+            <label for="tts-voice-select" style="font-weight: 700; font-size: 0.9em; margin-bottom: 8px; display: block;">목소리 선택 (한국어)</label>
+            <select id="tts-voice-select" style="width: 100%; padding: 10px; font-size: 1em; border-radius: 8px; border: 2px solid var(--text-color-dark); font-family: 'GmarketSans', sans-serif;">
+                <option value="">기본 목소리 (브라우저)</option>
+                </select>
+            <p style="font-size: 0.8em; color: #666; margin-top: 10px;">
+                목록은 사용 중인 브라우저/OS(Siri, Google 등)에 따라 다르게 표시됩니다.
+            </p>
+        </div>
+        <div class="modal-footer">
+            <button id="tts-settings-close-btn" class="menu-btn secondary" style="width: 100%;">닫기</button>
+        </div>
+    </div>
+</div>
+</body>
+</html>
