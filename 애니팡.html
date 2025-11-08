@@ -744,6 +744,40 @@
             50% { transform: translateY(-50%) scale(1.05); }
             100% { transform: translateY(-50%) scale(1); }
         }
+
+        /* [신규] 토스트 알림 (게임방.html 스타일) */
+        #toast-container {
+            position: fixed;
+            top: 20px; /* 상단에서 20px 아래 */
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            pointer-events: none; /* 클릭 방지 */
+        }
+        .toast-notification {
+            background-color: rgba(0, 0, 0, 0.75);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            opacity: 0;
+            transition: opacity 0.5s, transform 0.5s;
+            animation: toast-fade-in 0.5s forwards, toast-fade-out 0.5s 2.5s forwards;
+            white-space: nowrap; /* 줄바꿈 방지 */
+        }
+        @keyframes toast-fade-in {
+            from { opacity: 0; transform: translateY(-20px); } /* 위에서 아래로 */
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes toast-fade-out {
+            from { opacity: 1; transform: translateY(0); }
+            to { opacity: 0; transform: translateY(-20px); }
+        }
+
     </style>
 </head>
 <body>
@@ -804,7 +838,7 @@
     </div>
 
     <div id="vfx-flash-overlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: white; opacity: 0; pointer-events: none; z-index: 199;"></div>
-
+<div id="toast-container"></div>
     <audio id="swap-sound" src="./sounds/move.wav" preload="auto"></audio>
 
     <audio id="swap-sound" src="./sounds/move.wav" preload="auto"></audio>
@@ -817,6 +851,39 @@
     <audio id="bomb-explode-sound" src="./봄버맨사운드/폭탄효과음.mp3" preload="auto"></audio>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+
+            // [신규] iOS 핀치 줌(Pinch-zoom) 방지
+            document.addEventListener('touchmove', function(event) {
+                if (event.touches.length > 1) {
+                    // 두 손가락 이상이 화면에 닿으면 (핀치 줌 시도)
+                    event.preventDefault(); // 기본 동작(줌)을 막습니다.
+                }
+            }, { passive: false }); // preventDefault()를 허용하기 위해 passive: false 설정
+
+
+            // [신규] 공용 토스트 알림 표시 함수
+            function showToast(message) {
+                const toastContainer = document.getElementById('toast-container');
+                if (!toastContainer) return;
+
+                const toast = document.createElement('div');
+                toast.className = 'toast-notification';
+                toast.textContent = message;
+                
+                toastContainer.appendChild(toast);
+
+                // 3초 후 DOM에서 제거
+                setTimeout(() => {
+                    toast.remove();
+                }, 3000);
+            }
+
+            // [신규] HTML 탈출(escape) 함수
+            function escapeHTML(str) {
+                if (typeof str !== 'string') return '';
+                const map = {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'};
+                return str.replace(/[&<>"']/g, m => map[m]);
+            }
 
             // [신규] iOS 핀치 줌(Pinch-zoom) 방지
             document.addEventListener('touchmove', function(event) {
@@ -860,8 +927,10 @@
             // [수정] 이모지 -> 이미지 이름 (영어)
             const TILE_EMOJIS = ['frog', 'chick', 'monkey', 'pig', 'bear']; 
             const JUNK_TILE = 'junk'; // [🧱 방해 타일]
+            const MULTI_MATCH_BONUS = 2000; // [🧠 멀티-매치 보너스]
             const GAME_TIME = 60; // [수정] 5초 -> 60초 (원래대로)
-        
+const PERFECT_PLAY_BONUS = 500; // [🎯 퍼펙트 플레이 보너스]
+            const PERFECT_PLAY_COUNT = 10; // [🎯 퍼펙트 플레이 달성 횟수]
 
             // [신규] 5-Match 십자가 폭발용 변수
 const CROSS_EXPLOSION_BONUS = 500; // 십자가 폭발 보너스 점수
@@ -878,6 +947,7 @@ const RAINBOW_BONUS = 2000; // 레인보우 폭발 보너스 점수
 let hintTimerId = null; // [신규] 힌트 타이머
             let dragStartTile = null;
             let comboTimerId = null; // [신규] 콤보 유지 타이머
+            let perfectPlayCount = 0; // [🎯 퍼펙트 플레이 카운터]
             let dragStartX = 0;
             let dragStartY = 0;
             // --- ✨ [신규] 피버 시스템 변수 ---
@@ -991,6 +1061,7 @@ let hintTimerId = null; // [신규] 힌트 타이머
                 if (user) {
                     currentUser = user;
                     playerUid = user.uid;
+                    setupGlobalNotificationListeners(playerUid); // [신규] 전역 알림(초대/쪽지) 리스너 시작
                     const urlParams = new URLSearchParams(window.location.search);
                     const roomId = urlParams.get('roomId');
                     
@@ -2341,9 +2412,27 @@ stopSound('bgm'); // [신규] BGM 정지
         return;
     }
     
-    // 2. 일반 스왑 로직
+// 2. 일반 스왑 로직
     swapData(r1, c1, r2, c2);
     await animateSwap(r1, c1, r2, c2);
+    // [신규] 🎯 퍼펙트 플레이 카운트 증가
+    perfectPlayCount++;
+    console.log(`퍼펙트 플레이 카운트: ${perfectPlayCount}/${PERFECT_PLAY_COUNT}`);
+    if (perfectPlayCount >= PERFECT_PLAY_COUNT) {
+        console.log("🎯 PERPECT PLAY! +", PERFECT_PLAY_BONUS);
+        score += PERFECT_PLAY_BONUS;
+        playSound('bomb-create-sound'); // [요청] '팡이 생성' 사운드 재활용
+        showPerfectPlayText(PERFECT_PLAY_BONUS);
+        perfectPlayCount = 0; // 보너스 받고 초기화
+    }
+    // [신규] 🧠 멀티-매치 보너스
+    // (방해 타일 판정 '전에' 멀티-매치 보너스를 먼저 검사)
+    if (checkMultiMatch(r1, c1, r2, c2)) {
+        console.log("🧠 MULTI-MATCH! +", MULTI_MATCH_BONUS);
+        score += MULTI_MATCH_BONUS;
+        playSound('rainbow-sound'); // [요청] '무지개' 사운드 재활용
+        showMultiMatchText(r1, c1, MULTI_MATCH_BONUS); // 새 텍스트 함수
+    }
     // [신규] 🧱 방해 타일 (공격 판정)
     // (findAllMatches보다 먼저, 스왑 직후의 보드를 검사해야 함)
     const attackCount = checkPlayerAttack(r1, c1, r2, c2);
@@ -2376,6 +2465,11 @@ stopSound('bgm'); // [신규] BGM 정지
         }
     } else {
         // 매칭 실패
+        // [신규] 🎯 퍼펙트 플레이 초기화
+        if (perfectPlayCount > 0) {
+            console.log("🎯 퍼펙트 플레이 실패. 카운트 0으로 초기화.");
+            perfectPlayCount = 0;
+        }
         await animateInvalidSwap(r1, c1, r2, c2); 
         isProcessing = false;
     }
@@ -3776,6 +3870,73 @@ if (fallTiles.length > 0) {
                 }, 800);
             }
 
+            // [신규] 멀티-매치 전용 텍스트
+            function showMultiMatchText(r, c, bonusScore) {
+                const tile = tileElements[r][c];
+                if (!tile) return;
+                
+                const rect = tile.getBoundingClientRect();
+                const boardRect = gameBoard.getBoundingClientRect();
+                const wrapperRect = gameWrapper.getBoundingClientRect();
+
+                // 타일 중심 좌표
+                const avgTop = (rect.top - boardRect.top) + (rect.height / 2) + boardRect.top - wrapperRect.top;
+                const avgLeft = (rect.left - boardRect.left) + (rect.width / 2) + boardRect.left - wrapperRect.left;
+
+                // 1. "멀티-매치!" 텍스트
+                const comboEl = document.createElement('div');
+                comboEl.className = 'combo-text';
+                comboEl.textContent = '🧠 멀티-매치!';
+                comboEl.style.color = 'var(--secondary-color)'; // 틸(teal)색
+                comboEl.style.top = `${avgTop - 20}px`; // 점수보다 살짝 위에
+                comboEl.style.left = `${avgLeft}px`;
+                comboEl.style.transform = 'translate(-50%, -50%)'; 
+                gameWrapper.appendChild(comboEl);
+                setTimeout(() => comboEl.remove(), 1000); // 1초간 표시
+
+                // 2. 보너스 점수 텍스트
+                const scoreEl = document.createElement('div');
+                scoreEl.className = 'combo-score';
+                scoreEl.textContent = `+${bonusScore}`;
+                scoreEl.style.top = `${avgTop + 20}px`; // 콤보 텍스트보다 살짝 아래에
+                scoreEl.style.left = `${avgLeft}px`;
+                scoreEl.style.transform = 'translate(-50%, -50%)'; 
+                scoreEl.style.fontSize = '2.2em'; // 점수를 더 크게
+                scoreEl.style.animationDuration = '1s'; // 1초간 표시
+                gameWrapper.appendChild(scoreEl);
+                setTimeout(() => scoreEl.remove(), 1000);
+            }
+
+            // [신규] 🎯 퍼펙트 플레이 전용 텍스트
+            function showPerfectPlayText(bonusScore) {
+                // 화면 중앙 상단에 표시
+                const avgTop = gameWrapper.clientHeight * 0.25;
+                const avgLeft = gameWrapper.clientWidth * 0.5;
+
+                // 1. "퍼펙트 플레이!" 텍스트
+                const comboEl = document.createElement('div');
+                comboEl.className = 'combo-text';
+                comboEl.textContent = `🎯퍼펙트 ${PERFECT_PLAY_COUNT}!`;
+                comboEl.style.color = '#007BFF'; // 파란색
+                comboEl.style.top = `${avgTop}px`;
+                comboEl.style.left = `${avgLeft}px`;
+                comboEl.style.transform = 'translate(-50%, -50%)'; 
+                gameWrapper.appendChild(comboEl);
+                setTimeout(() => comboEl.remove(), 1000); // 1초간 표시
+
+                // 2. 보너스 점수 텍스트
+                const scoreEl = document.createElement('div');
+                scoreEl.className = 'combo-score';
+                scoreEl.textContent = `+${bonusScore}`;
+                scoreEl.style.top = `${avgTop + 40}px`; // 콤보 텍스트보다 살짝 아래에
+                scoreEl.style.left = `${avgLeft}px`;
+                scoreEl.style.transform = 'translate(-50%, -50%)'; 
+                scoreEl.style.fontSize = '2.0em';
+                scoreEl.style.color = '#007BFF'; // 파란색
+                scoreEl.style.animationDuration = '1s'; // 1초간 표시
+                gameWrapper.appendChild(scoreEl);
+                setTimeout(() => scoreEl.remove(), 1000);
+            }
             // [신규] 강력한 폭발 이펙트 (스크린 쉐이크 + 플래시)
             function playExplosionVFX() {
                 // 1. 스크린 쉐이크
@@ -4223,10 +4384,102 @@ if (chatListenerRef) chatListenerRef.off(); // [신규] 채팅 리스너 중지
                     else if (vCount === 4) attackCount += 1;
                 });
 
-                return attackCount;
+return attackCount;
             }
 
-        });
+            /**
+             * 4. (멀티-매치 판정) 플레이어의 스왑이 2개 이상의 매치를 '동시에' 만들었는지 확인
+             */
+            function checkMultiMatch(r1, c1, r2, c2) {
+                // 스왑한 두 타일이 각자의 '새 위치'에서 3매치 이상을 만드는지 검사
+                const match1 = isTileCreatingMatch(r1, c1);
+                const match2 = isTileCreatingMatch(r2, c2);
+                
+                // 두 타일 모두 3매치 이상을 만들었다면 '멀티-매치'
+                return match1 && match2;
+            }
+            
+            // checkMultiMatch의 헬퍼: 특정 타일이 3매치 이상을 만드는지 확인
+            function isTileCreatingMatch(r, c) {
+                const tile = board[r][c];
+                if (!tile || !TILE_EMOJIS.includes(tile)) return false;
+
+                // 가로 검사
+                let hCount = 1;
+                let cLeft = c - 1;
+                while (cLeft >= 0 && board[r][cLeft] === tile) { hCount++; cLeft--; }
+                let cRight = c + 1;
+                while (cRight < COLS && board[r][cRight] === tile) { hCount++; cRight++; }
+                if (hCount >= 3) return true;
+
+                // 세로 검사
+                let vCount = 1;
+                let rUp = r - 1;
+                while (rUp >= 0 && board[rUp][c] === tile) { vCount++; rUp--; }
+                let rDown = r + 1;
+                while (rDown < ROWS && board[rDown][c] === tile) { vCount++; rDown++; }
+                if (vCount >= 3) return true;
+                
+                return false;
+            }
+
+            // [신규] 토스트 알림 (초대/쪽지/친구) 리스너 설정 함수
+            let globalListenersAttached = false; // 중복 실행 방지 플래그
+            function setupGlobalNotificationListeners(userId) {
+                if (globalListenersAttached || !userId || !db) return;
+                globalListenersAttached = true;
+                
+                console.log("[알림] 전역 알림 리스너 설정 (ID:", userId, ")");
+                
+                // 지금 이 순간 이후의 데이터만 받도록 설정 (페이지 로드 시 과거 알림 방지)
+                const now = Date.now(); // [버그 수정] TIMESTAMP -> Date.now()
+
+                // 1. 방 초대 알림
+                const invitesRef = db.ref(`invitations/${userId}`);
+                invitesRef.on('child_added', snapshot => {
+                    const invite = snapshot.val();
+                    if (invite && invite.from_name) {
+                        showToast(`🔔 [방 초대] ${escapeHTML(invite.from_name)}님이 '${escapeHTML(invite.game_name)}' 방에 초대했습니다.`);
+                        playSound('swap'); // 간단한 알림음
+                    }
+                    snapshot.ref.remove(); // 알림 확인 후 즉시 제거
+                });
+
+                // 2. 친구 요청 알림
+                const friendReqRef = db.ref(`friend_requests/${userId}`); // [수정] 경로 변경
+                friendReqRef.on('child_added', snapshot => {
+                    const req = snapshot.val();
+                    if (req && req.from_name) {
+                         showToast(`💌 [친구 요청] ${escapeHTML(req.from_name)}님이 친구를 신청했습니다.`);
+                         playSound('swap');
+                    }
+                    snapshot.ref.remove(); // 알림 확인 후 즉시 제거
+                });
+
+                // 3. 쪽지(귓속말) 알림
+                const whisperRef = db.ref(`user_inboxes/${userId}`); // [수정] 경로 변경
+                whisperRef.on('child_added', async (snapshot) => { // [수정] async 추가
+                    const msg = snapshot.val();
+                    const senderUid = snapshot.key; // [수정] 키가 UID임
+
+                    // [수정] 데이터 구조 변경 (lastMessage)
+                    if (msg && msg.lastMessage && senderUid) { 
+                        try {
+                            // [신규] 보낸 사람의 프로필을 가져옴
+                            const profileSnap = await db.ref(`users/${senderUid}/profile`).once('value');
+                            if (profileSnap.exists()) {
+                                const nickname = profileSnap.val().nickname || '...';
+                                showToast(`💬 [쪽지] ${escapeHTML(nickname)}: ${escapeHTML(msg.lastMessage)}`);
+                                playSound('swap');
+                            }
+                        } catch (e) {
+                            console.error("쪽지 알림 닉네임 로드 실패:", e);
+                        }
+                    }
+                    snapshot.ref.remove(); // 알림 확인 후 즉시 제거
+                });
+            }
+        }); // DOMContentLoaded End
     </script>
 </body>
 </html>
