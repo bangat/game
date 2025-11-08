@@ -1121,10 +1121,18 @@ if (roomValueListener) {
 roomValueListener = (snapshot) => {
     if (isExiting) return;
     if (!snapshot.exists()) {
-        if (!gameOverOverlay.classList.contains('active')) {
-            alert("방이 사라졌습니다.");
+        // [수정] 3. 방이 사라졌을 때, 게스트가 새 방을 추적하는 로직
+        // (방이 삭제되기 직전의 데이터는 currentRoomData에 남아있음)
+        if (currentRoomData && currentRoomData.nextRoomId) {
+            console.log(`방장이 새 방을 만들었습니다. ${currentRoomData.nextRoomId} 방으로 이동합니다.`);
+            window.location.replace(`게임방.html?roomId=${currentRoomData.nextRoomId}`);
+        } else {
+            // 방장이 그냥 나갔거나, 추적할 방이 없는 경우
+            if (!gameOverOverlay.classList.contains('active')) {
+                alert("방이 사라졌습니다.");
+            }
+            cleanupAndExit(); // 게스트는 대기실로 이동
         }
-        cleanupAndExit();
         return;
     }
     
@@ -2068,11 +2076,22 @@ stopSound('bgm'); // [신규] BGM 정지
                     lobbyBtn.parentNode.replaceChild(newLobbyBtn, lobbyBtn);
                     
                     // [핵심 수정] 새 버튼에 리스너 등록
-                    newLobbyBtn.addEventListener('click', cleanupAndExit);
+                    // [핵심 수정] 방장/게스트에 따라 '대기실로' 버튼 기능 분리
+                    
+                    // [버그 수정] hostCleanupAndCreateNewRoom이 stale(오래된) currentRoomData를
+                    // 참조하지 않도록, 이 시점의 players와 gameType을 직접 전달합니다.
+                    const gameType = currentRoomData.gameType; // 현재 게임 타입 저장
+
+                    if (isHost) {
+                        // 방장은 '새 방 만들기' 함수 연결 (데이터 전달)
+                        newLobbyBtn.addEventListener('click', () => hostCleanupAndCreateNewRoom(players, gameType));
+                    } else {
+                        // 게스트는 '그냥 나가기' 함수 연결 (기존 유지)
+                        newLobbyBtn.addEventListener('click', cleanupAndExit);
+                    }
                     
                     newRematchBtn.addEventListener('click', () => {
-                        // [제거] newRematchBtn.textContent = 'Ready ✓';
-                        // [제거] newRematchBtn.disabled = true;
+                
 
                         // [신규] '준비완료' 상태 토글 로직
                         if (roomRef && playerUid) {
@@ -4261,11 +4280,77 @@ shockwave.style.width = `${rect.width * 3}px`; // [수정] 타일 3배 크기 (5
                 applyExpAndPoints(db, playerUid, expGained, pointsGained);
             }
 
-            // [신규] '사천성' 방식의 안전한 나가기 함수
+            // [수정] 1. 방장이 '대기실로'를 누를 때 실행되는 함수
+            async function hostCleanupAndCreateNewRoom(playersData, gameType) { // [수정] 인자 받기
+                // [수정] currentRoomData 대신 전달받은 데이터로 유효성 검사
+                if (!isHost || !playersData || !gameType || !playerUid) {
+                    console.error("hostCleanupAndCreateNewRoom: 필수 데이터 누락", isHost, playersData, gameType, playerUid);
+                    cleanupAndExit(); // 실패 시 일반 나가기
+                    return;
+                }
+
+                console.log("방장이 새 방을 생성합니다...");
+                isExiting = true;
+                stopSound('bgm');
+                if (timerId) clearInterval(timerId);
+                if (feverTimerId) clearTimeout(feverTimerId);
+
+                const oldRoomRef = roomRef; // 이전 방 참조 저장
+                
+                // 1. [수정] currentRoomData -> playersData
+                const hostProfile = playersData[playerUid];
+                if (!hostProfile) {
+                    console.error("호스트 프로필을 찾을 수 없습니다. (playersData에 UID 없음)");
+                    cleanupAndExit(); // 실패 시 일반 나가기
+                    return;
+                }
+
+                // 2. 새로운 방 생성 (대기실 로직과 유사)
+                const newRoomRef = db.ref('rooms').push(); // 새 방 ID 생성
+                const newRoomData = {
+                    roomName: `${hostProfile.nickname}의 방`,
+                    hostId: playerUid,
+                    gameType: gameType, // [수정] currentRoomData.gameType -> gameType
+                    status: 'waiting',
+                    createdAt: firebase.database.ServerValue.TIMESTAMP,
+                    players: {
+                        [playerUid]: {
+                            nickname: hostProfile.nickname,
+                            avatar: hostProfile.avatar,
+                            isHost: true
+                        }
+                    }
+                };
+
+                try {
+                    // 3. 새 방 정보 Firebase에 등록
+                    await newRoomRef.set(newRoomData);
+                    const newRoomId = newRoomRef.key;
+                    console.log(`새 방 생성 완료: ${newRoomId}`);
+
+                    // 4. [핵심] "이전 방"에 "다음 방 ID"를 남기기 (게스트 추적용)
+                    await oldRoomRef.update({
+                        nextRoomId: newRoomId,
+                        status: 'finished' // 게스트들의 리스너를 확실히 종료
+                    });
+                    
+                    // 5. 이전 방 삭제
+                    await oldRoomRef.remove();
+
+                    // 6. 호스트는 새 방으로 이동
+                    window.location.replace(`게임방.html?roomId=${newRoomId}`);
+
+                } catch (error) {
+                    console.error("새 방 생성 또는 이전 방 업데이트 실패:", error);
+                    cleanupAndExit(); // 실패 시 일반 나가기
+                }
+            }
+
+          // [수정] 2. 게스트가 '대기실로'를 누르거나, 에러 발생 시 호출되는 함수
             function cleanupAndExit() {
-                console.log("Cleanup and Exit called");
-                isExiting = true; // 모든 리스너 중지 플래그
-                stopSound('bgm'); // [신규] BGM 정지
+                console.log("Cleanup and Exit called (Guest or Fallback)");
+                isExiting = true; 
+                stopSound('bgm'); 
                 if (timerId) clearInterval(timerId);
                 if (feverTimerId) clearTimeout(feverTimerId);
 
@@ -4275,15 +4360,18 @@ shockwave.style.width = `${rect.width * 3}px`; // [수정] 타일 3배 크기 (5
                 let removePromise = Promise.resolve(); 
 
                 if (roomRef && playerUid) {
-                    roomRef.off(); // [핵심] 이 클라이언트의 'roomRef.on('value')' 리스너 중지
-if (chatListenerRef) chatListenerRef.off(); // [신규] 채팅 리스너 중지
-                    if (isHost) {
-                        console.log("Host removing room...");
-                        removePromise = roomRef.remove();
-                    } else {
+                    roomRef.off(); 
+                    if (chatListenerRef) chatListenerRef.off(); 
+
+                    // [수정] 이 함수는 이제 게스트 전용이므로, 'isHost' 체크 없이 자신만 제거
+                    if (!isHost) {
                         console.log("Guest removing self from players...");
-                        // [수정] '애니팡'은 players 노드만 제거
                         removePromise = roomRef.child('players/' + playerUid).remove();
+                    } else {
+                        // 방장이 이 함수를 호출했다면 (예: hostCleanupAndCreateNewRoom 실패 시)
+                        // 방을 그냥 삭제 (Fallback)
+                        console.warn("Host fallback: removing room...");
+                        removePromise = roomRef.remove();
                     }
                 }
 

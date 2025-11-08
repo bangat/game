@@ -424,6 +424,39 @@
             100% { transform: translateY(-50px) scale(1.2); opacity: 0; }
         }
 
+        /* [신규] 토스트 알림 (애니팡.html 스타일) */
+        #toast-container {
+            position: fixed;
+            top: 20px; /* 상단에서 20px 아래 */
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            pointer-events: none; /* 클릭 방지 */
+        }
+        .toast-notification {
+            background-color: rgba(0, 0, 0, 0.75);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            opacity: 0;
+            transition: opacity 0.5s, transform 0.5s;
+            animation: toast-fade-in 0.5s forwards, toast-fade-out 0.5s 2.5s forwards;
+            white-space: nowrap; /* 줄바꿈 방지 */
+        }
+        @keyframes toast-fade-in {
+            from { opacity: 0; transform: translateY(-20px); } /* 위에서 아래로 */
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes toast-fade-out {
+            from { opacity: 1; transform: translateY(0); }
+            to { opacity: 0; transform: translateY(-20px); }
+        }
+
     </style>
 </head>
 <body>
@@ -465,7 +498,7 @@
              </div>
          </div>
     </div>
-
+<div id="toast-container"></div>
     <audio id="tile-select-sound" src="./sounds/select.mp3" preload="auto"></audio>
     <audio id="tile-match-sound-new" src="./봄버맨사운드/사천성맞춤.mp3" preload="auto"></audio>
     <audio id="win-sound-new" src="./봄버맨사운드/win.mp3" preload="auto"></audio>
@@ -526,6 +559,29 @@
             // ------------------------------------
             // 1. Firebase 및 DOM 요소 초기화
             // ------------------------------------
+            // [신규] 공용 토스트 알림 표시 함수
+            function showToast(message) {
+                const toastContainer = document.getElementById('toast-container');
+                if (!toastContainer) return;
+
+                const toast = document.createElement('div');
+                toast.className = 'toast-notification';
+                toast.textContent = message;
+                
+                toastContainer.appendChild(toast);
+
+                // 3초 후 DOM에서 제거
+                setTimeout(() => {
+                    toast.remove();
+                }, 3000);
+            }
+
+            // [신규] HTML 탈출(escape) 함수
+            function escapeHTML(str) {
+                if (typeof str !== 'string') return '';
+                const map = {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'};
+                return str.replace(/[&<>"']/g, m => map[m]);
+            }
             
             document.addEventListener('contextmenu', event => event.preventDefault());
             // (디버깅을 위해 F12 차단 등은 주석 처리)
@@ -740,6 +796,7 @@
                 auth.onAuthStateChanged(user => {
                     if (user) {
                         myPlayerId = user.uid;
+                        setupGlobalNotificationListeners(myPlayerId); // [신규] 전역 알림 리스너 시작
                         myNickname = localStorage.getItem('userNickname') || 'Player';
                         myAvatar = localStorage.getItem('userAvatar') || '😊';
                         if (!myNickname) { auth.signOut(); window.location.replace('index.html'); return; }
@@ -859,23 +916,25 @@
                          return;
                     }
 
-                    // --- 상태별 처리 ---
-                    
-                    // 1. 게임 플레이 중
-                    if (currentRoomData.status === 'playing') {
-                        // 1a. (호스트) 맵 생성 신호 (신규: 상태만 변경)
-                        // [수정] 맵 생성을 각 클라이언트가 로컬로 하도록 변경
-                        if (isHost && !currentRoomData.gameStarted) {
-                            roomRef.update({ 
-                                gameStarted: true, // 게임 시작 신호
-                                startTime: firebase.database.ServerValue.TIMESTAMP // (선택적)
-                            }); 
-                            return;
-                        }
+          // --- 상태별 처리 ---
+            
+            // 1. 게임 플레이 중
+            if (currentRoomData.status === 'playing') {
+     // 1a. (호스트) 맵 생성 신호 (신규: 상태만 변경)
+                // [수정] 맵 생성을 각 클라이언트가 로컬로 하도록 변경
+                if (isHost && !currentRoomData.gameStarted) {
+                    roomRef.update({ 
+                        gameStarted: true, // 게임 시작 신호
+                        startTime: firebase.database.ServerValue.TIMESTAMP // (선택적)
+                    }); 
+                    return;
+                }
                         
-                        // 1b. 게임 시작! (모든 플레이어)
-                        if (currentRoomData.gameStarted && !countdownStarted) {
-                            countdownStarted = true;
+              // 1b. 게임 시작! (모든 플레이어)
+            if (currentRoomData.gameStarted && !countdownStarted) {
+                countdownStarted = true;
+                
+                infoOverlay.classList.remove('active'); // [신규] "상대방 기다리는 중" 오버레이 숨기기
                             
                             // [신규] 각자 로컬 보드 생성
                             initializeMyBoard(); 
@@ -937,7 +996,7 @@
                             // [수정] 게임 시작 신호만 보냄
                             roomRef.update({
                                 status: 'playing',
-                                gameStarted: false, // [수정]
+                                gameStarted: true, // [수정]
                                 readyPlayers: null,
                                 playerStates: null, // [신규]
                                 attackEvents: null  // [신규]
@@ -2149,6 +2208,58 @@
                     renderBoard(myBoard); // 로컬 보드 기준 렌더링
                 }
             });
+
+            // [신규] 토스트 알림 (초대/쪽지/친구) 리스너 설정 함수
+            let globalListenersAttached = false; // 중복 실행 방지 플래그
+            function setupGlobalNotificationListeners(userId) {
+                if (globalListenersAttached || !userId || !db) return;
+                globalListenersAttached = true;
+                
+                console.log("[알림] 전역 알림 리스너 설정 (ID:", userId, ")");
+                
+                // 1. 방 초대 알림
+                const invitesRef = db.ref(`invitations/${userId}`);
+                invitesRef.on('child_added', snapshot => {
+                    const invite = snapshot.val();
+                    if (invite && invite.from_name) {
+                        showToast(`🔔 [방 초대] ${escapeHTML(invite.from_name)}님이 '${escapeHTML(invite.game_name)}' 방에 초대했습니다.`);
+                        playSound('select'); // 'select' 사운드 재활용
+                    }
+                    snapshot.ref.remove(); // 알림 확인 후 즉시 제거
+                });
+
+                // 2. 친구 요청 알림 (대기실 경로: friend_requests)
+                const friendReqRef = db.ref(`friend_requests/${userId}`);
+                friendReqRef.on('child_added', snapshot => {
+                    const req = snapshot.val();
+                    if (req && req.from_name) {
+                         showToast(`💌 [친구 요청] ${escapeHTML(req.from_name)}님이 친구를 신청했습니다.`);
+                         playSound('select');
+                    }
+                    snapshot.ref.remove(); // 알림 확인 후 즉시 제거
+                });
+
+                // 3. 쪽지(귓속말) 알림 (대기실 경로: user_inboxes)
+                const whisperRef = db.ref(`user_inboxes/${userId}`);
+                whisperRef.on('child_added', async (snapshot) => {
+                    const msg = snapshot.val();
+                    const senderUid = snapshot.key; 
+
+                    if (msg && msg.lastMessage && senderUid) { 
+                        try {
+                            const profileSnap = await db.ref(`users/${senderUid}/profile`).once('value');
+                            if (profileSnap.exists()) {
+                                const nickname = profileSnap.val().nickname || '...';
+                                showToast(`💬 [쪽지] ${escapeHTML(nickname)}: ${escapeHTML(msg.lastMessage)}`);
+                                playSound('select');
+                            }
+                        } catch (e) {
+                            console.error("쪽지 알림 닉네임 로드 실패:", e);
+                        }
+                    }
+                    snapshot.ref.remove(); // 알림 확인 후 즉시 제거
+                });
+            }
 
         }); // DOMContentLoaded End
     </script>
