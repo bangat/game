@@ -531,9 +531,13 @@ function findValidMoves(board, color) {
                             
                             console.log('[리버시] readyCount:', readyCount, 'totalPlayers:', totalPlayers);
                             
-                            if (isHost && readyCount === totalPlayers) {
-                                console.log('[리버시] 방장이 게임 초기화 중...');
-                                initializeMultiplayerGame();
+                            // [버그 수정] 게스트도 이 함수를 호출해야 'playing' 상태로 넘어감
+                            if (readyCount === totalPlayers) {
+                                if (isHost) {
+                                    console.log('[리버시] 방장이 게임 초기화 중...');
+                                    initializeMultiplayerGame();
+                                } else {
+                                                }
                                 return;
                             } else {
                                 console.log('[리버시] 게임판 생성 대기 중...');
@@ -549,6 +553,21 @@ function findValidMoves(board, color) {
                     } 
                     else if (currentRoomData.status === 'waiting') {
                         console.log('[리버시] 대기 중 상태');
+                        
+                        // [신규] '다시하기' 후 게임오버 모달 끄기
+                        if (gameOverOverlay.style.display === 'flex') {
+                            gameOverOverlay.style.display = 'none';
+                            gameOverOverlay.innerHTML = '';
+                            gameOverFlag = false;
+                            countdownTimerStarted = false;
+                            isGameLive = false;
+                        }
+                        
+                        // [신규] '다시하기' 준비 신호 전송
+                        if (roomRef && myPlayerId && !currentRoomData.board) {
+                             roomRef.child('readyPlayers/' + myPlayerId).set(true);
+                        }
+
                         infoOverlay.style.display = 'flex';
                     }
                 });
@@ -911,36 +930,36 @@ function checkTurnEnd(board, lastMove) {
                         rematchBtn.disabled = true;
                         roomRef.child('rematchRequests/' + myPlayerId).set(true);
                     });
-                     roomRef.child('rematchRequests').on('value', snapshot => {
-                        if (snapshot.exists() && snapshot.numChildren() === 2) {
-                            if (isHost) roomRef.set(null);
-                            setTimeout(() => {
-                                if(isHost) createNewRoom(); else cleanupAndExit();
-                            }, 500);
+                    
+                    // [버그 수정] '다시하기' 리스너 로직 변경
+                    roomRef.child('rematchRequests').on('value', snapshot => {
+                        if (!snapshot.exists() || !currentRoomData || !currentRoomData.players || !gameOverOverlay.style.display) return;
+
+                        const requests = snapshot.val();
+                        const requestCount = Object.keys(requests).length;
+                        const playerCount = Object.keys(currentRoomData.players).filter(id => id !== 'ai_player').length;
+
+                        if (requestCount === playerCount) {
+                            if (isHost) {
+                                // [수정] 새 방 대신 'waiting' 상태로 되돌림
+                                roomRef.update({
+                                    status: 'waiting',
+                                    board: null,
+                                    turn: null,
+                                    players: currentRoomData.players, // players는 유지
+                                    passedTurn: null,
+                                    lastMove: null,
+                                    rematchRequests: null,
+                                    readyPlayers: null // readyPlayers 초기화
+                                });
+                            }
                         }
                     });
                 }
                 document.getElementById('lobby-btn').addEventListener('click', cleanupAndExit);
             }
             
-            function createNewRoom() {
-                const newRoomRef = roomsRef.push();
-                const guestId = Object.keys(currentRoomData.players).find(id => id !== myPlayerId);
-                const guestData = currentRoomData.players[guestId];
-                
-                newRoomRef.set({
-                    ...currentRoomData,
-                    status: 'waiting',
-                    rematchRequests: null,
-                    players: {
-                        [myPlayerId]: { nickname: myNickname, avatar: myAvatar, isHost: true },
-                        [guestId]: { nickname: guestData.nickname, avatar: guestData.avatar, isHost: false }
-                    }
-                }).then(() => {
-                    window.location.href = `게임방.html?roomId=${newRoomRef.key}`;
-                });
-            }
-
+           
             function updatePlayerStats(won) {
     console.log('[updatePlayerStats] 시작 - myPlayerId:', myPlayerId, 'won:', won, 'gameMode:', gameMode);
     

@@ -1277,8 +1277,8 @@ function kakaoInvite() {
 
             console.log('[Presence] 게임방 숨김 (pagehide/hidden). 5분 타이머 시작.');
             
-            // [중요] 즉시 onDisconnect 핸들러를 *취소*함
-            cancelMyOnDisconnectHandler(); 
+            // [버그 수정] 이 코드가 즉시 방을 터트리는 원인. 5분 유예를 위해 주석 처리.
+            // cancelMyOnDisconnectHandler(); 
             
             presenceTimeout = setTimeout(() => {
                 console.log('[Presence] 5분 경과. 게임방에서 나갑니다.');
@@ -1497,6 +1497,20 @@ function cancelMyOnDisconnectHandler() {
                 if (!isPlayerAlreadyIn && game && playerCount >= game.maxPlayers) { alert("방이 가득 찼습니다."); window.location.href = '대기실.html'; return; }
 
                 isHost = roomData.hostId === currentUser.uid; // isHost 여기서 할당
+
+                // [신규] 방장이 'lobby' 상태의 방으로 복귀한 경우,
+                // 방을 'waiting' 상태로 정리합니다.
+                if (isHost && roomData.status === 'lobby') {
+                    console.log("방장 복귀: 'lobby' 상태를 'waiting'으로 정리합니다.");
+                    roomRef.update({
+                        status: 'waiting',
+                        // 애니팡에서 사용한 초기화 데이터를 여기서도 동일하게 적용
+                        gameStarted: false, 
+                        readyPlayers: null,
+                        rematchRequests: null,
+                        attacks: null
+                    });
+                }
 
                 const myPlayerData = {
                     nickname: myNickname, avatar: myAvatar, bombSkin: myBombSkin, isHost: isHost,
@@ -2040,9 +2054,9 @@ const inviteBtn = document.getElementById('invite-btn');
         copyInviteBtn.style.color = 'var(--text-color-dark)';
         copyInviteBtn.style.borderBottomColor = '#D1B030';
         
-        // 카카오 버튼을 감싸는 부모(래퍼)에 추가
-        const inviteBtnContainer = document.getElementById('invite-btn').parentNode;
-        inviteBtnContainer.appendChild(copyInviteBtn);
+// [수정] 카카오 버튼을 감싸는 부모(래퍼)에 추가
+            const inviteBtnContainer = document.getElementById('invite-btn').parentNode;
+            inviteBtnContainer.appendChild(copyInviteBtn);
 
         copyInviteBtn.addEventListener('click', () => {
             if (!roomRef) return;
