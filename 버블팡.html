@@ -371,13 +371,14 @@
 
     <div id="toast-container"></div>
 
-    <audio id="bgm" src="./봄버맨사운드/애니팡배경음악.mp3" loop></audio>
+    <audio id="bgm" src="./봄버맨사운드/버블팡배경음악.mp3" loop></audio>
     <audio id="sfx-shoot" src="./봄버맨사운드/물풍선놓기.mp3"></audio>
     <audio id="sfx-pop" src="./봄버맨사운드/물풍선터짐.mp3"></audio>
     <audio id="sfx-win" src="./봄버맨사운드/win.mp3"></audio>
     <audio id="sfx-lose" src="./봄버맨사운드/패배.mp3"></audio>
     <audio id="sfx-bounce" src="./봄버맨사운드/버튼클릭.mp3"></audio>
     <audio id="sfx-bomb" src="./봄버맨사운드/폭탄효과음.mp3"></audio>
+    <audio id="sfx-modal" src="./봄버맨사운드/버블팡종료모달.mp3"></audio>
 
     <script>
         // --- 1. 유틸리티 함수 ---
@@ -460,6 +461,7 @@
         let statusRef = null;
         let roomValueListener = null;
         let rematchRef = null;
+        let amIReadyForRematch = false; // [수정] 다시하기 상태 토글용
 
         const synthesis = window.speechSynthesis;
         let isTTSOn = true;
@@ -598,7 +600,7 @@
             chatListenerRef = roomRef.child('chat');
             chatListenerRef.on('child_added', snap => {
                 const msg = snap.val();
-                if(msg && gameOverFlag) {
+                if(msg && document.getElementById('gameover-overlay').classList.contains('active')) {
                     renderRematchChatMessage(msg);
                     if(isTTSOn && msg.senderId !== myId) speakTTS(msg.content);
                 }
@@ -1217,14 +1219,14 @@ function addAttackLines(count) {
             if(isDead) return;
             isDead = true;
             isPlaying = false;
-            playSfx('sfx-lose');
+            // playSfx('sfx-lose'); // [제거] forceGameOver에서 sfx-modal로 통합
             playersRef.child(myId).update({ isDead: true });
             forceGameOver(); 
         }
 
         function handleWin() {
             isPlaying = false;
-            playSfx('sfx-win');
+            // playSfx('sfx-win'); // [제거] forceGameOver에서 sfx-modal로 통합
             forceGameOver(); 
         }
 
@@ -1236,9 +1238,10 @@ function addAttackLines(count) {
             });
         }
 
-        function forceGameOver() {
+function forceGameOver() {
             if (gameOverFlag) return;
             gameOverFlag = true;
+            playSfx('sfx-modal'); // [신규] 게임 종료 모달 사운드 재생
             
             if (dropTimerId) clearTimeout(dropTimerId);
             document.getElementById('bgm').pause();
@@ -1279,9 +1282,20 @@ function addAttackLines(count) {
                 lobbyBtn.parentNode.replaceChild(newLobby, lobbyBtn);
 
                 newRematch.textContent = "다시하기";
-                newRematch.disabled = false;
-                newRematch.addEventListener('click', requestRematch);
-                newLobby.addEventListener('click', cleanupAndExit);
+            newRematch.disabled = false;
+
+            // [수정] '다시하기' 버튼 리스너 (토글 기능)
+            newRematch.addEventListener('click', () => {
+                if (roomRef && myId) {
+                    if (amIReadyForRematch) { // 현재 준비완료 상태면
+                        roomRef.child('rematchRequests/' + myId).remove(); // 취소
+                    } else { // 대기 상태면
+                        roomRef.child('rematchRequests/' + myId).set(true); // 준비
+                    }
+                }
+            });
+
+            newLobby.addEventListener('click', cleanupAndExit);
 
                 updateRematchStatusUI(players);
                 listenForRematch();
@@ -1331,7 +1345,15 @@ function addAttackLines(count) {
         function listenForRematch() {
             if (rematchRef) rematchRef.off();
             rematchRef = roomRef.child('rematchRequests');
-            rematchRef.on('value', () => { }); // roomValueListener가 UI 업데이트
+            
+            // [핵심 수정] 'roomValueListener'에 의존하는 대신,
+            // '애니팡'과 동일하게 여기서 직접 UI 갱신 함수를 호출합니다.
+            rematchRef.on('value', () => {
+                // currentRoomData는 roomValueListener에 의해 항상 최신이므로
+                // updateRematchStatusUI()를 그냥 호출해도 됩니다.
+                // (players 인자 없이 호출하면 알아서 currentRoomData.players를 사용합니다)
+                updateRematchStatusUI(); 
+            });
         }
 
         function resetLocalGame() {
@@ -1348,70 +1370,92 @@ function addAttackLines(count) {
             });
         }
 
-        // [핵심] 재대결 UI 및 자동 시작 (애니팡 이식)
-        function updateRematchStatusUI(players) {
-            if(!players && currentRoomData) players = currentRoomData.players;
-            const list = document.getElementById('rematch-status-list');
-            list.innerHTML = '';
-            
-            const playerIds = Object.keys(players);
-            const activePlayerCount = playerIds.length;
-            const requests = currentRoomData.rematchRequests || {};
-            
-            // 혼자 남음 체크
-            if (isHost && activePlayerCount === 1 && gameOverFlag && !isExiting) {
-                 if (currentRoomData.status !== 'waiting') {
-                    roomRef.update({
-                        status: 'waiting',
-                        rematchRequests: null,
-                        gameStarted: false
-                    });
-                    document.getElementById('gameover-overlay').classList.remove('active');
-                    showToast("모든 참가자가 퇴장했습니다. 대기 모드로 전환합니다.");
-                 }
-            }
+       // [핵심] '다시하기' UI 및 자동 시작 (애니팡 로직 이식 - v2)
+function updateRematchStatusUI(players) {
+    // 1. [수정] players 인자가 없을 경우를 대비, currentRoomData에서 다시 가져옴
+    if (!players && currentRoomData) players = currentRoomData.players;
+    if (!players) return; // 플레이어 정보가 없으면 중단
 
-            const sorted = Object.values(players).sort((a,b) => (a.isDead === b.isDead) ? 0 : a.isDead ? 1 : -1);
-            
-            sorted.forEach((p, i) => {
-                // UID 찾기
-                const uid = Object.keys(players).find(key => players[key] === p);
-                const isReady = requests[uid] === true;
-                
-                const row = document.createElement('div');
-                row.className = 'rematch-player-row';
-                if(p.nickname === myName) row.classList.add('my-row');
-                
-                const statusHtml = isReady 
-                    ? '<span class="status-text ready">준비완료</span>' 
-                    : '<span class="status-text">대기중</span>';
-                
-                row.innerHTML = `
-                    <div><span class="player-rank">${i+1}위</span> <span class="player-name">${escapeHTML(p.nickname)}</span></div>
-                    ${statusHtml}
-                `;
-                list.appendChild(row);
+    const list = document.getElementById('rematch-status-list');
+    list.innerHTML = '';
+
+    // 2. [수정] 'players' 객체의 key(uid)를 'playerIds' 배열로 만듦
+    const playerIds = Object.keys(players);
+    const activePlayerCount = playerIds.length;
+    const requests = currentRoomData.rematchRequests || {};
+
+    // 3. [수정] '혼자 남음' 체크 로직 (애니팡.html)
+    if (isHost && activePlayerCount === 1 && gameOverFlag && !isExiting) {
+        if (currentRoomData.status !== 'waiting') {
+            roomRef.update({
+                status: 'waiting',
+                rematchRequests: null,
+                gameStarted: false
             });
-
-            // 전원 준비 완료 시 시작
-            const allReady = playerIds.length >= 2 && playerIds.every(uid => requests[uid] === true);
-
-            if(isHost && allReady) {
-                const updates = {};
-                updates['status'] = 'playing'; 
-                updates['attacks'] = null;     
-                updates['gameStarted'] = Date.now(); 
-                updates['rematchRequests'] = null;
-
-                playerIds.forEach(uid => {
-                    updates[`players/${uid}/isDead`] = false;  
-                    updates[`players/${uid}/score`] = 0;
-                    updates[`players/${uid}/board`] = null;       
-                });
-                
-                roomRef.update(updates);
-            }
+            document.getElementById('gameover-overlay').classList.remove('active');
+            showToast("모든 참가자가 퇴장했습니다. 대기 모드로 전환합니다.");
         }
+        return; 
+    }
+
+    // 4. [수정] "순위 정렬" 로직 (UID를 포함하여 정렬)
+    const sorted = Object.entries(players)
+        .map(([uid, data]) => ({ uid, ...data }))
+        .sort((a, b) => (a.isDead === b.isDead) ? 0 : (a.isDead ? 1 : -1));
+
+    // 5. [수정] UI 렌더링 (정렬된 배열 순회)
+    sorted.forEach((p, i) => {
+        // 'p' 객체에 이미 'uid'가 포함되어 있음
+        if (!p.uid) return; // [방어 코드]
+
+        const isReady = requests[p.uid] === true; 
+
+        const row = document.createElement('div');
+        row.className = 'rematch-player-row';
+        if (p.uid === myId) row.classList.add('my-row'); // [수정] p.nickname === myName -> p.uid === myId
+
+        const statusHtml = isReady 
+            ? '<span class="status-text ready">준비완료</span>' 
+            : '<span class="status-text">대기중</span>';
+
+        row.innerHTML = `
+            <div><span class="player-rank">${i+1}위</span> <span class="player-name">${escapeHTML(p.nickname)}</span></div>
+            ${statusHtml}
+        `;
+        list.appendChild(row);
+    });
+
+    // 6. [수정] 내 버튼 상태 동기화 (토글용)
+    amIReadyForRematch = !!requests[myId]; // [핵심] 나의 준비 상태를 전역 변수에 갱신
+    const myRematchBtn = document.getElementById('rematch-btn');
+    if (myRematchBtn) {
+        myRematchBtn.disabled = false;
+        myRematchBtn.textContent = amIReadyForRematch ? '준비완료! ✓' : '다시하기';
+    }
+
+    // 7. [수정] 전원 준비 완료 시 시작 (버그 수정된 로직)
+    const validReadyCount = Object.keys(requests).filter(uid => playerIds.includes(uid)).length;
+    const allReady = activePlayerCount >= 2 && validReadyCount === activePlayerCount;
+
+    if (isHost && allReady) {
+        const updates = {};
+        updates['status'] = 'playing'; 
+        updates['attacks'] = null;     
+        updates['gameStarted'] = Date.now(); 
+        updates['rematchRequests'] = null;
+
+        playerIds.forEach(uid => {
+            updates[`players/${uid}/isDead`] = false;  
+            updates[`players/${uid}/score`] = 0;
+            updates[`players/${uid}/board`] = null;       
+        });
+
+        if (currentRoomData.status !== 'playing') {
+            console.log("전원 준비완료! 게임을 다시 시작합니다.");
+            roomRef.update(updates);
+        }
+    }
+}
 
         function sendRematchChat() {
             const input = document.getElementById('rematch-chat-input');
@@ -1419,7 +1463,7 @@ function addAttackLines(count) {
             if(msg && roomRef) {
                 roomRef.child('chat').push({
                     senderId: myId,
-                    senderName: myName,
+                    senderNickname: myName,
                     content: msg,
                     timestamp: firebase.database.ServerValue.TIMESTAMP
                 });
@@ -1429,13 +1473,30 @@ function addAttackLines(count) {
 
         function renderRematchChatMessage(msg) {
             const box = document.getElementById('rematch-chat-messages');
+            if (!box) return; // [방어 코드]
+
             const div = document.createElement('div');
-            div.className = 'chat-msg';
-            if(msg.senderId === myId) div.classList.add('my-message');
             
-            const senderName = msg.senderName || (rematchPlayerList && rematchPlayerList[msg.senderId]?.nickname) || 'Unknown';
+            if (msg.isSystem) { // [신규] 시스템 메시지 처리 (애니팡 로직)
+                div.className = 'system-message';
+                div.textContent = msg.content;
+            } 
+            // [핵심 수정] rematchPlayerList를 기준으로 닉네임 찾기 (애니팡 로직)
+            else if (rematchPlayerList && rematchPlayerList[msg.senderId]) { 
+                const senderInfo = rematchPlayerList[msg.senderId];
+                const isMe = msg.senderId === myId;
+                
+                div.className = 'chat-msg';
+                if (isMe) div.classList.add('my-message');
+                
+                // [수정] escapeHTML 적용
+                div.innerHTML = `<strong>${escapeHTML(senderInfo.nickname)}:</strong> ${escapeHTML(msg.content)}`;
+            } else {
+                // [신규] 보낸 사람을 모를 경우 (방어 코드)
+                div.className = 'system-message'; // 시스템 메시지처럼 처리
+                div.textContent = `[...]: ${escapeHTML(msg.content)}`;
+            }
             
-            div.innerHTML = `<strong>${senderName}:</strong> ${msg.content}`;
             box.appendChild(div);
             box.scrollTop = box.scrollHeight;
         }
