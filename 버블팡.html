@@ -226,7 +226,7 @@
         .status-text { font-weight: 900; color: #ccc; font-size: 1.1em; min-width: 50px; text-align: right; }
         .status-text.ready { color: #28a745; text-shadow: 0 0 5px rgba(40, 167, 69, 0.5); }
 
-        /* 채팅 */
+        /* 채팅 (애니팡 스타일) */
         #rematch-chat-messages {
             height: 120px; overflow-y: auto;
             background: #FFF; border: 2px solid var(--panel-border);
@@ -247,7 +247,7 @@
             border-top-color: var(--accent-color); border-radius: 50%;
             animation: spin 1s linear infinite; margin: 0 auto 20px;
         }
-        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes spin { to { transform: rotate(360deg); } 100% { transform: rotate(360deg); } }
 
         .rematch-mic {
             background: none; border: 1px solid rgba(255,255,255,0.5); 
@@ -364,17 +364,16 @@
         const auth = firebase.auth();
 
         // --- 2. 게임 상수 및 변수 ---
-        // 선명한 3D 스타일 (단색 + 하이라이트)
         const BUBBLE_STYLES = [
             { base: '#E74C3C', light: '#FF7F7F' }, // Red
             { base: '#3498DB', light: '#85C1E9' }, // Blue
             { base: '#F1C40F', light: '#F9E79F' }, // Yellow
             { base: '#2ECC71', light: '#82E0AA' }, // Green
             { base: '#9B59B6', light: '#D7BDE2' }, // Purple
-            { base: '#95A5A6', light: '#BDC3C7' }, // Grey (Junk - Not used for attack anymore)
+            { base: '#95A5A6', light: '#BDC3C7' }, // Grey (Junk)
             { base: '#333333', light: '#555555' }  // Bomb (Black)
         ];
-        const JUNK_INDEX = 5; // 이제 사용되지 않거나, 로컬 정크로만 사용
+        const JUNK_INDEX = 5;
         const BOMB_INDEX = 6;
 
         const GRID_COLS = 8;
@@ -403,7 +402,7 @@
         let isPlaying = false;
         let isDead = false;
         let gameLoopId;
-        let pendingJunkLines = 0; // 여기서는 "pendingAttackLines" 개념
+        let pendingJunkLines = 0; 
         
         let currentRoomData = null;
         let isExiting = false;
@@ -411,10 +410,19 @@
         let amIReadyForRematch = false;
         let feverGauge = 0;
         let hasBomb = false; 
+        let currentCombo = 0; // [신규] 콤보 추적용
 
         // [시간 경과 낙하 타이머 관리]
         let dropTimerId = null;
         let gameStartTime = 0;
+
+        // [신규] 애니팡식 동기화 변수
+        let rematchPlayerList = null; 
+        let chatListenerRef = null; 
+        let allPlayersRef = null;
+        let statusRef = null;
+        let roomValueListener = null;
+        let rematchRef = null;
 
         const synthesis = window.speechSynthesis;
         let isTTSOn = true;
@@ -433,7 +441,10 @@
 
             document.getElementById('start-btn').addEventListener('click', startGameByHost);
             document.getElementById('exit-btn-ready').addEventListener('click', cleanupAndExit);
-            document.getElementById('lobby-btn').addEventListener('click', cleanupAndExit);
+            
+            // [수정] 대기실 버튼은 호스트/게스트에 따라 동적으로 처리되지만 초기 설정은 유지
+            document.getElementById('lobby-btn').addEventListener('click', cleanupAndExit); 
+            
             document.getElementById('rematch-btn').addEventListener('click', requestRematch);
             
             document.getElementById('rematch-chat-send-btn').addEventListener('click', sendRematchChat);
@@ -477,6 +488,8 @@
         function joinRoom(roomId) {
             roomRef = db.ref(`rooms/${roomId}`);
             playersRef = roomRef.child('players');
+            allPlayersRef = roomRef.child('players'); // 애니팡 방식
+            statusRef = roomRef.child('status');
 
             playersRef.child(myId).update({
                 nickname: myName,
@@ -487,7 +500,10 @@
             });
             playersRef.child(myId).onDisconnect().remove();
 
-            roomRef.on('value', snapshot => {
+            // [수정] 기존 리스너 제거 후 새로 등록 (애니팡 방식)
+            if (roomValueListener) roomRef.off('value', roomValueListener);
+
+            roomValueListener = (snapshot) => {
                 if (isExiting) return;
                 if (!snapshot.exists()) {
                     if(!gameOverFlag) alert("방이 사라졌습니다.");
@@ -497,13 +513,17 @@
 
                 currentRoomData = snapshot.val();
                 const players = currentRoomData.players || {};
-                const playerList = Object.values(players);
                 
                 isHost = (currentRoomData.hostId === myId);
                 
-                updateReadyUI(playerList);
+                // 대기실 UI
+                if (document.getElementById('ready-overlay').classList.contains('active')) {
+                    updateReadyUI(Object.values(players));
+                }
+                
                 renderOpponentHeader(players); // 모든 플레이어 표시
 
+                // 상태 관리
                 if (currentRoomData.status === 'playing' && !isPlaying && !gameOverFlag) {
                     startCountdown();
                 } else if (currentRoomData.status === 'waiting' && gameOverFlag) {
@@ -513,12 +533,18 @@
                 if (isPlaying && !isDead) checkAttacks();
                 if (isPlaying) checkSurvivors(players);
                 
+                // [수정] 게임 종료 모달 업데이트 (애니팡 방식)
                 if (gameOverFlag) {
                     updateRematchStatusUI(players);
                 }
-            });
+            };
             
-            roomRef.child('chat').on('child_added', snap => {
+            roomRef.on('value', roomValueListener);
+            
+            // 채팅 리스너 (게임 종료 시 사용)
+            if(chatListenerRef) chatListenerRef.off();
+            chatListenerRef = roomRef.child('chat');
+            chatListenerRef.on('child_added', snap => {
                 const msg = snap.val();
                 if(msg && gameOverFlag) {
                     renderRematchChatMessage(msg);
@@ -533,13 +559,9 @@
                     let totalLines = 0;
                     snap.forEach(child => { totalLines += child.val(); });
                     if (totalLines > 0) {
-                        // [수정] 공격받으면 'addAttackLines' 호출 (일반 버블)
                         addAttackLines(totalLines);
-                        
-                        // [신규] 공격받는 시각 효과
                         playAttackVFX('receive');
                         showToast(`⚠️ 공격! 버블 ${totalLines}줄이 추가됩니다!`);
-                        
                         roomRef.child(`attacks/${myId}`).remove();
                     }
                 }
@@ -557,6 +579,12 @@
 
         // --- 5. 게임 로직 ---
         function initGame() {
+            // [핵심 수정] 게임 시작 시 자동 퇴장 감지 기능 다시 활성화
+            if (playersRef) {
+                playersRef.child(myId).onDisconnect().remove();
+                console.log("게임 시작: 자동 퇴장 감지 기능 재활성화");
+            }
+
             resizeGame();
             bubbles = [];
             particles = [];
@@ -568,6 +596,7 @@
             feverGauge = 0;
             hasBomb = false;
             isAiming = false;
+            currentCombo = 0;
             
             updateFeverBar();
             
@@ -594,8 +623,6 @@
             dropTimerId = setTimeout(() => {
                 if(!isPlaying || isDead) return;
                 
-                // [수정] 일반 버블 생성 (정크 아님)
-                // 3분(180초) 이후에는 3줄, 그 외에는 20초 이후부터 2줄, 초기엔 1줄
                 const elapsed = (Date.now() - gameStartTime) / 1000;
                 let dropCount = 1;
                 if (elapsed >= 180) dropCount = 3;
@@ -604,14 +631,11 @@
                 addBubbleRow(-1, false, true, dropCount);
                 showToast("⏳ 버블이 내려옵니다!");
                 
-                // 다음 딜레이 계산
-                // 0: 30s -> 1: 25s -> 2: 20s -> 3+: 20s Loop
                 let nextDelay = 20000;
                 let nextPhase = phase + 1;
 
-                if (phase === 0) nextDelay = 25000; // 다음 25초
-                else if (phase === 1) nextDelay = 20000; // 다음 20초
-                // 이후는 계속 20초
+                if (phase === 0) nextDelay = 25000; 
+                else if (phase === 1) nextDelay = 20000; 
 
                 startDropTimer(nextDelay, nextPhase);
             }, delay);
@@ -625,8 +649,7 @@
                 }
                 
                 for(let c=0; c<GRID_COLS; c++) {
-                    // [수정] 정크 대신 일반 버블 생성 (0~4)
-                    const color = Math.floor(Math.random() * 5);
+                    const color = isJunk ? JUNK_INDEX : Math.floor(Math.random() * 5);
                     bubbles.push({ r: rowIdx, c: c, color: color, x: 0, y: 0 });
                 }
             }
@@ -636,9 +659,7 @@
 
         // [수정] 공격용 버블 추가 (일반 버블)
         function addAttackLines(count) {
-            // 기존 버블 아래로 밀기
             bubbles.forEach(b => b.r += count);
-            // 위쪽에 랜덤 일반 버블 추가
             for(let i=0; i<count; i++) {
                 for(let c=0; c<GRID_COLS; c++) {
                     const color = Math.floor(Math.random() * 5);
@@ -742,7 +763,7 @@
                 else {
                     for (let b of bubbles) {
                         const dist = Math.hypot(projectile.x - b.x, projectile.y - b.y);
-                        if (dist < bubbleRadius * 1.8) { // 충돌 여유 수정
+                        if (dist < bubbleRadius * 1.8) { 
                             snapBubble(); 
                             break; 
                         }
@@ -804,7 +825,6 @@
         function handleBombEffect(x, y) {
             playSfx('sfx-bomb');
             
-            // 맞은 곳 근처의 일반 버블 찾기
             let targetColor = -1;
             let minDist = Infinity;
             
@@ -817,7 +837,6 @@
             });
 
             if (targetColor !== -1) {
-                // [수정] 같은 색 7개 무작위 제거
                 const sameColorBubbles = bubbles.filter(b => b.color === targetColor);
                 shuffleArray(sameColorBubbles);
                 const targets = sameColorBubbles.slice(0, 7);
@@ -831,7 +850,6 @@
                 dropFloatingBubbles();
                 showComboText(`펑! ${targets.length}개`);
             } else {
-                // 반경 폭발
                 const range = bubbleRadius * 3;
                 const hit = bubbles.filter(b => Math.hypot(b.x - x, b.y - y) < range);
                 hit.forEach(b => {
@@ -863,10 +881,11 @@
                 }
             }
 
+            // [수정] 매칭 성공: 3개 이상
             if(matches.length >= 3) {
                 playSfx('sfx-pop');
+                currentCombo++; // 매칭 시 콤보 증가
                 
-                // 제거
                 matches.forEach(b => {
                     createExplosion(b.x, b.y, b.color);
                     const idx = bubbles.indexOf(b);
@@ -875,16 +894,20 @@
 
                 const dropped = dropFloatingBubbles();
                 
-                // 5콤보(5개 이상 매치) 시 공격
-                if (matches.length >= 5) {
-                    sendAttack(1);
-                    showComboText(`${matches.length}개 팡! 공격!`);
+                // [핵심 수정] 공격 조건: 4개 이상 매치 OR 2콤보 이상
+                if (matches.length >= 4 || currentCombo >= 2) {
+                    let attackLines = 1;
+                    if (matches.length >= 7) attackLines = 2;
                     
-                    // [신규] 공격 발사 시각 효과
+                    sendAttack(attackLines);
+                    
+                    const comboMsg = matches.length >= 4 ? `${matches.length}개 팡!` : `${currentCombo} 콤보!`;
+                    showComboText(`${comboMsg} 공격!`);
                     playAttackVFX('send');
+                } else {
+                    showComboText(`${matches.length}개 팡!`);
                 }
 
-                // [수정] 4개 이상 매치 시 게이지 2배
                 const multiplier = (matches.length >= 4) ? 2 : 1;
                 feverGauge = Math.min(MAX_FEVER, feverGauge + (matches.length + dropped) * FEVER_PER_POP * multiplier);
                 
@@ -893,6 +916,8 @@
                     hasBomb = true;
                     showToast("💣 폭탄 장전 완료!");
                 }
+            } else {
+                currentCombo = 0; // 매칭 실패 시 콤보 리셋
             }
         }
 
@@ -1053,26 +1078,22 @@
             text.textContent = hasBomb ? "BOMB READY" : `${feverGauge}%`;
         }
 
-        // --- [신규] 시각 효과 (VFX) ---
         function playAttackVFX(type) {
             const overlay = document.getElementById('attack-overlay');
-            const count = 10; // 버블 개수
+            const count = 10; 
             
             for (let i = 0; i < count; i++) {
                 const bubble = document.createElement('div');
                 bubble.className = 'flying-bubble';
                 
-                // 위치 및 목표 설정
                 if (type === 'send') {
-                    // 내 화면 중앙 -> 상단 밖으로
                     bubble.style.left = '50%';
                     bubble.style.top = '80%';
                     bubble.style.setProperty('--tx', `${(Math.random() - 0.5) * 200}px`);
                     bubble.style.setProperty('--ty', `-${window.innerHeight}px`);
                 } else {
-                    // 화면 밖(상단/좌우) -> 내 보드 안으로
                     const startX = Math.random() * window.innerWidth;
-                    const startY = -50; // 화면 위
+                    const startY = -50;
                     bubble.style.left = `${startX}px`;
                     bubble.style.top = `${startY}px`;
                     bubble.style.setProperty('--tx', `${(Math.random() - 0.5) * 100}px`);
@@ -1084,20 +1105,20 @@
             }
         }
 
-        // --- 게임 결과 & 멀티플레이 로직 ---
+        // --- [핵심 수정] 게임 결과 & 멀티플레이 로직 (애니팡 이식) ---
         function handleDefeat() {
             if(isDead) return;
             isDead = true;
             isPlaying = false;
             playSfx('sfx-lose');
             playersRef.child(myId).update({ isDead: true });
-            showGameOverModal(false);
+            forceGameOver(); // 애니팡 방식 호출
         }
 
         function handleWin() {
             isPlaying = false;
             playSfx('sfx-win');
-            showGameOverModal(true);
+            forceGameOver(); // 애니팡 방식 호출
         }
 
         function sendAttack(lines) {
@@ -1108,32 +1129,72 @@
             });
         }
 
-        function showGameOverModal(isWin) {
-            if(gameOverFlag) return;
+        // [핵심] forceGameOver 함수 (애니팡.html에서 가져옴)
+        function forceGameOver() {
+            if (gameOverFlag) return;
             gameOverFlag = true;
-            if(dropTimerId) clearTimeout(dropTimerId);
+            
+            if (dropTimerId) clearTimeout(dropTimerId);
             document.getElementById('bgm').pause();
+
+            // [핵심 수정] 결과창 상태에서는 연결이 불안정해도 강퇴되지 않도록 보호
+            if (playersRef) {
+                playersRef.child(myId).onDisconnect().cancel();
+                console.log("결과창 진입: 자동 퇴장 감지 기능 일시 정지");
+            }
 
             const modal = document.getElementById('gameover-overlay');
             const title = document.getElementById('result-title');
             modal.classList.add('active');
             
-            title.textContent = isWin ? "🎉 승리!" : "💀 패배";
-            title.style.color = isWin ? "var(--secondary-color)" : "var(--primary-color)";
-            
-            if(isWin) applyExpAndPoints(db, myId, 100, 50);
-            else applyExpAndPoints(db, myId, 20, 10);
-            
-            updateRematchStatusUI(currentRoomData.players);
+            // 1. 플레이어 정보 가져오기
+            allPlayersRef.once('value', (snapshot) => {
+                const players = snapshot.val();
+                if (!players) return;
+
+                rematchPlayerList = players; // 채팅용 목록 저장
+
+                // 2. 채팅 로드
+                loadRematchChat();
+
+                // 3. 순위 및 승패 계산
+                const sorted = Object.values(players).sort((a,b) => (a.isDead === b.isDead) ? 0 : a.isDead ? 1 : -1);
+                const myRank = sorted.findIndex(p => p.nickname === myName);
+                const didIWin = myRank === 0; // 1등이면 승리
+
+                title.textContent = didIWin ? "🎉 승리!" : "💀 패배";
+                title.style.color = didIWin ? "var(--secondary-color)" : "var(--primary-color)";
+                
+                if(didIWin) applyExpAndPoints(db, myId, 100, 50);
+                else applyExpAndPoints(db, myId, 20, 10);
+                
+                // 4. UI 갱신
+                updateRematchStatusUI(players);
+            });
         }
 
+        function loadRematchChat() {
+            const box = document.getElementById('rematch-chat-messages');
+            box.innerHTML = '<div class="spinner" style="margin: auto; width: 20px; height: 20px;"></div>';
+            
+            roomRef.child('chat').limitToLast(10).once('value', snap => {
+                box.innerHTML = '';
+                if(snap.exists()) {
+                    snap.forEach(child => renderRematchChatMessage(child.val()));
+                }
+            });
+        }
+
+        // [핵심] 재대결 UI 및 자동 시작 로직 (애니팡 이식)
         function updateRematchStatusUI(players) {
+            if(!players && currentRoomData) players = currentRoomData.players;
             const list = document.getElementById('rematch-status-list');
             list.innerHTML = '';
             
             const playerIds = Object.keys(players);
             const activePlayerCount = playerIds.length;
             
+            // 1. [퇴장 감지] 나 말고 다 나가서 혼자 남았을 때
             if (!isHost && activePlayerCount === 1 && gameOverFlag && !isExiting) {
                 setTimeout(() => {
                     showToast("모든 참가자가 퇴장하여 대기실로 이동합니다.");
@@ -1148,7 +1209,10 @@
                 row.className = 'rematch-player-row';
                 if(p.nickname === myName) row.classList.add('my-row');
                 
-                const readyState = p.rematch ? '<span class="status-text ready">준비완료</span>' : '<span class="status-text">대기중</span>';
+                const isReady = p.rematch === true;
+                const readyState = isReady 
+                    ? '<span class="status-text ready" style="color:#28a745;">준비완료</span>' 
+                    : '<span class="status-text" style="color:#ccc;">대기중</span>';
                 
                 row.innerHTML = `
                     <div><span class="player-rank">${i+1}위</span> <span class="player-name">${p.nickname}</span></div>
@@ -1157,26 +1221,33 @@
                 list.appendChild(row);
             });
 
-            if(isHost && playerIds.length >= 2 && Object.values(players).every(p => p.rematch)) {
-                roomRef.update({ status: 'playing', attacks: null });
-                setTimeout(() => {
-                    const updates = { status: 'playing' };
-                    Object.keys(players).forEach(uid => {
-                        updates[`players/${uid}/isDead`] = false;
-                        updates[`players/${uid}/rematch`] = false;
-                    });
-                    roomRef.update(updates);
-                }, 1000);
+            // [핵심] 호스트가 '전원 준비 완료'를 감지하면 게임 시작
+            const allReady = playerIds.length >= 2 && playerIds.every(uid => players[uid].rematch === true);
+
+            if(isHost && allReady) {
+                const updates = {};
+                updates['status'] = 'playing'; 
+                updates['attacks'] = null;     
+                updates['gameStarted'] = Date.now(); 
+
+                playerIds.forEach(uid => {
+                    updates[`players/${uid}/isDead`] = false;  
+                    updates[`players/${uid}/rematch`] = false; 
+                    updates[`players/${uid}/score`] = 0;       
+                });
+                
+                roomRef.update(updates);
             }
         }
 
         function sendRematchChat() {
             const input = document.getElementById('rematch-chat-input');
             const msg = input.value.trim();
+            // [수정] 닉네임을 직접 보냄 (rematchPlayerList 의존 제거)
             if(msg && roomRef) {
                 roomRef.child('chat').push({
                     senderId: myId,
-                    senderName: myName,
+                    senderName: myName, // 내 닉네임 직접 사용
                     content: msg,
                     timestamp: firebase.database.ServerValue.TIMESTAMP
                 });
@@ -1189,7 +1260,11 @@
             const div = document.createElement('div');
             div.className = 'chat-msg';
             if(msg.senderId === myId) div.classList.add('my-message');
-            div.innerHTML = `<strong>${msg.senderName}:</strong> ${msg.content}`;
+            
+            // msg.senderName이 있으면 쓰고, 없으면 rematchPlayerList에서 찾음
+            const senderName = msg.senderName || (rematchPlayerList && rematchPlayerList[msg.senderId]?.nickname) || 'Unknown';
+            
+            div.innerHTML = `<strong>${senderName}:</strong> ${msg.content}`;
             box.appendChild(div);
             box.scrollTop = box.scrollHeight;
         }
@@ -1206,7 +1281,6 @@
             synthesis.speak(u);
         }
 
-        // 공통 UI
         function updateReadyUI(playerList) {
             document.getElementById('player-count-display').textContent = `현재 인원: ${playerList.length}명`;
             if(isHost && playerList.length >= 2) {
@@ -1222,7 +1296,6 @@
             Object.keys(players).forEach(uid => {
                 const p = players[uid];
                 const card = document.createElement('div');
-                // 내가 아니면 상대방 스타일, 나면 'me' 클래스
                 card.className = `opponent-card active ${p.isDead ? 'dead' : ''} ${uid === myId ? 'me' : ''}`;
                 const avatarHTML = AVATAR_SETS[p.avatar] ? `<img src="${AVATAR_SETS[p.avatar].front}">` : `<img src="${p.avatar}">`;
                 
@@ -1268,14 +1341,18 @@
 
         function requestRematch() {
             playersRef.child(myId).update({ rematch: true });
-            document.getElementById('rematch-btn').textContent = "준비완료!";
-            document.getElementById('rematch-btn').disabled = true;
+            const btn = document.getElementById('rematch-btn');
+            btn.textContent = "준비완료!";
+            btn.disabled = true;
+            btn.style.backgroundColor = "#ccc";
         }
 
         function resetLocalGame() {
             document.getElementById('gameover-overlay').classList.remove('active');
-            document.getElementById('rematch-btn').textContent = "다시하기";
-            document.getElementById('rematch-btn').disabled = false;
+            const btn = document.getElementById('rematch-btn');
+            btn.textContent = "다시하기";
+            btn.disabled = false;
+            btn.style.backgroundColor = ""; // 색상 복구
             playersRef.child(myId).update({ rematch: false, isDead: false });
         }
 
