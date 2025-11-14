@@ -449,7 +449,7 @@
         let feverGauge = 0;
         let hasBomb = false; 
         let currentCombo = 0;
-
+let countdownStarted = false; // [신규] 애니팡 3-2-1 카운트다운 중복 방지
         // [시간 경과 낙하 타이머 관리]
         let dropTimerId = null;
         let gameStartTime = 0;
@@ -558,9 +558,17 @@
                 // 실시간 미니보드 헤더 렌더링
                 renderOpponentHeader(players);
 
-// 상태 관리 (애니팡.html 로직과 동일하게 수정)
-                if (currentRoomData.status === 'playing' && !isPlaying && !gameOverFlag) {
+                // [핵심 수정 1] '준비완료' 버튼이 풀리지 않는 버그 수정
+                // 상태 관리에 의해 gameOverFlag가 'false'로 바뀌기 *전에*
+                // UI를 먼저 갱신해야 'rematchRequests: null' 상태를 올바르게 반영할 수 있음.
+                if (gameOverFlag) {
+                    updateRematchStatusUI();
+                }
+                
+                // 상태 관리 (애니팡.html 로직과 동일하게 수정)
+                if (currentRoomData.status === 'playing' && !countdownStarted && !gameOverFlag) {
                     // (3단계) 'playing' 상태 감지 -> 카운트다운 시작
+                    countdownStarted = true; // [신규] 카운트다운 플래그 ON
                     startCountdown();
                     
                 } else if (currentRoomData.status === 'waiting') {
@@ -573,6 +581,7 @@
                         // [수정] resetLocalGame() 대신 수동으로 처리
                         document.getElementById('gameover-overlay').classList.remove('active');
                         gameOverFlag = false; 
+                        countdownStarted = false; // [핵심 수정 2] 카운트다운 플래그 OFF (재시작 가능)
                         
                         document.getElementById('loading-overlay').classList.add('active');
                         
@@ -606,13 +615,6 @@
 
                 if (isPlaying) checkSurvivors(players);
                 
-                if (gameOverFlag) {
-                    // [수정] players 인자를 제거합니다.
-                    // 이렇게 하면 updateRematchStatusUI 함수가 
-                    // 이 리스너에서 방금 갱신된 최신 'currentRoomData' (rematchRequests 포함)를
-                    // 직접 참조하게 되어 '준비완료' 상태가 즉시 동기화됩니다.
-                    updateRematchStatusUI();
-                }
             };
             
             roomRef.on('value', roomValueListener);
@@ -1480,27 +1482,26 @@ function updateRematchStatusUI() {
     const allReady = activePlayerCount >= 2 && validReadyCount === activePlayerCount;
 
     if (isHost && allReady) {
-        // [핵심 수정] 'playing'이 아닌 'waiting'으로 변경 (애니팡과 동일한 2단계 재시작)
-        const updates = {};
-        updates['status'] = 'waiting'; 
-        updates['attacks'] = null;     
-        // updates['gameStarted'] = Date.now(); // [제거] 'waiting' 상태에서는 시작 시간 X
-        updates['rematchRequests'] = null;
-        
-        // [신규] '애니팡'처럼 readyPlayers를 사용하도록 초기화
-        updates['readyPlayers'] = null; 
+            // [핵심 수정] 'playing'이 아닌 'waiting'으로 변경 (애니팡과 동일한 2단계 재시작)
+            const updates = {};
+            updates['status'] = 'waiting'; 
+            updates['attacks'] = null;     
+            updates['rematchRequests'] = null;
+            
+            // [신규] '애니팡'처럼 readyPlayers를 사용하도록 초기화
+            updates['readyPlayers'] = null; 
 
-        playerIds.forEach(uid => {
-            updates[`players/${uid}/isDead`] = false;  
-            updates[`players/${uid}/score`] = 0;
-            updates[`players/${uid}/board`] = null;       
-        });
+            playerIds.forEach(uid => {
+                updates[`players/${uid}/isDead`] = false;  
+                updates[`players/${uid}/score`] = 0;
+                updates[`players/${uid}/board`] = null;       
+            });
 
-        if (currentRoomData.status !== 'playing') {
+            // [핵심 수정] "if (currentRoomData.status !== 'playing')" 조건문을 제거하여
+            // '애니팡'과 동일하게 즉시 'waiting' 상태로 업데이트합니다.
             console.log("전원 준비완료! 게임을 다시 시작합니다.");
             roomRef.update(updates);
         }
-    }
 }
 
         function sendRematchChat() {
