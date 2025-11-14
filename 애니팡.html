@@ -1183,7 +1183,12 @@ roomValueListener = (snapshot) => {
         return;
     }
     
-    currentRoomData = snapshot.val(); // [핵심] 항상 최신 데이터 유지
+currentRoomData = snapshot.val(); // [핵심] 항상 최신 데이터 유지
+    
+    // [추가] 게임 종료 모달이 열려있다면, 사람이 나갈 때 즉시 UI 갱신
+    if (gameOverOverlay.classList.contains('active')) {
+        updateRematchStatusUI();
+    }
     
     // 1. (공통) 플레이어 UI 갱신 (스코어판)
     if (currentRoomData.players) {
@@ -2266,92 +2271,22 @@ function forceGameOver() {
             let rematchRef = null; 
             let amIReadyForRematch = false; // [신규] '준비완료' 상태 추적
             
-            function listenForRematch() {
-                 if (!roomRef) return;
+           // [수정] '다시하기' 수신 리스너 (중략 없음)
+function listenForRematch() {
+     if (!roomRef) return;
 
-                 // [수정] 기존 리스너가 있다면 제거 (메모리 누수 방지)
-                 if (rematchRef) {
-                    rematchRef.off();
-                 }
-                 rematchRef = roomRef.child('rematchRequests');
-                 
-                 rematchRef.on('value', snapshot => {
-                      const requests = snapshot.val() || {}; // [수정] null일 경우 빈 객체
-                      amIReadyForRematch = requests.hasOwnProperty(playerUid); // [신규] 로컬 상태 업데이트
-
-                      // [신규] 현재 방에 남아있는 플레이어 목록 (중요)
-                      // currentRoomData가 없을 때 에러 방지를 위해 ?. 사용
-const playersInRoom = Object.keys(currentRoomData?.players || {});
-                      
-                      // [신규] '다시하기' 상태 목록 UI 업데이트
-                      const allStatusSpans = document.querySelectorAll('#rematch-status-list .status-text');
-                      
-                      allStatusSpans.forEach(span => {
-                          const uid = span.dataset.uid;
-                          
-                          if (!playersInRoom.includes(uid)) {
-                              // [신규] 1. 방에 없는 유저 (나간 사람)
-                              span.textContent = '퇴장';
-                              span.classList.remove('ready');
-                              span.style.color = 'var(--danger-color)'; // 빨간색
-                              span.style.textShadow = 'none';
-
-                          } else if (requests.hasOwnProperty(uid)) {
-                              // 2. 방에 있고, 준비 완료한 유저
-                              span.textContent = '준비완료!';
-                              span.classList.add('ready');
-                              span.style.color = '#28a745'; // 초록색 (원래대로)
-                              span.style.textShadow = '0 0 5px rgba(40, 167, 69, 0.5)';
-                          
-                          } else {
-                              // 3. 방에 있지만, 아직 준비 안 한 유저
-                              span.textContent = ''; // '대기중' (아무것도 표시 안 함)
-                              span.classList.remove('ready');
-                              span.style.color = '#ccc'; // (원래대로)
-                              span.style.textShadow = 'none';
-                          }
-                      });
-                      
-                      // [신규] 내 버튼 상태 업데이트 (재접속 시 또는 리셋 시)
-                      const myRematchBtn = document.getElementById('rematch-btn');
-                      if (myRematchBtn) { // 버튼이 존재할 때만
-                          if (amIReadyForRematch) { // [수정]
-                              myRematchBtn.disabled = false; // [수정] 항상 활성화
-                              myRematchBtn.textContent = '준비완료! ✓';
-                          } else {
-                              myRematchBtn.disabled = false;
-                              myRematchBtn.textContent = '다시하기';
-                          }
-                      }
-                      
-                      // [수정] 모달이 닫혀있거나 데이터가 없으면 리스너 로직 중지
-                      if (!snapshot.exists() || !currentRoomData || !currentRoomData.players || !gameOverOverlay.classList.contains('active')) {
-                        return;
-                      }
-
-                      // (기존 로직) 모든 플레이어가 동의했는지 체크
-                      const requestCount = Object.keys(requests).length;
-                      
-                      // [수정] 전체 플레이어 수 -> "방에 남아있는" 플레이어 수
-                      const playerCountInRoom = playersInRoom.length;
-
-                      // [수정] "방에 남아있는" 모든 플레이어가 동의했고, 내가 호스트라면
-                      if (playerCountInRoom >= 2 && requestCount === playerCountInRoom && isHost) {
-                            if (rematchRef) rematchRef.off(); // [수정] 리스너 정리
-                            rematchRef = null;
-                            
-                            // [수정] '애니팡' 게임 재시작을 위한 상태값 초기화
-                            roomRef.update({
-                                rematchRequests: null,
-                                status: 'waiting',      // 방 상태를 '대기'로
-                                // 'playing' 상태에서 생성된 게임 데이터 초기화
-                                gameStarted: false, 
-                                // (readyPlayers는 'waiting' 상태에서 다시 채워짐)
-                                readyPlayers: null     
-                            });
-                      }
-                 });
-            }
+     // 기존 리스너가 있다면 제거 (메모리 누수 방지)
+     if (rematchRef) {
+        rematchRef.off();
+     }
+     rematchRef = roomRef.child('rematchRequests');
+     
+     rematchRef.on('value', snapshot => {
+          // [중요] 데이터가 바뀌면 공용 UI 함수 호출
+          // (여기서 UI 갱신 + 자동 시작 체크를 모두 수행합니다)
+          updateRematchStatusUI();
+     });
+}
 
             // ------------------------------------
             // 5. [신규] 피버 시스템 함수
@@ -4790,6 +4725,65 @@ return attackCount;
                 
                 return false;
             }
+
+// [신규] 리매치 UI 갱신 및 자동 시작 체크 함수
+function updateRematchStatusUI() {
+    if (!currentRoomData || !currentRoomData.players) return;
+    
+    const requests = currentRoomData.rematchRequests || {};
+    const playersInRoom = Object.keys(currentRoomData.players);
+    const allStatusSpans = document.querySelectorAll('#rematch-status-list .status-text');
+    
+    // 1. UI 텍스트 실시간 갱신
+    allStatusSpans.forEach(span => {
+        const uid = span.dataset.uid;
+        
+        if (!playersInRoom.includes(uid)) {
+            // 방에 없으면 즉시 '퇴장' 처리
+            span.textContent = '퇴장';
+            span.classList.remove('ready');
+            span.style.color = 'var(--danger-color)'; 
+            span.style.textShadow = 'none';
+        } else if (requests[uid]) {
+            span.textContent = '준비완료!';
+            span.classList.add('ready');
+            span.style.color = '#28a745'; 
+            span.style.textShadow = '0 0 5px rgba(40, 167, 69, 0.5)';
+        } else {
+            span.textContent = '';
+            span.classList.remove('ready');
+            span.style.color = '#ccc';
+            span.style.textShadow = 'none';
+        }
+    });
+
+    // 2. 내 버튼 상태 동기화
+    amIReadyForRematch = !!requests[playerUid];
+    const myRematchBtn = document.getElementById('rematch-btn');
+    if (myRematchBtn) {
+        myRematchBtn.disabled = false;
+        myRematchBtn.textContent = amIReadyForRematch ? '준비완료! ✓' : '다시하기';
+    }
+
+    // 3. [핵심] 인원 변동 시 자동 시작 체크 (방장 전용)
+    // (누군가 나가서, 남은 사람들끼리 모두 준비된 상태라면 게임 시작)
+    if (isHost && gameOverOverlay.classList.contains('active')) {
+        const playerCount = playersInRoom.length;
+        // 현재 방에 있는 사람 중 준비한 사람 수 계산
+        const validReadyCount = Object.keys(requests).filter(uid => playersInRoom.includes(uid)).length;
+        
+        // 2명 이상이고, 남은 전원이 준비했다면
+        if (playerCount >= 2 && validReadyCount === playerCount) {
+            console.log("[System] 퇴장으로 인한 인원 변동 -> 남은 인원 리매치 자동 시작!");
+            roomRef.update({
+                rematchRequests: null,
+                status: 'waiting',
+                gameStarted: false,
+                readyPlayers: null
+            });
+        }
+    }
+}
 
             // [신규] 토스트 알림 (초대/쪽지/친구) 리스너 설정 함수
             let globalListenersAttached = false; // 중복 실행 방지 플래그
