@@ -1,0 +1,992 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>버블팡 대전</title>
+    <link rel="manifest" href="manifest.json">
+    <link href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff" as="font" type="font/woff" crossorigin>
+    
+    <script src="아바타.js"></script>
+    <script src="레벨업.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+
+    <style>
+        /* ------------------------- */
+        /* == 1. 테마 및 기본 설정 == */
+        /* ------------------------- */
+        :root {
+            --bg-color: #FFFBEB;
+            --primary-color: #FF6B6B;
+            --secondary-color: #4ECDC4;
+            --accent-color: #FFD93D;
+            --text-color-dark: #574141;
+            --panel-bg: #FFFFFF;
+            --panel-border: #F0EAD2;
+            --panel-shadow: #E4DCCF;
+            --font-main: 'GmarketSans', sans-serif;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%; height: 100%; overflow: hidden;
+            font-family: var(--font-main);
+            background-color: var(--bg-color);
+            color: var(--text-color-dark);
+            display: flex; flex-direction: column;
+            align-items: center;
+            user-select: none; -webkit-user-select: none;
+            touch-action: none;
+        }
+
+        /* ------------------------- */
+        /* == 2. 게임 레이아웃 == */
+        /* ------------------------- */
+        #game-wrapper {
+            width: 100%; 
+            flex-grow: 1;
+            max-width: 500px;
+            display: flex; flex-direction: column;
+            position: relative;
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+
+        /* 헤더 (상대방 상태) */
+        #game-header {
+            flex-shrink: 0;
+            padding: 10px;
+            background: #FFFAE0;
+            border-bottom: 3px solid var(--panel-border);
+            display: flex; justify-content: space-between; gap: 5px;
+            z-index: 10;
+            height: 80px;
+        }
+        .opponent-card {
+            flex: 1;
+            background: white;
+            border: 2px solid var(--panel-border);
+            border-radius: 12px;
+            padding: 4px;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            opacity: 0.5; 
+            transition: all 0.3s;
+            box-shadow: 2px 2px 0 var(--panel-shadow);
+        }
+        .opponent-card.active { opacity: 1; border-color: var(--secondary-color); transform: translateY(-2px); }
+        .opponent-card.dead { filter: grayscale(100%); opacity: 0.6; background: #ddd; }
+        .op-avatar { width: 35px; height: 35px; border-radius: 10px; overflow: hidden; background: #eee; margin-bottom: 2px; }
+        .op-avatar img { width: 100%; height: 100%; object-fit: contain; }
+        .op-name { font-size: 0.7em; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60px; }
+        .op-status { font-size: 0.6em; font-weight: 900; color: var(--primary-color); }
+
+        /* 게임 보드 프레임 (입체감) */
+        #board-frame {
+            flex-grow: 1;
+            margin: 10px;
+            border: 6px solid #8D6E63; /* 나무 느낌 테두리 */
+            border-radius: 16px;
+            box-shadow: 
+                inset 3px 3px 10px rgba(0,0,0,0.3), 
+                5px 5px 15px rgba(0,0,0,0.2);
+            position: relative;
+            background-color: #2c3e50; /* 어두운 배경 (우주/심해 느낌) */
+            overflow: hidden;
+        }
+
+        /* 캔버스 */
+        canvas { display: block; width: 100%; height: 100%; }
+
+        /* 위험 구역 그라데이션 (Danger Line 대체) */
+        #danger-zone {
+            position: absolute;
+            bottom: 0; left: 0; width: 100%; height: 120px;
+            background: linear-gradient(to top, rgba(255, 0, 0, 0.4), transparent);
+            pointer-events: none;
+            z-index: 1;
+            border-bottom: 4px solid rgba(255,0,0,0.6);
+        }
+
+        /* UI 오버레이 (콤보 등) */
+        #ui-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 20;
+        }
+        .combo-text {
+            font-size: 3.5em; font-weight: 900; color: #FFD700;
+            text-shadow: 2px 2px 0 #000, -1px -1px 0 #000, 0 0 20px rgba(255, 215, 0, 0.8);
+            animation: pop-in 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            opacity: 0; transform: scale(0);
+        }
+        .combo-text.show { opacity: 1; transform: scale(1); }
+
+        /* ------------------------- */
+        /* == 3. 모달 (애니팡 스타일) == */
+        /* ------------------------- */
+        .overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7); backdrop-filter: blur(5px);
+            display: none; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 100;
+        }
+        .overlay.active { display: flex; }
+        
+        .modal-content {
+            background: var(--panel-bg);
+            border-radius: 24px;
+            width: 85%; max-width: 380px;
+            text-align: center;
+            border: 4px solid var(--text-color-dark);
+            box-shadow: 8px 8px 0 var(--text-color-dark);
+            overflow: hidden;
+        }
+        .modal-header {
+            background: var(--primary-color); color: white;
+            padding: 15px; border-bottom: 4px solid #C04A4A;
+        }
+        .modal-header h2 { margin: 0; font-size: 1.5em; text-shadow: 1px 1px rgba(0,0,0,0.2); }
+        .modal-body { padding: 25px; }
+        .modal-footer {
+            padding: 20px; background: #FFFAE0; border-top: 3px solid var(--panel-border);
+            display: flex; gap: 10px; justify-content: center;
+        }
+        
+        .btn {
+            flex: 1;
+            padding: 12px; font-size: 1.1em; font-weight: 900; border-radius: 12px;
+            border: none; cursor: pointer; font-family: var(--font-main);
+            border-bottom: 4px solid; transition: transform 0.1s;
+        }
+        .btn:active { transform: translateY(3px); border-bottom-width: 1px; }
+        .btn-primary { background: var(--primary-color); color: white; border-bottom-color: #C04A4A; }
+        .btn-secondary { background: var(--secondary-color); color: white; border-bottom-color: #379A93; }
+
+        /* 카운트다운 */
+        #countdown-number { font-size: 7em; font-weight: 900; color: #FFF; text-shadow: 0 0 20px rgba(255,255,255,0.8); animation: pulse 1s infinite; }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
+
+        /* 로딩 스피너 */
+        .spinner {
+            width: 50px; height: 50px; border: 6px solid rgba(255,255,255,0.3);
+            border-top-color: var(--accent-color); border-radius: 50%;
+            animation: spin 1s linear infinite; margin: 0 auto 20px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* 토스트 알림 */
+        #toast-container { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 200; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
+        .toast { background: rgba(0,0,0,0.85); color: white; padding: 10px 20px; border-radius: 20px; font-size: 0.95em; animation: fade-up 2s forwards; font-weight: 700; }
+        @keyframes fade-up { 0% { opacity: 0; transform: translateY(10px); } 10% { opacity: 1; transform: translateY(0); } 90% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-10px); } }
+
+        /* 결과창 리스트 */
+        .result-row { display: flex; justify-content: space-between; padding: 8px; border-bottom: 1px dashed #ccc; font-size: 1.1em; }
+        .result-row.winner { color: var(--primary-color); font-weight: 900; }
+        .result-row:last-child { border-bottom: none; }
+
+    </style>
+</head>
+<body>
+
+    <div id="game-wrapper">
+        <div id="game-header">
+            </div>
+
+        <div id="board-frame">
+            <canvas id="game-canvas"></canvas>
+            <div id="danger-zone"></div> <div id="ui-overlay">
+                <div class="combo-text" id="combo-text"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="loading-overlay" class="overlay active">
+        <div class="spinner"></div>
+        <h2 style="color:white;">접속 중...</h2>
+    </div>
+
+    <div id="ready-overlay" class="overlay">
+        <div class="modal-content">
+            <div class="modal-header"><h2>게임 대기실</h2></div>
+            <div class="modal-body">
+                <p id="ready-msg">플레이어를 기다리고 있습니다...</p>
+                <div id="player-count-display" style="font-weight:900; color:#555; font-size:1.2em; margin-top:10px;"></div>
+            </div>
+            <div class="modal-footer">
+                <button id="exit-btn-ready" class="btn btn-secondary">나가기</button>
+                <button id="start-btn" class="btn btn-primary" style="display:none;">게임 시작</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="countdown-overlay" class="overlay">
+        <div id="countdown-number">3</div>
+    </div>
+
+    <div id="gameover-overlay" class="overlay">
+        <div class="modal-content">
+            <div class="modal-header"><h2 id="result-title">결과</h2></div>
+            <div class="modal-body">
+                <div id="score-list"></div>
+            </div>
+            <div class="modal-footer">
+                <button id="lobby-btn" class="btn btn-secondary">대기실로</button>
+                <button id="rematch-btn" class="btn btn-primary">다시하기</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-container"></div>
+
+    <audio id="bgm" src="./봄버맨사운드/애니팡배경음악.mp3" loop></audio>
+    <audio id="sfx-shoot" src="./봄버맨사운드/물풍선놓기.mp3"></audio>
+    <audio id="sfx-pop" src="./봄버맨사운드/물풍선터짐.mp3"></audio>
+    <audio id="sfx-win" src="./봄버맨사운드/win.mp3"></audio>
+    <audio id="sfx-lose" src="./봄버맨사운드/패배.mp3"></audio>
+    <audio id="sfx-bounce" src="./봄버맨사운드/버튼클릭.mp3"></audio> <script>
+        // --- 1. Firebase 설정 ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
+            authDomain: "goodluck-7c14b.firebaseapp.com",
+            databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com",
+            projectId: "goodluck-7c14b",
+            storageBucket: "goodluck-7c14b.appspot.com",
+            messagingSenderId: "858281658455",
+            appId: "1:858281658455:web:9131280a459be983933b12"
+        };
+        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+        const auth = firebase.auth();
+
+        // --- 2. 게임 상수 및 변수 ---
+        // 3D 구체 느낌을 위한 색상 팔레트 (Base, Highlight)
+        const BUBBLE_STYLES = [
+            { base: '#E74C3C', light: '#FF7F7F' }, // Red
+            { base: '#3498DB', light: '#85C1E9' }, // Blue
+            { base: '#F1C40F', light: '#F9E79F' }, // Yellow
+            { base: '#2ECC71', light: '#82E0AA' }, // Green
+            { base: '#9B59B6', light: '#D7BDE2' }, // Purple
+            { base: '#95A5A6', light: '#BDC3C7' }  // Grey (Junk)
+        ];
+        const JUNK_INDEX = 5; // 회색 인덱스
+
+        const GRID_COLS = 8;
+        const GRID_ROWS = 12;
+        const SHOOT_SPEED = 20; // 발사 속도 (빠르게)
+
+        let canvas, ctx;
+        let width, height, bubbleRadius;
+        let bubbles = []; // 정적 버블 그리드
+        let particles = [];
+        let projectile = null; // 날아가는 버블
+        let nextBubbleColor = 0;
+        let currentBubbleColor = 0;
+        
+        // Firebase 관련
+        let myId, myName, myAvatar;
+        let roomRef, playersRef;
+        let isHost = false;
+        let isPlaying = false;
+        let isDead = false;
+        let gameLoopId;
+        let pendingJunkLines = 0;
+        
+        // 방 상태 관리
+        let currentRoomData = null;
+        let isExiting = false;
+        let gameOverFlag = false;
+
+        // --- 3. 초기화 ---
+        document.addEventListener('DOMContentLoaded', () => {
+            // 캔버스 설정
+            canvas = document.getElementById('game-canvas');
+            ctx = canvas.getContext('2d');
+            
+            // 이벤트 리스너
+            window.addEventListener('resize', resizeGame);
+            canvas.addEventListener('pointerdown', handlePointerDown); // 클릭/터치로 발사
+
+            // 버튼 리스너
+            document.getElementById('start-btn').addEventListener('click', startGameByHost);
+            document.getElementById('exit-btn-ready').addEventListener('click', cleanupAndExit);
+            document.getElementById('lobby-btn').addEventListener('click', cleanupAndExit);
+            document.getElementById('rematch-btn').addEventListener('click', requestRematch);
+
+            // 인증 및 입장
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    myId = user.uid;
+                    myName = localStorage.getItem('userNickname') || 'Player';
+                    myAvatar = localStorage.getItem('userAvatar') || '😊';
+                    
+                    const params = new URLSearchParams(window.location.search);
+                    const roomId = params.get('roomId');
+                    
+                    if (roomId) joinRoom(roomId);
+                    else { alert("방 정보가 없습니다."); window.location.replace('대기실.html'); }
+                } else {
+                    window.location.replace('index.html');
+                }
+            });
+        });
+
+        function resizeGame() {
+            const frame = document.getElementById('board-frame');
+            width = canvas.width = frame.clientWidth;
+            height = canvas.height = frame.clientHeight;
+            
+            // 버블 크기 계산 (가로 꽉 차게)
+            // 육각형 그리드: 너비 = (cols * 2r) + r (홀수 줄 오프셋 고려) roughly
+            bubbleRadius = width / (GRID_COLS * 2 + 1);
+            
+            // 기존 버블들 위치 업데이트 (필요시)
+            if(bubbles.length > 0) recalcBubblePositions();
+        }
+
+        // --- 4. Firebase 룸 로직 (애니팡 스타일 이식) ---
+        function joinRoom(roomId) {
+            roomRef = db.ref(`rooms/${roomId}`);
+            playersRef = roomRef.child('players');
+
+            // 플레이어 등록
+            playersRef.child(myId).set({
+                nickname: myName,
+                avatar: myAvatar,
+                isDead: false,
+                score: 0,
+                rematch: false
+            });
+            playersRef.child(myId).onDisconnect().remove();
+
+            // 룸 리스너
+            roomRef.on('value', snapshot => {
+                if (isExiting) return;
+                if (!snapshot.exists()) {
+                    if(!gameOverFlag) alert("방이 사라졌습니다.");
+                    cleanupAndExit();
+                    return;
+                }
+
+                currentRoomData = snapshot.val();
+                const players = currentRoomData.players || {};
+                const playerList = Object.values(players);
+                
+                // 호스트 확인
+                isHost = (currentRoomData.hostId === myId);
+                
+                // UI 업데이트 (대기실)
+                updateReadyUI(playerList);
+                renderOpponentHeader(players);
+
+                // 게임 상태 처리
+                if (currentRoomData.status === 'playing' && !isPlaying && !gameOverFlag) {
+                    startCountdown();
+                } else if (currentRoomData.status === 'waiting' && gameOverFlag) {
+                    // 재대결 리셋
+                    resetLocalGame();
+                }
+
+                // 공격 수신
+                if (isPlaying && !isDead) {
+                    checkAttacks();
+                }
+
+                // 게임 오버 체크 (생존자 확인)
+                if (isPlaying) {
+                    checkSurvivors(players);
+                }
+            });
+        }
+
+        function checkAttacks() {
+            // 공격 큐 확인
+            roomRef.child(`attacks/${myId}`).once('value', snap => {
+                if (snap.exists()) {
+                    const attacks = snap.val();
+                    let totalLines = 0;
+                    snap.forEach(child => {
+                        totalLines += child.val();
+                    });
+                    // 공격 적용
+                    if (totalLines > 0) {
+                        addJunkLines(totalLines);
+                        showToast(`⚠️ 방해 블록 ${totalLines}줄 추가!`);
+                        // 공격 데이터 삭제
+                        roomRef.child(`attacks/${myId}`).remove();
+                    }
+                }
+            });
+        }
+
+        function checkSurvivors(players) {
+            const activePlayers = Object.values(players).filter(p => !p.isDead);
+            
+            // 나 혼자 남았고, 게임이 진행 중이었다면 승리
+            if (activePlayers.length === 1 && activePlayers[0].nickname === myName && Object.keys(players).length > 1) {
+                handleWin();
+            }
+            // 1인 플레이 테스트용
+            else if (Object.keys(players).length === 1 && isDead) {
+                showGameOverModal(false);
+            }
+        }
+
+        // --- 5. 게임 로직 (Bubble Shooter) ---
+
+        function initGame() {
+            resizeGame();
+            bubbles = [];
+            particles = [];
+            projectile = null;
+            isDead = false;
+            isPlaying = true;
+            gameOverFlag = false;
+            pendingJunkLines = 0;
+            
+            // 초기 맵 생성 (5줄)
+            for(let r=0; r<5; r++) {
+                addBubbleRow(r);
+            }
+            
+            // 발사할 버블 색상
+            currentBubbleColor = Math.floor(Math.random() * 5);
+            nextBubbleColor = Math.floor(Math.random() * 5);
+            
+            // BGM
+            const bgm = document.getElementById('bgm');
+            bgm.volume = 0.3;
+            bgm.currentTime = 0;
+            bgm.play().catch(()=>{});
+
+            // 루프 시작
+            if (gameLoopId) cancelAnimationFrame(gameLoopId);
+            loop();
+        }
+
+        function addBubbleRow(rowIdx, isJunk = false) {
+            for(let c=0; c<GRID_COLS; c++) {
+                // 홀수 줄은 하나 적게 (육각형) - 여기서는 간단하게 같은 개수로 하되 오프셋만 줌
+                const color = isJunk ? JUNK_INDEX : Math.floor(Math.random() * 5);
+                bubbles.push({
+                    r: rowIdx,
+                    c: c,
+                    color: color,
+                    x: 0, y: 0 // recalc에서 계산
+                });
+            }
+            recalcBubblePositions();
+        }
+
+        function addJunkLines(count) {
+            // 기존 버블들을 아래로 밈
+            bubbles.forEach(b => b.r += count);
+            
+            // 위쪽에 정크 버블 추가
+            for(let i=0; i<count; i++) {
+                for(let c=0; c<GRID_COLS; c++) {
+                    bubbles.push({
+                        r: i,
+                        c: c,
+                        color: JUNK_INDEX,
+                        x: 0, y: 0
+                    });
+                }
+            }
+            recalcBubblePositions();
+            
+            // 게임 오버 체크 (바닥 닿았는지)
+            checkLimit();
+        }
+
+        function recalcBubblePositions() {
+            bubbles.forEach(b => {
+                const pos = getGridPosition(b.r, b.c);
+                b.x = pos.x;
+                b.y = pos.y;
+            });
+        }
+
+        function getGridPosition(r, c) {
+            // 짝수 줄: 0 offset, 홀수 줄: radius offset
+            const offset = (r % 2 !== 0) ? bubbleRadius : 0;
+            const x = (c * 2 * bubbleRadius) + bubbleRadius + offset;
+            // 높이 겹침 (sqrt(3))
+            const y = (r * bubbleRadius * Math.sqrt(3)) + bubbleRadius;
+            return {x, y};
+        }
+
+        function handlePointerDown(e) {
+            if (!isPlaying || isDead || projectile) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const tx = e.clientX - rect.left;
+            const ty = e.clientY - rect.top;
+            
+            // 발사대 위치 (바닥 중앙)
+            const sx = width / 2;
+            const sy = height;
+
+            // 벡터 계산
+            const dx = tx - sx;
+            const dy = ty - sy;
+            const angle = Math.atan2(dy, dx);
+
+            // 각도 제한 (너무 수평으로 쏘지 않게)
+            if (angle > -0.2 || angle < -Math.PI + 0.2) return;
+
+            fire(angle);
+        }
+
+        function fire(angle) {
+            playSfx('sfx-shoot');
+            projectile = {
+                x: width / 2,
+                y: height,
+                vx: Math.cos(angle) * SHOOT_SPEED,
+                vy: Math.sin(angle) * SHOOT_SPEED,
+                color: currentBubbleColor,
+                radius: bubbleRadius
+            };
+            
+            // 다음 버블 로드
+            currentBubbleColor = nextBubbleColor;
+            nextBubbleColor = Math.floor(Math.random() * 5);
+        }
+
+        function loop() {
+            if (!isPlaying) return;
+            update();
+            draw();
+            gameLoopId = requestAnimationFrame(loop);
+        }
+
+        function update() {
+            // 1. 발사체 이동
+            if (projectile) {
+                projectile.x += projectile.vx;
+                projectile.y += projectile.vy;
+
+                // 벽 충돌 (당구 쿠션)
+                if (projectile.x < bubbleRadius || projectile.x > width - bubbleRadius) {
+                    projectile.vx *= -1; // 반사
+                    projectile.x = Math.max(bubbleRadius, Math.min(width - bubbleRadius, projectile.x));
+                    playSfx('sfx-bounce');
+                }
+
+                // 천장 충돌 -> 스냅
+                if (projectile.y < bubbleRadius) {
+                    snapBubble();
+                }
+                // 다른 버블과 충돌
+                else {
+                    for (let b of bubbles) {
+                        const dist = Math.hypot(projectile.x - b.x, projectile.y - b.y);
+                        if (dist < bubbleRadius * 1.9) { // 충돌 감지 (약간 여유)
+                            snapBubble();
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // 2. 파티클 업데이트
+            for(let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.05;
+                if(p.life <= 0) particles.splice(i, 1);
+            }
+        }
+
+        function snapBubble() {
+            if(!projectile) return;
+            
+            // 가장 가까운 그리드 좌표 찾기
+            // 현재 위치에서 근접한 (r, c) 후보군 탐색
+            let bestDist = Infinity;
+            let bestR = 0, bestC = 0;
+
+            // 대략적인 행 계산
+            const approxR = Math.round((projectile.y - bubbleRadius) / (bubbleRadius * Math.sqrt(3)));
+            
+            for(let r = Math.max(0, approxR - 1); r <= approxR + 1; r++) {
+                for(let c = 0; c < GRID_COLS; c++) {
+                    // 이미 있는 자리는 제외
+                    if(bubbles.some(b => b.r === r && b.c === c)) continue;
+
+                    const pos = getGridPosition(r, c);
+                    const dist = Math.hypot(projectile.x - pos.x, projectile.y - pos.y);
+                    if(dist < bestDist) {
+                        bestDist = dist;
+                        bestR = r;
+                        bestC = c;
+                    }
+                }
+            }
+
+            // 버블 배치
+            const newBubble = {
+                r: bestR,
+                c: bestC,
+                color: projectile.color,
+                x: 0, y: 0
+            };
+            bubbles.push(newBubble);
+            recalcBubblePositions();
+            
+            const color = projectile.color;
+            projectile = null;
+            playSfx('sfx-shoot'); // 착지음 (재활용)
+
+            // 매칭 검사
+            resolveMatches(newBubble);
+            
+            // 게임 오버 체크
+            checkLimit();
+        }
+
+        function resolveMatches(startNode) {
+            // BFS로 같은 색 찾기
+            const matches = [];
+            const queue = [startNode];
+            const visited = new Set();
+            visited.add(`${startNode.r},${startNode.c}`);
+            matches.push(startNode);
+
+            let head = 0;
+            while(head < queue.length) {
+                const curr = queue[head++];
+                const neighbors = getNeighbors(curr);
+                for(let n of neighbors) {
+                    if(n.color === startNode.color && !visited.has(`${n.r},${n.c}`)) {
+                        visited.add(`${n.r},${n.c}`);
+                        matches.push(n);
+                        queue.push(n);
+                    }
+                }
+            }
+
+            // 3개 이상이면 터짐
+            if(matches.length >= 3) {
+                playSfx('sfx-pop');
+                // 제거
+                matches.forEach(b => {
+                    createExplosion(b.x, b.y, b.color);
+                    const idx = bubbles.indexOf(b);
+                    if(idx > -1) bubbles.splice(idx, 1);
+                });
+
+                // 떠있는 버블 제거 (낙하)
+                const dropped = dropFloatingBubbles();
+                
+                // 공격 전송 (매치 수 + 낙하 수에 비례)
+                const attackPower = Math.floor(matches.length / 3) + Math.floor(dropped / 2);
+                if(attackPower > 0) sendAttack(attackPower);
+
+                // 콤보 텍스트
+                if(matches.length + dropped > 3) {
+                    showCombo(`${matches.length + dropped}팡!`);
+                }
+            }
+        }
+
+        function getNeighbors(node) {
+            // 육각형 그리드 이웃 오프셋
+            // 짝수줄(0): TL(-1,-1), TR(-1,0), L(0,-1), R(0,1), BL(1,-1), BR(1,0)
+            // 홀수줄(1): TL(-1,0), TR(-1,1), L(0,-1), R(0,1), BL(1,0), BR(1,1)
+            const isEven = (node.r % 2 === 0);
+            const offsets = isEven 
+                ? [[-1,-1], [-1,0], [0,-1], [0,1], [1,-1], [1,0]]
+                : [[-1,0], [-1,1], [0,-1], [0,1], [1,0], [1,1]];
+            
+            const res = [];
+            for(let o of offsets) {
+                const nr = node.r + o[0];
+                const nc = node.c + o[1];
+                const found = bubbles.find(b => b.r === nr && b.c === nc);
+                if(found) res.push(found);
+            }
+            return res;
+        }
+
+        function dropFloatingBubbles() {
+            // 천장(row=0)에 붙어있는 모든 버블 찾기 (BFS)
+            const anchored = new Set();
+            const queue = bubbles.filter(b => b.r === 0);
+            queue.forEach(b => anchored.add(b));
+            
+            let head = 0;
+            while(head < queue.length) {
+                const curr = queue[head++];
+                const neighbors = getNeighbors(curr);
+                for(let n of neighbors) {
+                    if(!anchored.has(n)) {
+                        anchored.add(n);
+                        queue.push(n);
+                    }
+                }
+            }
+
+            // anchored에 없는 버블은 떠있는 것 -> 제거
+            let dropCount = 0;
+            for(let i = bubbles.length - 1; i >= 0; i--) {
+                if(!anchored.has(bubbles[i])) {
+                    createExplosion(bubbles[i].x, bubbles[i].y, bubbles[i].color);
+                    bubbles.splice(i, 1);
+                    dropCount++;
+                }
+            }
+            return dropCount;
+        }
+
+        function checkLimit() {
+            // 바닥(danger zone)에 닿았는지 확인
+            // Danger Zone Height = 120px
+            const limitY = height - 120; 
+            
+            for(let b of bubbles) {
+                if(b.y + bubbleRadius > limitY) {
+                    handleDefeat();
+                    return;
+                }
+            }
+        }
+
+        function handleDefeat() {
+            if(isDead) return;
+            isDead = true;
+            isPlaying = false;
+            playSfx('sfx-lose');
+            
+            // Firebase 업데이트
+            playersRef.child(myId).update({ isDead: true });
+            showGameOverModal(false);
+        }
+
+        function handleWin() {
+            isPlaying = false;
+            playSfx('sfx-win');
+            showGameOverModal(true);
+        }
+
+        function sendAttack(lines) {
+            // 생존자들에게 공격 전송
+            Object.keys(currentRoomData.players).forEach(uid => {
+                if(uid !== myId && !currentRoomData.players[uid].isDead) {
+                    roomRef.child(`attacks/${uid}`).push(lines);
+                }
+            });
+        }
+
+        // --- 6. 그래픽 (Canvas) ---
+        function draw() {
+            ctx.clearRect(0, 0, width, height);
+
+            // 1. 정적 버블
+            bubbles.forEach(drawBubble);
+
+            // 2. 발사체
+            if(projectile) drawBubble(projectile);
+
+            // 3. 발사 대기 및 다음 버블
+            // 대기
+            drawBubble({x: width/2, y: height - bubbleRadius - 10, color: currentBubbleColor, radius: bubbleRadius});
+            // 다음 (작게)
+            drawBubble({x: width/2 + bubbleRadius*2.5, y: height - bubbleRadius - 10, color: nextBubbleColor, radius: bubbleRadius*0.6});
+            
+            // NEXT 텍스트
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 12px sans-serif';
+            ctx.fillText("NEXT", width/2 + bubbleRadius*2.5 - 15, height - 5);
+
+            // 4. 파티클
+            particles.forEach(p => {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.radius, 0, Math.PI*2);
+                ctx.fillStyle = BUBBLE_STYLES[p.color].base;
+                ctx.globalAlpha = p.life;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            });
+        }
+
+        function drawBubble(b) {
+            const r = b.radius || bubbleRadius;
+            const style = BUBBLE_STYLES[b.color];
+            
+            // 3D 구체 효과 (Radial Gradient)
+            const grad = ctx.createRadialGradient(b.x - r*0.3, b.y - r*0.3, r*0.1, b.x, b.y, r);
+            grad.addColorStop(0, style.light);
+            grad.addColorStop(1, style.base);
+            
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, r-1, 0, Math.PI*2);
+            ctx.fillStyle = grad;
+            ctx.fill();
+            
+            // 광택 (하이라이트)
+            ctx.beginPath();
+            ctx.arc(b.x - r*0.3, b.y - r*0.3, r*0.2, 0, Math.PI*2);
+            ctx.fillStyle = 'rgba(255,255,255,0.4)';
+            ctx.fill();
+            
+            // 테두리 (선명함 추가)
+            ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        }
+
+        function createExplosion(x, y, color) {
+            for(let i=0; i<6; i++) {
+                particles.push({
+                    x: x, y: y,
+                    vx: (Math.random() - 0.5) * 10,
+                    vy: (Math.random() - 0.5) * 10,
+                    life: 1,
+                    color: color,
+                    radius: Math.random() * 5 + 2
+                });
+            }
+        }
+
+        // --- 7. UI/Modal ---
+        function updateReadyUI(playerList) {
+            document.getElementById('player-count-display').textContent = `현재 인원: ${playerList.length}명`;
+            if(isHost && playerList.length >= 2) {
+                document.getElementById('start-btn').style.display = 'inline-block';
+            } else {
+                document.getElementById('start-btn').style.display = 'none';
+            }
+        }
+
+        function renderOpponentHeader(players) {
+            const header = document.getElementById('game-header');
+            header.innerHTML = '';
+            
+            Object.keys(players).forEach(uid => {
+                if(uid === myId) return;
+                const p = players[uid];
+                
+                const card = document.createElement('div');
+                card.className = `opponent-card active ${p.isDead ? 'dead' : ''}`;
+                
+                const avatarHTML = AVATAR_SETS[p.avatar] 
+                    ? `<img src="${AVATAR_SETS[p.avatar].front}">` 
+                    : `<img src="${p.avatar}">`;
+
+                card.innerHTML = `
+                    <div class="op-avatar">${avatarHTML}</div>
+                    <div class="op-name">${p.nickname}</div>
+                    <div class="op-status">${p.isDead ? '☠️ 탈락' : '❤️ 생존'}</div>
+                `;
+                header.appendChild(card);
+            });
+        }
+
+        function startGameByHost() {
+            roomRef.update({ status: 'playing' });
+        }
+
+        function startCountdown() {
+            document.getElementById('ready-overlay').classList.remove('active');
+            document.getElementById('loading-overlay').classList.remove('active');
+            document.getElementById('countdown-overlay').classList.add('active');
+            
+            let count = 3;
+            const el = document.getElementById('countdown-number');
+            el.textContent = count;
+            
+            const timer = setInterval(() => {
+                count--;
+                if(count > 0) el.textContent = count;
+                else if(count === 0) el.textContent = "GO!";
+                else {
+                    clearInterval(timer);
+                    document.getElementById('countdown-overlay').classList.remove('active');
+                    initGame();
+                }
+            }, 1000);
+        }
+
+        function showGameOverModal(isWin) {
+            const modal = document.getElementById('gameover-overlay');
+            const title = document.getElementById('result-title');
+            const list = document.getElementById('score-list');
+            
+            modal.classList.add('active');
+            gameOverFlag = true;
+            
+            title.textContent = isWin ? "🎉 승리!" : "💀 패배";
+            title.style.color = isWin ? "var(--secondary-color)" : "var(--primary-color)";
+            
+            // 점수/결과 목록 생성
+            const players = currentRoomData.players;
+            const sorted = Object.values(players).sort((a,b) => (a.isDead === b.isDead) ? 0 : a.isDead ? 1 : -1);
+            
+            list.innerHTML = sorted.map(p => `
+                <div class="result-row ${!p.isDead ? 'winner' : ''}">
+                    <span>${p.nickname}</span>
+                    <span>${!p.isDead ? '승리' : '탈락'}</span>
+                </div>
+            `).join('');
+        }
+
+        function cleanupAndExit() {
+            isExiting = true;
+            if(roomRef) {
+                if(!isHost) playersRef.child(myId).remove(); // 게스트는 자기만 삭제
+                else roomRef.remove(); // 호스트는 방 삭제
+                roomRef.off();
+            }
+            window.location.replace('대기실.html');
+        }
+
+        function requestRematch() {
+            playersRef.child(myId).update({ rematch: true });
+            document.getElementById('rematch-btn').textContent = "대기중...";
+            document.getElementById('rematch-btn').disabled = true;
+            
+            // 전원 재대결 확인 로직
+            roomRef.child('players').on('value', snap => {
+                const players = snap.val();
+                const allReady = Object.values(players).every(p => p.rematch);
+                if(allReady && isHost) {
+                    // 상태 초기화 후 게임 시작
+                    const updates = { status: 'playing' };
+                    Object.keys(players).forEach(uid => {
+                        updates[`players/${uid}/isDead`] = false;
+                        updates[`players/${uid}/rematch`] = false;
+                    });
+                    roomRef.update(updates);
+                }
+            });
+        }
+
+        function resetLocalGame() {
+            document.getElementById('gameover-overlay').classList.remove('active');
+            document.getElementById('rematch-btn').textContent = "다시하기";
+            document.getElementById('rematch-btn').disabled = false;
+            roomRef.child('players').off(); // 리매치 리스너 해제
+        }
+
+        function showCombo(text) {
+            const el = document.getElementById('combo-text');
+            el.textContent = text;
+            el.classList.add('show');
+            setTimeout(() => el.classList.remove('show'), 800);
+        }
+
+        function playSfx(id) {
+            const s = document.getElementById(id);
+            if(s) { s.currentTime = 0; s.play().catch(()=>{}); }
+        }
+
+    </script>
+</body>
+</html>
