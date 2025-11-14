@@ -2280,7 +2280,8 @@ function forceGameOver() {
                       amIReadyForRematch = requests.hasOwnProperty(playerUid); // [신규] 로컬 상태 업데이트
 
                       // [신규] 현재 방에 남아있는 플레이어 목록 (중요)
-                      const playersInRoom = Object.keys(currentRoomData.players || {});
+                      // currentRoomData가 없을 때 에러 방지를 위해 ?. 사용
+const playersInRoom = Object.keys(currentRoomData?.players || {});
                       
                       // [신규] '다시하기' 상태 목록 UI 업데이트
                       const allStatusSpans = document.querySelectorAll('#rematch-status-list .status-text');
@@ -2696,93 +2697,49 @@ async function hostReturnToGameLobby(playersData, gameType) {
     }
 }
 
-// [신규] 게스트가 "대기실로"를 누를 때 실행되는 함수
-async function guestHandleReturn(playersData) { // [수정] async 추가
-    if (!playersData || !roomRef || !playerUid) {
-        console.error("guestHandleReturn: 필수 데이터 누락");
-        cleanupAndExit(); // Fallback
-        return;
+// [수정] 게스트가 "대기실로"를 누를 때 실행되는 함수 (인원수 무관하게 대기실로 이동)
+async function guestHandleReturn(playersData) {
+    console.log("게스트가 방을 나갑니다. (대기실.html로 이동)");
+
+    isExiting = true;
+    stopSound('bgm');
+    if (timerId) clearInterval(timerId);
+    if (feverTimerId) clearTimeout(feverTimerId);
+
+    // onDisconnect 핸들러 취소 (중요: 방을 나가는 것이므로 서버가 강제 퇴장 처리하지 않도록)
+    if (playerRef) {
+        try { 
+            playerRef.onDisconnect().cancel(); 
+            console.log("Guest onDisconnect canceled.");
+        } catch(e) { 
+            console.warn("Guest onDisconnect cancel failed:", e); 
+        }
     }
 
-    const totalPlayers = Object.keys(playersData).length;
+    let removePromise = Promise.resolve();
 
-   if (totalPlayers === 2) {
-        // 2명 방: 게스트도 게임방.html로 이동 (방장과 함께)
-        console.log("2명 방: 게스트도 게임방.html로 이동합니다. (Host도 이동하도록 status: 'lobby' 설정)");
-
-        try {
-            // [신규] 방장도 이동시키기 위해 status: 'lobby'로 변경
-            await roomRef.update({
-                status: 'lobby',
-                gameStarted: false,
-                readyPlayers: null,
-                rematchRequests: null,
-                attacks: null
-            });
-        } catch (error) {
-            console.error("2명 방(Guest) 'lobby' 상태 변경 실패:", error);
-        }
-
-        isExiting = true;
-        stopSound('bgm');
-        if (timerId) clearInterval(timerId);
-        if (feverTimerId) clearTimeout(feverTimerId);
-        
-        // [### 1. onDisconnect 핸들러 수동 취소 (핵심) ###]
-        if (playerRef) { // (playerRef는 전역에 선언되어 있음)
-            try {
-                playerRef.onDisconnect().cancel();
-                console.log("Guest (2p) onDisconnect.cancel() 호출됨.");
-            } catch (e) { console.warn("Guest (2p) onDisconnect.cancel() 실패:", e); }
-        }
-
-        // [### 2. 리스너 끄기 ###]
+    if (roomRef && playerUid) {
+        // 1. 리스너 정리
         if (roomRef) roomRef.off('value', roomValueListener);
         if (chatListenerRef) chatListenerRef.off();
-        if (rematchRef) rematchRef.off(); // '다시하기' 리스너도 종료
-        
-        // [### 3. 게임방.html로 이동 ###]
-        window.location.replace(`게임방.html?roomId=${roomRef.key}`);
-    
-    } else {
-        // 3~4명 방: 게스트 본인만 리스너 정리 후 "게임방.html"로 나감
-        console.log(`${totalPlayers}명 방: 게스트만 게임방.html로 나갑니다. (나머지 인원 유지)`);
-        
-        isExiting = true; 
-        stopSound('bgm'); 
-        if (timerId) clearInterval(timerId);
-        if (feverTimerId) clearTimeout(feverTimerId);
-        
-        // [수정] playerRef가 있는지 확인
-        if (playerRef) {
-            const playerOnDisconnect = playerRef.onDisconnect();
-            if (playerOnDisconnect) { 
-                try { playerOnDisconnect.cancel(); } catch(e) { console.warn("Player onDisconnect cancel failed:", e); } 
-            }
-        }
+        if (rematchRef) rematchRef.off();
 
-        let removePromise = Promise.resolve(); 
+        // 2. DB 정리: 내 정보(players)와 재대결 요청(rematchRequests)을 모두 삭제
+        console.log("Removing self from players and rematchRequests...");
+        const updates = {};
+        updates['players/' + playerUid] = null;
+        updates['rematchRequests/' + playerUid] = null; // [핵심] 이걸 지워야 남은 사람들이 대기 상태에서 풀림
 
-        if (roomRef && playerUid) {
-            // [수정] 리스너 정리
-            if (roomRef) roomRef.off('value', roomValueListener);
-            if (chatListenerRef) chatListenerRef.off();
-            if (rematchRef) rematchRef.off();
-
-            // 'players' 목록에서 본인만 제거
-            console.log("Guest (3-4p) removing self from players...");
-            removePromise = roomRef.child('players/' + playerUid).remove();
-        }
-
-        // Firebase에서 제거가 완료되면 리디렉션
-        removePromise
-            .catch(e => console.error("Firebase 'players' 노드 제거 실패:", e))
-            .finally(() => {
-                // 대기실.html이 아닌 게임방.html로 리디렉션
-                console.log(`Redirecting to 게임방.html?roomId=${currentRoomId}`); 
-                window.location.replace(`게임방.html?roomId=${currentRoomId}`);
-            });
+        removePromise = roomRef.update(updates);
     }
+
+    // 3. Firebase 정리 후 대기실로 이동
+    removePromise
+        .catch(e => console.error("Firebase 데이터 정리 실패:", e))
+        .finally(() => {
+            console.log("Redirecting to 대기실.html");
+            window.location.replace('대기실.html');
+        });
 }
 
 
