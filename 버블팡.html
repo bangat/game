@@ -363,8 +363,8 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button id="lobby-btn" class="menu-btn secondary">대기실로</button>
                 <button id="rematch-btn" class="menu-btn primary">다시하기</button>
+                <button id="lobby-btn" class="menu-btn secondary">대기실로</button>
             </div>
         </div>
     </div>
@@ -559,9 +559,18 @@
                 renderOpponentHeader(players);
 
                 // 상태 관리
-                if (currentRoomData.status === 'playing' && !isPlaying && !gameOverFlag) {
+                if (currentRoomData.status === 'playing' && !isPlaying) {
+                    // [수정] 리매치로 인한 'playing' 상태 전환 처리
+                    // (이전 게임의 gameOverFlag = true 상태)
+                    if (gameOverFlag) {
+                        // 1. 모달을 닫고 플래그를 리셋합니다. (3번 수정에서 추가한 로직)
+                        resetLocalGame(); 
+                    }
+                    // 2. 카운트다운을 시작합니다.
                     startCountdown();
+
                 } else if (currentRoomData.status === 'waiting' && gameOverFlag) {
+                    // (이 로직은 '애니팡'과 달리 현재 사용되진 않지만, 만약을 위해 유지)
                     resetLocalGame();
                 } else if (currentRoomData.status === 'lobby') {
                     window.location.replace(`게임방.html?roomId=${roomId}`);
@@ -573,7 +582,11 @@
                 if (isPlaying) checkSurvivors(players);
                 
                 if (gameOverFlag) {
-                    updateRematchStatusUI(players);
+                    // [수정] players 인자를 제거합니다.
+                    // 이렇게 하면 updateRematchStatusUI 함수가 
+                    // 이 리스너에서 방금 갱신된 최신 'currentRoomData' (rematchRequests 포함)를
+                    // 직접 참조하게 되어 '준비완료' 상태가 즉시 동기화됩니다.
+                    updateRematchStatusUI();
                 }
             };
             
@@ -1359,6 +1372,7 @@ function forceGameOver() {
         function resetLocalGame() {
             document.getElementById('gameover-overlay').classList.remove('active');
             playersRef.child(myId).update({ rematch: false, isDead: false, board: null });
+            gameOverFlag = false; // [신규] 게임오버 플래그를 여기서 리셋해야 합니다.
         }
 
         function loadRematchChat() {
