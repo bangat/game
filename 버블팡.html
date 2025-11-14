@@ -558,20 +558,45 @@
                 // 실시간 미니보드 헤더 렌더링
                 renderOpponentHeader(players);
 
-                // 상태 관리
-                if (currentRoomData.status === 'playing' && !isPlaying) {
-                    // [수정] 리매치로 인한 'playing' 상태 전환 처리
-                    // (이전 게임의 gameOverFlag = true 상태)
-                    if (gameOverFlag) {
-                        // 1. 모달을 닫고 플래그를 리셋합니다. (3번 수정에서 추가한 로직)
-                        resetLocalGame(); 
-                    }
-                    // 2. 카운트다운을 시작합니다.
+// 상태 관리 (애니팡.html 로직과 동일하게 수정)
+                if (currentRoomData.status === 'playing' && !isPlaying && !gameOverFlag) {
+                    // (3단계) 'playing' 상태 감지 -> 카운트다운 시작
                     startCountdown();
+                    
+                } else if (currentRoomData.status === 'waiting') {
+                    // (1단계) 'waiting' 감지
+                    
+                    // [수정] gameOverFlag 대신 모달이 'active'인지 확인
+                    if (document.getElementById('gameover-overlay').classList.contains('active')) {
+                        console.log("[Rematch] 'waiting' 상태 감지. 게임 재시작 준비...");
+                        
+                        // [수정] resetLocalGame() 대신 수동으로 처리
+                        document.getElementById('gameover-overlay').classList.remove('active');
+                        gameOverFlag = false; 
+                        
+                        document.getElementById('loading-overlay').classList.add('active');
+                        
+                        if (roomRef && myId) {
+                            roomRef.child('readyPlayers/' + myId).set(true);
+                        }
+                    }
+                    
+                    // (2단계) 'waiting' (로딩 중) 상태
+                    document.getElementById('loading-overlay').classList.add('active');
+                    
+                    const readyPlayers = currentRoomData.readyPlayers || {};
+                    const totalPlayers = Object.keys(currentRoomData.players).length;
+                    const readyCount = Object.keys(readyPlayers).length;
 
-                } else if (currentRoomData.status === 'waiting' && gameOverFlag) {
-                    // (이 로직은 '애니팡'과 달리 현재 사용되진 않지만, 만약을 위해 유지)
-                    resetLocalGame();
+                    // (3단계) 호스트가 'playing'으로 변경
+                    if (isHost && totalPlayers >= 2 && readyCount === totalPlayers) {
+                        roomRef.update({
+                            status: 'playing',
+                            gameStarted: Date.now(),
+                            readyPlayers: null
+                        });
+                    }
+                    
                 } else if (currentRoomData.status === 'lobby') {
                     window.location.replace(`게임방.html?roomId=${roomId}`);
                 }
@@ -696,11 +721,15 @@
         }
 
         // --- 6. 게임 로직 ---
-        function initGame() {
+      function initGame() {
             // [핵심] 게임 시작 시 자동 퇴장 감지 기능 다시 활성화
             if (playersRef) {
                 playersRef.child(myId).onDisconnect().remove();
             }
+
+            // [신규] DB 상태 초기화 (resetLocalGame에서 이동)
+            playersRef.child(myId).update({ isDead: false, score: 0, board: null });
+            
 
             resizeGame();
             bubbles = [];
@@ -1254,12 +1283,11 @@ function addAttackLines(count) {
 function forceGameOver() {
             if (gameOverFlag) return;
             gameOverFlag = true;
-            playSfx('sfx-modal'); // [신규] 게임 종료 모달 사운드 재생
+            playSfx('sfx-modal'); 
             
             if (dropTimerId) clearTimeout(dropTimerId);
             document.getElementById('bgm').pause();
 
-            // [핵심] 결과창에서는 강퇴 방지
             if (playersRef) {
                 playersRef.child(myId).onDisconnect().cancel();
             }
@@ -1268,6 +1296,7 @@ function forceGameOver() {
             const title = document.getElementById('result-title');
             modal.classList.add('active');
             
+            // [핵심] 이 블록이 바로 보내주신 그 코드입니다.
             allPlayersRef.once('value', (snapshot) => {
                 const players = snapshot.val();
                 if (!players) return;
@@ -1288,29 +1317,27 @@ function forceGameOver() {
                 const rematchBtn = document.getElementById('rematch-btn');
                 const lobbyBtn = document.getElementById('lobby-btn');
                 
-                // 리스너 재설정 (복제하여 기존 제거)
                 const newRematch = rematchBtn.cloneNode(true);
                 const newLobby = lobbyBtn.cloneNode(true);
                 rematchBtn.parentNode.replaceChild(newRematch, rematchBtn);
                 lobbyBtn.parentNode.replaceChild(newLobby, lobbyBtn);
 
                 newRematch.textContent = "다시하기";
-            newRematch.disabled = false;
+                newRematch.disabled = false;
 
-            // [수정] '다시하기' 버튼 리스너 (토글 기능)
-            newRematch.addEventListener('click', () => {
-                if (roomRef && myId) {
-                    if (amIReadyForRematch) { // 현재 준비완료 상태면
-                        roomRef.child('rematchRequests/' + myId).remove(); // 취소
-                    } else { // 대기 상태면
-                        roomRef.child('rematchRequests/' + myId).set(true); // 준비
+                newRematch.addEventListener('click', () => {
+                    if (roomRef && myId) {
+                        if (amIReadyForRematch) { 
+                            roomRef.child('rematchRequests/' + myId).remove(); 
+                        } else { 
+                            roomRef.child('rematchRequests/' + myId).set(true); 
+                        }
                     }
-                }
-            });
+                });
 
-            newLobby.addEventListener('click', cleanupAndExit);
+                newLobby.addEventListener('click', cleanupAndExit);
 
-                updateRematchStatusUI(players);
+                updateRematchStatusUI(); // [수정] (players) 인자 제거
                 listenForRematch();
             });
         }
@@ -1369,10 +1396,11 @@ function forceGameOver() {
             });
         }
 
-        function resetLocalGame() {
+function resetLocalGame() {
+            // [수정] 이 함수는 이제 모달을 닫고 플래그만 리셋합니다.
+            // DB 업데이트는 initGame()에서 처리됩니다.
             document.getElementById('gameover-overlay').classList.remove('active');
-            playersRef.child(myId).update({ rematch: false, isDead: false, board: null });
-            gameOverFlag = false; // [신규] 게임오버 플래그를 여기서 리셋해야 합니다.
+            gameOverFlag = false; 
         }
 
         function loadRematchChat() {
@@ -1385,10 +1413,10 @@ function forceGameOver() {
         }
 
        // [핵심] '다시하기' UI 및 자동 시작 (애니팡 로직 이식 - v2)
-function updateRematchStatusUI(players) {
-    // 1. [수정] players 인자가 없을 경우를 대비, currentRoomData에서 다시 가져옴
-    if (!players && currentRoomData) players = currentRoomData.players;
-    if (!players) return; // 플레이어 정보가 없으면 중단
+function updateRematchStatusUI() {
+    // 1. [수정] '애니팡'과 동일하게 항상 전역 'currentRoomData'를 사용합니다.
+    if (!currentRoomData || !currentRoomData.players) return;
+    const players = currentRoomData.players;
 
     const list = document.getElementById('rematch-status-list');
     list.innerHTML = '';
@@ -1452,11 +1480,15 @@ function updateRematchStatusUI(players) {
     const allReady = activePlayerCount >= 2 && validReadyCount === activePlayerCount;
 
     if (isHost && allReady) {
+        // [핵심 수정] 'playing'이 아닌 'waiting'으로 변경 (애니팡과 동일한 2단계 재시작)
         const updates = {};
-        updates['status'] = 'playing'; 
+        updates['status'] = 'waiting'; 
         updates['attacks'] = null;     
-        updates['gameStarted'] = Date.now(); 
+        // updates['gameStarted'] = Date.now(); // [제거] 'waiting' 상태에서는 시작 시간 X
         updates['rematchRequests'] = null;
+        
+        // [신규] '애니팡'처럼 readyPlayers를 사용하도록 초기화
+        updates['readyPlayers'] = null; 
 
         playerIds.forEach(uid => {
             updates[`players/${uid}/isDead`] = false;  
