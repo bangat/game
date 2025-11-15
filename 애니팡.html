@@ -2619,8 +2619,105 @@ function triggerActualFeverMode() {
 
             // ------------------------------------
             // 6. 게임 로직 (수정)
-            // ------------------------------------
+            // -------------
+            // -----------------------
             
+            // [신규] ⭐️ + 💣 별팡+폭탄 조합 처리 함수
+async function handleStarBombCombination(r1_star, c1_star, r2_bomb, c2_bomb) {
+    // [⚡ 하이브리드 콤보 수정]
+    if (comboTimerId) {
+        clearTimeout(comboTimerId);
+        comboTimerId = null;
+        console.log(`⚡ SPEED COMBO! (현재 ${currentCombo}x)`);
+    } else {
+        currentCombo = 0;
+    }
+    currentCombo++;
+    playExplosionVFX(); // 강력한 폭발 이펙트
+    playSound('bomb-explode-sound'); // 폭발음
+    playSound('victory'); // 강력한 효과음 추가
+
+    const matchingTiles = new Set();
+    const STAR_BOMB_BONUS = 4000; // 보너스 4000점
+
+    // 1. 별팡(star)의 5x5 폭발 범위 추가 (r1_star, c1_star 기준)
+    for (let r = r1_star - 2; r <= r1_star + 2; r++) {
+        for (let c = c1_star - 2; c <= c1_star + 2; c++) {
+            if (r >= 0 && r < ROWS && c >= 0 && c < COLS && board[r][c]) {
+                matchingTiles.add(`${r}-${c}`);
+            }
+        }
+    }
+
+    // 2. 폭탄(bomb)의 십자+바닥 폭발 범위 추가 (r2_bomb, c2_bomb 기준)
+    const bottomRow = ROWS - 1;
+    // (2-1) 폭탄 자신
+    matchingTiles.add(`${r2_bomb}-${c2_bomb}`);
+    // (2-2) 십자 (가로/세로)
+    for (let c = 0; c < COLS; c++) {
+        if (board[r2_bomb][c]) matchingTiles.add(`${r2_bomb}-${c}`);
+    }
+    for (let r = 0; r < ROWS; r++) {
+        if (board[r][c2_bomb]) matchingTiles.add(`${r}-${c2_bomb}`);
+    }
+    // (2-3) 맨 아랫줄
+    for (let c = 0; c < COLS; c++) {
+        if (board[bottomRow][c]) matchingTiles.add(`${bottomRow}-${c}`);
+    }
+
+    // 3. 점수 계산
+    const scoreMultiplier = 1.0;
+    const baseScore = matchingTiles.size * 50;
+    const comboBonus = currentCombo * 20;
+    const turnScore = Math.round((baseScore + comboBonus + STAR_BOMB_BONUS) * scoreMultiplier);
+    
+    score += turnScore;
+    
+    // 4. 이펙트 표시 (두 위치에서 동시에)
+    showStarExplosionVFX(r1_star, c1_star);
+    showCrossExplosion([{ row: r2_bomb, col: c2_bomb }, { row: bottomRow, col: c2_bomb }]);
+    showComboText(currentCombo, matchingTiles);
+    showComboScore(turnScore);
+    
+    updateScoreUI();
+    if (playerRef) { playerRef.child('score').set(score); }
+    playComboSound(currentCombo);
+    
+    // 5. 타일 제거 및 리필
+    await animatePop(matchingTiles);
+    removeMatches(matchingTiles);
+    
+    const { droppedTilesMap } = dropTiles();
+    const newTilesMap = fillTopTiles();
+
+    // 6. 후처리 (피버/일반 모드 분기)
+    if (isFeverMode) {
+        animateDrops(droppedTilesMap, newTilesMap);
+        const newMatchData = findAllMatches();
+        if (newMatchData.matches.size > 0) { runCascade(newMatchData); }
+        else {
+            const gracePeriod = getComboGracePeriod(currentCombo);
+            if (comboTimerId) clearTimeout(comboTimerId);
+            comboTimerId = setTimeout(() => { currentCombo = 0; comboTimerId = null; }, gracePeriod); 
+            startHintTimer(); 
+            if (!checkForPossibleMoves()) { handleNoMoreMoves(); }
+        }
+    } else {
+        await animateDrops(droppedTilesMap, newTilesMap);
+        const newMatchData = findAllMatches();
+        if (newMatchData.matches.size > 0) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            await runCascade(newMatchData);
+        } else {
+            const gracePeriod = getComboGracePeriod(currentCombo);
+            if (comboTimerId) clearTimeout(comboTimerId);
+            comboTimerId = setTimeout(() => { currentCombo = 0; comboTimerId = null; }, gracePeriod); 
+            startHintTimer(); 
+            if (!checkForPossibleMoves()) { await handleNoMoreMoves(); }
+        }
+    }
+}
+
          async function attemptSwap(r1, c1, r2, c2) {
     if (isProcessing) return;
     isProcessing = true;
@@ -2662,8 +2759,24 @@ function triggerActualFeverMode() {
         isProcessing = false;
         return;
     }
+
     
-    // 1c. 팡이(폭탄) 스왑 (일반 타일과의 스왑, 기존 로직)
+    
+    // [신규] 1c. ⭐️ 별 팡이 + 💣 폭탄 스왑
+    if ((tile1 === 'star' && tile2 === '💣')) {
+        // (r1, c1)이 별, (r2, c2)가 폭탄
+        await handleStarBombCombination(r1, c1, r2, c2);
+        isProcessing = false;
+        return;
+    }
+    if ((tile1 === '💣' && tile2 === 'star')) {
+        // (r1, c1)이 폭탄, (r2, c2)가 별
+        await handleStarBombCombination(r2, c2, r1, c1);
+        isProcessing = false;
+        return;
+    }
+
+    // [수정] 1d. 팡이(폭탄) 스왑 (일반 타일과의 스왑, 기존 로직)
     if (tile1 === '💣') {
         await handlePangiExplosion(r1, c1);
         isProcessing = false;
@@ -3418,6 +3531,7 @@ playSound('bomb-explode-sound'); // [신규] 팡이 폭발 효과음
 
 
 // [신규] ⭐️ 별 팡이 (3x3) 폭발 처리 함수
+// [신규] ⭐️ 별 팡이 (5x5) 폭발 처리 함수 (연쇄 폭발 기능 추가됨)
 async function handleStarPangiExplosion(row, col) {
     // [⚡ 하이브리드 콤보 수정]
     if (comboTimerId) {
@@ -3430,23 +3544,38 @@ async function handleStarPangiExplosion(row, col) {
         currentCombo = 0; // 0으로 리셋 (아래 currentCombo++가 1로 만듦)
     }
     currentCombo++; // [중요] 특수 타일 발동 시 콤보 1 증가
-playSound('bomb-explode-sound'); // [신규] 별 팡이 폭발 효과음 (동일)
-    const matchingTiles = new Set();
+    playSound('bomb-explode-sound'); // [신규] 별 팡이 폭발 효과음 (동일)
     
-    // 1. [수정] (row, col)을 중심으로 5x5 대형 폭발
+    // [핵심 수정] 1. 폭발 대상과 연쇄 대상을 분리
+    const matchingTiles = new Set(); // 1차로 터질 타일 (일반, 폭탄, 무지개 등)
+    const chainedStars = []; // 2차로 연쇄 폭발할 별팡
+
+    // 1. (row, col)을 중심으로 5x5 대형 폭발
     for (let r = row - 2; r <= row + 2; r++) {
         for (let c = col - 2; c <= col + 2; c++) {
             // 보드 범위 체크
             if (r >= 0 && r < ROWS && c >= 0 && c < COLS) {
-                if (board[r][c]) { // null이 아닌 타일만
-                    matchingTiles.add(`${r}-${c}`);
+                const tileData = board[r][c];
+                if (tileData) { // null이 아닌 타일만
+                    
+                    // [핵심 수정] 
+                    // 다른 '별팡'을 발견했고, 그것이 폭발의 진원지가 아니라면
+                    if (tileData === 'star' && (r !== row || c !== col)) {
+                        // 연쇄 폭발 대기열에 추가
+                        chainedStars.push({ r, c });
+                        // 1차 폭발 대상(matchingTiles)에는 추가하지 않음!
+                    } else {
+                        // 일반 타일, 폭탄, 무지개, 또는 폭발 진원지(별 자신)
+                        matchingTiles.add(`${r}-${c}`);
+                    }
                 }
             }
         }
     }
     
     const scoreMultiplier = 1.0; // 피버와 무관
-    const baseScore = matchingTiles.size * 50; // 3x3 = 9 * 50 = 450
+    // [수정] 점수 계산은 1차 폭발(matchingTiles)만 기준으로 함
+    const baseScore = matchingTiles.size * 50; 
     const comboBonus = currentCombo * 20;
     const turnScore = Math.round((baseScore + comboBonus + 1500) * scoreMultiplier); // 별 팡이 보너스 1500점
     
@@ -3461,38 +3590,71 @@ playSound('bomb-explode-sound'); // [신규] 별 팡이 폭발 효과음 (동일
     if (playerRef) { playerRef.child('score').set(score); }
     playComboSound(currentCombo);
     
+    // [수정] 1차 폭발 타일만 제거
     await animatePop(matchingTiles);
     removeMatches(matchingTiles);
     
     const { droppedTilesMap } = dropTiles();
     const newTilesMap = fillTopTiles();
+    
+    // [수정] 1차 폭발에 대한 리필/애니메이션
+    await animateDrops(droppedTilesMap, newTilesMap);
+    
+    // 1차 리필 후 자연 콤보 체크
+    const newMatchData = findAllMatches();
+    if (newMatchData.matches.size > 0) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        await runCascade(newMatchData);
+    }
+
+    // [핵심 수정] 2. 연쇄 폭발(chainedStars) 실행
+    if (chainedStars.length > 0) {
+        console.log(`⭐️ ${chainedStars.length}개의 별팡 연쇄 폭발 시작!`);
+        // (주의: isProcessing = true 상태가 유지됨)
+        for (const star of chainedStars) {
+            // 1차 폭발/낙하 후에도 해당 위치에 'star'가 있는지 다시 확인
+            if (board[star.r][star.c] === 'star') {
+                await handleStarPangiExplosion(star.r, star.c); // 재귀 호출
+            }
+        }
+    }
 
     // [수정] 피버/일반 모드 분기 (팡이 로직과 동일)
+    // [수정] 콤보 타이머 로직을 연쇄 폭발(if)과 일반(else)으로 분리
     if (isFeverMode) {
-        animateDrops(droppedTilesMap, newTilesMap);
-        const newMatchData = findAllMatches();
-        if (newMatchData.matches.size > 0) {
-            runCascade(newMatchData);
-        } else {
-            const gracePeriod = getComboGracePeriod(currentCombo);
-            if (comboTimerId) clearTimeout(comboTimerId);
-            comboTimerId = setTimeout(() => { currentCombo = 0; comboTimerId = null; }, gracePeriod); 
-            startHintTimer(); 
-            if (!checkForPossibleMoves()) { handleNoMoreMoves(); }
+        // 피버모드에서는 콤보 타이머 로직이 runCascade에서 처리되므로
+        // 연쇄 폭발이 없을 때만 콤보 타이머/힌트 로직을 실행
+        if (chainedStars.length === 0) {
+            animateDrops(droppedTilesMap, newTilesMap);
+            const newMatchData = findAllMatches();
+            if (newMatchData.matches.size > 0) {
+                runCascade(newMatchData);
+            } else {
+                const gracePeriod = getComboGracePeriod(currentCombo);
+                if (comboTimerId) clearTimeout(comboTimerId);
+                comboTimerId = setTimeout(() => { currentCombo = 0; comboTimerId = null; }, gracePeriod);
+                startHintTimer();
+                if (!checkForPossibleMoves()) { handleNoMoreMoves(); }
+            }
         }
     } else {
-        await animateDrops(droppedTilesMap, newTilesMap);
-        const newMatchData = findAllMatches();
-        if (newMatchData.matches.size > 0) {
-            await new Promise(resolve => setTimeout(resolve, 100));
-            await runCascade(newMatchData);
-        } else {
-            const gracePeriod = getComboGracePeriod(currentCombo);
-            if (comboTimerId) clearTimeout(comboTimerId);
-            comboTimerId = setTimeout(() => { currentCombo = 0; comboTimerId = null; }, gracePeriod); 
-            startHintTimer(); 
-            if (!checkForPossibleMoves()) { await handleNoMoreMoves(); }
+        // 일반 모드에서는 모든 폭발(연쇄 포함)이 끝난 후 콤보 타이머/힌트 로직 실행
+        // (연쇄 폭발이 있었다면 이미 await으로 모두 처리됨)
+        if (chainedStars.length === 0) {
+            // (1차 폭발만 있었던 경우) -> newMatchData가 이미 위에서 처리됨
+            const newMatchDataAfterFill = findAllMatches();
+            if (newMatchDataAfterFill.matches.size > 0) {
+                 await new Promise(resolve => setTimeout(resolve, 100));
+                 await runCascade(newMatchDataAfterFill);
+            }
         }
+        
+        // (연쇄 폭발이 있었든 없었든) 최종 콤보 타이머 시작
+        const gracePeriod = getComboGracePeriod(currentCombo);
+        if (comboTimerId) clearTimeout(comboTimerId);
+        comboTimerId = setTimeout(() => { currentCombo = 0; comboTimerId = null; }, gracePeriod);
+        startHintTimer();
+        if (!checkForPossibleMoves()) { await handleNoMoreMoves(); }
     }
 }
 
