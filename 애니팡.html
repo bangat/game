@@ -1033,6 +1033,14 @@
     <audio class="combo-pool-20" src="./애니팡콤보사운드/애니팡콤보20.mp3" preload="auto"></audio>
     <audio class="combo-pool-20" src="./애니팡콤보사운드/애니팡콤보20.mp3" preload="auto"></audio>
 
+    <audio class="vo-combo-10-pool" src="./애니팡콤보사운드/10콤보좋아.wav" preload="auto"></audio>
+    <audio class="vo-combo-10-pool" src="./애니팡콤보사운드/10콤보좋아.wav" preload="auto"></audio>
+    
+    <audio class="vo-combo-20-pool" src="./애니팡콤보사운드/20콤보와우.wav" preload="auto"></audio>
+    <audio class="vo-combo-20-pool" src="./애니팡콤보사운드/20콤보와우.wav" preload="auto"></audio>
+    
+    <audio class="vo-combo-25-pool" src="./애니팡콤보사운드/25콤보멋져.wav" preload="auto"></audio>
+    <audio class="vo-combo-25-pool" src="./애니팡콤보사운드/25콤보멋져.wav" preload="auto"></audio>
     
     <audio id="gameover-sound" src="./봄버맨사운드/패배사운드.mp3" preload="auto"></audio>
     <audio id="victory-sound" src="./봄버맨사운드/win.mp3" preload="auto"></audio>
@@ -1175,14 +1183,22 @@ const rematchChatMessages = document.getElementById('rematch-chat-messages');
                 victory: document.getElementById('victory-sound'),
                 bgm: document.getElementById('bgm-sound'), // [신규] 배경음악
                 rainbow: document.getElementById('rainbow-sound'), // [신규] 레인보우 효과음
-                countdown: document.getElementById('countdown-sound') // [신규] 321GO
+                countdown: document.getElementById('countdown-sound'), // [신규] 321GO
+                // [신규] 콤보 마일스톤 성우 음성
+                vo_combo_10: Array.from(document.querySelectorAll('.vo-combo-10-pool')),
+                vo_combo_20: Array.from(document.querySelectorAll('.vo-combo-20-pool')),
+                vo_combo_25: Array.from(document.querySelectorAll('.vo-combo-25-pool')),
             };
+
+            
 
             // [수정] 20종류의 오디오 풀 순환을 위한 카운터 (20개)
             let matchSoundCounters = [
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
             ];
+            // [신규] 콤보 마일스톤 오디오 풀 카운터
+            let voSoundCounters = { 10: 0, 20: 0, 25: 0 };
             // [수정] 타일 수 (8x6 = 48개)
             const ROWS = 8;
             const COLS = 6;
@@ -4310,10 +4326,40 @@ const turnScore = Math.round((baseScore + comboBonus + crossBonus + rainbowBonus
                 return Math.max(500, 2000 - decreasePerCombo * (combo - 15));
             }
 
+            // [신규] 🎵 콤보 마일스톤 성우 음성 재생 함수
+            function playMilestoneSound(combo) {
+                let soundKey;
+                if (combo === 10) soundKey = 'vo_combo_10';
+                else if (combo === 20) soundKey = 'vo_combo_20';
+                else if (combo === 25) soundKey = 'vo_combo_25';
+                else return; // 해당 콤보가 아님
+
+                try {
+                    const soundPool = sounds[soundKey]; // 예: vo_combo_10 풀
+                    if (!soundPool || soundPool.length === 0) return;
+
+                    let counter = voSoundCounters[combo];
+                    const sound = soundPool[counter];
+
+                    if (sound) {
+                        sound.playbackRate = 1.0;
+                        sound.volume = 1.0; // 성우 음성은 100% 볼륨
+                        sound.currentTime = 0;
+                        sound.play().catch(e => {});
+
+                        // 다음 재생을 위해 카운터 1 증가
+                        voSoundCounters[combo] = (counter + 1) % soundPool.length;
+                    }
+                } catch(e) {
+                    console.error("playMilestoneSound 오류:", e);
+                }
+            }
+            
 
      // [수정] 🎵 20파일 마일스톤 방식으로 변경 (요청하신 로직)
            function playComboSound(combo) {
-    
+    // [신규] 마일스톤 성우 음성 재생 (10, 20, 25콤보)
+                playMilestoneSound(combo);
                 // 1. [핵심] 콤보 숫자에 따라 0~19번 풀(파일) 중 하나를 선택 (마일스톤)
                 let poolIndex;
                 if (combo <= 3)       { poolIndex = 0; }  // 1-3 콤보 -> 1번 파일
