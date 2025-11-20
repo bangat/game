@@ -901,6 +901,33 @@
             border-width: 6px;
             transition: border-width 0.3s;
         }
+
+        /* [신규] 공격 투사체 및 타격 효과 스타일 */
+        .projectile-anim {
+            position: fixed;
+            font-size: 3.0em;
+            z-index: 9999;
+            pointer-events: none;
+            /* 부드러운 가속도 이동 */
+            transition: transform 0.5s cubic-bezier(0.19, 1, 0.22, 1), opacity 0.3s ease-in; 
+            will-change: transform;
+            filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.8));
+        }
+
+        /* 점수판 피격 효과 (흔들림 + 붉은색) */
+        @keyframes target-shake-hit {
+            0% { transform: translateX(0) scale(1); background-color: #fff; }
+            20% { transform: translateX(-5px) rotate(-5deg) scale(1.1); background-color: #FFD1D1; }
+            40% { transform: translateX(5px) rotate(5deg) scale(1.1); background-color: #FF8C8C; }
+            60% { transform: translateX(-5px) rotate(-5deg) scale(1.1); background-color: #FFD1D1; }
+            80% { transform: translateX(5px) rotate(5deg) scale(1); background-color: #fff; }
+            100% { transform: translateX(0) scale(1); background-color: #fff; }
+        }
+        
+        .stat-box.hit-effect {
+            animation: target-shake-hit 0.5s ease-in-out;
+            border-color: var(--danger-color) !important; /* 테두리도 빨갛게 */
+        }
     </style>
 </head>
 <body>
@@ -2847,6 +2874,67 @@ async function handleStarBombCombination(r1_star, c1_star, r2_bomb, c2_bomb) {
     }
 }
 
+// [신규] 공격 투사체 애니메이션 발사! 🚀
+        function showProjectileAttack(attackCount) {
+            // 1. 공격 대상: 나를 제외한 모든 플레이어의 점수판
+            const targets = Array.from(document.querySelectorAll('.stat-box:not(.my-score)'));
+            if (targets.length === 0) return;
+
+            // 2. 공격 강도에 따른 이모지 선택
+            // 3개 이상(5매치/콤보)이면 로켓, 그 외엔 얼음
+            const emoji = attackCount >= 3 ? '🚀' : '🧊'; 
+            
+            // 3. 발사 시작점: 화면 중앙 (또는 게임 보드 중앙)
+            const wrapperRect = gameWrapper.getBoundingClientRect();
+            const startX = wrapperRect.width / 2;
+            const startY = wrapperRect.height / 2;
+
+            // 4. 각 대상에게 투사체 발사
+            targets.forEach((target, index) => {
+                // 약간의 시간차 발사 (다다다닥!)
+                setTimeout(() => {
+                    const rect = target.getBoundingClientRect();
+                    // 목표 지점 (점수판의 중심)
+                    const targetX = rect.left + rect.width / 2;
+                    const targetY = rect.top + rect.height / 2;
+
+                    // 투사체 생성
+                    const projectile = document.createElement('div');
+                    projectile.className = 'projectile-anim';
+                    projectile.textContent = emoji;
+                    projectile.style.left = `${startX}px`;
+                    projectile.style.top = `${startY}px`;
+                    // 초기 위치 보정 (중심점 맞추기)
+                    projectile.style.transform = 'translate(-50%, -50%) scale(0.5)';
+                    
+                    document.body.appendChild(projectile);
+
+                    // 애니메이션 실행 (다음 프레임에 적용해야 transition 작동)
+                    requestAnimationFrame(() => {
+                        const deltaX = targetX - startX;
+                        const deltaY = targetY - startY;
+                        
+                        // 날아가면서 커지고 회전함
+                        projectile.style.transform = `translate(calc(-50% + ${deltaX}px), calc(-50% + ${deltaY}px)) scale(1.2) rotate(360deg)`;
+                    });
+
+                    // 도착 후 처리 (0.5초 뒤)
+                    setTimeout(() => {
+                        projectile.remove(); // 투사체 제거
+                        
+                        // 타겟 흔들림 효과 적용
+                        target.classList.remove('hit-effect'); // 리셋
+                        void target.offsetWidth; // 강제 리플로우 (애니메이션 재시작용)
+                        target.classList.add('hit-effect');
+                        
+                        // 타격음 재생 (작게)
+                        playSound('bomb-explode-sound'); 
+                    }, 500); // CSS transition 시간과 일치
+
+                }, index * 100); // 타겟별 0.1초 간격
+            });
+        }
+
          async function attemptSwap(r1, c1, r2, c2) {
     if (isProcessing) return;
     isProcessing = true;
@@ -2980,7 +3068,9 @@ showPerfectPlayText(PERFECT_PLAY_BONUS);
     // (findAllMatches보다 먼저, 스왑 직후의 보드를 검사해야 함)
     const attackCount = checkPlayerAttack(r1, c1, r2, c2);
     if (attackCount > 0) {
-        sendJunkAttack(attackCount); // 상대에게 공격 전송
+        console.log(`⚔️ 공격 발동! 강도: ${attackCount}`);
+        sendJunkAttack(attackCount); // 네트워크 전송
+        showProjectileAttack(attackCount); // [✨추가] 시각적 투사체 발사!
     }
     const matchData = findAllMatches();
             
