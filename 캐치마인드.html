@@ -504,7 +504,7 @@ function handleGameState(data) {
     if (status === 'waiting') {
         loadingOverlay.classList.add('active');
         resultOverlay.classList.remove('active');
-
+stopBgm(); // [안전장치] 대기 중에는 BGM 끄기
         if (!data.starting) {
             document.getElementById('loading-text').style.display = 'block';
             document.getElementById('loading-text').innerText = `대기중 (${Object.keys(data.players||{}).length}명)...`;
@@ -525,15 +525,16 @@ function handleGameState(data) {
         }
     }
     else if (status === 'playing') {
-        // [핵심] 게임 화면이 활성화되는 이 시점에 BGM 재생!
+        // [핵심] status가 'playing'일 때만 BGM 재생!
+        // 로딩 화면(카운트다운) 제거
         loadingOverlay.classList.remove('active');
         resultOverlay.classList.remove('active');
         
-        // 카운트다운 정리
+        // 카운트다운 타이머 확실히 정리
         isCountdownInProgress = false;
         if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
 
-        // [신규] 여기서 재생해야 "GO!" 후 보드 생성과 동시에 음악이 나옵니다.
+        // [수정] 여기서 BGM 재생 (GO! 이후 게임 화면 진입 시점)
         playRandomBgm();
 
         roundDisplay.innerText = `${gData.round || 1}/${MAX_ROUNDS}`;
@@ -580,6 +581,9 @@ function startCountdown() {
     
     document.getElementById('loading-text').style.display = 'none';
     
+    // [중요] 혹시 켜져있을지 모를 BGM 끄기 (카운트다운 집중)
+    stopBgm(); 
+
     let count = 3;
     document.getElementById('countdown-text').innerText = count;
     document.getElementById('snd-start').play().catch(()=>{});
@@ -595,11 +599,11 @@ function startCountdown() {
             
             // "GO!" 표시
             document.getElementById('countdown-text').innerText = "GO!";
-            
-            // [수정] 여기 있던 playRandomBgm() 삭제됨 (handleGameState로 이동)
+            // [중요] 여기서 playRandomBgm()을 호출하면 안 됩니다! (삭제)
             
             if (isHost) {
-                // 1초(1000ms) 뒤에 게임 시작 신호를 보냄 -> 이때 handleGameState가 반응하여 BGM 재생
+                // 1초 뒤 게임 상태를 'playing'으로 변경
+                // -> 이때 handleGameState가 호출되면서 BGM이 시작됩니다.
                 setTimeout(() => {
                     const pIds = Object.keys(gameState.players);
                     roomRef.update({
