@@ -327,7 +327,7 @@ const WORDS = [
   "슈퍼맨", "스키", "여우", "오리", "오징어", "선인장", "청소기", "캥거루", "헬리콥터", "해바라기"
 ];
 const MAX_ROUNDS = 5;
-const TURN_TIME = 60;
+const TURN_TIME = 90;
 
 // DOM
 const canvas = document.getElementById('game-canvas');
@@ -467,34 +467,102 @@ function initGame(id) {
         }
     });
 
+   // [여기서부터 복사] initGame 내부의 roomRef.on 부분
+    let lastPlayersJson = ''; 
+
     roomRef.on('value', snap => {
         if (isExiting) return;
+        
         if (!snap.exists()) { 
             alert('방이 사라졌습니다.'); 
             location.href = '대기실.html'; 
             return; 
         }
+
         const data = snap.val();
         gameState = data;
         isHost = (data.hostId === myUid);
 
+        // 1. [핵심] 리매치 감지 및 데이터 초기화 (방장 전용)
+        if (isHost && data.status === 'gameOver') {
+            const players = data.players || {};
+            const reqs = data.rematchRequests || {};
+            const playerIds = Object.keys(players);
+            
+            // 전원 준비 완료 확인
+            const allReady = playerIds.length > 0 && playerIds.every(uid => reqs[uid] === true);
+
+            if (allReady) {
+                console.log("모두 준비 완료. 게임 데이터를 초기화하고 카운트다운을 시작합니다.");
+                
+                const updates = {};
+                // (1) 상태를 'waiting'으로 돌리고 'starting: true'로 카운트다운 유도
+                updates['status'] = 'waiting';
+                updates['starting'] = true; 
+                
+                // (2) 게임 데이터 초기화
+                updates['gameData'] = {
+                    round: 1,
+                    drawer: playerIds[0], // 첫 번째 플레이어부터 시작
+                    word: '', // 단어는 카운트다운 직후 할당
+                    timer: TURN_TIME
+                };
+                
+                // (3) 채팅, 그림, 요청 내역 삭제
+                updates['chat'] = null; 
+                updates['drawLines'] = null;
+                updates['rematchRequests'] = null;
+                updates['clearCanvas'] = Date.now();
+
+                // (4) [중요] 모든 플레이어 점수 0점으로 초기화
+                playerIds.forEach(pid => {
+                    updates[`players/${pid}/score`] = 0;
+                });
+
+                roomRef.update(updates);
+            }
+        }
+
+        // 2. 초기화 또는 꼬임 방지
         if (isHost && !data.gameData && data.status !== 'gameOver') {
             roomRef.update({
                 status: 'waiting',
-                gameData: {
-                    round: 1,
-                    timer: TURN_TIME,
-                    drawer: '',
-                    word: ''
-                }
+                gameData: { round: 1, timer: TURN_TIME, drawer: '', word: '' }
             });
         }
 
-        renderPlayers(data.players, data.gameData?.drawer);
+        // 3. 렌더링 최적화 (배경음악 끊김 방지)
+        const currentPlayersJson = JSON.stringify(data.players) + (data.gameData?.drawer || '');
+        if (lastPlayersJson !== currentPlayersJson) {
+            renderPlayers(data.players, data.gameData?.drawer);
+            lastPlayersJson = currentPlayersJson;
+        }
+
         handleGameState(data);
     });
+    // [여기까지]
 
     roomRef.child('drawLines').on('child_added', snap => drawLineRemote(snap.val()));
+
+    // [치트키] E키를 누르면 강제 종료 (방장 전용)
+    window.addEventListener('keydown', (e) => {
+        // 채팅창 입력 중일 때는 치트키 동작 안 함
+        if (document.activeElement === document.getElementById('answer-input')) return;
+
+        if (e.key.toLowerCase() === 'e') {
+            if (isHost && roomRef) {
+                console.log("🛑 치트키: 강제 게임 종료 실행");
+                // 서버 상태를 gameOver로 바꾸면 -> handleGameState가 감지하고 -> showResult 호출함
+                roomRef.update({ 
+                    status: 'gameOver',
+                    // (선택사항) 강제 종료임을 알리고 싶다면 아래 주석 해제
+                    // gameData: { ...gameState.gameData, word: '강제 종료' } 
+                });
+            } else if (!isHost) {
+                console.log("방장만 강제 종료할 수 있습니다.");
+            }
+        }
+    });
 }
 
 function handleGameState(data) {
@@ -503,9 +571,15 @@ function handleGameState(data) {
 
     if (status === 'waiting') {
         loadingOverlay.classList.add('active');
-        resultOverlay.classList.remove('active');
-stopBgm(); // [안전장치] 대기 중에는 BGM 끄기
+        resultOverlay.classList.remove('active'); // 결과창 닫기
+
+        // [추가] 대기 상태로 돌아오면 로컬 채팅창과 점수도 깨끗하게 비움
+        if (data.starting) {
+            document.getElementById('chat-list').innerHTML = ''; // 채팅 내역 삭제
+        }
+
         if (!data.starting) {
+            // 대기 중 (준비 전)
             document.getElementById('loading-text').style.display = 'block';
             document.getElementById('loading-text').innerText = `대기중 (${Object.keys(data.players||{}).length}명)...`;
             document.getElementById('countdown-text').innerText = "";
@@ -513,29 +587,28 @@ stopBgm(); // [안전장치] 대기 중에는 BGM 끄기
             isCountdownInProgress = false;
             if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
         } else {
+            // 카운트다운 시작 (starting: true)
             document.getElementById('loading-text').style.display = 'none';
             
             if (!isCountdownInProgress) {
-                startCountdown();
+                startCountdown(); // 여기서 3, 2, 1 카운트다운 시작
             }
         }
-
+        // (기존 코드 유지)
         if (isHost && Object.keys(data.players).length >= 2 && !data.starting) {
             roomRef.update({ starting: true });
         }
     }
     else if (status === 'playing') {
-        // [핵심] status가 'playing'일 때만 BGM 재생!
-        // 로딩 화면(카운트다운) 제거
+        // ... (이하 기존 playing 로직 유지)
         loadingOverlay.classList.remove('active');
         resultOverlay.classList.remove('active');
         
-        // 카운트다운 타이머 확실히 정리
+        // 카운트다운 정리
         isCountdownInProgress = false;
         if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
 
-        // [수정] 여기서 BGM 재생 (GO! 이후 게임 화면 진입 시점)
-        playRandomBgm();
+        playRandomBgm(); // BGM 재생
 
         roundDisplay.innerText = `${gData.round || 1}/${MAX_ROUNDS}`;
         timerBadge.innerText = gData.timer || 0;
@@ -543,17 +616,17 @@ stopBgm(); // [안전장치] 대기 중에는 BGM 끄기
         if ((gData.timer || 0) <= 10) timerBadge.classList.add('urgent');
         else timerBadge.classList.remove('urgent');
 
-       if (gData.drawer !== lastDrawerUid) {
+        // 그리는 사람 UI 설정 (기존 코드와 동일)
+        if (gData.drawer !== lastDrawerUid) {
             lastDrawerUid = gData.drawer;
+            // ... (UI 갱신 로직) ...
             const isDrawer = (gData.drawer === myUid);
-
             if (isDrawer) {
                 drawingTools.style.display = 'flex';
                 wordDisplay.innerText = `제시어: ${gData.word}`;
                 openInputBtn.innerText = "🎨 당신이 그릴 차례입니다!";
                 openInputBtn.disabled = true;
                 openInputBtn.style.background = "#ccc";
-                openInputBtn.style.borderBottomColor = "#999";
             } else {
                 drawingTools.style.display = 'none';
                 const wordLen = gData.word ? gData.word.length : 0;
@@ -562,7 +635,6 @@ stopBgm(); // [안전장치] 대기 중에는 BGM 끄기
                 openInputBtn.innerText = "💬 정답 / 채팅 입력";
                 openInputBtn.disabled = false;
                 openInputBtn.style.background = "var(--primary-color)";
-                openInputBtn.style.borderBottomColor = "#C04A4A";
             }
         }
 
@@ -581,29 +653,26 @@ function startCountdown() {
     
     document.getElementById('loading-text').style.display = 'none';
     
-    // [중요] 혹시 켜져있을지 모를 BGM 끄기 (카운트다운 집중)
-    stopBgm(); 
-
     let count = 3;
-    document.getElementById('countdown-text').innerText = count;
-    document.getElementById('snd-start').play().catch(()=>{});
+    const countText = document.getElementById('countdown-text');
+    countText.innerText = count;
+    playSound('snd-start'); // 카운트다운 소리
 
     countdownTimer = setInterval(() => {
         count--;
         if (count > 0) {
-            document.getElementById('countdown-text').innerText = count;
-            document.getElementById('snd-start').play().catch(()=>{});
+            countText.innerText = count;
+            playSound('snd-start');
         } else {
             clearInterval(countdownTimer);
             countdownTimer = null;
             
             // "GO!" 표시
-            document.getElementById('countdown-text').innerText = "GO!";
-            // [중요] 여기서 playRandomBgm()을 호출하면 안 됩니다! (삭제)
+            countText.innerText = "GO!";
+            playSound('snd-start'); // GO 소리
             
+            // [중요] 방장만 1초 뒤에 게임을 실제로 시작시킴 (싱크 맞춤)
             if (isHost) {
-                // 1초 뒤 게임 상태를 'playing'으로 변경
-                // -> 이때 handleGameState가 호출되면서 BGM이 시작됩니다.
                 setTimeout(() => {
                     const pIds = Object.keys(gameState.players);
                     roomRef.update({
@@ -617,8 +686,10 @@ function startCountdown() {
                         },
                         drawLines: null,
                         clearCanvas: Date.now()
+                    }).then(() => {
+                        // 게임 시작 후 타이머 가동
+                        runTimer();
                     });
-                    runTimer();
                 }, 1000);
             }
         }
@@ -825,16 +896,13 @@ function sendAnswer() {
     inputModal.classList.remove('active');
     inputField.value = '';
 
-    if (!gameState || !gameState.gameData) {
-        console.error("게임 데이터가 없습니다.");
-        return;
-    }
+    if (!gameState || !gameState.gameData) return;
 
     const answer = gameState.gameData.word || "";
     const isDrawer = gameState.gameData.drawer === myUid;
     
-    // 출제자는 정답을 입력할 수 없고, 일반 채팅만 가능
     if (isDrawer) {
+        // 출제자는 채팅만 가능
         roomRef.child('chat').push({
             senderId: myUid,
             senderNickname: myNick,
@@ -845,18 +913,15 @@ function sendAnswer() {
         return;
     }
 
-    // 정답 비교 (모든 공백 제거 후 비교)
+    // [핵심] 정답 비교 강화 (모든 공백 제거)
+    // "사 과"라고 입력해도 "사과" 정답 처리됨
     const normalizedAnswer = answer.replace(/\s+/g, '').trim();
     const normalizedInput = txt.replace(/\s+/g, '').trim();
     
     if (normalizedInput === normalizedAnswer) {
-        // [변경] 정답 사운드 재생 함수 사용
+        // 정답 처리
         playSound('snd-correct');
-        
-        // 1. 정답자(나)에게 100점 부여
         roomRef.child(`players/${myUid}/score`).transaction(s => (s||0) + 100);
-        
-        // 'correct' 타입으로 메시지 전송
         roomRef.child('chat').push({
             senderId: myUid,
             senderNickname: myNick,
@@ -865,10 +930,8 @@ function sendAnswer() {
             timestamp: firebase.database.ServerValue.TIMESTAMP
         });
     } else {
-        // [신규] 오답 사운드 재생
+        // 오답
         playSound('snd-wrong');
-
-        // 오답인 경우 일반 채팅 전송
         roomRef.child('chat').push({
             senderId: myUid,
             senderNickname: myNick,
@@ -943,66 +1006,58 @@ function renderPlayers(players, drawerUid) {
 }
 
 function showResult(players, reqs={}) {
-    // 1. 배경음악 정지
-    stopBgm();
-
-    // 2. 결과 모달 표시 (CSS .active 클래스 사용)
-    if (resultOverlay) {
-        resultOverlay.classList.add('active');
+    // [중복 방지] 이미 결과창이 떠 있다면(active 클래스) 함수를 종료하여 소리 중복 재생 차단
+    if (resultOverlay.classList.contains('active')) {
+        // 단, 리매치 버튼 상태(준비완료 등)는 갱신해줘야 함
+        updateRetryBtnState(reqs); 
+        return; 
     }
 
-    // 3. 순위 목록 요소 가져오기
+    stopBgm(); // 배경음악 정지
+    resultOverlay.classList.add('active'); // 결과창 표시
+
     const resultList = document.getElementById('result-list');
-    if (!resultList) return;
-    
-    resultList.innerHTML = ''; // 기존 목록 초기화
-    
-    // 4. 점수 내림차순 정렬
-    const sorted = Object.entries(players).sort((a, b) => (b[1].score || 0) - (a[1].score || 0));
-    
-    // 5. 순위 목록 렌더링
-    sorted.forEach(([uid, p], i) => {
-        const rank = i + 1;
-        const isMe = uid === myUid;
-        const scoreVal = p.score || 0;
+    if (resultList) {
+        resultList.innerHTML = '';
         
-        // HTML 구조 생성
-        const row = document.createElement('div');
-        row.className = 'result-item';
-        if (i === 0) row.classList.add('winner'); // 1등 강조 스타일
-        if (isMe) row.style.border = "2px solid var(--primary-color)"; // 내 점수 강조
+        const sorted = Object.entries(players).sort((a, b) => (b[1].score || 0) - (a[1].score || 0));
+        
+        sorted.forEach(([uid, p], i) => {
+            const rank = i + 1;
+            const isMe = uid === myUid;
+            const scoreVal = p.score || 0;
+            
+            const row = document.createElement('div');
+            row.className = 'result-item';
+            if (i === 0) row.classList.add('winner');
+            if (isMe) row.style.border = "2px solid var(--primary-color)";
 
-        // 리매치 요청 상태 확인
-        const isReady = reqs && reqs[uid];
-        const readyBadge = isReady ? '<span style="font-size:0.8em; color:green;">(준비완료)</span>' : '';
+            row.innerHTML = `
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="font-size:1.2em; margin-right:5px;">${rank === 1 ? '🥇' : rank + '위'}</span>
+                    <span>${escapeHTML(p.nickname)}</span>
+                </div>
+                <div style="color:var(--primary-color);">${scoreVal}점</div>
+            `;
+            resultList.appendChild(row);
 
-        row.innerHTML = `
-            <div style="display:flex; align-items:center; gap:10px;">
-                <span style="font-size:1.2em; margin-right:5px;">${rank === 1 ? '🥇' : rank + '위'}</span>
-                <span>${escapeHTML(p.nickname)}</span>
-                ${readyBadge}
-            </div>
-            <div style="color:var(--primary-color);">${scoreVal}점</div>
-        `;
-        
-        resultList.appendChild(row);
-        
-        // [보너스] 1등 및 내 순위에 따른 사운드/경험치 처리
-        if(isMe) {
-            // 이미 처리된 게임인지 확인하는 로직이 필요할 수 있으나, 
-            // 간단하게 여기서 호출 (한 번만 실행되도록 서버 로직 보완 권장)
-            if(rank === 1) {
-                playSound('snd-win');
-                // applyExpAndPoints 함수가 있다면 호출 (없으면 무시됨)
-                if(typeof applyExpAndPoints === 'function') applyExpAndPoints(db, myUid, 150, 100);
-            } else {
-                playSound('snd-lose');
-                if(typeof applyExpAndPoints === 'function') applyExpAndPoints(db, myUid, 50, 30);
+            // [사운드 재생] 내 순위에 따라 딱 한 번만 재생
+            if (isMe) {
+                if (rank === 1) {
+                    playSound('snd-win');
+                    if(typeof applyExpAndPoints === 'function') applyExpAndPoints(db, myUid, 150, 100);
+                } else {
+                    playSound('snd-lose');
+                    if(typeof applyExpAndPoints === 'function') applyExpAndPoints(db, myUid, 50, 30);
+                }
             }
-        }
-    });
+        });
+    }
+    updateRetryBtnState(reqs);
+}
 
-    // 6. 버튼 상태 업데이트 (새로고침 등으로 다시 들어왔을 때를 대비)
+// 버튼 상태 갱신용 헬퍼 함수
+function updateRetryBtnState(reqs) {
     const retryBtn = document.getElementById('retry-btn');
     if (retryBtn) {
         if (reqs && reqs[myUid]) {
