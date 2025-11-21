@@ -585,7 +585,27 @@ function getPlayerId() {
         let message = amIWinner && winners.length === 1 ? "승 리 !" : (winners.length > 1 ? "무승부!" : "패 배 !");
         
         playersArray.sort((a, b) => b.score - a.score);
-        const finalScoresHTML = playersArray.map(p => `<div class="score-row ${winners.some(w=>w.id===p.id) && winners.length === 1 ? 'winner' : 'loser'}">${p.avatar} ${p.nickname} : ${p.score}점</div>`).join('');
+        
+        // [수정] 아바타 이미지/이모지 판별 로직 추가
+        const finalScoresHTML = playersArray.map(p => {
+            const avatarSet = AVATAR_SETS[p.avatar];
+            let avatarHTML = '';
+            
+            if (avatarSet) {
+                // 1. 아바타 세트(ID)인 경우
+                avatarHTML = `<img src="${avatarSet.front}" style="width:30px; height:30px; vertical-align:middle; margin-right:5px; border-radius:50%;">`;
+            } else if (p.avatar && (p.avatar.startsWith('http') || /\.(png|jpg|jpeg|gif|webp)$/i.test(p.avatar) || p.avatar.startsWith('.'))) {
+                // 2. 직접 이미지 URL인 경우
+                avatarHTML = `<img src="${p.avatar}" style="width:30px; height:30px; vertical-align:middle; margin-right:5px; border-radius:50%;">`;
+            } else {
+                // 3. 이모지인 경우
+                avatarHTML = `<span style="margin-right:5px; font-size:1.2em;">${p.avatar || '❓'}</span>`;
+            }
+
+            return `<div class="score-row ${winners.some(w=>w.id===p.id) && winners.length === 1 ? 'winner' : 'loser'}">
+                        ${avatarHTML} ${p.nickname} : ${p.score}점
+                    </div>`;
+        }).join('');
 
         gameOverOverlay.innerHTML = `<div class="modal-content"><div class="modal-header"><h2 id="game-over-message">${message}</h2></div><div class="modal-body"><div id="score-board">${finalScoresHTML}</div><div class="modal-buttons"><button id="rematch-btn" class="menu-btn primary">다시 하기</button><button id="lobby-btn" class="menu-btn secondary">나가기</button></div></div></div>`;
         gameOverOverlay.style.display = 'flex';
