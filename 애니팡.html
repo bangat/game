@@ -1224,43 +1224,41 @@ let hintTimerId = null; // [신규] 힌트 타이머
             let didGameStart = false; // [수정] 'GO!'가 지났는지 체크하는 플래그
 
             // [수정] iOS 오디오 잠금 해제용 함수 (BGM 재생 로직 추가)
+            // [최적화] iOS 오디오 잠금 해제 (모든 사운드 루프 제거)
             function unlockAudioOnFirstTap() {
-                if (isAudioUnlocked) return; // 한 번만 실행
+                if (isAudioUnlocked) return; 
                 isAudioUnlocked = true;
-                console.log("iOS 오디오 잠금 해제 시도...");
+                console.log("🔊 오디오 시스템 활성화 (최적화됨)");
 
-                let allSounds = document.querySelectorAll('audio');
-                let bgmSound = sounds['bgm'];
+                // [핵심 변경] 모든 audio 태그를 다 건드리지 않고, 
+                // 가장 중요한 BGM과 대표 효과음(콤보1) 딱 2개만 건드려 오디오 컨텍스트를 깨웁니다.
+                // 이렇게 하면 렉이 사라집니다.
                 
-                // 1. 모든 '효과음' 활성화 (play/pause 트릭)
-                allSounds.forEach((sound) => {
-                    // BGM은 아래에서 따로 처리
-                    if (sound.id === 'bgm-sound') return; 
-                    
-                    sound.play().then(() => {
-                        sound.pause();
-                        sound.currentTime = 0;
-                    }).catch(e => {});
-                });
+                const bgmSound = sounds['bgm'];
+                const dummySound = sounds['match'][0]; // 1콤보 사운드
 
-                // 2. [핵심] BGM 활성화 및 재생
-                if (bgmSound && bgmSound.paused) {
-                    // 만약 'GO!'가 지난 후(didGameStart=true)에 첫 탭이 발생했다면,
-                    // (즉, BGM 재생을 놓쳤다면) 여기서 BGM을 강제로 재생
+                // 1. 대표 효과음 짧게 실행 (무음 재생)
+                if (dummySound) {
+                    dummySound.volume = 0; // 소리 안 나게
+                    dummySound.play().then(() => {
+                        dummySound.pause();
+                        dummySound.currentTime = 0;
+                        dummySound.volume = 1; // 볼륨 복구
+                    }).catch(() => {});
+                }
+
+                // 2. BGM 재생 로직
+                if (bgmSound) {
                     if (didGameStart) {
-                        console.log("게임이 이미 시작됨. BGM 강제 재생.");
-                        bgmSound.play().catch(e => {});
+                        // 게임이 이미 시작된 상태라면 바로 재생
+                        bgmSound.play().catch(() => {});
                     } else {
-                        // 'GO!'가 지나기 전(카운트다운 중)에 탭했다면, 
-                        // BGM을 '준비'만 시킴 (play/pause 트릭)
+                        // 대기 중이라면 재생 후 즉시 일시정지 (준비만 시킴)
                         bgmSound.play().then(() => {
                             bgmSound.pause();
-                            bgmSound.currentTime = 0;
-                        }).catch(e => {});
+                        }).catch(() => {});
                     }
                 }
-                
-                console.log("오디오 활성화 완료.");
             }
 
             // ------------------------------------
@@ -1380,131 +1378,136 @@ if (roomValueListener) {
 }
 
 roomValueListener = (snapshot) => {
-    if (isExiting) return;
-    if (!snapshot.exists()) {
-        // [수정] 3. 방이 사라졌을 때, 게스트가 새 방을 추적하는 로직
-        // (방이 삭제되기 직전의 데이터는 currentRoomData에 남아있음)
-        if (currentRoomData && currentRoomData.nextRoomId) {
-            console.log(`방장이 새 방을 만들었습니다. ${currentRoomData.nextRoomId} 방으로 이동합니다.`);
-            window.location.replace(`게임방.html?roomId=${currentRoomData.nextRoomId}`);
-        } else {
-            // 방장이 그냥 나갔거나, 추적할 방이 없는 경우
-            if (!gameOverOverlay.classList.contains('active')) {
-                alert("방이 사라졌습니다.");
-            }
-            cleanupAndExit(); // 게스트는 대기실로 이동
-        }
-        return;
-    }
-    
-currentRoomData = snapshot.val(); // [핵심] 항상 최신 데이터 유지
-    
-    // [추가] 게임 종료 모달이 열려있다면, 사람이 나갈 때 즉시 UI 갱신
-    if (gameOverOverlay.classList.contains('active')) {
-        updateRematchStatusUI();
-    }
-    
-    // 1. (공통) 플레이어 UI 갱신 (스코어판)
-    if (currentRoomData.players) {
-        updateScoreboardUI(currentRoomData.players);
-    } else {
-        return;
-    }
+                if (isExiting) return;
+                if (!snapshot.exists()) {
+                    // [수정] 3. 방이 사라졌을 때, 게스트가 새 방을 추적하는 로직
+                    if (currentRoomData && currentRoomData.nextRoomId) {
+                        console.log(`방장이 새 방을 만들었습니다. ${currentRoomData.nextRoomId} 방으로 이동합니다.`);
+                        window.location.replace(`게임방.html?roomId=${currentRoomData.nextRoomId}`);
+                    } else {
+                        if (!gameOverOverlay.classList.contains('active')) {
+                            alert("방이 사라졌습니다.");
+                        }
+                        cleanupAndExit();
+                    }
+                    return;
+                }
+                
+                currentRoomData = snapshot.val(); // [핵심] 항상 최신 데이터 유지
+                
+                // [추가] 게임 종료 모달이 열려있다면, 사람이 나갈 때 즉시 UI 갱신
+                if (gameOverOverlay.classList.contains('active')) {
+                    updateRematchStatusUI();
+                }
+                
+                // 1. (공통) 플레이어 UI 갱신 (스코어판)
+                if (currentRoomData.players) {
+                    updateScoreboardUI(currentRoomData.players);
+                } else {
+                    return;
+                }
 
-    // 2. (공통) 호스트 마이그레이션
-    const playerIds = Object.keys(currentRoomData.players || {});
-    if (playerIds.length > 0 && (!currentRoomData.hostId || !currentRoomData.players[currentRoomData.hostId])) {
-        const newHostId = playerIds.sort()[0];
-        isHost = (newHostId === playerUid);
-        if (isHost) {
-            console.log(`[호스트 마이그레이션] 내가 새 호스트(${playerUid})가 됨.`);
-            roomRef.update({ 'hostId': newHostId });
-        }
-    }
-    
-    // 3. (공통) 1명만 남았을 때
-    if (currentRoomData.status === 'playing' && playerIds.length === 1) {
-        if (playerIds[0] === playerUid && !gameOverFlag) {
-            console.log("[게임 종료] 상대방 이탈로 승리.");
-            gameOverFlag = true;
-            if (playerRef) playerRef.child('isFinished').set(true);
-            forceGameOver();
-        }
-        return; 
-    }
-    
-    // 4. (공통) 내가 방에서 제외됨
-    if (!currentRoomData.players || !currentRoomData.players[playerUid]) {
-        if (!gameOverOverlay.classList.contains('active')) {
-            alert("방에서 퇴장되었습니다.");
-        }
-        cleanupAndExit();
-        return;
-    }
+                // 2. (공통) 호스트 마이그레이션
+                const playerIds = Object.keys(currentRoomData.players || {});
+                if (playerIds.length > 0 && (!currentRoomData.hostId || !currentRoomData.players[currentRoomData.hostId])) {
+                    const newHostId = playerIds.sort()[0];
+                    isHost = (newHostId === playerUid);
+                    if (isHost) {
+                        console.log(`[호스트 마이그레이션] 내가 새 호스트(${playerUid})가 됨.`);
+                        roomRef.update({ 'hostId': newHostId });
+                    }
+                }
+                
+                // 3. (공통) 1명만 남았을 때
+                if (currentRoomData.status === 'playing' && playerIds.length === 1) {
+                    if (playerIds[0] === playerUid && !gameOverFlag) {
+                        console.log("[게임 종료] 상대방 이탈로 승리.");
+                        gameOverFlag = true;
+                        if (playerRef) playerRef.child('isFinished').set(true);
+                        forceGameOver();
+                    }
+                    return; 
+                }
 
-    // 5. 상태별 분기
-    const status = currentRoomData.status;
-    console.log("방 상태 변경:", status);
+                // 4. (공통) 내가 방에서 제외됨 (안전장치 추가 - 튕김 방지 핵심)
+                const amIMissing = !currentRoomData.players || !currentRoomData.players[playerUid];
+                const isGameInProgress = currentRoomData.status === 'playing';
 
-    if (status === 'playing') {
-       if (!timerId && !countdownStarted) {
-            countdownStarted = true; 
-            loadingOverlay.classList.remove('active');
-            infoOverlay.classList.remove('active');
-            startCountdown();
-        }
-    } else if (status === 'finished') {
-        forceGameOver();
-    } else if (status === 'waiting') {
-        if (gameOverOverlay.classList.contains('active')) {
-            console.log("[Rematch] 'waiting' 상태 감지. 게임 재시작 준비...");
-            gameOverOverlay.classList.remove('active');
-            gameOverFlag = false;
-            countdownStarted = false; 
-            isProcessing = true; 
-            
-            if (roomRef && playerUid) {
-                roomRef.child('readyPlayers/' + playerUid).set(true);
-            }
-            infoOverlay.classList.add('active');
-        }
-        
-        const readyPlayers = currentRoomData.readyPlayers || {};
-        const totalPlayers = Object.keys(currentRoomData.players).length;
-        const readyCount = Object.keys(readyPlayers).length;
-        
-        if (infoOverlay.classList.contains('active')) {
-            infoOverlay.innerHTML = `<div class="spinner"></div><p style="color: white; margin-top: 15px; font-size: 1.1em;">상대방 기다리는 중 (${readyCount}/${totalPlayers})...</p>`;
-        }
+                if (amIMissing) {
+                    // [핵심] 게임 중('playing')이라면, 내 데이터가 안 보여도 절대 튕기지 않고 버팀
+                    if (isGameInProgress) {
+                        console.warn("⚠️ 네트워크 불안정: 데이터상에서 내 정보가 사라졌으나, 게임 중이므로 퇴장을 유예합니다.");
+                        return; // 여기서 함수를 종료하여 cleanupAndExit() 실행을 막음
+                    } else {
+                        // 게임 중이 아님(대기실 등)인데 내가 없으면 -> 진짜 강퇴당한 것
+                        if (!gameOverOverlay.classList.contains('active')) {
+                            alert("방에서 퇴장되었습니다.");
+                        }
+                        cleanupAndExit();
+                        return;
+                    }
+                }
 
-        if (isHost && totalPlayers >= 2 && readyCount === totalPlayers) {
-            roomRef.update({
-                status: 'playing',
-                gameStarted: false,
-                readyPlayers: null
-            });
-        }
-        } else if (status === 'lobby') {
-                // [신규] 방장이 '게임방'으로 복귀하여, 'lobby' 상태로 변경함
-                // 모든 인원을 게임방.html로 이동시킵니다.
-                console.log("[게임 종료] 'lobby' 상태 감지. 게임방.html로 복귀합니다.");
-                isExiting = true;
-                stopSound('bgm');
-                if (timerId) clearInterval(timerId);
-                if (feverTimerId) clearTimeout(feverTimerId);
+                // 5. 상태별 분기
+                const status = currentRoomData.status;
+                console.log("방 상태 변경:", status);
 
-                // 리스너 정리
-                if (roomRef) roomRef.off();
-                if (chatListenerRef) chatListenerRef.off();
+                if (status === 'playing') {
+                   if (!timerId && !countdownStarted) {
+                        countdownStarted = true; 
+                        loadingOverlay.classList.remove('active');
+                        infoOverlay.classList.remove('active');
+                        startCountdown();
+                    }
+                } else if (status === 'finished') {
+                    forceGameOver();
+                } else if (status === 'waiting') {
+                    if (gameOverOverlay.classList.contains('active')) {
+                        console.log("[Rematch] 'waiting' 상태 감지. 게임 재시작 준비...");
+                        gameOverOverlay.classList.remove('active');
+                        gameOverFlag = false;
+                        countdownStarted = false; 
+                        isProcessing = true; 
+                        
+                        if (roomRef && playerUid) {
+                            roomRef.child('readyPlayers/' + playerUid).set(true);
+                        }
+                        infoOverlay.classList.add('active');
+                    }
+                    
+                    const readyPlayers = currentRoomData.readyPlayers || {};
+                    const totalPlayers = Object.keys(currentRoomData.players).length;
+                    const readyCount = Object.keys(readyPlayers).length;
+                    
+                    if (infoOverlay.classList.contains('active')) {
+                        infoOverlay.innerHTML = `<div class="spinner"></div><p style="color: white; margin-top: 15px; font-size: 1.1em;">상대방 기다리는 중 (${readyCount}/${totalPlayers})...</p>`;
+                    }
 
-                window.location.replace(`게임방.html?roomId=${currentRoomId}`);
-                return; // [신규]
+                    if (isHost && totalPlayers >= 2 && readyCount === totalPlayers) {
+                        roomRef.update({
+                            status: 'playing',
+                            gameStarted: false,
+                            readyPlayers: null
+                        });
+                    }
+                } else if (status === 'lobby') {
+                    console.log("[게임 종료] 'lobby' 상태 감지. 게임방.html로 복귀합니다.");
+                    isExiting = true;
+                    stopSound('bgm');
+                    if (timerId) clearInterval(timerId);
+                    if (feverTimerId) clearTimeout(feverTimerId);
 
-    } else if (status === null && !gameOverOverlay.classList.contains('active')) {
-        console.warn("방 상태가 'null'입니다. 호스트가 방을 삭제한 것 같습니다.");
-        forceGameOver();
-    }
-};
+                    if (roomRef) roomRef.off();
+                    if (chatListenerRef) chatListenerRef.off();
+
+                    window.location.replace(`게임방.html?roomId=${currentRoomId}`);
+                    return; 
+
+                } else if (status === null && !gameOverOverlay.classList.contains('active')) {
+                    console.warn("방 상태가 'null'입니다. 호스트가 방을 삭제한 것 같습니다.");
+                    forceGameOver();
+                }
+            };
 
 // [핵심] 리스너 등록
 roomRef.on('value', roomValueListener);
@@ -1968,6 +1971,12 @@ function startCountdown() {
 }
 
             function startGame() {
+                // [핵심 추가] 게임 시작 시, 연결 끊김 감지 자동 삭제 기능 해제 (튕김 방지)
+                if (playerRef) {
+                    playerRef.onDisconnect().cancel();
+                    console.log("🛡️ 게임 시작: 네트워크 불안정 방지 모드 (onDisconnect 해제)");
+                }
+
                 // [수정] 보드 렌더링이 안됐을 경우를 대비
                 if (tileElements.length === 0) { 
                     console.log("렌더링 재시도...");
@@ -1979,7 +1988,9 @@ function startCountdown() {
                 }
                 
                 isProcessing = false;
-              timerId = setInterval(() => {
+                
+                // [수정] 중복된 타이머 제거 후 하나로 통합
+                timerId = setInterval(() => {
                     timer--;
                     timerValue.textContent = timer;
                     
@@ -2002,10 +2013,10 @@ function startCountdown() {
                     }
                 }, 1000);
     
-    // 🎮 치트키 리스너 등록
-    setupCheatKeys();
-    startHintTimer(); // [신규] 게임 시작과 동시에 힌트 타이머 시작
-}
+                // 🎮 치트키 리스너 등록
+                setupCheatKeys();
+                startHintTimer(); // [신규] 게임 시작과 동시에 힌트 타이머 시작
+            }
 
 // 🎮 치트키 시스템
 function setupCheatKeys() {
