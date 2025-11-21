@@ -712,6 +712,54 @@
             animation: halo-hover-anim 2s ease-in-out infinite;
             transform: rotateX(60deg); z-index: 20; 
         }
+/* [신규] 게임 변경 모달 스타일 */
+        #game-change-list {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            padding: 10px;
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+        .game-select-item {
+            background-color: var(--panel-bg);
+            border: 2px solid var(--panel-border);
+            border-radius: 12px;
+            padding: 15px 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+        }
+        .game-select-item:hover {
+            border-color: var(--primary-color);
+            transform: translateY(-2px);
+        }
+        .game-select-item.active {
+            background-color: #FFF0F0;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 2px rgba(255, 107, 107, 0.3);
+        }
+        .game-select-item .game-icon { font-size: 2em; margin-bottom: 5px; }
+        .game-select-item .game-name { font-weight: bold; font-size: 0.9em; color: var(--text-color-dark); }
+        
+        /* [수정] 게임 변경 버튼 (헤더용) */
+        #change-game-btn-header {
+            background: none;
+            border: 1px solid var(--text-color-dark);
+            border-radius: 8px;
+            font-size: 0.7em;
+            padding: 2px 6px;
+            margin-left: 5px;
+            cursor: pointer;
+            vertical-align: middle;
+            color: var(--text-color-dark);
+            opacity: 0.7;
+        }
+        #change-game-btn-header:hover { opacity: 1; background-color: #fff; }
 
         /* 6. [신규] 빙결 */
         @keyframes frost-anim {
@@ -742,7 +790,10 @@
             <button id="leave-room-btn" class="header-btn leave">‹</button>
             <div class="header-title">
                 <h1 id="room-name-header"></h1>
-                <p id="game-type-header"></p>
+                <p>
+                    <span id="game-type-header"></span>
+                    <button id="change-game-btn-header" style="display: none;">변경</button>
+                </p>
             </div>
             <div class="header-buttons-wrapper">
                 <button id="invite-btn" class="header-btn invite">카톡초대</button>
@@ -1666,6 +1717,12 @@ if (currentRoomData.status === 'lobby') {
             const game = availableGames.find(g => g.id === currentRoomData.gameType);
             document.getElementById('room-name-header').textContent = currentRoomData.roomName;
             document.getElementById('game-type-header').textContent = game ? `${game.icon} ${game.name}` : '';
+            
+            // [신규] 방장에게만 게임 변경 버튼 표시
+            const changeGameBtn = document.getElementById('change-game-btn-header');
+            if (changeGameBtn) {
+                changeGameBtn.style.display = isHost ? 'inline-block' : 'none';
+            }
 
             const playerList = document.getElementById('player-list-horizontal');
             playerList.innerHTML = '';
@@ -2198,6 +2255,7 @@ if (inviteBtn) {
                 </div>
             `;
 
+    
             // 5. 초대 버튼에 리스너 추가
             itemEl.querySelector('[data-action="invite"]').addEventListener('click', (e) => {
                 const btn = e.currentTarget;
@@ -2238,6 +2296,64 @@ if (inviteBtn) {
             });
 
             return itemEl;
+        }
+
+        // --- [수정] 게임 변경 기능 로직 (올바른 위치로 이동됨) ---
+        const changeGameBtnHeader = document.getElementById('change-game-btn-header');
+        const gameChangeModal = document.getElementById('game-change-modal');
+        const closeGameChangeBtn = document.getElementById('close-game-change-btn');
+        const gameChangeList = document.getElementById('game-change-list');
+
+        if (changeGameBtnHeader) {
+            changeGameBtnHeader.addEventListener('click', () => {
+                // 방장이 아니거나 데이터가 없으면 중단
+                if (!isHost || !currentRoomData) return;
+
+                // 모달 열기 및 목록 렌더링
+                gameChangeModal.classList.add('active');
+                gameChangeList.innerHTML = '';
+
+                availableGames.forEach(game => {
+                    const item = document.createElement('div');
+                    item.className = 'game-select-item';
+                    // 현재 게임 표시
+                    if (currentRoomData.gameType === game.id) {
+                        item.classList.add('active');
+                    }
+
+                    item.innerHTML = `
+                       <div class="game-icon">${game.icon}</div>
+                       <div class="game-name">${game.name}</div>
+                       <div style="font-size:0.7em; color:#666;">최대 ${game.maxPlayers}명</div>
+                   `;
+
+                    item.addEventListener('click', () => {
+                        if (confirm(`[${game.name}] 게임으로 변경하시겠습니까?`)) {
+                            roomRef.update({
+                                gameType: game.id,
+                                gameStarted: false
+                            }).then(() => {
+                                showToast(`게임을 ${game.name}(으)로 변경했습니다.`);
+                                gameChangeModal.classList.remove('active');
+                                sendMessage(`[방장] 님이 게임을 [${game.name}] (으)로 변경했습니다.`);
+                            }).catch(err => {
+                                console.error("게임 변경 실패:", err);
+                                showToast('게임 변경에 실패했습니다.');
+                            });
+                        }
+                    });
+
+                    gameChangeList.appendChild(item);
+                });
+            });
+        }
+
+        // [신규] 하단 '닫기' 버튼 기능 연결
+        const cancelGameChangeBtn = document.getElementById('cancel-game-change-btn');
+        if (cancelGameChangeBtn) {
+            cancelGameChangeBtn.addEventListener('click', () => {
+                gameChangeModal.classList.remove('active');
+            });
         }
 
         
@@ -2298,6 +2414,22 @@ if (inviteBtn) {
     <div id="console-output" style="padding: 10px; overflow-y: scroll; flex-grow: 1;"></div>
     <button id="open-console-btn" style="display: none; position: fixed; bottom: 10px; right: 10px; padding: 5px 10px; background-color: var(--primary-color); color: white; border: none; border-radius: 5px; z-index: 9998; cursor: pointer;">콘솔 열기</button>
 </div>
+
+<div id="game-change-modal" class="overlay">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header" style="position: relative; background-color: var(--secondary-color); padding: 15px; border-bottom: 3px solid #379A93;">
+                <h2 style="color: white; margin: 0; text-align: center;">게임 변경</h2>
+                <button class="close-btn" id="close-game-change-btn" style="position: absolute; right: 15px; top: 50%; transform: translateY(-50%); background: none; border: none; color: white; font-size: 2em; cursor: pointer; padding: 5px; line-height: 1;">×</button>
+            </div>
+            <div class="modal-body" style="padding: 10px;">
+                <div id="game-change-list">
+                    </div>
+            </div>
+            <div class="modal-footer" style="padding: 10px;">
+                <button id="cancel-game-change-btn" class="menu-btn secondary" style="width: 100%;">닫기</button>
+            </div>
+        </div>
+    </div>
 
 <div id="tts-settings-modal" class="overlay">
     <div class="modal-content" style="max-width: 350px;">
