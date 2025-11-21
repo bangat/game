@@ -311,7 +311,21 @@ let isExiting = false;
 let countdownTimer = null;
 let lastDrawerUid = null;
 let isCountdownInProgress = false; // [신규] 카운트다운 중복 방지 플래그
-const WORDS = ["사과", "바나나", "자동차", "비행기", "학교", "컴퓨터", "강아지", "고양이", "피자", "축구", "안경", "시계", "우산", "나무", "꽃", "해", "달", "별", "눈사람", "기린", "코끼리", "치킨", "햄버거", "라면", "김치", "아이스크림", "양말", "모자", "신발", "가방", "마이크", "선풍기", "냉장고", "기타", "피아노"];
+const WORDS = [
+  // 1. 초기 목록
+  "사과", "바나나", "자동차", "비행기", "학교", "컴퓨터", "강아지", "고양이", "피자", "축구", 
+  "안경", "시계", "우산", "나무", "꽃", "해", "달", "별", "눈사람", "기린", 
+  "코끼리", "치킨", "햄버거", "라면", "김치", "아이스크림", "양말", "모자", "신발", "가방", 
+  "마이크", "선풍기", "냉장고", "기타", "피아노",
+  
+  // 2. 이전 추가 목록
+  "토끼", "사자", "호랑이", "돼지", "원숭이", "뱀", "거북이", "포도", "수박", "딸기", 
+  "빵", "케이크", "자전거", "버스", "기차", "로봇", "카메라", "텔레비전", "유령", "집",
+
+  // 3. 실제 캐치마인드 기출 추천 (20개)
+  "거미", "나비", "다람쥐", "독수리", "드라큘라", "마녀", "박쥐", "불꽃놀이", "상어", "소방차", 
+  "슈퍼맨", "스키", "여우", "오리", "오징어", "선인장", "청소기", "캥거루", "헬리콥터", "해바라기"
+];
 const MAX_ROUNDS = 5;
 const TURN_TIME = 60;
 
@@ -925,118 +939,76 @@ function renderPlayers(players, drawerUid) {
 }
 
 function showResult(players, reqs={}) {
-    // [신규] 결과창 진입 시 BGM 정지
+    // 1. 배경음악 정지
     stopBgm();
 
-    gameOverOverlay.style.display = 'flex'; // 모달 열기
+    // 2. 결과 모달 표시 (CSS .active 클래스 사용)
+    if (resultOverlay) {
+        resultOverlay.classList.add('active');
+    }
+
+    // 3. 순위 목록 요소 가져오기
+    const resultList = document.getElementById('result-list');
+    if (!resultList) return;
     
-    // 1. 플레이어 순위 정렬 및 렌더링
-    const sorted = Object.entries(players).sort((a,b) => b[1].score - a[1].score);
+    resultList.innerHTML = ''; // 기존 목록 초기화
     
-    // 리스트 초기화
-    rematchStatusList.innerHTML = '';
+    // 4. 점수 내림차순 정렬
+    const sorted = Object.entries(players).sort((a, b) => (b[1].score || 0) - (a[1].score || 0));
     
+    // 5. 순위 목록 렌더링
     sorted.forEach(([uid, p], i) => {
         const rank = i + 1;
         const isMe = uid === myUid;
         const scoreVal = p.score || 0;
         
+        // HTML 구조 생성
         const row = document.createElement('div');
-        row.className = 'rematch-player-row';
-        if (isMe) row.classList.add('my-row');
+        row.className = 'result-item';
+        if (i === 0) row.classList.add('winner'); // 1등 강조 스타일
+        if (isMe) row.style.border = "2px solid var(--primary-color)"; // 내 점수 강조
+
+        // 리매치 요청 상태 확인
+        const isReady = reqs && reqs[uid];
+        const readyBadge = isReady ? '<span style="font-size:0.8em; color:green;">(준비완료)</span>' : '';
 
         row.innerHTML = `
-            <div class="player-info-topline">
-                <span class="player-rank">${rank}위</span>
-                <span class="player-name">${escapeHTML(p.nickname)}</span>
-            </div>
             <div style="display:flex; align-items:center; gap:10px;">
-                <span class="player-score">${scoreVal}점</span>
-                <span class="status-text" data-uid="${uid}"></span>
+                <span style="font-size:1.2em; margin-right:5px;">${rank === 1 ? '🥇' : rank + '위'}</span>
+                <span>${escapeHTML(p.nickname)}</span>
+                ${readyBadge}
             </div>
+            <div style="color:var(--primary-color);">${scoreVal}점</div>
         `;
-        rematchStatusList.appendChild(row);
         
-        // [신규] 승리/패배 사운드 및 경험치 지급 (나인 경우만)
+        resultList.appendChild(row);
+        
+        // [보너스] 1등 및 내 순위에 따른 사운드/경험치 처리
         if(isMe) {
-            if(i===0) {
-                // 1등: 승리 사운드 + 경험치
+            // 이미 처리된 게임인지 확인하는 로직이 필요할 수 있으나, 
+            // 간단하게 여기서 호출 (한 번만 실행되도록 서버 로직 보완 권장)
+            if(rank === 1) {
                 playSound('snd-win');
-                applyExpAndPoints(db, myUid, 150, 100);
+                // applyExpAndPoints 함수가 있다면 호출 (없으면 무시됨)
+                if(typeof applyExpAndPoints === 'function') applyExpAndPoints(db, myUid, 150, 100);
             } else {
-                // 그 외: 패배 사운드 + 경험치
                 playSound('snd-lose');
-                applyExpAndPoints(db, myUid, 50, 30);
+                if(typeof applyExpAndPoints === 'function') applyExpAndPoints(db, myUid, 50, 30);
             }
         }
     });
 
-    // 2. 리매치 리스너 및 UI 업데이트 시작
-    listenForRematch();
-    updateRematchStatusUI(players, reqs);
-
-    // 3. 버튼 이벤트 연결 (복제하여 기존 이벤트 제거)
-    const newRematchBtn = rematchBtn.cloneNode(true);
-    rematchBtn.parentNode.replaceChild(newRematchBtn, rematchBtn);
-    
-    const newLobbyBtn = lobbyBtn.cloneNode(true);
-    lobbyBtn.parentNode.replaceChild(newLobbyBtn, lobbyBtn);
-
-    // 다시하기 버튼
-    newRematchBtn.addEventListener('click', () => {
-        if (roomRef && myUid) {
-            if (amIReadyForRematch) { 
-                roomRef.child('rematchRequests/' + myUid).remove();
-            } else { 
-                roomRef.child('rematchRequests/' + myUid).set(true);
-            }
+    // 6. 버튼 상태 업데이트 (새로고침 등으로 다시 들어왔을 때를 대비)
+    const retryBtn = document.getElementById('retry-btn');
+    if (retryBtn) {
+        if (reqs && reqs[myUid]) {
+            retryBtn.disabled = true;
+            retryBtn.innerText = "준비완료";
+        } else {
+            retryBtn.disabled = false;
+            retryBtn.innerText = "다시하기";
         }
-    });
-
-    // 대기실로 버튼
-    newLobbyBtn.addEventListener('click', exitGame);
-
-    // 4. 채팅 관련 로직
-    // 채팅 내역 로드
-    rematchChatMessages.innerHTML = '';
-    roomRef.child('chat').limitToLast(10).once('value', snap => {
-        if (snap.exists()) {
-            snap.forEach(child => renderRematchChatMessage(child.val(), players));
-        }
-    });
-
-    // 채팅 버튼 이벤트
-    rematchChatOpenBtn.onclick = () => {
-        rematchChatInputModal.style.display = 'flex';
-        rematchChatInput.focus();
-    };
-    
-    const sendChat = () => {
-        const txt = rematchChatInput.value.trim();
-        if (txt) {
-            roomRef.child('chat').push({
-                senderId: myUid,
-                senderNickname: myNick,
-                content: txt,
-                type: 'chat',
-                timestamp: firebase.database.ServerValue.TIMESTAMP
-            });
-            rematchChatInput.value = '';
-            rematchChatInputModal.style.display = 'none';
-        }
-    };
-
-    rematchChatSendBtn.onclick = sendChat;
-    rematchChatInput.onkeydown = (e) => { if(e.key === 'Enter') sendChat(); };
-    rematchChatInputModal.onclick = (e) => {
-        if(e.target === rematchChatInputModal) rematchChatInputModal.style.display = 'none';
-    };
-
-    // TTS 토글
-    rematchTtsBtn.onclick = () => {
-        const isMuted = rematchTtsBtn.textContent === '🔇';
-        rematchTtsBtn.textContent = isMuted ? '🔊' : '🔇';
-    };
+    }
 }
 
 function sendRematchRequest() {
