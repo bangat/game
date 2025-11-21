@@ -310,7 +310,7 @@ let timerInterval;
 let isExiting = false;
 let countdownTimer = null;
 let lastDrawerUid = null;
-
+let isCountdownInProgress = false; // [신규] 카운트다운 중복 방지 플래그
 const WORDS = ["사과", "바나나", "자동차", "비행기", "학교", "컴퓨터", "강아지", "고양이", "피자", "축구", "안경", "시계", "우산", "나무", "꽃", "해", "달", "별", "눈사람", "기린", "코끼리", "치킨", "햄버거", "라면", "김치", "아이스크림", "양말", "모자", "신발", "가방", "마이크", "선풍기", "냉장고", "기타", "피아노"];
 const MAX_ROUNDS = 5;
 const TURN_TIME = 60;
@@ -489,31 +489,38 @@ function handleGameState(data) {
 
     if (status === 'waiting') {
         loadingOverlay.classList.add('active');
-        // [수정] 카운트다운 중이 아닐 때만 대기 문구 표시
-        if (!countdownTimer) {
+        resultOverlay.classList.remove('active');
+
+        if (!data.starting) {
             document.getElementById('loading-text').style.display = 'block';
             document.getElementById('loading-text').innerText = `대기중 (${Object.keys(data.players||{}).length}명)...`;
+            document.getElementById('countdown-text').innerText = "";
+            
+            isCountdownInProgress = false;
+            if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+        } else {
+            document.getElementById('loading-text').style.display = 'none';
+            
+            if (!isCountdownInProgress) {
+                startCountdown();
+            }
         }
-        document.getElementById('countdown-text').innerText = "";
-        resultOverlay.classList.remove('active');
 
         if (isHost && Object.keys(data.players).length >= 2 && !data.starting) {
             roomRef.update({ starting: true });
         }
-        
-        if (data.starting && !countdownTimer) {
-            startCountdown();
-        }
     }
     else if (status === 'playing') {
+        // [핵심] 게임 화면이 활성화되는 이 시점에 BGM 재생!
         loadingOverlay.classList.remove('active');
         resultOverlay.classList.remove('active');
         
-        // [신규] 게임 시작 시 랜덤 BGM 재생
-        playRandomBgm();
-
-        // 안전 장치: 플레이 상태로 넘어오면 카운트다운 인터벌 제거
+        // 카운트다운 정리
+        isCountdownInProgress = false;
         if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+
+        // [신규] 여기서 재생해야 "GO!" 후 보드 생성과 동시에 음악이 나옵니다.
+        playRandomBgm();
 
         roundDisplay.innerText = `${gData.round || 1}/${MAX_ROUNDS}`;
         timerBadge.innerText = gData.timer || 0;
@@ -548,30 +555,37 @@ function handleGameState(data) {
             runTimer();
         }
     }
-
     else if (status === 'gameOver') {
         showResult(data.players, data.rematchRequests);
     }
 }
 
 function startCountdown() {
-    if (countdownTimer) return;
+    if (isCountdownInProgress) return;
+    isCountdownInProgress = true;
     
-    // [수정] 카운트다운 시작 시 '대기중...' 텍스트 숨기기
     document.getElementById('loading-text').style.display = 'none';
     
     let count = 3;
+    document.getElementById('countdown-text').innerText = count;
+    document.getElementById('snd-start').play().catch(()=>{});
+
     countdownTimer = setInterval(() => {
+        count--;
         if (count > 0) {
             document.getElementById('countdown-text').innerText = count;
             document.getElementById('snd-start').play().catch(()=>{});
-            count--;
         } else {
             clearInterval(countdownTimer);
             countdownTimer = null;
+            
+            // "GO!" 표시
             document.getElementById('countdown-text').innerText = "GO!";
             
+            // [수정] 여기 있던 playRandomBgm() 삭제됨 (handleGameState로 이동)
+            
             if (isHost) {
+                // 1초(1000ms) 뒤에 게임 시작 신호를 보냄 -> 이때 handleGameState가 반응하여 BGM 재생
                 setTimeout(() => {
                     const pIds = Object.keys(gameState.players);
                     roomRef.update({
@@ -584,9 +598,8 @@ function startCountdown() {
                             timer: TURN_TIME
                         },
                         drawLines: null,
-                        clearCanvas: Date.now() // 게임 시작 시 캔버스 초기화
+                        clearCanvas: Date.now()
                     });
-                    // [수정] runTimer는 handleGameState에서 상태 변화를 감지하여 실행되도록 유도하거나 여기서 명시적 실행
                     runTimer();
                 }, 1000);
             }
