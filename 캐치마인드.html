@@ -604,10 +604,18 @@ function runTimer() {
 function nextTurn(reasonMsg) {
     if (!isHost) return;
     
-    // [수정] 타이머가 실행 중이면 먼저 정지
+    // 타이머가 실행 중이면 정지
     if (timerInterval) {
         clearInterval(timerInterval);
         timerInterval = null;
+    }
+
+    // [추가] 시간 초과로 턴이 넘어가는 경우 출제자에게 100점 부여
+    if (reasonMsg && reasonMsg.includes("시간 초과")) {
+        if (gameState && gameState.gameData && gameState.gameData.drawer) {
+            const drawerId = gameState.gameData.drawer;
+            roomRef.child(`players/${drawerId}/score`).transaction(s => (s||0) + 100);
+        }
     }
     
     if (reasonMsg && gameState && gameState.gameData) {
@@ -646,7 +654,6 @@ function nextTurn(reasonMsg) {
             drawLines: null,
             clearCanvas: Date.now()
         }).then(() => {
-            // [수정] 약간의 딜레이 후 타이머 시작 (상태 업데이트 완료 대기)
             setTimeout(() => runTimer(), 100);
         }).catch(err => {
             console.error("다음 턴 업데이트 실패:", err);
@@ -749,15 +756,15 @@ function sendAnswer() {
     inputModal.classList.remove('active');
     inputField.value = '';
 
-    // [수정] 데이터 안전성 체크 강화
-    if (!gameState || !gameState.gameData || !gameState.gameData.word) {
-        console.error("게임 데이터가 로드되지 않았습니다.");
+    if (!gameState || !gameState.gameData) {
+        console.error("게임 데이터가 없습니다.");
         return;
     }
 
-    const answer = gameState.gameData.word;
+    const answer = gameState.gameData.word || "";
     const isDrawer = gameState.gameData.drawer === myUid;
     
+    // 출제자는 정답을 입력할 수 없고, 일반 채팅만 가능
     if (isDrawer) {
         roomRef.child('chat').push({
             senderId: myUid,
@@ -769,19 +776,21 @@ function sendAnswer() {
         return;
     }
 
-    // [수정] 정답 비교 로직 강화 (모든 공백 제거)
+    // 정답 비교 (모든 공백 제거 후 비교)
     const normalizedAnswer = answer.replace(/\s+/g, '').trim();
     const normalizedInput = txt.replace(/\s+/g, '').trim();
     
-    // 디버깅용 (필요시 콘솔 확인)
-    // console.log(`정답비교: ${normalizedInput} vs ${normalizedAnswer}`);
-
     if (normalizedInput === normalizedAnswer) {
+        // 정답인 경우
         document.getElementById('snd-correct').play().catch(()=>{});
         
+        // [수정] 점수 부여 로직 변경
+        // 1. 정답자(나)에게 100점 부여
         roomRef.child(`players/${myUid}/score`).transaction(s => (s||0) + 100);
-        roomRef.child(`players/${gameState.gameData.drawer}/score`).transaction(s => (s||0) + 50);
         
+        // 2. 출제자에게 주던 점수(+50) 코드 삭제됨 (맞추면 출제자는 0점)
+
+        // 'correct' 타입으로 메시지 전송 -> 호스트가 감지하여 턴을 넘김
         roomRef.child('chat').push({
             senderId: myUid,
             senderNickname: myNick,
@@ -790,6 +799,7 @@ function sendAnswer() {
             timestamp: firebase.database.ServerValue.TIMESTAMP
         });
     } else {
+        // 오답인 경우 일반 채팅 전송
         roomRef.child('chat').push({
             senderId: myUid,
             senderNickname: myNick,
