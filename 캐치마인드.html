@@ -302,6 +302,7 @@ const auth = firebase.auth();
 let myUid, myNick, myAvatar, roomId;
 let roomRef, myRef;
 let isHost = false;
+let resultSoundPlayed = false; // [신규] 결과창 사운드 중복 재생 방지 플래그
 let gameState = null;
 let ctx, isDrawing = false;
 let currentColor = 'black', currentWidth = 3;
@@ -468,6 +469,7 @@ function initGame(id) {
     });
 
    // [여기서부터 복사] initGame 내부의 roomRef.on 부분
+    // [여기서부터 복사하세요] initGame 내부 roomRef.on 전체 교체
     let lastPlayersJson = ''; 
 
     roomRef.on('value', snap => {
@@ -483,47 +485,40 @@ function initGame(id) {
         gameState = data;
         isHost = (data.hostId === myUid);
 
-        // 1. [핵심] 리매치 감지 및 데이터 초기화 (방장 전용)
+        // 게임 상태가 정상이면(게임중, 대기중) 사운드 재생 플래그 초기화
+        if (data.status !== 'gameOver') {
+            resultSoundPlayed = false;
+        }
+
+        // 1. 리매치 로직 (방장 전용)
         if (isHost && data.status === 'gameOver') {
             const players = data.players || {};
             const reqs = data.rematchRequests || {};
             const playerIds = Object.keys(players);
             
-            // 전원 준비 완료 확인
             const allReady = playerIds.length > 0 && playerIds.every(uid => reqs[uid] === true);
 
             if (allReady) {
-                console.log("모두 준비 완료. 게임 데이터를 초기화하고 카운트다운을 시작합니다.");
-                
                 const updates = {};
-                // (1) 상태를 'waiting'으로 돌리고 'starting: true'로 카운트다운 유도
                 updates['status'] = 'waiting';
                 updates['starting'] = true; 
-                
-                // (2) 게임 데이터 초기화
                 updates['gameData'] = {
                     round: 1,
-                    drawer: playerIds[0], // 첫 번째 플레이어부터 시작
-                    word: '', // 단어는 카운트다운 직후 할당
+                    drawer: playerIds[0],
+                    word: '',
                     timer: TURN_TIME
                 };
-                
-                // (3) 채팅, 그림, 요청 내역 삭제
                 updates['chat'] = null; 
                 updates['drawLines'] = null;
                 updates['rematchRequests'] = null;
                 updates['clearCanvas'] = Date.now();
-
-                // (4) [중요] 모든 플레이어 점수 0점으로 초기화
-                playerIds.forEach(pid => {
-                    updates[`players/${pid}/score`] = 0;
-                });
+                playerIds.forEach(pid => { updates[`players/${pid}/score`] = 0; });
 
                 roomRef.update(updates);
             }
         }
 
-        // 2. 초기화 또는 꼬임 방지
+        // 2. 초기화 안전장치
         if (isHost && !data.gameData && data.status !== 'gameOver') {
             roomRef.update({
                 status: 'waiting',
@@ -531,16 +526,20 @@ function initGame(id) {
             });
         }
 
-        // 3. 렌더링 최적화 (배경음악 끊김 방지)
+        // 3. 렌더링 최적화
         const currentPlayersJson = JSON.stringify(data.players) + (data.gameData?.drawer || '');
         if (lastPlayersJson !== currentPlayersJson) {
             renderPlayers(data.players, data.gameData?.drawer);
             lastPlayersJson = currentPlayersJson;
         }
 
+        // 4. UI 상태 처리 (오버레이 제어는 여기서 다 합니다)
         handleGameState(data);
+
+        // ⚠️ 주의: 여기에 loadingOverlay.style.display = 'none'; 코드가 있으면 절대 안 됩니다!
+        // handleGameState가 알아서 오버레이를 켰다 껐다 합니다.
     });
-    // [여기까지]
+    // [여기까지 복사하세요]
 
     roomRef.child('drawLines').on('child_added', snap => drawLineRemote(snap.val()));
 
@@ -651,6 +650,11 @@ function startCountdown() {
     if (isCountdownInProgress) return;
     isCountdownInProgress = true;
     
+    const winSound = document.getElementById('snd-win');
+    const loseSound = document.getElementById('snd-lose');
+    if (winSound) { winSound.pause(); winSound.currentTime = 0; }
+    if (loseSound) { loseSound.pause(); loseSound.currentTime = 0; }
+
     document.getElementById('loading-text').style.display = 'none';
     
     let count = 3;
@@ -1006,54 +1010,84 @@ function renderPlayers(players, drawerUid) {
 }
 
 function showResult(players, reqs={}) {
-    // [중복 방지] 이미 결과창이 떠 있다면(active 클래스) 함수를 종료하여 소리 중복 재생 차단
-    if (resultOverlay.classList.contains('active')) {
-        // 단, 리매치 버튼 상태(준비완료 등)는 갱신해줘야 함
-        updateRetryBtnState(reqs); 
-        return; 
+    // 1. 배경음악 정지
+    stopBgm();
+
+    // 2. 결과 모달 표시
+    if (resultOverlay) {
+        resultOverlay.classList.add('active');
     }
 
-    stopBgm(); // 배경음악 정지
-    resultOverlay.classList.add('active'); // 결과창 표시
-
+    // 3. 순위 목록 요소 가져오기
     const resultList = document.getElementById('result-list');
-    if (resultList) {
-        resultList.innerHTML = '';
+    if (!resultList) return;
+    
+    resultList.innerHTML = ''; // 목록 초기화
+    
+    // 4. 점수 내림차순 정렬
+    const sorted = Object.entries(players).sort((a, b) => (b[1].score || 0) - (a[1].score || 0));
+    
+    // 5. 순위 목록 렌더링
+    sorted.forEach(([uid, p], i) => {
+        const rank = i + 1;
+        const isMe = uid === myUid;
+        const scoreVal = p.score || 0;
         
-        const sorted = Object.entries(players).sort((a, b) => (b[1].score || 0) - (a[1].score || 0));
+        // [핵심 수정] 리매치 요청 상태 확인 (데이터가 없으면 false)
+        const isReady = reqs && reqs[uid] === true;
         
-        sorted.forEach(([uid, p], i) => {
-            const rank = i + 1;
-            const isMe = uid === myUid;
-            const scoreVal = p.score || 0;
-            
-            const row = document.createElement('div');
-            row.className = 'result-item';
-            if (i === 0) row.classList.add('winner');
-            if (isMe) row.style.border = "2px solid var(--primary-color)";
+        // 준비 완료 뱃지 (녹색 텍스트)
+        const readyBadge = isReady ? '<span style="font-size:0.8em; color:#28a745; margin-left:5px; font-weight:bold;">(준비완료)</span>' : '';
 
-            row.innerHTML = `
-                <div style="display:flex; align-items:center; gap:10px;">
-                    <span style="font-size:1.2em; margin-right:5px;">${rank === 1 ? '🥇' : rank + '위'}</span>
-                    <span>${escapeHTML(p.nickname)}</span>
-                </div>
-                <div style="color:var(--primary-color);">${scoreVal}점</div>
-            `;
-            resultList.appendChild(row);
+        const row = document.createElement('div');
+        row.className = 'result-item';
+        if (i === 0) row.classList.add('winner'); 
+        if (isMe) row.style.border = "2px solid var(--primary-color)"; 
 
-            // [사운드 재생] 내 순위에 따라 딱 한 번만 재생
-            if (isMe) {
-                if (rank === 1) {
-                    playSound('snd-win');
-                    if(typeof applyExpAndPoints === 'function') applyExpAndPoints(db, myUid, 150, 100);
-                } else {
-                    playSound('snd-lose');
-                    if(typeof applyExpAndPoints === 'function') applyExpAndPoints(db, myUid, 50, 30);
-                }
+        row.innerHTML = `
+            <div style="display:flex; align-items:center; gap:10px;">
+                <span style="font-size:1.2em; margin-right:5px;">${rank === 1 ? '🥇' : rank + '위'}</span>
+                <span>${escapeHTML(p.nickname)}</span>
+                ${readyBadge} 
+            </div>
+            <div style="color:var(--primary-color);">${scoreVal}점</div>
+        `;
+        
+        resultList.appendChild(row);
+        
+        // [핵심 수정] 사운드 중복 재생 방지
+        // resultSoundPlayed 플래그가 false일 때만 소리를 재생하고, true로 바꿈
+        if(isMe && !resultSoundPlayed) {
+            if(rank === 1) {
+                playSound('snd-win');
+                // (선택 사항) 경험치 지급 로직이 있다면 여기서 호출
+                if(typeof applyExpAndPoints === 'function') applyExpAndPoints(db, myUid, 150, 100);
+            } else {
+                playSound('snd-lose');
+                if(typeof applyExpAndPoints === 'function') applyExpAndPoints(db, myUid, 50, 30);
             }
-        });
+        }
+    });
+    
+    // 사운드 재생 완료 처리 (이제 다시는 안 울림)
+    resultSoundPlayed = true;
+
+    // 6. 버튼 상태 업데이트
+    const retryBtn = document.getElementById('retry-btn');
+    if (retryBtn) {
+        // 내가 이미 요청을 보냈다면
+        if (reqs && reqs[myUid]) {
+            retryBtn.innerText = "준비완료 (대기중...)";
+            retryBtn.disabled = true; // [수정] 중복 클릭 방지를 위해 버튼 비활성화
+            retryBtn.style.backgroundColor = "#ccc";
+            retryBtn.style.borderBottomColor = "#999";
+        } else {
+            retryBtn.innerText = "다시하기";
+            retryBtn.disabled = false;
+            retryBtn.style.backgroundColor = "var(--primary-color)";
+            retryBtn.style.borderBottomColor = "#C04A4A";
+        }
     }
-    updateRetryBtnState(reqs);
 }
 
 // 버튼 상태 갱신용 헬퍼 함수
@@ -1071,8 +1105,13 @@ function updateRetryBtnState(reqs) {
 }
 
 function sendRematchRequest() {
-    document.getElementById('retry-btn').disabled = true;
-    document.getElementById('retry-btn').innerText = "준비완료";
+    const retryBtn = document.getElementById('retry-btn');
+    if(retryBtn) {
+        retryBtn.disabled = true;
+        retryBtn.innerText = "신호 보내는 중...";
+    }
+    
+    // [수정] 토글 없이 무조건 true로 설정 (준비 완료)
     roomRef.child(`rematchRequests/${myUid}`).set(true);
 }
 
