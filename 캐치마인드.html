@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>캐치마인드</title>
+    <link href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff" as="font" type="font/woff" crossorigin>
+    
+    <script src="레벨업.js"></script>
+    <script src="아바타.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #FFFBEB; --primary-color: #FF6B6B; --secondary-color: #4ECDC4;
+            --accent-color: #FFD93D; --text-color-dark: #574141; --panel-bg: #FFFFFF;
+            --panel-border: #F0EAD2; --panel-shadow: #E4DCCF; --danger-color: #F76363;
+            --font-main: 'GmarketSans', sans-serif;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; touch-action: none; /* 중요: 스크롤 방지 */ }
+        html, body {
+            width: 100%; height: 100%; overflow: hidden; font-family: var(--font-main);
+            background-color: var(--bg-color); color: var(--text-color-dark);
+            display: flex; flex-direction: column;
+            position: fixed; /* 화면 고정 */
+        }
+
+        #game-wrapper {
+            width: 100%; flex-grow: 1; display: flex; flex-direction: column;
+            padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom);
+            position: relative;
+        }
+
+        /* 1. 상단 플레이어 바 */
+        #player-bar {
+            flex-shrink: 0; height: 90px; background: #FFFAE0;
+            border-bottom: 3px solid var(--panel-border);
+            display: flex; gap: 10px; overflow-x: auto; padding: 10px;
+            align-items: center;
+        }
+        
+        .player-slot {
+            display: flex; flex-direction: column; align-items: center; width: 60px; flex-shrink: 0; position: relative;
+        }
+        .player-avatar {
+            width: 45px; height: 45px; border-radius: 12px; background: #fff;
+            border: 2px solid var(--panel-border); overflow: hidden;
+            display: flex; justify-content: center; align-items: center;
+        }
+        .player-avatar img { width: 100%; height: 100%; object-fit: contain; }
+        .player-name { 
+            font-size: 0.7em; margin-top: 4px; font-weight: bold; 
+            width: 100%; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .player-score { font-size: 0.8em; color: var(--primary-color); font-weight: 900; }
+        
+        .player-slot.drawer .player-avatar { border-color: var(--accent-color); box-shadow: 0 0 0 3px var(--accent-color); }
+        .player-slot.drawer::after { content: '🎨'; position: absolute; top: -5px; right: -5px; font-size: 1.2em; }
+
+        /* 2. 캔버스 및 정보바 */
+        #canvas-wrapper {
+            flex-grow: 1; position: relative; margin: 10px;
+            background: white; border-radius: 15px;
+            border: 4px solid var(--text-color-dark);
+            box-shadow: 5px 5px 0 var(--panel-shadow);
+            overflow: hidden; touch-action: none;
+            display: flex; flex-direction: column;
+        }
+        
+        #game-info-bar {
+            position: absolute; top: 10px; left: 0; width: 100%;
+            display: flex; justify-content: center; align-items: center; gap: 8px;
+            pointer-events: none; z-index: 10;
+        }
+        
+        .info-badge {
+            background: rgba(0,0,0,0.7); color: white;
+            padding: 6px 12px; border-radius: 20px;
+            font-size: 1.0em; font-weight: bold;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        
+        #timer-badge {
+            position: absolute; top: 10px; right: 10px;
+            background: white; border: 3px solid var(--text-color-dark);
+            width: 40px; height: 40px; border-radius: 50%;
+            display: flex; justify-content: center; align-items: center;
+            font-weight: 900; font-size: 1.1em; color: var(--primary-color);
+            box-shadow: 2px 2px 0 rgba(0,0,0,0.2); z-index: 10;
+        }
+        #timer-badge.urgent { color: var(--danger-color); animation: pulse 0.5s infinite; }
+
+        /* [수정] 캔버스 래퍼에도 터치 액션 차단 적용 */
+        #canvas-wrapper {
+            flex-grow: 1; position: relative; margin: 10px;
+            background: white; border-radius: 15px;
+            border: 4px solid var(--text-color-dark);
+            box-shadow: 5px 5px 0 var(--panel-shadow);
+            overflow: hidden; 
+            touch-action: none !important; /* [수정] 중요: 스크롤 방지 */
+            display: flex; flex-direction: column;
+        }
+
+        /* [수정] 캔버스 터치 액션 강력 차단 및 Flex 레이아웃 적용 */
+        canvas { 
+            width: 100%; 
+            /* height: 100% 대신 flex-grow를 사용하여 부모 컨테이너의 남은 공간을 정확히 채움 */
+            height: 0; 
+            flex-grow: 1;
+            display: block; cursor: crosshair; 
+            touch-action: none !important; /* [수정] 중요: 브라우저 기본 동작 차단 */
+            -webkit-user-select: none; /* 텍스트 선택 방지 */
+            user-select: none;
+        }
+
+        /* 3. 그리기 도구 */
+        #drawing-tools {
+            flex-shrink: 0;
+            display: none; /* JS에서 제어 */
+            justify-content: center; gap: 12px; padding: 8px;
+            background: #f0f0f0; border-top: 2px solid #ddd;
+        }
+        .tool-btn {
+            width: 36px; height: 36px; border-radius: 50%; border: 2px solid #ccc; cursor: pointer;
+            display: flex; justify-content: center; align-items: center; font-size: 1.2em;
+            background: white; transition: transform 0.1s;
+        }
+        .tool-btn.active { transform: scale(1.1); border-color: var(--text-color-dark); box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        .tool-btn.color-btn { padding: 0; }
+
+        /* 4. 채팅 영역 */
+        #chat-area {
+            height: 200px; display: flex; flex-direction: column;
+            background: var(--bg-color); border-top: 3px solid var(--panel-border);
+        }
+        #chat-list {
+            flex-grow: 1; overflow-y: auto; padding: 10px;
+            display: flex; flex-direction: column; gap: 8px;
+        }
+        .chat-bubble {
+            max-width: 80%; padding: 8px 12px; border-radius: 12px; font-size: 0.9em;
+            position: relative; word-break: break-word;
+        }
+        .chat-bubble.mine { align-self: flex-end; background: var(--secondary-color); color: white; border-bottom-right-radius: 2px; }
+        .chat-bubble.other { align-self: flex-start; background: white; border: 1px solid #eee; border-bottom-left-radius: 2px; }
+        .chat-bubble.system { align-self: center; background: rgba(0,0,0,0.1); font-size: 0.8em; border-radius: 20px; padding: 4px 10px; color: #555; }
+        .chat-bubble.correct { align-self: center; background: var(--accent-color); color: var(--text-color-dark); font-weight: bold; width: 90%; text-align: center; border: 2px solid #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .chat-name { font-size: 0.7em; margin-bottom: 2px; opacity: 0.8; font-weight: bold; display: block; }
+
+        /* 5. 입력 버튼 */
+        #input-bar { padding: 10px; background: white; border-top: 1px solid #eee; flex-shrink: 0; }
+        #open-input-btn {
+            width: 100%; padding: 14px; background: var(--primary-color);
+            color: white; font-size: 1.2em; font-weight: 900; border: none;
+            border-radius: 12px; cursor: pointer; border-bottom: 4px solid #C04A4A;
+        }
+        #open-input-btn:active { transform: translateY(2px); border-bottom-width: 2px; }
+        #open-input-btn:disabled { background: #ccc; border-color: #999; cursor: not-allowed; transform: none; }
+
+        /* 오버레이 */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5); z-index: 2000;
+            display: none; justify-content: center; align-items: flex-end;
+        }
+        .modal-overlay.active { display: flex; }
+        
+        .input-modal {
+            width: 100%; background: white; padding: 20px; padding-bottom: 40px;
+            border-radius: 20px 20px 0 0; box-shadow: 0 -5px 20px rgba(0,0,0,0.2);
+            animation: slideUp 0.3s ease-out;
+        }
+        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+        .input-group { display: flex; gap: 10px; }
+        #answer-input {
+            flex-grow: 1; padding: 12px; font-size: 1.1em; border: 2px solid var(--text-color-dark);
+            border-radius: 10px; font-family: var(--font-main);
+        }
+        #send-btn {
+            padding: 0 20px; background: var(--secondary-color); color: white;
+            border: none; border-radius: 10px; font-weight: bold; border-bottom: 4px solid #379A93;
+        }
+
+        .fullscreen-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); z-index: 3000;
+            display: none; flex-direction: column; justify-content: center; align-items: center;
+            color: white;
+        }
+        .fullscreen-overlay.active { display: flex; }
+        
+        .result-card {
+            background: var(--panel-bg); width: 90%; max-width: 350px;
+            border-radius: 20px; border: 4px solid var(--text-color-dark);
+            overflow: hidden; color: var(--text-color-dark);
+        }
+        .result-header { background: var(--primary-color); padding: 15px; text-align: center; color: white; font-size: 1.5em; font-weight: bold; border-bottom: 4px solid #C04A4A; }
+        .result-body { padding: 20px; max-height: 50vh; overflow-y: auto; }
+        .result-item { display: flex; justify-content: space-between; padding: 10px; background: #f5f5f5; border-radius: 10px; margin-bottom: 5px; font-weight: bold; align-items: center; }
+        .result-item.winner { background: #FFF9C4; border: 2px solid var(--accent-color); }
+        .result-footer { padding: 15px; display: flex; gap: 10px; background: #FFFAE0; border-top: 2px solid #eee; }
+        .footer-btn { flex: 1; padding: 12px; border-radius: 10px; border: none; color: white; font-weight: bold; cursor: pointer; }
+        .btn-retry { background: var(--primary-color); border-bottom: 4px solid #C04A4A; }
+        .btn-exit { background: var(--secondary-color); border-bottom: 4px solid #379A93; }
+        .btn-retry:disabled { background: #ccc; border-color: #999; transform: none; }
+
+        #countdown-text { font-size: 6em; font-weight: 900; text-shadow: 0 0 20px rgba(255,255,255,0.5); animation: pop 0.5s infinite alternate; }
+        .status-ready { color: #28a745; font-size: 0.8em; margin-left: 5px; }
+        
+        @keyframes pop { from { transform: scale(1); } to { transform: scale(1.1); } }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+    </style>
+</head>
+<body>
+
+    <div id="game-wrapper">
+        <div id="player-bar"></div>
+
+        <div id="canvas-wrapper">
+            <div id="game-info-bar">
+                <div class="info-badge">ROUND <span id="round-display">1/5</span></div>
+                <div class="info-badge" style="background:var(--accent-color); color:var(--text-color-dark);">
+                    <span id="word-display">대기중...</span>
+                </div>
+            </div>
+            <div id="timer-badge">--</div>
+            
+            <canvas id="game-canvas"></canvas>
+            
+            <div id="drawing-tools">
+                <div class="tool-btn color-btn active" style="background:black;" onclick="setColor('black', this)">⚫</div>
+                <div class="tool-btn color-btn" style="background:#FF6B6B;" onclick="setColor('#FF6B6B', this)">🔴</div>
+                <div class="tool-btn color-btn" style="background:#4ECDC4;" onclick="setColor('#4ECDC4', this)">🟢</div>
+                <div class="tool-btn color-btn" style="background:#FFD93D;" onclick="setColor('#FFD93D', this)">🟡</div>
+                <div class="tool-btn color-btn" style="background:#3333FF;" onclick="setColor('#3333FF', this)">🔵</div>
+                <div style="width:1px; background:#ccc; margin:0 5px;"></div>
+                <div class="tool-btn" onclick="setColor('white', this, 20)">🧽</div>
+                <div class="tool-btn" onclick="clearCanvas()" style="color:var(--danger-color); font-weight:bold;">🗑️</div>
+            </div>
+        </div>
+
+        <div id="chat-area">
+            <div id="chat-list"></div>
+        </div>
+
+        <div id="input-bar">
+            <button id="open-input-btn">💬 정답 / 채팅 입력</button>
+        </div>
+    </div>
+
+    <div id="input-modal-overlay" class="modal-overlay">
+        <div class="input-modal">
+            <div class="input-group">
+                <input type="text" id="answer-input" placeholder="정답을 입력하세요!" autocomplete="off">
+                <button id="send-btn">전송</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="loading-overlay" class="fullscreen-overlay active">
+        <div id="loading-text" style="font-size:1.5em; margin-bottom:20px;">접속 중...</div>
+        <div id="countdown-text"></div>
+    </div>
+
+    <div id="result-overlay" class="fullscreen-overlay">
+        <div class="result-card">
+            <div class="result-header">🏆 최종 순위</div>
+            <div class="result-body" id="result-list"></div>
+            <div class="result-footer">
+                <button class="footer-btn btn-retry" id="retry-btn">다시하기</button>
+                <button class="footer-btn btn-exit" id="exit-btn">대기실로</button>
+            </div>
+        </div>
+    </div>
+
+    <audio id="snd-correct" src="https://raw.githubusercontent.com/bangat/game/main/sound/quiz_correct.mp3"></audio>
+    <audio id="snd-start" src="https://raw.githubusercontent.com/bangat/game/main/sound/start.mp3"></audio>
+
+    <script>
+       const firebaseConfig = {
+    apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
+    authDomain: "goodluck-7c14b.firebaseapp.com",
+    databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com",
+    projectId: "goodluck-7c14b",
+    storageBucket: "goodluck-7c14b.appspot.com",
+    messagingSenderId: "858281658455",
+    appId: "1:858281658455:web:9131280a459be983933b12"
+};
+
+if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const auth = firebase.auth();
+
+let myUid, myNick, myAvatar, roomId;
+let roomRef, myRef;
+let isHost = false;
+let gameState = null;
+let ctx, isDrawing = false;
+let currentColor = 'black', currentWidth = 3;
+let lastX = 0, lastY = 0;
+let timerInterval;
+let isExiting = false;
+let countdownTimer = null;
+let lastDrawerUid = null;
+
+const WORDS = ["사과", "바나나", "자동차", "비행기", "학교", "컴퓨터", "강아지", "고양이", "피자", "축구", "안경", "시계", "우산", "나무", "꽃", "해", "달", "별", "눈사람", "기린", "코끼리", "치킨", "햄버거", "라면", "김치", "아이스크림", "양말", "모자", "신발", "가방", "마이크", "선풍기", "냉장고", "기타", "피아노"];
+const MAX_ROUNDS = 5;
+const TURN_TIME = 60;
+
+// DOM
+const canvas = document.getElementById('game-canvas');
+const chatList = document.getElementById('chat-list');
+const inputModal = document.getElementById('input-modal-overlay');
+const inputField = document.getElementById('answer-input');
+const openInputBtn = document.getElementById('open-input-btn');
+const loadingOverlay = document.getElementById('loading-overlay');
+const resultOverlay = document.getElementById('result-overlay');
+const timerBadge = document.getElementById('timer-badge');
+const roundDisplay = document.getElementById('round-display');
+const wordDisplay = document.getElementById('word-display');
+const playerBar = document.getElementById('player-bar');
+const drawingTools = document.getElementById('drawing-tools');
+
+// HTML 이스케이프 함수
+function escapeHTML(str) {
+    if (typeof str !== 'string') return '';
+    const map = {'&': '&amp;','<': '&lt;','>': '&gt;','"': '&quot;',"'": '&#039;'};
+    return str.replace(/[&<>"']/g, m => map[m]);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    auth.onAuthStateChanged(user => {
+        if (user) {
+            myUid = user.uid;
+            myNick = localStorage.getItem('userNickname') || 'User';
+            myAvatar = localStorage.getItem('userAvatar');
+            
+            const params = new URLSearchParams(location.search);
+            roomId = params.get('roomId');
+            
+            if (roomId) initGame(roomId);
+            else location.href = '대기실.html';
+        } else location.href = 'index.html';
+    });
+
+    ctx = canvas.getContext('2d');
+    resizeCanvas();
+    
+    openInputBtn.addEventListener('click', () => {
+        inputModal.classList.add('active');
+        setTimeout(() => inputField.focus(), 100);
+    });
+    inputModal.addEventListener('click', (e) => {
+        if(e.target === inputModal) inputModal.classList.remove('active');
+    });
+    document.getElementById('send-btn').addEventListener('click', sendAnswer);
+    inputField.addEventListener('keypress', (e) => { if(e.key === 'Enter') sendAnswer(); });
+    
+    document.getElementById('retry-btn').addEventListener('click', sendRematchRequest);
+    document.getElementById('exit-btn').addEventListener('click', exitGame);
+});
+
+function initGame(id) {
+    roomRef = db.ref(`rooms/${id}`);
+    myRef = roomRef.child(`players/${myUid}`);
+
+    myRef.update({
+        nickname: myNick,
+        avatar: myAvatar,
+        score: 0,
+        online: true,
+        isReady: false
+    });
+    myRef.onDisconnect().remove();
+
+    // [수정] resize 이벤트 리스너 제거 (그림 사라짐 방지)
+    window.removeEventListener('resize', resizeCanvas);
+
+    // 채팅 리스너 설정
+    let isInitialLoad = true;
+    roomRef.child('chat').on('child_added', snap => {
+        const chatData = snap.val();
+        if (!chatData) return;
+        
+        if (isInitialLoad) {
+            const msgTime = chatData.timestamp || 0;
+            const now = Date.now();
+            if (now - msgTime < 60000) {
+                addChatBubble(chatData);
+            }
+        } else {
+            addChatBubble(chatData);
+            
+            // [수정] 호스트가 'correct' 메시지를 감지하면 턴을 넘김
+            if (isHost && chatData.type === 'correct' && gameState?.status === 'playing') {
+                setTimeout(() => nextTurn("정답!"), 1500);
+            }
+        }
+    });
+    
+    roomRef.child('chat').once('value', () => {
+        isInitialLoad = false;
+    });
+
+    // [수정] 캔버스 초기화 리스너 개선: 최초 접속 시점의 데이터는 무시하고, 이후 변경사항만 반영
+    let isFirstClearCheck = true;
+    roomRef.child('clearCanvas').on('value', snap => {
+        if (isFirstClearCheck) {
+            isFirstClearCheck = false;
+            return; // 접속하자마자 캔버스가 지워지는 문제 방지
+        }
+        const timestamp = snap.val();
+        if (timestamp) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+    });
+
+    roomRef.on('value', snap => {
+        if (isExiting) return;
+        if (!snap.exists()) { 
+            alert('방이 사라졌습니다.'); 
+            location.href = '대기실.html'; 
+            return; 
+        }
+        const data = snap.val();
+        gameState = data;
+        isHost = (data.hostId === myUid);
+
+        if (isHost && !data.gameData && data.status !== 'gameOver') {
+            roomRef.update({
+                status: 'waiting',
+                gameData: {
+                    round: 1,
+                    timer: TURN_TIME,
+                    drawer: '',
+                    word: ''
+                }
+            });
+        }
+
+        renderPlayers(data.players, data.gameData?.drawer);
+        handleGameState(data);
+    });
+
+    roomRef.child('drawLines').on('child_added', snap => drawLineRemote(snap.val()));
+}
+
+function handleGameState(data) {
+    const status = data.status;
+    const gData = data.gameData || {};
+
+    if (status === 'waiting') {
+        loadingOverlay.classList.add('active');
+        // [수정] 카운트다운 중이 아닐 때만 대기 문구 표시
+        if (!countdownTimer) {
+            document.getElementById('loading-text').style.display = 'block';
+            document.getElementById('loading-text').innerText = `대기중 (${Object.keys(data.players||{}).length}명)...`;
+        }
+        document.getElementById('countdown-text').innerText = "";
+        resultOverlay.classList.remove('active');
+
+        if (isHost && Object.keys(data.players).length >= 2 && !data.starting) {
+            roomRef.update({ starting: true });
+        }
+        
+        if (data.starting && !countdownTimer) {
+            startCountdown();
+        }
+    }
+    else if (status === 'playing') {
+        loadingOverlay.classList.remove('active');
+        resultOverlay.classList.remove('active');
+        // 안전 장치: 플레이 상태로 넘어오면 카운트다운 인터벌 제거
+        if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+
+        roundDisplay.innerText = `${gData.round || 1}/${MAX_ROUNDS}`;
+        timerBadge.innerText = gData.timer || 0;
+        
+        if ((gData.timer || 0) <= 10) timerBadge.classList.add('urgent');
+        else timerBadge.classList.remove('urgent');
+
+       if (gData.drawer !== lastDrawerUid) {
+            lastDrawerUid = gData.drawer;
+            const isDrawer = (gData.drawer === myUid);
+
+            if (isDrawer) {
+                drawingTools.style.display = 'flex';
+                wordDisplay.innerText = `제시어: ${gData.word}`;
+                openInputBtn.innerText = "🎨 당신이 그릴 차례입니다!";
+                openInputBtn.disabled = true;
+                openInputBtn.style.background = "#ccc";
+                openInputBtn.style.borderBottomColor = "#999";
+            } else {
+                drawingTools.style.display = 'none';
+                const wordLen = gData.word ? gData.word.length : 0;
+                const hint = "O ".repeat(wordLen);
+                wordDisplay.innerText = `힌트: ${hint}`;
+                openInputBtn.innerText = "💬 정답 / 채팅 입력";
+                openInputBtn.disabled = false;
+                openInputBtn.style.background = "var(--primary-color)";
+                openInputBtn.style.borderBottomColor = "#C04A4A";
+            }
+        }
+
+        // [수정] 타이머 실행 보완: 호스트이고 타이머가 안 돌고 있다면 강제 실행
+        if (isHost && !timerInterval && gData.timer > 0) {
+            runTimer();
+        }
+    }
+    else if (status === 'gameOver') {
+        showResult(data.players, data.rematchRequests);
+    }
+}
+
+function startCountdown() {
+    if (countdownTimer) return;
+    
+    // [수정] 카운트다운 시작 시 '대기중...' 텍스트 숨기기
+    document.getElementById('loading-text').style.display = 'none';
+    
+    let count = 3;
+    countdownTimer = setInterval(() => {
+        if (count > 0) {
+            document.getElementById('countdown-text').innerText = count;
+            document.getElementById('snd-start').play().catch(()=>{});
+            count--;
+        } else {
+            clearInterval(countdownTimer);
+            countdownTimer = null;
+            document.getElementById('countdown-text').innerText = "GO!";
+            
+            if (isHost) {
+                setTimeout(() => {
+                    const pIds = Object.keys(gameState.players);
+                    roomRef.update({
+                        status: 'playing',
+                        starting: false,
+                        gameData: {
+                            round: 1,
+                            drawer: pIds[0],
+                            word: getRandomWord(),
+                            timer: TURN_TIME
+                        },
+                        drawLines: null,
+                        clearCanvas: Date.now() // 게임 시작 시 캔버스 초기화
+                    });
+                    // [수정] runTimer는 handleGameState에서 상태 변화를 감지하여 실행되도록 유도하거나 여기서 명시적 실행
+                    runTimer();
+                }, 1000);
+            }
+        }
+    }, 1000);
+}
+
+function runTimer() {
+    if (!isHost) return;
+    if (timerInterval) clearInterval(timerInterval); // 기존 타이머가 있다면 제거 후 재시작
+
+    timerInterval = setInterval(() => {
+        roomRef.child('gameData/timer').transaction(t => {
+            // [수정] 타이머 값 안전 처리 (음수 방지)
+            if (t === null || t === undefined) return TURN_TIME;
+            const nextTime = t - 1;
+            return nextTime >= 0 ? nextTime : 0;
+        }, (err, committed, snap) => {
+            if (err) return;
+            if (committed && snap.val() === 0) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+                nextTurn("⏰ 시간 초과!");
+            }
+        });
+    }, 1000);
+}
+
+function runTimer() {
+    if (!isHost) return;
+    
+    // [수정] 이미 타이머가 돌고 있다면 중복 실행 방지 (clearInterval 제거)
+    if (timerInterval) return;
+    
+    timerInterval = setInterval(() => {
+        roomRef.child('gameData/timer').transaction(t => {
+            if (t === null || t === undefined) return TURN_TIME;
+            return t > 0 ? t - 1 : 0;
+        }, (err, committed, snap) => {
+            if (err) {
+                console.error("타이머 업데이트 실패:", err);
+                return;
+            }
+            if (committed && snap.val() === 0) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+                nextTurn("⏰ 시간 초과!");
+            }
+        });
+    }, 1000);
+}
+
+function nextTurn(reasonMsg) {
+    if (!isHost) return;
+    
+    // [수정] 타이머가 실행 중이면 먼저 정지
+    if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+    }
+    
+    if (reasonMsg && gameState && gameState.gameData) {
+        const word = gameState.gameData.word || '';
+        sendSysMsg(`${reasonMsg} 정답: ${word}`);
+    }
+    
+    if (!gameState || !gameState.gameData || !gameState.players) {
+        console.error("게임 상태가 유효하지 않습니다.");
+        return;
+    }
+    
+    const gData = gameState.gameData;
+    const pIds = Object.keys(gameState.players);
+    const currIdx = pIds.indexOf(gData.drawer);
+    let nextIdx = currIdx + 1;
+    let nextRound = gData.round;
+
+    if (nextIdx >= pIds.length) {
+        nextIdx = 0;
+        nextRound++;
+    }
+
+    if (nextRound > MAX_ROUNDS) {
+        roomRef.update({ status: 'gameOver' }).catch(err => {
+            console.error("게임 종료 업데이트 실패:", err);
+        });
+    } else {
+        roomRef.update({
+            gameData: {
+                round: nextRound,
+                drawer: pIds[nextIdx],
+                word: getRandomWord(),
+                timer: TURN_TIME
+            },
+            drawLines: null,
+            clearCanvas: Date.now()
+        }).then(() => {
+            // [수정] 약간의 딜레이 후 타이머 시작 (상태 업데이트 완료 대기)
+            setTimeout(() => runTimer(), 100);
+        }).catch(err => {
+            console.error("다음 턴 업데이트 실패:", err);
+        });
+    }
+}
+
+function getRandomWord() { 
+    return WORDS[Math.floor(Math.random() * WORDS.length)]; 
+}
+
+function resizeCanvas() {
+    const wrapper = document.getElementById('canvas-wrapper');
+    canvas.width = wrapper.clientWidth;
+    canvas.height = wrapper.clientHeight; 
+}
+
+function getPos(e) {
+    const r = canvas.getBoundingClientRect();
+    let clientX, clientY;
+
+    if (e.touches && e.touches.length > 0) {
+        clientX = e.touches[0].clientX;
+        clientY = e.touches[0].clientY;
+    } else if (e.changedTouches && e.changedTouches.length > 0) {
+        clientX = e.changedTouches[0].clientX;
+        clientY = e.changedTouches[0].clientY;
+    } else {
+        clientX = e.clientX;
+        clientY = e.clientY;
+    }
+
+    return { 
+        x: (clientX - r.left) / r.width, 
+        y: (clientY - r.top) / r.height 
+    };
+}
+
+const startDraw = (e) => {
+    if (e.cancelable) e.preventDefault(); 
+
+    if (gameState?.gameData?.drawer !== myUid) return;
+    
+    isDrawing = true;
+    const p = getPos(e);
+    lastX = p.x; lastY = p.y;
+};
+
+const draw = (e) => {
+    if (e.cancelable) e.preventDefault();
+
+    if (!isDrawing) return;
+    
+    const p = getPos(e);
+    
+    drawLineRemote({ lx: lastX, ly: lastY, x: p.x, y: p.y, c: currentColor, w: currentWidth });
+
+    roomRef.child('drawLines').push({
+        lx: lastX, ly: lastY, x: p.x, y: p.y, c: currentColor, w: currentWidth
+    });
+    lastX = p.x; lastY = p.y;
+};
+const endDraw = () => { isDrawing = false; };
+
+canvas.addEventListener('mousedown', startDraw);
+canvas.addEventListener('touchstart', startDraw, {passive:false});
+canvas.addEventListener('mousemove', draw);
+canvas.addEventListener('touchmove', draw, {passive:false});
+window.addEventListener('mouseup', endDraw);
+window.addEventListener('touchend', endDraw);
+
+function drawLineRemote(l) {
+    const w = canvas.width; 
+    const h = canvas.height;
+    ctx.beginPath();
+    ctx.moveTo(l.lx*w, l.ly*h);
+    ctx.lineTo(l.x*w, l.y*h);
+    ctx.strokeStyle = l.c; 
+    ctx.lineWidth = l.w;
+    ctx.lineCap = 'round'; 
+    ctx.stroke();
+}
+
+window.setColor = (color, btn, width = 3) => {
+    document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentColor = color; 
+    currentWidth = width;
+};
+
+window.clearCanvas = () => {
+    if (gameState?.gameData?.drawer === myUid) roomRef.child('clearCanvas').set(Date.now());
+};
+
+function sendAnswer() {
+    const txt = inputField.value.trim();
+    if (!txt) return;
+    
+    // 입력창 닫기 및 초기화
+    inputModal.classList.remove('active');
+    inputField.value = '';
+
+    // [수정] 데이터 안전성 체크 강화
+    if (!gameState || !gameState.gameData || !gameState.gameData.word) {
+        console.error("게임 데이터가 로드되지 않았습니다.");
+        return;
+    }
+
+    const answer = gameState.gameData.word;
+    const isDrawer = gameState.gameData.drawer === myUid;
+    
+    if (isDrawer) {
+        roomRef.child('chat').push({
+            senderId: myUid,
+            senderNickname: myNick,
+            content: txt,
+            type: 'chat',
+            timestamp: firebase.database.ServerValue.TIMESTAMP
+        });
+        return;
+    }
+
+    // [수정] 정답 비교 로직 강화 (모든 공백 제거)
+    const normalizedAnswer = answer.replace(/\s+/g, '').trim();
+    const normalizedInput = txt.replace(/\s+/g, '').trim();
+    
+    // 디버깅용 (필요시 콘솔 확인)
+    // console.log(`정답비교: ${normalizedInput} vs ${normalizedAnswer}`);
+
+    if (normalizedInput === normalizedAnswer) {
+        document.getElementById('snd-correct').play().catch(()=>{});
+        
+        roomRef.child(`players/${myUid}/score`).transaction(s => (s||0) + 100);
+        roomRef.child(`players/${gameState.gameData.drawer}/score`).transaction(s => (s||0) + 50);
+        
+        roomRef.child('chat').push({
+            senderId: myUid,
+            senderNickname: myNick,
+            content: `🎉 정답! [${answer}]`,
+            type: 'correct',
+            timestamp: firebase.database.ServerValue.TIMESTAMP
+        });
+    } else {
+        roomRef.child('chat').push({
+            senderId: myUid,
+            senderNickname: myNick,
+            content: txt,
+            type: 'chat',
+            timestamp: firebase.database.ServerValue.TIMESTAMP
+        });
+    }
+}
+
+function sendSysMsg(msg) {
+    if (!roomRef) return;
+    roomRef.child('chat').push({
+        content: msg,
+        type: 'system',
+        timestamp: firebase.database.ServerValue.TIMESTAMP
+    }).catch(err => {
+        console.error("시스템 메시지 전송 실패:", err);
+    });
+}
+
+function addChatBubble(data) {
+    if (!data) return;
+    
+    const div = document.createElement('div');
+    
+    if (data.type === 'system') {
+        div.className = 'chat-bubble system';
+        div.textContent = data.content || data.msg || '';
+    } else if (data.type === 'correct') {
+        div.className = 'chat-bubble correct';
+        div.textContent = data.content || data.msg || '';
+    } else {
+        const isMine = data.senderId === myUid;
+        div.className = `chat-bubble ${isMine ? 'mine' : 'other'}`;
+        
+        const senderName = data.senderNickname || data.name || 'Unknown';
+        const messageContent = data.content || data.msg || '';
+        
+        if (!isMine) {
+            div.innerHTML = `<span class="chat-name">${escapeHTML(senderName)}</span>${escapeHTML(messageContent)}`;
+        } else {
+            div.textContent = messageContent;
+        }
+    }
+    
+    chatList.appendChild(div);
+    chatList.scrollTop = chatList.scrollHeight;
+}
+
+function renderPlayers(players, drawerUid) {
+    playerBar.innerHTML = '';
+    if (!players) return;
+    Object.keys(players).forEach(uid => {
+        const p = players[uid];
+        const div = document.createElement('div');
+        div.className = `player-slot ${uid === drawerUid ? 'drawer' : ''}`;
+        
+        const avatarSet = AVATAR_SETS[p.avatar];
+        let imgHtml = '';
+        if(avatarSet) imgHtml = `<img src="${avatarSet.front}">`;
+        else if(p.avatar?.includes('.')) imgHtml = `<img src="${p.avatar}">`;
+        else imgHtml = `<span style="font-size:2em">${p.avatar}</span>`;
+
+        div.innerHTML = `
+            <div class="player-avatar">${imgHtml}</div>
+            <div class="player-name">${escapeHTML(p.nickname)}</div>
+            <div class="player-score">${p.score}점</div>
+        `;
+        playerBar.appendChild(div);
+    });
+}
+
+function showResult(players, reqs={}) {
+    resultOverlay.classList.add('active');
+    const list = document.getElementById('result-list');
+    list.innerHTML = '';
+    
+    const sorted = Object.entries(players).sort((a,b) => b[1].score - a[1].score);
+    
+    sorted.forEach(([uid, p], i) => {
+        const isMe = uid === myUid;
+        const isReady = reqs && reqs[uid];
+        const div = document.createElement('div');
+        div.className = `result-item ${i===0 ? 'winner' : ''}`;
+        div.innerHTML = `
+            <div>${i+1}위 ${escapeHTML(p.nickname)} ${isMe?'(나)':''}</div>
+            <div>${p.score}점 <span class="status-ready">${isReady ? '준비완료' : ''}</span></div>
+        `;
+        list.appendChild(div);
+        
+        if(isMe) {
+            if(i===0) applyExpAndPoints(db, myUid, 150, 100);
+            else applyExpAndPoints(db, myUid, 50, 30);
+        }
+    });
+
+    if (isHost) {
+        const total = Object.keys(players).length;
+        const readyCount = Object.keys(reqs).length;
+        if (total > 0 && total === readyCount) {
+            setTimeout(() => {
+                roomRef.update({
+                    rematchRequests: null,
+                    status: 'waiting',
+                    starting: false
+                });
+            }, 1000);
+        }
+    }
+}
+
+function sendRematchRequest() {
+    document.getElementById('retry-btn').disabled = true;
+    document.getElementById('retry-btn').innerText = "준비완료";
+    roomRef.child(`rematchRequests/${myUid}`).set(true);
+}
+
+function exitGame() {
+    isExiting = true;
+    roomRef.off();
+    roomRef.child(`players/${myUid}`).remove();
+    location.href = '대기실.html';
+}
+
+    </script>
+</body>
+</html>
