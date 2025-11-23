@@ -313,22 +313,37 @@ let countdownTimer = null;
 let lastDrawerUid = null;
 let isCountdownInProgress = false; // [신규] 카운트다운 중복 방지 플래그
 const WORDS = [
-  // 1. 초기 목록
-  "사과", "바나나", "자동차", "비행기", "학교", "컴퓨터", "강아지", "고양이", "피자", "축구", 
-  "안경", "시계", "우산", "나무", "꽃", "해", "달", "별", "눈사람", "기린", 
-  "코끼리", "치킨", "햄버거", "라면", "김치", "아이스크림", "양말", "모자", "신발", "가방", 
-  "마이크", "선풍기", "냉장고", "기타", "피아노",
-  
-  // 2. 이전 추가 목록
-  "토끼", "사자", "호랑이", "돼지", "원숭이", "뱀", "거북이", "포도", "수박", "딸기", 
-  "빵", "케이크", "자전거", "버스", "기차", "로봇", "카메라", "텔레비전", "유령", "집",
+  // 1. 귀여운 동물 (특징이 뚜렷해서 그리기 쉬움)
+  "강아지", "고양이", "토끼", "병아리", "오리", "돼지", "소", "양", "말", "사자",
+  "호랑이", "코끼리", "기린", "원숭이", "팬더", "펭귄", "북극곰", "다람쥐", "고래", "상어",
+  "거북이", "개구리", "뱀", "문어", "오징어", "물고기", "게", "새우", "하마", "악어",
+  "공룡", "박쥐", "나비", "꿀벌", "거미", "달팽이", "잠자리", "무당벌레", "개미", "파리",
 
-  // 3. 실제 캐치마인드 기출 추천 (20개)
-  "거미", "나비", "다람쥐", "독수리", "드라큘라", "마녀", "박쥐", "불꽃놀이", "상어", "소방차", 
-  "슈퍼맨", "스키", "여우", "오리", "오징어", "선인장", "청소기", "캥거루", "헬리콥터", "해바라기"
+  // 2. 맛있는 음식 (색깔로 표현하기 좋음)
+  "사과", "바나나", "포도", "수박", "딸기", "복숭아", "귤", "파인애플", "체리", "당근",
+  "옥수수", "오이", "고추", "호박", "버섯", "브로콜리", "피자", "햄버거", "치킨", "감자튀김",
+  "핫도그", "샌드위치", "김밥", "라면", "만두", "떡볶이", "도넛", "케이크", "사탕",
+  "초콜릿", "우유", "주스", "콜라", "치즈", "달걀", "빵", "밥", "국수", "물", "조개",
+
+  // 3. 우리집 물건 & 학용품 (네모, 동그라미로 그리기 쉬움)
+  "텔레비전", "냉장고", "세탁기", "선풍기", "청소기", "컴퓨터", "휴대폰", "카메라", "시계", "침대",
+  "이불", "베개", "소파", "의자", "책상", "거울", "빗", "칫솔", "치약", "비누",
+  "수건", "휴지", "컵", "숟가락", "젓가락", "그릇", "냄비", "후라이팬", "칼", "도마",
+  "연필", "지우개", "가위", "풀", "자", "공책", "책", "가방", "안경", "모자",
+
+  // 4. 탈것 & 밖에서 볼 수 있는 것
+  "자동차", "버스", "택시", "경찰차", "소방차", "구급차", "트럭", "포크레인", "자전거", "오토바이",
+  "기차", "비행기", "헬리콥터", "배", "잠수함", "로켓", "UFO", "신호등", "횡단보도", "놀이터",
+  "미끄럼틀", "그네", "시소", "학교", "병원", "집", "아파트", "텐트", "성", "다리",
+
+  // 5. 자연 & 날씨 & 몸
+  "해", "달", "별", "구름", "비", "눈", "눈사람", "무지개", "번개", "불",
+  "물방울", "바다", "산", "나무", "꽃", "해바라기", "선인장", "돌", "모래", "흙",
+  "눈", "코", "입", "귀", "손", "발", "머리카락", "이빨", "얼굴", "엉덩이",
+  "왕관", "반지", "목걸이", "양말", "신발", "장갑", "우산", "마스크", "안경", "리본"
 ];
 const MAX_ROUNDS = 5;
-const TURN_TIME = 90;
+const TURN_TIME = 120;
 
 // DOM
 const canvas = document.getElementById('game-canvas');
@@ -485,10 +500,6 @@ function initGame(id) {
         gameState = data;
         isHost = (data.hostId === myUid);
 
-        // 게임 상태가 정상이면(게임중, 대기중) 사운드 재생 플래그 초기화
-        if (data.status !== 'gameOver') {
-            resultSoundPlayed = false;
-        }
 
         // 1. 리매치 로직 (방장 전용)
         if (isHost && data.status === 'gameOver') {
@@ -586,13 +597,15 @@ function handleGameState(data) {
             isCountdownInProgress = false;
             if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
         } else {
-            // 카운트다운 시작 (starting: true)
-            document.getElementById('loading-text').style.display = 'none';
-            
-            if (!isCountdownInProgress) {
-                startCountdown(); // 여기서 3, 2, 1 카운트다운 시작
-            }
+        // 카운트다운 시작 (starting: true)
+        // [수정] 카운트다운 중에는 오버레이를 확실하게 보여줌
+        loadingOverlay.classList.add('active'); 
+        document.getElementById('loading-text').style.display = 'none';
+        
+        if (!isCountdownInProgress) {
+            startCountdown(); // 여기서 3, 2, 1 카운트다운 시작
         }
+    }
         // (기존 코드 유지)
         if (isHost && Object.keys(data.players).length >= 2 && !data.starting) {
             roomRef.update({ starting: true });
@@ -649,6 +662,7 @@ function handleGameState(data) {
 function startCountdown() {
     if (isCountdownInProgress) return;
     isCountdownInProgress = true;
+    resultSoundPlayed = false;
     
     const winSound = document.getElementById('snd-win');
     const loseSound = document.getElementById('snd-lose');
@@ -700,42 +714,35 @@ function startCountdown() {
     }, 1000);
 }
 
-function runTimer() {
-    if (!isHost) return;
-    if (timerInterval) clearInterval(timerInterval); // 기존 타이머가 있다면 제거 후 재시작
-
-    timerInterval = setInterval(() => {
-        roomRef.child('gameData/timer').transaction(t => {
-            // [수정] 타이머 값 안전 처리 (음수 방지)
-            if (t === null || t === undefined) return TURN_TIME;
-            const nextTime = t - 1;
-            return nextTime >= 0 ? nextTime : 0;
-        }, (err, committed, snap) => {
-            if (err) return;
-            if (committed && snap.val() === 0) {
-                clearInterval(timerInterval);
-                timerInterval = null;
-                nextTurn("⏰ 시간 초과!");
-            }
-        });
-    }, 1000);
-}
-
+// [수정] 중복 선언된 runTimer 함수 통합 및 안정화 수정
 function runTimer() {
     if (!isHost) return;
     
-    // [수정] 이미 타이머가 돌고 있다면 중복 실행 방지 (clearInterval 제거)
-    if (timerInterval) return;
-    
+    // 1. 기존 타이머가 돌고 있다면 확실하게 정지 및 초기화 (메모리 누수 및 중복 실행 방지)
+    if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+    }
+
+    // 2. 타이머 시작
     timerInterval = setInterval(() => {
+        // 방장이 나가거나 연결이 끊기면 타이머 중지 방어 코드
+        if (!roomRef) {
+            clearInterval(timerInterval);
+            return;
+        }
+
         roomRef.child('gameData/timer').transaction(t => {
+            // 값이 없으면 기본값 설정
             if (t === null || t === undefined) return TURN_TIME;
+            // 0보다 크면 1 감소, 아니면 0 유지
             return t > 0 ? t - 1 : 0;
         }, (err, committed, snap) => {
             if (err) {
-                console.error("타이머 업데이트 실패:", err);
+                console.warn("타이머 업데이트 실패 (네트워크 불안정 가능성):", err);
                 return;
             }
+            // 3. 시간이 0이 되면 턴 넘기기
             if (committed && snap.val() === 0) {
                 clearInterval(timerInterval);
                 timerInterval = null;
@@ -1010,6 +1017,19 @@ function renderPlayers(players, drawerUid) {
 }
 
 function showResult(players, reqs={}) {
+    // ▼▼▼ [핵심 수정 1] 게임 상태가 gameOver가 아니면(이미 재시작됐으면) 즉시 종료 ▼▼▼
+    // 이 부분이 있어야 '다시하기' 카운트다운 때 승리/패배 소리가 또 나는 것을 막습니다.
+    if (gameState && gameState.status !== 'gameOver') {
+        if(resultOverlay) resultOverlay.classList.remove('active');
+        return;
+    }
+
+    // ▼▼▼ [핵심 수정 2] 결과창이 이미 떠 있다면(데이터 갱신 시) 소리 재생 없이 버튼만 갱신 ▼▼▼
+    if (resultOverlay.classList.contains('active')) {
+        updateRetryBtnState(reqs); 
+        return; 
+    }
+
     // 1. 배경음악 정지
     stopBgm();
 
@@ -1033,10 +1053,10 @@ function showResult(players, reqs={}) {
         const isMe = uid === myUid;
         const scoreVal = p.score || 0;
         
-        // [핵심 수정] 리매치 요청 상태 확인 (데이터가 없으면 false)
+        // 리매치 요청 상태 확인
         const isReady = reqs && reqs[uid] === true;
         
-        // 준비 완료 뱃지 (녹색 텍스트)
+        // 준비 완료 뱃지
         const readyBadge = isReady ? '<span style="font-size:0.8em; color:#28a745; margin-left:5px; font-weight:bold;">(준비완료)</span>' : '';
 
         const row = document.createElement('div');
@@ -1055,12 +1075,10 @@ function showResult(players, reqs={}) {
         
         resultList.appendChild(row);
         
-        // [핵심 수정] 사운드 중복 재생 방지
-        // resultSoundPlayed 플래그가 false일 때만 소리를 재생하고, true로 바꿈
+        // 사운드 재생 (플래그 체크)
         if(isMe && !resultSoundPlayed) {
             if(rank === 1) {
                 playSound('snd-win');
-                // (선택 사항) 경험치 지급 로직이 있다면 여기서 호출
                 if(typeof applyExpAndPoints === 'function') applyExpAndPoints(db, myUid, 150, 100);
             } else {
                 playSound('snd-lose');
@@ -1069,25 +1087,11 @@ function showResult(players, reqs={}) {
         }
     });
     
-    // 사운드 재생 완료 처리 (이제 다시는 안 울림)
+    // 사운드 재생 완료 처리
     resultSoundPlayed = true;
 
-    // 6. 버튼 상태 업데이트
-    const retryBtn = document.getElementById('retry-btn');
-    if (retryBtn) {
-        // 내가 이미 요청을 보냈다면
-        if (reqs && reqs[myUid]) {
-            retryBtn.innerText = "준비완료 (대기중...)";
-            retryBtn.disabled = true; // [수정] 중복 클릭 방지를 위해 버튼 비활성화
-            retryBtn.style.backgroundColor = "#ccc";
-            retryBtn.style.borderBottomColor = "#999";
-        } else {
-            retryBtn.innerText = "다시하기";
-            retryBtn.disabled = false;
-            retryBtn.style.backgroundColor = "var(--primary-color)";
-            retryBtn.style.borderBottomColor = "#C04A4A";
-        }
-    }
+    // 6. 버튼 상태 업데이트 (최초 로드 시)
+    updateRetryBtnState(reqs);
 }
 
 // 버튼 상태 갱신용 헬퍼 함수
