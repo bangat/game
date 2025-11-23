@@ -116,11 +116,14 @@
             user-select: none;
         }
 
-        /* 3. 그리기 도구 */
+ /* 3. 그리기 도구 */
         #drawing-tools {
             flex-shrink: 0;
             display: none; /* JS에서 제어 */
-            justify-content: center; gap: 12px; padding: 8px;
+            justify-content: center; 
+            gap: 5px; /* [수정] 12px -> 5px (더 많은 버튼을 넣기 위해 간격 축소) */
+            padding: 8px 4px; /* 좌우 여백도 살짝 줄임 */
+            flex-wrap: wrap; /* [추가] 화면이 너무 좁으면 안전하게 줄바꿈 */
             background: #f0f0f0; border-top: 2px solid #ddd;
         }
         .tool-btn {
@@ -213,6 +216,52 @@
         
         @keyframes pop { from { transform: scale(1); } to { transform: scale(1.1); } }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+
+        /* [신규] 정답자 아바타 하이라이트 효과 */
+        .player-slot.winner-highlight { z-index: 100; }
+        .player-slot.winner-highlight .player-avatar {
+            border-color: #FFD700 !important; /* 금색 테두리 */
+            box-shadow: 0 0 20px #FFD700, 0 0 40px orange; /* 번쩍이는 효과 */
+            transform: scale(1.3) translateY(10px); /* 확 커짐 */
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        
+        /* 오버레이 등장 애니메이션 */
+        #correct-answer-overlay.active {
+            display: flex;
+            animation: bounceIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        @keyframes bounceIn {
+            0% { transform: scale(0.5); opacity: 0; }
+            80% { transform: scale(1.05); opacity: 1; }
+            100% { transform: scale(1); }
+        }
+        /* [신규] 퀵 팔레트 (확장 색상) 스타일 */
+        #quick-palette {
+            position: absolute;
+            bottom: 60px; /* 툴바 바로 위에 위치 */
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            border: 3px solid var(--text-color-dark);
+            border-radius: 12px;
+            padding: 10px;
+            display: none; /* 평소엔 숨김 */
+            grid-template-columns: repeat(4, 1fr); /* 4열 배치 */
+            gap: 8px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            z-index: 50;
+        }
+        #quick-palette.active { display: grid; animation: popUp 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        
+        /* 팔레트 화살표 (말풍선 꼬리) */
+        #quick-palette::after {
+            content: ''; position: absolute; bottom: -8px; left: 50%; margin-left: -8px;
+            border-width: 8px 8px 0; border-style: solid;
+            border-color: var(--text-color-dark) transparent transparent transparent;
+        }
+
+        @keyframes popUp { from { transform: translateX(-50%) scale(0.5); opacity: 0; } to { transform: translateX(-50%) scale(1); opacity: 1; } }
     </style>
 </head>
 <body>
@@ -231,17 +280,32 @@
             
             <canvas id="game-canvas"></canvas>
             
-            <div id="drawing-tools">
+<div id="drawing-tools" style="position:relative;">
+                <div id="quick-palette">
+                    <div class="tool-btn color-btn" style="background:#FF9F43;" onclick="selectPaletteColor('#FF9F43')"></div>
+                    <div class="tool-btn color-btn" style="background:#FFD1DC;" onclick="selectPaletteColor('#FFD1DC')"></div>
+                    <div class="tool-btn color-btn" style="background:#FF9FF3;" onclick="selectPaletteColor('#FF9FF3')"></div>
+                    <div class="tool-btn color-btn" style="background:#9B59B6;" onclick="selectPaletteColor('#9B59B6')"></div>
+                    
+                    <div class="tool-btn color-btn" style="background:#00d2d3;" onclick="selectPaletteColor('#00d2d3')"></div>
+                    <div class="tool-btn color-btn" style="background:#8B4513;" onclick="selectPaletteColor('#8B4513')"></div>
+                    <div class="tool-btn color-btn" style="background:#7f8c8d;" onclick="selectPaletteColor('#7f8c8d')"></div>
+                    <div class="tool-btn color-btn" style="background:#0abde3;" onclick="selectPaletteColor('#0abde3')"></div>
+                </div>
+
                 <div class="tool-btn color-btn active" style="background:black;" onclick="setColor('black', this)">⚫</div>
                 <div class="tool-btn color-btn" style="background:#FF6B6B;" onclick="setColor('#FF6B6B', this)">🔴</div>
-                <div class="tool-btn color-btn" style="background:#4ECDC4;" onclick="setColor('#4ECDC4', this)">🟢</div>
                 <div class="tool-btn color-btn" style="background:#FFD93D;" onclick="setColor('#FFD93D', this)">🟡</div>
+                <div class="tool-btn color-btn" style="background:#4ECDC4;" onclick="setColor('#4ECDC4', this)">🟢</div>
                 <div class="tool-btn color-btn" style="background:#3333FF;" onclick="setColor('#3333FF', this)">🔵</div>
-                <div style="width:1px; background:#ccc; margin:0 5px;"></div>
+
+                <div id="palette-toggle-btn" class="tool-btn" onclick="togglePalette()" style="background:white; font-size:1.2em; border:2px dashed #999;">🎨</div>
+
+                <div style="width:1px; background:#ccc; margin:0 3px;"></div>
+
                 <div class="tool-btn" onclick="setColor('white', this, 20)">🧽</div>
                 <div class="tool-btn" onclick="clearCanvas()" style="color:var(--danger-color); font-weight:bold;">🗑️</div>
             </div>
-        </div>
 
         <div id="chat-area">
             <div id="chat-list"></div>
@@ -264,6 +328,18 @@
     <div id="loading-overlay" class="fullscreen-overlay active">
         <div id="loading-text" style="font-size:1.5em; margin-bottom:20px;">접속 중...</div>
         <div id="countdown-text"></div>
+    </div>
+
+    <div id="correct-answer-overlay" class="fullscreen-overlay" style="background: rgba(0,0,0,0.85); z-index: 2500;">
+        <div style="text-align: center; color: white;">
+            <div style="font-size: 1.5em; margin-bottom: 10px; color: #FFD700; font-weight: bold;">✨정답자✨</div>
+            <div id="winner-name-display" style="font-size: 2.5em; font-weight: 900; margin-bottom: 20px;">닉네임</div>
+            
+            <div style="width: 100%; height: 2px; background: rgba(255,255,255,0.3); margin: 20px 0;"></div>
+            
+            <div style="font-size: 1.2em; margin-bottom: 5px; opacity: 0.8;">정답은?</div>
+            <div id="answer-text-display" style="font-size: 4em; font-weight: 900; color: var(--secondary-color); text-shadow: 3px 3px 0 #000;">사과</div>
+        </div>
     </div>
 
     <div id="result-overlay" class="fullscreen-overlay">
@@ -459,9 +535,15 @@ function initGame(id) {
         } else {
             addChatBubble(chatData);
             
+            // [신규] 정답 발생 시 화면 중앙에 크게 표시 & 아바타 강조
+            if (chatData.type === 'correct') {
+                showCorrectEffect(chatData);
+            }
+
             // [수정] 호스트가 'correct' 메시지를 감지하면 턴을 넘김
             if (isHost && chatData.type === 'correct' && gameState?.status === 'playing') {
-                setTimeout(() => nextTurn("정답!"), 1500);
+                // 오버레이 감상 시간(2초)을 고려해 턴 넘김 대기 시간을 1.5초 -> 2.5초로 늘림
+                setTimeout(() => nextTurn("정답!"), 2500);
             }
         }
     });
@@ -761,13 +843,6 @@ function nextTurn(reasonMsg) {
         timerInterval = null;
     }
 
-    // [추가] 시간 초과로 턴이 넘어가는 경우 출제자에게 100점 부여
-    if (reasonMsg && reasonMsg.includes("시간 초과")) {
-        if (gameState && gameState.gameData && gameState.gameData.drawer) {
-            const drawerId = gameState.gameData.drawer;
-            roomRef.child(`players/${drawerId}/score`).transaction(s => (s||0) + 100);
-        }
-    }
     
     if (reasonMsg && gameState && gameState.gameData) {
         const word = gameState.gameData.word || '';
@@ -932,12 +1007,29 @@ function sendAnswer() {
     if (normalizedInput === normalizedAnswer) {
         // 정답 처리
         playSound('snd-correct');
-        roomRef.child(`players/${myUid}/score`).transaction(s => (s||0) + 100);
+        
+        // [신규] 시간 비례 점수 계산
+        // 남은 시간이 많을수록 고득점!
+        const remainingTime = gameState.gameData.timer || 0;
+        const guesserScore = 50 + (remainingTime * 2); // 맞힌 사람 점수
+        const drawerScore = 50 + remainingTime;        // 그린 사람 점수 (잘 그려서 빨리 맞히게 한 보상)
+
+        // 1. 맞힌 사람(나) 점수 획득
+        roomRef.child(`players/${myUid}/score`).transaction(s => (s||0) + guesserScore);
+        
+        // 2. 출제자도 점수 획득 (그림 그린 보상)
+        const drawerId = gameState.gameData.drawer;
+        if (drawerId) {
+             roomRef.child(`players/${drawerId}/score`).transaction(s => (s||0) + drawerScore);
+        }
+
+        // 채팅창에 획득 점수 표시
         roomRef.child('chat').push({
             senderId: myUid,
             senderNickname: myNick,
-            content: `🎉 정답! [${answer}]`,
+            content: `🎉 정답! (+${guesserScore}점)`, // 점수까지 보여줌
             type: 'correct',
+            answer: answer, // 아까 추가한 정답 표시용 필드
             timestamp: firebase.database.ServerValue.TIMESTAMP
         });
     } else {
@@ -1125,6 +1217,115 @@ function exitGame() {
     roomRef.child(`players/${myUid}`).remove();
     location.href = '대기실.html';
 }
+
+// [신규] 정답자 강조 및 오버레이 표시 함수
+function showCorrectEffect(data) {
+    // 1. 오버레이 텍스트 설정 및 표시
+    const overlay = document.getElementById('correct-answer-overlay');
+    const winnerText = document.getElementById('winner-name-display');
+    const answerText = document.getElementById('answer-text-display');
+    
+    // 데이터에 answer 필드가 없으면 내용에서 추출 (구버전 호환)
+    let rawAnswer = data.answer;
+    if (!rawAnswer && data.content) {
+        const match = data.content.match(/\[(.*?)\]/);
+        rawAnswer = match ? match[1] : '정답';
+    }
+
+    winnerText.textContent = data.senderNickname;
+    answerText.textContent = rawAnswer;
+    
+    overlay.classList.add('active'); // 오버레이 켜기
+    
+    // 2. 상단 플레이어 바에서 정답자 아바타 강조
+    // (player-bar를 다시 그리면 클래스가 날아가므로, DOM에서 직접 찾음)
+    const playerSlots = document.querySelectorAll('.player-slot');
+    const players = gameState.players || {};
+    const playerIds = Object.keys(players);
+    
+    // 순서를 찾아야 함 (renderPlayers 로직에 따라 playerIds 순서대로 렌더링됨)
+    // 하지만 renderPlayers가 닉네임 등을 기준으로 하지 않으므로, 
+    // 확실한 방법은 렌더링 시 data-id를 심는 것이지만, 여기서는 순서로 추정하거나 닉네임으로 찾습니다.
+    
+    playerSlots.forEach(slot => {
+        // 이름으로 찾기 (가장 간단)
+        if (slot.querySelector('.player-name').textContent === data.senderNickname) {
+            slot.classList.add('winner-highlight');
+        }
+    });
+
+    // 3. 2.5초 뒤에 효과 끄기
+    setTimeout(() => {
+        overlay.classList.remove('active');
+        playerSlots.forEach(slot => slot.classList.remove('winner-highlight'));
+    }, 2500);
+}
+
+// [신규] 퀵 팔레트 열고 닫기 (토글)
+function togglePalette() {
+    const palette = document.getElementById('quick-palette');
+    if (palette) {
+        palette.classList.toggle('active'); // 클래스를 넣었다 뺐다 하며 보이기/숨기기
+    }
+}
+
+// [신규] 팔레트에서 색상 선택 시 실행
+function selectPaletteColor(color) {
+    const paletteBtn = document.getElementById('palette-toggle-btn');
+    
+    // 1. 다른 색상 버튼들의 active 표시 제거
+    document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+    
+    // 2. [🎨] 버튼을 활성화하고, 선택한 색상으로 배경 변경 (직관적 피드백)
+    if (paletteBtn) {
+        paletteBtn.classList.add('active');
+        paletteBtn.style.background = color;
+        // 배경색 밝기에 따라 글자색(🎨)을 검정/흰색으로 자동 조절
+        paletteBtn.style.color = isLightColor(color) ? 'black' : 'white';
+    }
+    
+    // 3. 실제 그리기 색상 변경 (전역 변수 업데이트)
+    if (typeof setColor === 'function') {
+        // 기존 setColor 로직을 활용하되, UI 처리는 위에서 했으므로 색상만 변경
+        currentColor = color;
+        currentWidth = 3; 
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 3;
+    }
+
+    // 4. 팔레트 닫기
+    const palette = document.getElementById('quick-palette');
+    if (palette) palette.classList.remove('active');
+}
+
+// (보너스) 배경색이 밝은지 어두운지 판별하는 함수 (글자색 조절용)
+function isLightColor(color) {
+    // hex 코드(#RRGGBB)를 rgb로 변환하여 밝기 계산
+    if(!color) return true;
+    const hex = color.replace('#', '');
+    if (hex.length !== 6) return true;
+    
+    const r = parseInt(hex.substr(0, 2), 16);
+    const g = parseInt(hex.substr(2, 2), 16);
+    const b = parseInt(hex.substr(4, 2), 16);
+    // 밝기 공식
+    const brightness = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+    return brightness > 155; // 155보다 크면 밝은 색
+}
+
+// [편의성] 화면의 빈 곳을 누르면 팔레트 닫기
+document.addEventListener('click', function(e) {
+    const palette = document.getElementById('quick-palette');
+    const toggleBtn = document.getElementById('palette-toggle-btn');
+    
+    // 팔레트가 존재하고 열려있을 때
+    if (palette && palette.classList.contains('active')) {
+        // 클릭한 곳이 팔레트 내부도 아니고, 토글 버튼도 아니면 닫기
+        if (!palette.contains(e.target) && !toggleBtn.contains(e.target)) {
+            palette.classList.remove('active');
+        }
+    }
+});
 
     </script>
 </body>
