@@ -771,17 +771,22 @@ function startCountdown() {
             countText.innerText = "GO!";
             playSound('snd-start'); // GO 소리
             
-            // [중요] 방장만 1초 뒤에 게임을 실제로 시작시킴 (싱크 맞춤)
+          // [중요] 방장만 1초 뒤에 게임을 실제로 시작시킴 (싱크 맞춤)
             if (isHost) {
                 setTimeout(() => {
                     const pIds = Object.keys(gameState.players);
+                    
+                    // [수정] 1라운드 시작: 중복 방지 목록 초기화 (true 옵션)
+                    const pick = getUniqueWord(true); 
+
                     roomRef.update({
                         status: 'playing',
                         starting: false,
                         gameData: {
                             round: 1,
                             drawer: pIds[0],
-                            word: getRandomWord(),
+                            word: pick.word,        // [변경] 뽑힌 단어
+                            usedWords: pick.list,   // [추가] 사용된 단어 목록 저장
                             timer: TURN_TIME
                         },
                         drawLines: null,
@@ -869,12 +874,16 @@ function nextTurn(reasonMsg) {
         roomRef.update({ status: 'gameOver' }).catch(err => {
             console.error("게임 종료 업데이트 실패:", err);
         });
-    } else {
+} else {
+        // [수정] 중복 없는 단어 뽑기 (이전 목록을 고려해서 새 단어 선택)
+        const pick = getUniqueWord();
+
         roomRef.update({
             gameData: {
                 round: nextRound,
                 drawer: pIds[nextIdx],
-                word: getRandomWord(),
+                word: pick.word,       // [변경] 중복 없는 새 단어
+                usedWords: pick.list,  // [추가] 사용된 단어 목록 갱신
                 timer: TURN_TIME
             },
             drawLines: null,
@@ -1260,6 +1269,34 @@ function showCorrectEffect(data) {
         playerSlots.forEach(slot => slot.classList.remove('winner-highlight'));
     }, 2500);
 }
+
+// [신규] 중복 방지 단어 선택 함수
+function getUniqueWord(isReset = false) {
+    // 1. 현재까지 사용된 단어 목록 가져오기
+    let used = [];
+    if (!isReset && gameState && gameState.gameData && gameState.gameData.usedWords) {
+        used = gameState.gameData.usedWords;
+    }
+
+    // 2. 전체 단어에서 사용된 단어를 뺀 '남은 단어들' 구하기
+    const available = WORDS.filter(w => !used.includes(w));
+
+    // 3. 만약 단어가 다 떨어졌으면? (혹시 모를 상황 대비) -> 초기화 후 다시 뽑기
+    if (available.length === 0) {
+        const resetWord = WORDS[Math.floor(Math.random() * WORDS.length)];
+        return { word: resetWord, list: [resetWord] };
+    }
+
+    // 4. 남은 단어 중에서 랜덤 하나 뽑기
+    const newWord = available[Math.floor(Math.random() * available.length)];
+    
+    // 5. 사용된 목록에 추가해서 반환
+    // (Firebase에는 이 'list'를 저장해야 함)
+    const newList = [...used, newWord];
+    
+    return { word: newWord, list: newList };
+}
+
 
 // [신규] 퀵 팔레트 열고 닫기 (토글)
 function togglePalette() {
