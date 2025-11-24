@@ -127,7 +127,7 @@
             min-height: 0; /* 플렉스 박스 내부 스크롤 버그 방지 (필수) */
             align-items: center;
             
-            padding: 120px 4px 10px 4px;
+            padding: 10px 4px;
             
             -ms-overflow-style: none; scrollbar-width: none;
         }
@@ -566,7 +566,7 @@ const WORDS = [
     // 🐶 동물 & 곤충
     "강아지", "고양이", "토끼", "병아리", "오리", "돼지", "소", "양", "말", "사자",
     "호랑이", "코끼리", "기린", "원숭이", "팬더", "펭귄", "북극곰", "다람쥐", "고래", "상어",
-    "거북이", "개구리", "뱀", "문어", "브라자", "가슴", "오징어", "물고기", "게", "새우", "하마", "악어",
+    "거북이", "개구리", "뱀", "똥", "문어", "브라자", "가슴", "오징어", "물고기", "게", "새우", "하마", "악어",
     "공룡", "박쥐", "나비", "꿀벌", "거미", "달팽이", "잠자리", "무당벌레", "개미", "파리",
     "모기", "바퀴벌레", "지렁이", "전갈", "사마귀", "메뚜기", "여우", "늑대", "곰", "사슴",
     "낙타", "캥거루", "코알라", "두더지", "고슴도치", "수달", "물개", "해파리", "불가사리", "카멜레온",
@@ -617,7 +617,7 @@ const WORDS = [
     "유튜브", "넷플릭스", "카카오톡", "인스타그램", "페이스북",  "게임", "웹툰", "영화", "드라마"
 ];
 const MAX_ROUNDS = 5;
-const TURN_TIME = 120;
+const TURN_TIME = 140;
 
 // DOM
 const canvas = document.getElementById('game-canvas');
@@ -1093,8 +1093,11 @@ function nextTurn(reasonMsg) {
             return;
         }
         
-        const gData = gameState.gameData;
-        const pIds = Object.keys(gameState.players);
+const gData = gameState.gameData;
+        
+        // ✨ [핵심 수정] 렌더링과 똑같이 '정렬된 순서'로 다음 사람을 찾음
+        const pIds = Object.keys(gameState.players).sort(); 
+        
         const currIdx = pIds.indexOf(gData.drawer);
         let nextIdx = currIdx + 1;
         let nextRound = gData.round;
@@ -1399,16 +1402,27 @@ function renderPlayers(players, drawerUid) {
     playerBar.innerHTML = '';
     if (!players) return;
 
-    Object.keys(players).forEach(uid => {
+    // 1. ✨ [디자인 수정] 패딩 대신 '투명 빈 공간'을 넣어 1번 유저를 아래로 내림
+    // (패딩을 쓰면 스크롤바 위치가 꼬이지만, 이건 물리적인 공간이라 안전함)
+    const spacer = document.createElement('div');
+    spacer.style.height = '120px'; // 유저가 원했던 120px 공간 확보
+    spacer.style.width = '100%';
+    spacer.style.flexShrink = '0';
+    playerBar.appendChild(spacer);
+
+    // 2. ✨ [핵심 수정] 플레이어 ID를 정렬(Sort)하여 순서 고정
+    // Firebase는 키 순서를 보장하지 않으므로, 우리가 강제로 정렬해야 턴이 안 꼬임
+    const sortedUids = Object.keys(players).sort();
+
+    sortedUids.forEach(uid => {
         try {
             const p = players[uid];
-            // 데이터가 깨진 플레이어가 있어도 건너뛰고 계속 그림
-            if (!p) return; 
+            if (!p) return; // 데이터 깨짐 방지
 
             const div = document.createElement('div');
             div.className = `player-slot ${uid === drawerUid ? 'drawer' : ''}`;
             
-            // [중요] 말풍선 위치 추적을 위한 ID 태그 (문자열로 강제 변환)
+            // 말풍선 위치 추적용 태그
             div.setAttribute('data-uid', String(uid));
             
             const avatarSet = typeof AVATAR_SETS !== 'undefined' ? AVATAR_SETS[p.avatar] : null;
@@ -1426,7 +1440,8 @@ function renderPlayers(players, drawerUid) {
             playerBar.appendChild(div);
 
         } catch (err) {
-            console.error(`플레이어(${uid}) 렌더링 중 오류:`, err);
+            // ✨ [안전장치] 한 명 그리는 데 실패해도 다음 사람은 계속 그림
+            console.error(`플레이어(${uid}) 렌더링 실패:`, err);
         }
     });
 }
