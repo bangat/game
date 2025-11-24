@@ -8,6 +8,7 @@
     
     <script src="레벨업.js"></script>
     <script src="아바타.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
@@ -33,50 +34,33 @@
             padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom);
             position: relative;
         }
-
-        /* 1. 상단 플레이어 바: 높이 축소 (90px -> 65px) */
-        #player-bar {
-            flex-shrink: 0; 
-            height: 65px; /* [수정] 높이 줄임 */
-            background: #FFFAE0;
-            border-bottom: 3px solid var(--panel-border);
-            display: flex; gap: 10px; overflow-x: auto; 
-            padding: 5px 10px; /* [수정] 패딩 줄임 */
-            align-items: center;
-        }
-        
-        .player-slot {
-            display: flex; flex-direction: column; align-items: center; 
-            width: 50px; /* [수정] 너비 줄임 */
-            flex-shrink: 0; position: relative;
-        }
-        .player-avatar {
-            width: 35px; height: 35px; /* [수정] 아바타 크기 줄임 */
-            border-radius: 12px; background: #fff;
-            border: 2px solid var(--panel-border); overflow: hidden;
-            display: flex; justify-content: center; align-items: center;
-        }
-        .player-avatar img { width: 100%; height: 100%; object-fit: contain; }
-        .player-name { 
-            font-size: 0.6em; /* [수정] 글자 크기 줄임 */
-            margin-top: 2px; font-weight: bold; 
-            width: 100%; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-        }
-        .player-score { font-size: 0.8em; color: var(--primary-color); font-weight: 900; }
-        
-        .player-slot.drawer .player-avatar { border-color: var(--accent-color); box-shadow: 0 0 0 3px var(--accent-color); }
-        .player-slot.drawer::after { content: '🎨'; position: absolute; top: -5px; right: -5px; font-size: 1.2em; }
-
-        /* 2. 캔버스 및 정보바 */
-        #canvas-wrapper {
-            flex-grow: 1; position: relative; margin: 10px;
-            background: white; border-radius: 15px;
+/* [핵심] 전체 게임 보드 (캔버스 + 사이드바를 감싸는 껍데기) */
+        #main-area {
+            flex-grow: 1; 
+            display: flex; flex-direction: row;
+            overflow: hidden; 
+            position: relative;
+            
+            /* 여기서 전체 테두리를 줍니다 (일체감 형성) */
+            margin: 10px 10px 0 10px; /* 아래쪽 여백 0 (도구랑 붙이기 위해) */
             border: 4px solid var(--text-color-dark);
-            box-shadow: 5px 5px 0 var(--panel-shadow);
-            overflow: hidden; touch-action: none;
-            display: flex; flex-direction: column;
+            border-bottom: none; /* 아래쪽은 뚫어서 도구/채팅창과 연결 */
+            border-radius: 15px 15px 0 0; /* 위쪽만 둥글게 */
+            background: white;
+            box-shadow: 5px 5px 0 var(--panel-shadow); /* 입체감 */
         }
-        
+
+/* 1. 캔버스 영역 (테두리 제거 -> 부모 테두리 사용) */
+        #canvas-wrapper {
+            flex-grow: 1; 
+            position: relative; 
+            overflow: hidden; 
+            touch-action: none !important;
+            display: flex; flex-direction: column;
+            
+            /* 기존의 테두리, 마진, 그림자 모두 제거 (부모에게 넘김) */
+            border: none; margin: 0; border-radius: 0; box-shadow: none; 
+        }
         #game-info-bar {
             position: absolute; top: 10px; left: 0; width: 100%;
             display: flex; justify-content: center; align-items: center; gap: 8px;
@@ -100,99 +84,145 @@
         }
         #timer-badge.urgent { color: var(--danger-color); animation: pulse 0.5s infinite; }
 
-        /* [수정] 캔버스 래퍼에도 터치 액션 차단 적용 */
-        #canvas-wrapper {
-            flex-grow: 1; position: relative; margin: 10px;
-            background: white; border-radius: 15px;
-            border: 4px solid var(--text-color-dark);
-            box-shadow: 5px 5px 0 var(--panel-shadow);
-            overflow: hidden; 
-            touch-action: none !important; /* [수정] 중요: 스크롤 방지 */
-            display: flex; flex-direction: column;
+        canvas { 
+            width: 100%; height: 0; flex-grow: 1;
+            display: block; cursor: crosshair; 
+            touch-action: none !important;
+            -webkit-user-select: none; user-select: none;
         }
 
-        /* [수정] 캔버스 터치 액션 강력 차단 및 Flex 레이아웃 적용 */
-        canvas { 
-            width: 100%; 
-            /* height: 100% 대신 flex-grow를 사용하여 부모 컨테이너의 남은 공간을 정확히 채움 */
-            height: 0; 
-            flex-grow: 1;
-            display: block; cursor: crosshair; 
-            touch-action: none !important; /* [수정] 중요: 브라우저 기본 동작 차단 */
-            -webkit-user-select: none; /* 텍스트 선택 방지 */
-            user-select: none;
+/* 2. 플레이어 사이드바 (오른쪽) */
+        #player-bar {
+            width: 56px; 
+            flex-shrink: 0;
+            background: #FFFAE0;
+            border-left: 2px solid var(--panel-border); 
+            display: flex; flex-direction: column; gap: 8px; 
+            overflow-y: auto; 
+            align-items: center;
+            
+            /* [수정] 위쪽 여백을 60px로 줘서 타이머(시간) 아래부터 시작하게 함 */
+            padding: 60px 2px 10px 2px; 
+            
+            -ms-overflow-style: none; scrollbar-width: none;
         }
+        #player-bar::-webkit-scrollbar { display: none; }
+        
+        .player-slot {
+            display: flex; flex-direction: column; align-items: center; 
+            width: 100%; flex-shrink: 0; position: relative;
+        }
+        .player-avatar {
+            width: 36px; height: 36px; /* [수정] 40px -> 36px */
+            border-radius: 10px; background: #fff;
+            border: 2px solid var(--panel-border); overflow: hidden;
+            display: flex; justify-content: center; align-items: center;
+        }
+        .player-avatar img { width: 100%; height: 100%; object-fit: contain; }
+        .player-name { 
+            font-size: 0.6em; margin-top: 4px; font-weight: bold; 
+            width: 100%; text-align: center; 
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .player-score { font-size: 0.8em; color: var(--primary-color); font-weight: 900; }
+        
+        .player-slot.drawer .player-avatar { border-color: var(--accent-color); box-shadow: 0 0 0 3px var(--accent-color); }
+        .player-slot.drawer::after { content: '🎨'; position: absolute; top: -5px; right: -5px; font-size: 1.2em; }
 
  /* 3. 그리기 도구 */
+        /* 3. 그리기 도구 & 하단 연결부 */
         #drawing-tools {
             flex-shrink: 0;
-            display: none; /* JS에서 제어 */
+            display: none; /* JS 제어 */
             justify-content: center; 
-            gap: 5px; /* [수정] 12px -> 5px (더 많은 버튼을 넣기 위해 간격 축소) */
-            padding: 8px 4px; /* 좌우 여백도 살짝 줄임 */
-            flex-wrap: wrap; /* [추가] 화면이 너무 좁으면 안전하게 줄바꿈 */
-            background: #f0f0f0; border-top: 2px solid #ddd;
+            align-items: center; /* 수직 중앙 정렬 */
+            gap: 8px; /* 간격 넓힘 */
+            padding: 10px; /* 패딩 넓힘 */
+            flex-wrap: wrap; 
+            background: #f8f8f8; 
+            
+            /* 위쪽 보드와 자연스럽게 연결 */
+            margin: 0 10px;
+            border-left: 4px solid var(--text-color-dark);
+            border-right: 4px solid var(--text-color-dark);
+            border-top: 1px solid #ddd;
         }
+
+        /* [복구] 도구 버튼 크기 고정 (이게 없어서 작게 나왔음) */
         .tool-btn {
-            width: 36px; height: 36px; border-radius: 50%; border: 2px solid #ccc; cursor: pointer;
-            display: flex; justify-content: center; align-items: center; font-size: 1.2em;
-            background: white; transition: transform 0.1s;
+            width: 42px; height: 42px;
+            border-radius: 50%; /* 동그랗게 */
+            display: flex; justify-content: center; align-items: center;
+            font-size: 1.4em; cursor: pointer;
+            border: 2px solid transparent;
+            transition: transform 0.1s;
+            flex-shrink: 0; /* 찌그러짐 방지 */
         }
-        .tool-btn.active { transform: scale(1.1); border-color: var(--text-color-dark); box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
-        .tool-btn.color-btn { padding: 0; }
+        .tool-btn:active { transform: scale(0.9); }
+        .tool-btn.active { border-color: var(--text-color-dark); transform: scale(1.1); box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        
+        /* 색상 버튼은 테두리 추가 */
+        .color-btn { border: 2px solid rgba(0,0,0,0.1); }
 
-        /* 4. 채팅 영역 (디자인 개선 & 스크롤 수정) */
-        #chat-area {
-            height: 130px; /* [수정] 캔버스 확보를 위해 높이 줄임 */
-            display: flex; flex-direction: column;
-            
-            /* [신규] 채팅창 디자인: 박스 형태 */
-            background: #ffffff; 
-            margin: 0 10px; /* 좌우 여백 */
-            border: 3px solid var(--text-color-dark); /* 진한 테두리 */
-            border-bottom: 1px solid #eee; /* 입력창 경계 */
-            border-radius: 12px 12px 0 0; /* 위쪽 둥글게 */
-            box-shadow: inset 0 2px 8px rgba(0,0,0,0.05);
-        }
-
-        #chat-list {
-            flex-grow: 1; 
-            overflow-y: auto; 
-            padding: 10px;
-            display: flex; flex-direction: column; gap: 8px;
-
-            /* [핵심] 채팅창 내부 스크롤 허용 (전체 터치 차단 무시) */
-            touch-action: pan-y !important; 
-            -webkit-overflow-scrolling: touch; 
+        /* [신규] 캐릭터 옆 말풍선 레이어 (클릭 통과) */
+        #speech-bubble-layer {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 50; overflow: hidden;
         }
 
-        .chat-bubble {
-            max-width: 80%; padding: 8px 12px; border-radius: 12px; font-size: 0.9em;
-            position: relative; word-break: break-word;
+        /* 개별 말풍선 스타일 */
+        .speech-bubble-item {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.7); /* 반투명 검정 */
+            color: white;
+            padding: 6px 10px;
+            border-radius: 8px;
+            font-size: 0.85em;
+            max-width: 200px; /* 말풍선 최대 너비 */
+            word-break: break-word;
+            animation: popIn 0.3s ease-out, fadeOut 0.5s ease-in 2.5s forwards;
+            right: 60px; /* 사이드바(56px) 바로 왼쪽에 위치 */
+            /* top은 JS에서 계산 */
         }
-        .chat-bubble.mine { align-self: flex-end; background: var(--secondary-color); color: white; border-bottom-right-radius: 2px; }
-        .chat-bubble.other { align-self: flex-start; background: white; border: 1px solid #eee; border-bottom-left-radius: 2px; }
-        .chat-bubble.system { align-self: center; background: rgba(0,0,0,0.1); font-size: 0.8em; border-radius: 20px; padding: 4px 10px; color: #555; }
-        .chat-bubble.correct { align-self: center; background: var(--accent-color); color: var(--text-color-dark); font-weight: bold; width: 90%; text-align: center; border: 2px solid #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        .chat-name { font-size: 0.7em; margin-bottom: 2px; opacity: 0.8; font-weight: bold; display: block; }
 
+        /* 말풍선 꼬리 (오른쪽을 향함) */
+        .speech-bubble-item::after {
+            content: ''; position: absolute; top: 50%; right: -6px; margin-top: -6px;
+            border-width: 6px 0 6px 6px; border-style: solid;
+            border-color: transparent transparent transparent rgba(0, 0, 0, 0.7);
+        }
+
+        /* 정답 말풍선 (노란색) */
+        .speech-bubble-item.correct {
+            background: rgba(255, 217, 61, 0.9); color: #574141;
+            font-weight: bold; border: 2px solid white; z-index: 60;
+            font-size: 1.0em;
+        }
+        .speech-bubble-item.correct::after {
+            border-color: transparent transparent transparent rgba(255, 217, 61, 0.9);
+        }
+
+  @keyframes popIn { from { opacity: 0; transform: translateX(-10px) scale(0.8); } to { opacity: 1; transform: translateX(0) scale(1); } }
+        @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
         /* 5. 입력 버튼 (채팅창과 연결) */
+        /* 5. 입력 버튼 (크기 축소 및 마무으리) */
         #input-bar { 
-            padding: 8px; 
-            background: transparent; 
+            padding: 8px; background: white; flex-shrink: 0; 
             
-            /* [신규] 채팅창 하단 연결 디자인 */
+            /* 전체 박스의 바닥 부분 완성 */
             margin: 0 10px 10px 10px; 
-            border: 3px solid var(--text-color-dark);
-            border-top: none; /* 위쪽 터서 연결 */
-            border-radius: 0 0 12px 12px; /* 아래쪽 둥글게 */
-            background-color: #ffffff;
-            flex-shrink: 0; 
+            border: 4px solid var(--text-color-dark);
+            border-top: none; 
+            border-radius: 0 0 15px 15px; /* 아래쪽만 둥글게 */
         }
+
         #open-input-btn {
-            width: 100%; padding: 14px; background: var(--primary-color);
-            color: white; font-size: 1.2em; font-weight: 900; border: none;
-            border-radius: 12px; cursor: pointer; border-bottom: 4px solid #C04A4A;
+            width: 100%; 
+            padding: 10px; /* [수정] 14px -> 10px (높이 줄임) */
+            font-size: 1em; /* [수정] 글자 크기 줄임 */
+            background: var(--primary-color);
+            color: white; font-weight: 900; border: none;
+            border-radius: 8px; cursor: pointer; border-bottom: 4px solid #C04A4A;
         }
         #open-input-btn:active { transform: translateY(2px); border-bottom-width: 2px; }
         #open-input-btn:disabled { background: #ccc; border-color: #999; cursor: not-allowed; transform: none; }
@@ -299,22 +329,26 @@
     </style>
 </head>
 <body>
-
-    <div id="game-wrapper">
-        <div id="player-bar"></div>
-
-        <div id="canvas-wrapper">
-            <div id="game-info-bar">
-                <div class="info-badge">ROUND <span id="round-display">1/5</span></div>
-                <div class="info-badge" style="background:var(--accent-color); color:var(--text-color-dark);">
-                    <span id="word-display">대기중...</span>
+<div id="game-wrapper">
+        
+        <div id="main-area">
+            
+            <div id="canvas-wrapper">
+                <div id="game-info-bar">
+                    <div class="info-badge">ROUND <span id="round-display">1/5</span></div>
+                    <div class="info-badge" style="background:var(--accent-color); color:var(--text-color-dark);">
+                        <span id="word-display">대기중...</span>
+                    </div>
                 </div>
+                <div id="timer-badge">--</div>
+                <canvas id="game-canvas"></canvas>
             </div>
-            <div id="timer-badge">--</div>
+
+            <div id="player-bar"></div>
             
-            <canvas id="game-canvas"></canvas>
+        </div>
             
-<div id="drawing-tools" style="position:relative;">
+        <div id="drawing-tools" style="position:relative;">
                 <div id="quick-palette">
                     <div class="tool-btn color-btn" style="background:#FF9F43;" onclick="selectPaletteColor('#FF9F43')"></div>
                     <div class="tool-btn color-btn" style="background:#FFD1DC;" onclick="selectPaletteColor('#FFD1DC')"></div>
@@ -341,9 +375,9 @@
                 <div class="tool-btn" onclick="clearCanvas()" style="color:var(--danger-color); font-weight:bold;">🗑️</div>
             </div>
 
-        <div id="chat-area">
-            <div id="chat-list"></div>
-        </div>
+        <div id="floating-chat-overlay"></div>
+        
+        <div id="speech-bubble-layer"></div> 
 
         <div id="input-bar">
             <button id="open-input-btn">💬 정답 / 채팅 입력</button>
@@ -704,34 +738,39 @@ function handleGameState(data) {
 
     if (status === 'waiting') {
         loadingOverlay.classList.add('active');
-        resultOverlay.classList.remove('active'); // 결과창 닫기
+        resultOverlay.classList.remove('active');
 
-        // [추가] 대기 상태로 돌아오면 로컬 채팅창과 점수도 깨끗하게 비움
+        // 게임 시작 신호(starting: true)가 오면 채팅창 비우기
         if (data.starting) {
-            document.getElementById('chat-list').innerHTML = ''; // 채팅 내역 삭제
+            const chatList = document.getElementById('chat-list');
+            if (chatList) chatList.innerHTML = '';
         }
 
         if (!data.starting) {
-            // 대기 중 (준비 전)
+            // [대기 중 상태]
+            const playerCount = Object.keys(data.players || {}).length;
             document.getElementById('loading-text').style.display = 'block';
-            document.getElementById('loading-text').innerText = `대기중 (${Object.keys(data.players||{}).length}명)...`;
+            document.getElementById('loading-text').innerText = `대기중 (${playerCount}명)...`;
             document.getElementById('countdown-text').innerText = "";
             
+            // 카운트다운 관련 변수 초기화
             isCountdownInProgress = false;
             if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+
+            // [핵심 수정] 방장이고, 2명 이상이면, 시작 신호를 보냄
+            if (isHost && playerCount >= 2) {
+                console.log("✅ 2명 이상 접속 확인! 게임 시작 신호 전송...");
+                roomRef.update({ starting: true });
+            }
         } else {
-        // 카운트다운 시작 (starting: true)
-        // [수정] 카운트다운 중에는 오버레이를 확실하게 보여줌
-        loadingOverlay.classList.add('active'); 
-        document.getElementById('loading-text').style.display = 'none';
-        
-        if (!isCountdownInProgress) {
-            startCountdown(); // 여기서 3, 2, 1 카운트다운 시작
-        }
-    }
-        // (기존 코드 유지)
-        if (isHost && Object.keys(data.players).length >= 2 && !data.starting) {
-            roomRef.update({ starting: true });
+            // [카운트다운 시작 상태]
+            loadingOverlay.classList.add('active'); 
+            document.getElementById('loading-text').style.display = 'none';
+            
+            // 중복 실행 방지하며 카운트다운 시작
+            if (!isCountdownInProgress) {
+                startCountdown(); 
+            }
         }
     }
 else if (status === 'playing') {
@@ -760,19 +799,32 @@ else if (status === 'playing') {
             lastDrawerUid = gData.drawer;
             
             const isDrawer = (gData.drawer === myUid);
+           // UI 요소 가져오기
+            const inputBar = document.getElementById('input-bar');
+            // const chatArea... 삭제됨
+
             if (isDrawer) {
-                // 출제자 화면: 그리기 도구 보임
-                drawingTools.style.display = 'flex';
+                // [출제자]
+                drawingTools.style.display = 'flex'; // 도구함 보이기
+                inputBar.style.display = 'none';     // 입력 버튼 숨기기
+                
                 wordDisplay.innerText = `제시어: ${gData.word}`;
-                openInputBtn.innerText = "🎨 당신이 그릴 차례입니다!";
-                openInputBtn.disabled = true;
-                openInputBtn.style.background = "#ccc";
-            } else {
-                // 정답자 화면: 그리기 도구 숨김, 힌트 표시
-                drawingTools.style.display = 'none';
-                const wordLen = gData.word ? gData.word.length : 0;
-                const hint = "O ".repeat(wordLen);
-                wordDisplay.innerText = `힌트: ${hint}`;
+          } else {
+                // [정답자]
+                drawingTools.style.display = 'none'; // 도구함 숨기기
+                inputBar.style.display = 'block';    // 입력 버튼 보이기
+                
+                // ✨ [수정] 정답 공개 상태면 정답을 보여주고, 아니면 힌트(ㅇㅇ) 표시
+                if (gData.revealAnswer) {
+                    wordDisplay.innerText = `정답: ${gData.word}`;
+                    wordDisplay.style.color = "var(--danger-color)"; // 빨간색 강조
+                } else {
+                    const wordLen = gData.word ? gData.word.length : 0;
+                    const hint = "O ".repeat(wordLen);
+                    wordDisplay.innerText = `힌트: ${hint}`;
+                    wordDisplay.style.color = "var(--text-color-dark)"; // 색상 원복
+                }
+                
                 openInputBtn.innerText = "💬 정답 / 채팅 입력";
                 openInputBtn.disabled = false;
                 openInputBtn.style.background = "var(--primary-color)";
@@ -896,52 +948,60 @@ function nextTurn(reasonMsg) {
         timerInterval = null;
     }
 
-    
+    // 1. 시스템 메시지로 알림
     if (reasonMsg && gameState && gameState.gameData) {
         const word = gameState.gameData.word || '';
         sendSysMsg(`${reasonMsg} 정답: ${word}`);
     }
-    
-    if (!gameState || !gameState.gameData || !gameState.players) {
-        console.error("게임 상태가 유효하지 않습니다.");
-        return;
-    }
-    
-    const gData = gameState.gameData;
-    const pIds = Object.keys(gameState.players);
-    const currIdx = pIds.indexOf(gData.drawer);
-    let nextIdx = currIdx + 1;
-    let nextRound = gData.round;
 
-    if (nextIdx >= pIds.length) {
-        nextIdx = 0;
-        nextRound++;
-    }
+    // ✨ [추가] 힌트칸에 정답을 보여주기 위해 'revealAnswer' 상태를 true로 변경
+    // (이렇게 하면 위의 handleGameState 수정본이 작동하여 화면에 정답을 띄웁니다)
+    roomRef.child('gameData/revealAnswer').set(true);
 
-    if (nextRound > MAX_ROUNDS) {
-        roomRef.update({ status: 'gameOver' }).catch(err => {
-            console.error("게임 종료 업데이트 실패:", err);
-        });
-} else {
-        // [수정] 중복 없는 단어 뽑기 (이전 목록을 고려해서 새 단어 선택)
-        const pick = getUniqueWord();
+    // ✨ [추가] 3초 동안 정답을 감상할 시간을 주고 다음 라운드로 이동
+    setTimeout(() => {
+        if (!gameState || !gameState.gameData || !gameState.players) {
+            console.error("게임 상태가 유효하지 않습니다.");
+            return;
+        }
+        
+        const gData = gameState.gameData;
+        const pIds = Object.keys(gameState.players);
+        const currIdx = pIds.indexOf(gData.drawer);
+        let nextIdx = currIdx + 1;
+        let nextRound = gData.round;
 
-        roomRef.update({
-            gameData: {
-                round: nextRound,
-                drawer: pIds[nextIdx],
-                word: pick.word,       // [변경] 중복 없는 새 단어
-                usedWords: pick.list,  // [추가] 사용된 단어 목록 갱신
-                timer: TURN_TIME
-            },
-            drawLines: null,
-            clearCanvas: Date.now()
-        }).then(() => {
-            setTimeout(() => runTimer(), 100);
-        }).catch(err => {
-            console.error("다음 턴 업데이트 실패:", err);
-        });
-    }
+        if (nextIdx >= pIds.length) {
+            nextIdx = 0;
+            nextRound++;
+        }
+
+        if (nextRound > MAX_ROUNDS) {
+            roomRef.update({ status: 'gameOver' }).catch(err => {
+                console.error("게임 종료 업데이트 실패:", err);
+            });
+        } else {
+            // [수정] 중복 없는 단어 뽑기
+            const pick = getUniqueWord();
+
+            // 다음 라운드 데이터 업데이트 (revealAnswer는 여기서 덮어씌워져서 사라짐 -> 다시 힌트 모드)
+            roomRef.update({
+                gameData: {
+                    round: nextRound,
+                    drawer: pIds[nextIdx],
+                    word: pick.word,       
+                    usedWords: pick.list, 
+                    timer: TURN_TIME
+                },
+                drawLines: null,
+                clearCanvas: Date.now()
+            }).then(() => {
+                setTimeout(() => runTimer(), 100);
+            }).catch(err => {
+                console.error("다음 턴 업데이트 실패:", err);
+            });
+        }
+    }, 2000); // 3초 딜레이 (정답 확인 시간)
 }
 
 function getRandomWord() { 
@@ -1128,33 +1188,78 @@ function sendSysMsg(msg) {
 
 function addChatBubble(data) {
     if (!data) return;
-    
-    const div = document.createElement('div');
-    
+
+    // 1. System messages are displayed as a top toast (not a speech bubble)
     if (data.type === 'system') {
-        div.className = 'chat-bubble system';
-        div.textContent = data.content || data.msg || '';
-    } else if (data.type === 'correct') {
-        div.className = 'chat-bubble correct';
-        div.textContent = data.content || data.msg || '';
+        showToast(`📢 ${data.content}`);
+        return;
+    }
+
+    const layer = document.getElementById('speech-bubble-layer');
+    const senderId = data.senderId;
+    
+    // 2. Find the slot (profile) of the person who sent the message
+    const targetSlot = document.querySelector(`.player-slot[data-uid="${senderId}"]`);
+    
+    if (targetSlot && layer) {
+        // 3. Get the location (coordinates) of the slot
+        const rect = targetSlot.getBoundingClientRect();
+        
+        // 4. Create speech bubble
+        const bubble = document.createElement('div');
+        bubble.className = 'speech-bubble-item';
+        if (data.type === 'correct') bubble.classList.add('correct');
+        
+        // Insert content
+        bubble.textContent = data.content || '';
+        
+        // 5. Position (Vertical center of the slot)
+        // Since the sidebar is on the right, position it to the left of the slot
+        // right: 60px is already set in CSS, so just calculate top
+        bubble.style.top = (rect.top + rect.height / 2) + 'px';
+        bubble.style.transform = "translateY(-50%)"; 
+        
+        // 6. Add to layer
+        layer.appendChild(bubble);
+        
+        // 7. Delete after 3 seconds
+        setTimeout(() => {
+            if (bubble.parentNode) bubble.parentNode.removeChild(bubble);
+        }, 3000);
+        
+        // [Option] Confetti if correct answer
+        if (data.type === 'correct' && typeof fireConfetti === 'function') {
+            fireConfetti();
+        }
     } else {
-        const isMine = data.senderId === myUid;
-        div.className = `chat-bubble ${isMine ? 'mine' : 'other'}`;
-        
-        const senderName = data.senderNickname || data.name || 'Unknown';
-        const messageContent = data.content || data.msg || '';
-        
-        if (!isMine) {
-            div.innerHTML = `<span class="chat-name">${escapeHTML(senderName)}</span>${escapeHTML(messageContent)}`;
-        } else {
-            div.textContent = messageContent;
+        // If the user is not visible on my screen (scroll, error, etc.), show as toast
+        if (data.senderNickname && data.content) {
+             showToast(`${data.senderNickname}: ${data.content}`);
         }
     }
-    
-    chatList.appendChild(div);
-    chatList.scrollTop = chatList.scrollHeight;
 }
 
+// [신규] 토스트 메시지 함수 (시스템 메시지용)
+function showToast(msg) {
+    const layer = document.getElementById('speech-bubble-layer');
+    if(!layer) return;
+    
+    const toast = document.createElement('div');
+    toast.style.position = 'absolute';
+    toast.style.top = '60px'; // 상단 중앙
+    toast.style.left = '50%';
+    toast.style.transform = 'translateX(-50%)';
+    toast.style.background = 'rgba(0,0,0,0.6)';
+    toast.style.color = '#fff';
+    toast.style.padding = '5px 12px';
+    toast.style.borderRadius = '20px';
+    toast.style.fontSize = '0.8em';
+    toast.style.zIndex = '100';
+    toast.textContent = msg;
+    
+    layer.appendChild(toast);
+    setTimeout(() => { if(toast.parentNode) toast.remove(); }, 3000);
+}
 function renderPlayers(players, drawerUid) {
     playerBar.innerHTML = '';
     if (!players) return;
@@ -1163,11 +1268,14 @@ function renderPlayers(players, drawerUid) {
         const div = document.createElement('div');
         div.className = `player-slot ${uid === drawerUid ? 'drawer' : ''}`;
         
-        const avatarSet = AVATAR_SETS[p.avatar];
+        // [수정] 말풍선 위치 추적을 위해 속성을 명시적으로 설정 (안정성 강화)
+        div.setAttribute('data-uid', uid);
+        
+        const avatarSet = typeof AVATAR_SETS !== 'undefined' ? AVATAR_SETS[p.avatar] : null;
         let imgHtml = '';
         if(avatarSet) imgHtml = `<img src="${avatarSet.front}">`;
         else if(p.avatar?.includes('.')) imgHtml = `<img src="${p.avatar}">`;
-        else imgHtml = `<span style="font-size:2em">${p.avatar}</span>`;
+        else imgHtml = `<span style="font-size:2em">${p.avatar || '👤'}</span>`;
 
         div.innerHTML = `
             <div class="player-avatar">${imgHtml}</div>
@@ -1356,6 +1464,55 @@ function getUniqueWord(isReset = false) {
     const newList = [...used, newWord];
     
     return { word: newWord, list: newList };
+}
+
+// [복구] 단어 패스(변경) 기능
+function passWord() {
+    if (!isHost && gameState.gameData.drawer !== myUid) return; // 방장이나 출제자만 가능
+    
+    // 효과음 재생
+    playSound('snd-start'); 
+
+    // [수정] 중복 없는 새 단어 뽑기
+    const pick = getUniqueWord();
+    
+    // 시스템 메시지로 알림
+    sendSysMsg(`🔄 출제자가 단어를 변경했습니다!`);
+
+    // Firebase 업데이트
+    if (roomRef) {
+        roomRef.child('gameData').update({
+            word: pick.word,
+            usedWords: pick.list
+        });
+        // 캔버스도 지워줌
+        roomRef.child('clearCanvas').set(Date.now());
+    }
+}
+
+// [복구] 꽃가루 발사 함수 (정답 맞힐 때 사용)
+function fireConfetti() {
+    if (typeof confetti === 'undefined') return; // 라이브러리 없으면 무시
+
+    var duration = 2 * 1000;
+    var animationEnd = Date.now() + duration;
+    var defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 9999 };
+
+    function randomInRange(min, max) {
+        return Math.random() * (max - min) + min;
+    }
+
+    var interval = setInterval(function() {
+        var timeLeft = animationEnd - Date.now();
+
+        if (timeLeft <= 0) {
+            return clearInterval(interval);
+        }
+
+        var particleCount = 50 * (timeLeft / duration);
+        confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 } }));
+        confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } }));
+    }, 250);
 }
 
 
