@@ -510,6 +510,7 @@
     let gameState = null;
     let ctx, isDrawing = false;
     let currentColor = 'black', currentWidth = 3;
+    let drawHistory = []; // [신규] 그림 기록 저장용 배열
     let lastX = 0, lastY = 0;
     let timerInterval;
     let isExiting = false;
@@ -529,7 +530,7 @@
         "옥수수", "오이", "고추", "호박", "버섯", "브로콜리", "피자", "햄버거", "치킨", "감자튀김",
         "핫도그", "샌드위치", "김밥", "라면", "만두", "떡볶이", "도넛", "케이크", "사탕", "초콜릿",
         "우유", "주스", "콜라", "치즈", "달걀", "빵", "밥", "국수", "물", "조개",
-        "아이스크림", "팥빙수", "붕어빵", "호떡", "군고구마", "순대", "오뎅", "튀김", "족발", "보쌈",
+        "아이스크림", "팥빙수", "붕어빵", "호떡", "군고구마", "엉덩이", "순대", "오뎅", "튀김", "족발", "보쌈",
         "삼겹살", "갈비", "스테이크", "스파게티", "초밥", "회", "비빔밥", "김치", "된장찌개", "미역국",
         "카레", "짜장면", "짬뽕", "탕수육", "팝콘", "시리얼", "요거트", "커피", "맥주", "소주", 
         "텔레비전", "냉장고", "세탁기", "선풍기", "청소기", "컴퓨터", "휴대폰", "카메라", "시계", "침대",
@@ -692,6 +693,7 @@
             }
             const timestamp = snap.val();
             if (timestamp) {
+                drawHistory = []; // [핵심] 지우개 사용 시 기록도 초기화
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
             }
         });
@@ -746,6 +748,12 @@
             if (lastPlayersJson !== currentPlayersJson) {
                 renderPlayers(data.players, data.gameData?.drawer);
                 lastPlayersJson = currentPlayersJson;
+
+                // [추가] 플레이어 목록이 변경되었을 때(누군가 나갔을 때), 결과창이 떠있다면 갱신 및 자동시작 체크
+                if (data.status === 'gameOver') {
+                    showResult(data.players, data.rematchRequests);
+                    if (isHost) checkAutoStartByHost(); // 방장은 인원 점검 수행
+                }
             }
 
             handleGameState(data);
@@ -1026,8 +1034,17 @@
     function resizeCanvas() {
         const wrapper = document.getElementById('main-canvas-area');
         if (wrapper && canvas) {
+            // 캔버스 크기가 바뀌면 내용이 초기화되므로, 다시 그려줘야 함
             canvas.width = wrapper.clientWidth;
-            canvas.height = wrapper.clientHeight; 
+            canvas.height = wrapper.clientHeight;
+            
+            // [핵심] 저장된 기록이 있다면 다시 그려서 복구
+            if (drawHistory.length > 0) {
+                drawHistory.forEach(l => {
+                    // 저장된 기록으로 다시 그리기 (false는 기록 중복 저장 방지)
+                    drawLineRemote(l, false); 
+                });
+            }
         }
     }
 
@@ -1081,7 +1098,10 @@
     window.addEventListener('mouseup', endDraw);
     window.addEventListener('touchend', endDraw);
 
-    function drawLineRemote(l) {
+    // [수정] saveHistory 파라미터 추가 (기본값 true)
+    function drawLineRemote(l, saveHistory = true) {
+        if (saveHistory) drawHistory.push(l); // [핵심] 그리기 동작을 기록에 저장
+
         const w = canvas.width; 
         const h = canvas.height;
         ctx.beginPath();
@@ -1282,27 +1302,27 @@ bubble.style.left = (rect.left + rect.width / 2) + 'px';
     }
 
     function showResult(players, reqs={}) {
+        // 1. 게임 종료 상태가 아니면 모달 닫기
         if (gameState && gameState.status !== 'gameOver') {
             if(resultOverlay) resultOverlay.classList.remove('active');
             return;
         }
 
-        if (resultOverlay.classList.contains('active')) {
-            updateRetryBtnState(reqs); 
-            return; 
-        }
-
-        stopBgm();
-
-        if (resultOverlay) {
+        // 2. 모달이 처음 뜰 때만 BGM 끄기 (반복 실행 방지)
+        if (!resultOverlay.classList.contains('active')) {
+            stopBgm();
             resultOverlay.classList.add('active');
         }
+
+        // [핵심 수정] 여기에 있던 'if (active) return;' 코드를 삭제했습니다.
+        // 이제 데이터가 바뀔 때마다 아래 코드가 실행되어 화면을 최신으로 갱신합니다.
 
         const resultList = document.getElementById('result-list');
         if (!resultList) return;
         
-        resultList.innerHTML = ''; 
+        resultList.innerHTML = ''; // 목록 초기화 후 다시 그리기
         
+        // 점수 순 정렬
         const sorted = Object.entries(players).sort((a, b) => (b[1].score || 0) - (a[1].score || 0));
         
         sorted.forEach(([uid, p], i) => {
@@ -1310,9 +1330,13 @@ bubble.style.left = (rect.left + rect.width / 2) + 'px';
             const isMe = uid === myUid;
             const scoreVal = p.score || 0;
             
+            // 준비 상태 확인
             const isReady = reqs && reqs[uid] === true;
             
-            const readyBadge = isReady ? '<span style="font-size:0.8em; color:#28a745; margin-left:5px; font-weight:bold;">(준비완료)</span>' : '';
+            // [수정] 준비 상태 표시 (아이콘 + 텍스트)
+            const statusHtml = isReady 
+                ? '<span style="color:#28a745; font-weight:900; margin-left:5px;">✅ 준비완료</span>' 
+                : '<span style="color:#aaa; font-size:0.9em; margin-left:5px;">⏳ 대기중</span>';
 
             const row = document.createElement('div');
             row.className = 'result-item';
@@ -1320,19 +1344,21 @@ bubble.style.left = (rect.left + rect.width / 2) + 'px';
             if (isMe) row.style.border = "2px solid var(--primary-color)"; 
 
             row.innerHTML = `
-                <div style="display:flex; align-items:center; gap:10px;">
-                    <span style="font-size:1.2em; margin-right:5px;">${rank === 1 ? '🥇' : rank + '위'}</span>
-                    <span>${escapeHTML(p.nickname)}</span>
-                    ${readyBadge} 
+                <div style="display:flex; align-items:center; gap:5px; flex-grow:1; overflow:hidden;">
+                    <span style="font-size:1.2em; min-width:35px;">${rank === 1 ? '🥇' : rank + '위'}</span>
+                    <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHTML(p.nickname)}</span>
+                    <span style="flex-shrink:0;">${statusHtml}</span>
                 </div>
-                <div style="color:var(--primary-color);">${scoreVal}점</div>
+                <div style="color:var(--primary-color); font-weight:bold; min-width:50px; text-align:right;">${scoreVal}점</div>
             `;
             
             resultList.appendChild(row);
             
+            // 승패 효과음 (최초 1회만 재생)
             if(isMe && !resultSoundPlayed) {
                 if(rank === 1) {
                     playSound('snd-win');
+                    // 경험치 지급 (함수가 있을 경우만)
                     if(typeof applyExpAndPoints === 'function') applyExpAndPoints(db, myUid, 150, 100);
                 } else {
                     playSound('snd-lose');
@@ -1341,7 +1367,12 @@ bubble.style.left = (rect.left + rect.width / 2) + 'px';
             }
         });
         
-        resultSoundPlayed = true;
+        // 소리 재생 완료 플래그 (중복 재생 방지)
+        if (!resultSoundPlayed) {
+            resultSoundPlayed = true;
+        }
+        
+        // 버튼 상태 업데이트
         updateRetryBtnState(reqs);
     }
 
@@ -1355,6 +1386,40 @@ bubble.style.left = (rect.left + rect.width / 2) + 'px';
                 retryBtn.disabled = false;
                 retryBtn.innerText = "다시하기";
             }
+        }
+    }
+
+    // [신규] 방장용: 누군가 나가서 인원이 줄어들었을 때, 남은 인원이 모두 준비 상태면 자동 시작 체크
+    function checkAutoStartByHost() {
+        if (!isHost || !gameState || gameState.status !== 'gameOver') return;
+        
+        const players = gameState.players || {};
+        const reqs = gameState.rematchRequests || {};
+        const playerIds = Object.keys(players);
+        
+        // 혼자 남았거나 플레이어가 없으면 무시
+        if (playerIds.length < 2) return;
+
+        // 남은 사람들(playerIds)이 모두 reqs에 true로 있는지 확인
+        const allReady = playerIds.every(uid => reqs[uid] === true);
+
+        if (allReady) {
+            console.log("인원 변동 후 전원 준비 완료 확인 -> 게임 시작");
+            const updates = {};
+            updates['status'] = 'waiting';
+            updates['starting'] = true; 
+            updates['gameData'] = {
+                round: 1,
+                drawer: playerIds[0],
+                word: '',
+                timer: TURN_TIME
+            };
+            updates['chat'] = null; 
+            updates['drawLines'] = null;
+            updates['rematchRequests'] = null;
+            updates['clearCanvas'] = Date.now();
+            playerIds.forEach(pid => { updates[`players/${pid}/score`] = 0; });
+            roomRef.update(updates);
         }
     }
 
