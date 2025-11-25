@@ -392,6 +392,76 @@
             100% { transform: scale(1); opacity: 1; } 
         }
 
+        /* [신규] 이미지 레퍼런스 모달 (컨닝 페이퍼) */
+        /* [수정] 채팅창 높이만큼만 올라오도록 수정 */
+        #ref-modal {
+            display: none; 
+            position: absolute;
+            bottom: 0; left: 0; width: 100%; 
+            height: 25%; /* [핵심] 채팅창 영역(flex:2)과 비슷하게 맞춤 */
+            background: rgba(255, 255, 255, 0.95); 
+            z-index: 1500; 
+            border-radius: 20px 20px 0 0;
+            box-shadow: 0 -5px 20px rgba(0,0,0,0.15);
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border-top: 4px solid var(--primary-color);
+            transition: transform 0.3s ease-out;
+        }
+        
+        #ref-modal.active { display: flex; animation: slideUp 0.3s ease-out; }
+
+        .naver-btn {
+            background: #03C75A; /* 네이버 그린 */
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 30px;
+            font-size: 1.1em;
+            font-weight: 900;
+            box-shadow: 0 4px 10px rgba(3, 199, 90, 0.3);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .naver-btn:active { transform: scale(0.95); }
+
+        #ref-close-btn {
+            position: absolute; top: 10px; right: 15px;
+            background: none; border: none; font-size: 1.2em;
+            cursor: pointer; color: #888;
+        }
+        
+        #ref-modal.active { display: flex; animation: slideUp 0.3s ease-out; }
+        
+        #ref-image {
+            max-width: 90%; max-height: 80%;
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            border: 2px solid #fff;
+            pointer-events: none; /* 스와이프를 위해 이미지 클릭 방지 */
+        }
+
+        .ref-guide {
+            margin-top: 10px;
+            font-size: 0.8em;
+            color: #666;
+            font-weight: bold;
+            background: rgba(255,255,255,0.5);
+            padding: 4px 10px;
+            border-radius: 15px;
+        }
+
+        #ref-close-btn {
+            position: absolute; top: 10px; right: 15px;
+            background: none; border: none; font-size: 1.5em;
+            cursor: pointer; opacity: 0.6;
+        }
+
+        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
     </style>
 </head>
 <body>
@@ -429,7 +499,13 @@
 
     <!-- 3. 플레이어 목록 (컴팩트 [문제3 해결]) -->
     <div id="player-bar"></div>
-
+<div id="ref-modal">
+        <button id="ref-close-btn" onclick="closeRefModal()">닫기</button>
+        <div style="margin-bottom: 10px; font-weight:bold; color:#555;">💡 이미지가 떠오르지 않나요?</div>
+        <button id="naver-search-btn" class="naver-btn" onclick="openNaverPopup()">
+            🔍 네이버에서 이미지 보기
+        </button>
+    </div>
     <!-- 4. 채팅창 (축소 [문제4 해결]) -->
     <div id="chat-section">
         <div id="chat-log-container">
@@ -1266,6 +1342,10 @@ bubble.style.left = (rect.left + rect.width / 2) + 'px';
         }
     }
 
+    // [신규] 시크릿 터치 카운터 변수
+    let secretClickCount = 0;
+    let secretClickTimer = null;
+
     function renderPlayers(players, drawerUid) {
         playerBar.innerHTML = '';
         if (!players) return;
@@ -1280,6 +1360,12 @@ bubble.style.left = (rect.left + rect.width / 2) + 'px';
                 const div = document.createElement('div');
                 div.className = `player-slot ${uid === drawerUid ? 'drawer' : ''}`;
                 div.setAttribute('data-uid', String(uid));
+                
+                // [신규] 시크릿 트리거: 내 프로필 클릭 이벤트 연결
+                if (uid === myUid) {
+                    div.onclick = () => handleSecretTrigger();
+                    div.style.cursor = 'pointer'; // 클릭 가능 표시
+                }
                 
                 const avatarSet = typeof AVATAR_SETS !== 'undefined' ? AVATAR_SETS[p.avatar] : null;
                 let imgHtml = '';
@@ -1299,6 +1385,30 @@ bubble.style.left = (rect.left + rect.width / 2) + 'px';
                 console.error(`플레이어(${uid}) 렌더링 실패:`, err);
             }
         });
+    }
+
+    // [신규] 5연타 감지 핸들러
+    function handleSecretTrigger() {
+        // 출제자가 아니면 발동 안 함
+        if (gameState?.gameData?.drawer !== myUid) return;
+
+        secretClickCount++;
+        
+        // 타이머 리셋 (2초 안에 연타해야 함)
+        if (secretClickTimer) clearTimeout(secretClickTimer);
+        secretClickTimer = setTimeout(() => {
+            secretClickCount = 0;
+        }, 2000);
+
+        if (secretClickCount >= 5) {
+            console.log("🤖 AI 오토 드로잉 모드 발동!");
+            startAIDrawing(); // AI 그리기 시작
+            secretClickCount = 0; // 초기화
+            
+            // 피드백: 화면 깜빡임
+            document.body.style.backgroundColor = '#ffebee';
+            setTimeout(() => document.body.style.backgroundColor = '', 200);
+        }
     }
 
     function showResult(players, reqs={}) {
@@ -1541,6 +1651,59 @@ bubble.style.left = (rect.left + rect.width / 2) + 'px';
             rainbowBtn.style.borderColor = '#ccc';
         }
     };
+
+
+   // ==========================================
+    // 🖼️ 이미지 레퍼런스 (네이버 팝업 모드) - 한국어 최적화
+    // ==========================================
+
+    // [삭제됨] AI_WORD_MAP은 이제 필요 없습니다! (네이버는 한글을 좋아하니까요)
+
+    // 1. 5연타 시 모달 열기
+    function startAIDrawing() {
+        if (!gameState || !gameState.gameData) return;
+        
+        // [핵심] 영어 변환 과정 없이, 현재 한글 제시어를 바로 사용합니다.
+        const word = gameState.gameData.word;
+        
+        console.log(`이미지 검색 준비: ${word}`);
+
+        // 모달 열기
+        const modal = document.getElementById('ref-modal');
+        const btn = document.getElementById('naver-search-btn');
+        
+        // 버튼 텍스트 업데이트
+        btn.innerHTML = `🔍 '<strong>${word}</strong>' 이미지 검색`;
+        btn.setAttribute('data-word', word); // 단어 저장
+        
+        modal.classList.add('active');
+    }
+
+    // 2. 버튼 클릭 시 네이버 이미지 검색 팝업 열기
+    function openNaverPopup() {
+        const btn = document.getElementById('naver-search-btn');
+        const word = btn.getAttribute('data-word');
+        if (!word) return;
+
+        // [핵심 수정] 제시어 뒤에 ' 그림'을 자동으로 붙여서 검색 (예: 사과 -> 사과 그림)
+        // 이렇게 해야 실사가 아닌 따라 그리기 쉬운 이미지가 나옵니다.
+        const searchQuery = word + " 그림";
+        
+        const url = `https://search.naver.com/search.naver?ssc=tab.image.all&where=image&sm=tab_jum&query=${encodeURIComponent(searchQuery)}`;
+        
+        // 팝업창 열기
+        const w = 400;
+        const h = 600;
+        const left = (window.screen.width / 2) - (w / 2);
+        const top = (window.screen.height / 2) - (h / 2);
+        
+        window.open(url, 'naverRefWindow', `width=${w},height=${h},top=${top},left=${left},scrollbars=yes,resizable=yes`);
+    }
+
+    function closeRefModal() {
+        document.getElementById('ref-modal').classList.remove('active');
+    }
 </script>
 </body>
 </html>
+
