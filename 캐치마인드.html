@@ -394,20 +394,74 @@
 
         /* [신규] 이미지 레퍼런스 모달 (컨닝 페이퍼) */
         /* [수정] 채팅창 높이만큼만 올라오도록 수정 */
+        /* [최종] 모바일 친화적 이미지 뷰어 모달 */
         #ref-modal {
             display: none; 
             position: absolute;
             bottom: 0; left: 0; width: 100%; 
-            height: 25%; /* [핵심] 채팅창 영역(flex:2)과 비슷하게 맞춤 */
-            background: rgba(255, 255, 255, 0.95); 
+            height: 40%; /* 이미지를 크게 보기 위해 높이 확보 */
+            background: rgba(255, 255, 255, 0.98); 
             z-index: 1500; 
-            border-radius: 20px 20px 0 0;
-            box-shadow: 0 -5px 20px rgba(0,0,0,0.15);
+            border-radius: 25px 25px 0 0;
+            box-shadow: 0 -5px 30px rgba(0,0,0,0.2);
             flex-direction: column;
             align-items: center;
-            justify-content: center;
-            border-top: 4px solid var(--primary-color);
-            transition: transform 0.3s ease-out;
+            justify-content: flex-start; /* 위쪽 정렬 */
+            border-top: 5px solid var(--primary-color);
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            padding-top: 15px;
+            touch-action: none; /* 중요: 모달 내부 스크롤 방지 (스와이프 인식용) */
+        }
+        
+        #ref-modal.active { display: flex; animation: slideUp 0.3s ease-out; }
+
+        /* 이미지 컨테이너 */
+        #ref-img-container {
+            width: 90%; height: 75%;
+            display: flex; justify-content: center; align-items: center;
+            background: #f0f0f0;
+            border-radius: 15px;
+            overflow: hidden;
+            position: relative;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.1);
+        }
+
+        #ref-image {
+            width: 100%; height: 100%;
+            object-fit: contain; /* 비율 유지하며 꽉 채우기 */
+            pointer-events: none; /* 이미지 드래그 방지 */
+            transition: opacity 0.3s;
+        }
+
+        /* [추가] 이미지 넘기기 화살표 */
+        .nav-btn {
+            position: absolute; top: 50%; transform: translateY(-50%);
+            background: rgba(0,0,0,0.3); color: white;
+            border: none; border-radius: 50%;
+            width: 40px; height: 40px;
+            font-size: 1.5em; cursor: pointer;
+            display: flex; justify-content: center; align-items: center;
+            z-index: 20; transition: background 0.2s;
+        }
+        .nav-btn:active { background: rgba(0,0,0,0.6); }
+        .nav-btn.prev { left: 10px; }
+        .nav-btn.next { right: 10px; }
+
+
+
+        .ref-guide {
+            margin-top: 10px;
+            font-size: 0.9em;
+            color: #555;
+            font-weight: 900;
+            display: flex; align-items: center; gap: 5px;
+        }
+
+        #ref-close-btn {
+            position: absolute; top: 10px; right: 15px;
+            background: #eee; border: none; width: 30px; height: 30px;
+            border-radius: 50%; font-weight: bold; cursor: pointer;
+            z-index: 10;
         }
         
         #ref-modal.active { display: flex; animation: slideUp 0.3s ease-out; }
@@ -497,16 +551,25 @@
             <div class="palette-btn color-circle" style="background:#FF9F43;" onclick="selectExtendedColor('#FF9F43', this)"></div> <div class="palette-btn color-circle" style="background:#FF9FF3;" onclick="selectExtendedColor('#FF9FF3', this)"></div> <div class="palette-btn color-circle" style="background:#8B4513;" onclick="selectExtendedColor('#8B4513', this)"></div> <div class="palette-btn color-circle" style="background:#7f8c8d;" onclick="selectExtendedColor('#7f8c8d', this)"></div> <div class="palette-btn color-circle" style="background:#9b59b6;" onclick="selectExtendedColor('#9b59b6', this)"></div> <div class="palette-btn color-circle" style="background:#2ecc71;" onclick="selectExtendedColor('#2ecc71', this)"></div> </div>
     </div>
 
-    <!-- 3. 플레이어 목록 (컴팩트 [문제3 해결]) -->
-    <div id="player-bar"></div>
-<div id="ref-modal">
-        <button id="ref-close-btn" onclick="closeRefModal()">닫기</button>
-        <div style="margin-bottom: 10px; font-weight:bold; color:#555;">💡 이미지가 떠오르지 않나요?</div>
-        <button id="naver-search-btn" class="naver-btn" onclick="openNaverPopup()">
-            🔍 네이버에서 이미지 보기
-        </button>
+<div id="player-bar"></div>
+
+    <div id="ref-modal">
+        <button id="ref-close-btn" onclick="closeRefModal()">✕</button>
+        
+        <div id="ref-img-container">
+            <button class="nav-btn prev" onclick="prevImage()">‹</button>
+            <button class="nav-btn next" onclick="nextImage()">›</button>
+            
+            <img id="ref-image" src="" alt="참고 이미지">
+            <div id="ref-loading" style="position:absolute; display:none; font-weight:bold; color:#555;">📡 구글 검색 중...</div>
+        </div>
+
+        <div class="ref-guide">
+            <span id="ref-keyword-display" style="font-size: 1.2em; color: var(--text-color-dark);">단어</span>
+        </div>
+        <div style="font-size:0.7em; color:#999; margin-top:2px;">화살표를 눌러 다른 그림 보기</div>
     </div>
-    <!-- 4. 채팅창 (축소 [문제4 해결]) -->
+
     <div id="chat-section">
         <div id="chat-log-container">
             <ul id="chat-list"></ul>
@@ -518,7 +581,6 @@
             <button id="open-input-btn">💬 정답 / 채팅 입력</button>
         </div>
     </div>
-</div>
 
 <!-- 모달 (기존 유지) -->
 <div id="input-modal-overlay" class="modal-overlay">
@@ -619,7 +681,7 @@
         "자동차", "버스", "택시", "경찰차", "소방차", "구급차", "트럭", "포크레인", "자전거", "오토바이",
         "기차", "비행기", "헬리콥터", "배", "잠수함", "로켓", "UFO", "유모차", "휠체어", "스케이트보드",
         "학교", "병원", "집", "아파트", "놀이터", "수영장", "도서관", "미용실", "마트",
-        "편의점", "경찰서", "소방서", "우체국", "은행", "식당", "카페", "영화관", "노래방", "PC방",
+        "편의점", "경찰서", "소방서", "우체국", "은행", "식당", "카페", "영화관", "노래방",
         "주유소", "공항", "기차역", "항구", "등대", "다리", "터널", "성", "텐트", "이글루", 
         "해", "달", "별", "구름", "비", "눈", "눈사람", "무지개", "번개", "불",
         "물방울", "바다", "산", "나무", "꽃", "해바라기", "선인장", "돌", "모래", "흙",
@@ -1653,55 +1715,187 @@ bubble.style.left = (rect.left + rect.width / 2) + 'px';
     };
 
 
-   // ==========================================
-    // 🖼️ 이미지 레퍼런스 (네이버 팝업 모드) - 한국어 최적화
+  // ==========================================
+    // 🖼️ 스마트 AI 이미지 뷰어 (번역기 탑재 + 고속 모드)
     // ==========================================
 
-    // [삭제됨] AI_WORD_MAP은 이제 필요 없습니다! (네이버는 한글을 좋아하니까요)
+    // [핵심] 한글 제시어를 AI가 알아듣는 영어로 번역하는 사전
+    const WORD_TRANSLATION = {
+        // [동물]
+        "강아지": "puppy dog", "고양이": "cat", "토끼": "rabbit", "병아리": "chick", "오리": "duck", 
+        "돼지": "pig", "소": "cow", "양": "sheep", "말": "horse", "사자": "lion",
+        "호랑이": "tiger", "코끼리": "elephant", "기린": "giraffe", "원숭이": "monkey", "팬더": "panda", 
+        "펭귄": "penguin", "북극곰": "polar bear", "다람쥐": "squirrel", "고래": "whale", "상어": "shark",
+        "거북이": "turtle", "개구리": "frog", "뱀": "snake", "똥": "poop emoji", "문어": "octopus", 
+        "브라자": "bra", "가슴": "chest", "오징어": "squid", "물고기": "fish", "게": "crab", 
+        "새우": "shrimp", "하마": "hippo", "악어": "crocodile", "공룡": "dinosaur", "박쥐": "bat", 
+        "나비": "butterfly", "꿀벌": "bee", "거미": "spider", "달팽이": "snail", "잠자리": "dragonfly", 
+        "무당벌레": "ladybug", "개미": "ant", "파리": "fly insect", "모기": "mosquito", "바퀴벌레": "cockroach", 
+        "지렁이": "earthworm", "전갈": "scorpion", "사마귀": "mantis", "메뚜기": "grasshopper", "여우": "fox", 
+        "늑대": "wolf", "곰": "bear", "사슴": "deer", "낙타": "camel", "캥거루": "kangaroo", 
+        "코알라": "koala", "두더지": "mole", "고슴도치": "hedgehog", "수달": "otter", "물개": "seal", 
+        "해파리": "jellyfish", "불가사리": "starfish", "카멜레온": "chameleon", "타조": "ostrich", "독수리": "eagle", 
+        "부엉이": "owl", "참새": "sparrow", "비둘기": "pigeon", "까치": "magpie", "앵무새": "parrot", "공작새": "peacock", 
+        
+        // [음식/과일]
+        "사과": "apple", "바나나": "banana", "포도": "grapes", "수박": "watermelon", "딸기": "strawberry", 
+        "복숭아": "peach", "귤": "tangerine", "파인애플": "pineapple", "체리": "cherry", "당근": "carrot",
+        "피자": "pizza", "햄버거": "hamburger", "치킨": "fried chicken", "감자튀김": "french fries",
+        "핫도그": "hotdog", "샌드위치": "sandwich", "김밥": "sushi roll", "라면": "ramen bowl", "만두": "dumpling", 
+        "떡볶이": "spicy rice cake", "도넛": "donut", "케이크": "cake", "사탕": "candy", "초콜릿": "chocolate",
+        "우유": "milk carton", "주스": "juice", "콜라": "coke bottle", "치즈": "cheese", "달걀": "egg", 
+        "빵": "bread", "밥": "rice bowl", "국수": "noodles", "물": "water glass", "조개": "clam",
+        "아이스크림": "ice cream", "팥빙수": "shaved ice", "붕어빵": "fish shaped pastry", "호떡": "pancake",
+        "순대": "sausage", "오뎅": "fish cake", "튀김": "fried shrimp", "족발": "pork hocks", 
+        "삼겹살": "pork belly", "갈비": "ribs", "스테이크": "steak", "스파게티": "spaghetti", 
+        "초밥": "sushi", "비빔밥": "bibimbap", "김치": "kimchi", "짜장면": "black bean noodles", "짬뽕": "spicy noodle soup", 
+        "탕수육": "sweet and sour pork", "팝콘": "popcorn", "커피": "coffee cup", "맥주": "beer mug", "소주": "green bottle", 
 
-    // 1. 5연타 시 모달 열기
+        // [사물/탈것/장소]
+        "텔레비전": "tv", "냉장고": "fridge", "세탁기": "washing machine", "선풍기": "fan", "청소기": "vacuum", 
+        "컴퓨터": "computer", "휴대폰": "smartphone", "카메라": "camera", "시계": "clock", "침대": "bed",
+        "우산": "umbrella", "안경": "glasses", "모자": "hat", "신발": "shoes", "가방": "backpack",
+        "자동차": "car", "버스": "bus", "택시": "taxi", "경찰차": "police car", "소방차": "fire truck", 
+        "구급차": "ambulance", "트럭": "truck", "자전거": "bicycle", "오토바이": "motorcycle",
+        "기차": "train", "비행기": "airplane", "헬리콥터": "helicopter", "배": "ship", "잠수함": "submarine", 
+        "로켓": "rocket", "UFO": "ufo", "유모차": "stroller", "휠체어": "wheelchair", "스케이트보드": "skateboard",
+        "학교": "school building", "병원": "hospital", "집": "house", "아파트": "apartment", 
+        
+        // [자연/기타]
+        "해": "sun", "달": "moon", "별": "star", "구름": "cloud", "비": "rain", "눈": "snow", "눈사람": "snowman", 
+        "무지개": "rainbow", "번개": "lightning", "불": "fire", "산": "mountain", "나무": "tree", "꽃": "flower", 
+        "축구": "soccer ball", "농구": "basketball", "야구": "baseball", "테니스": "tennis racket", 
+        "유튜브": "youtube logo", "넷플릭스": "netflix logo", "카카오톡": "chat app icon"
+    };
+
+    let currentRefKeyword = "";
+    let currentRefSeed = 0;
+    let imgLoadTimer = null;
+
+    // 1. 5연타 시 호출
     function startAIDrawing() {
         if (!gameState || !gameState.gameData) return;
         
-        // [핵심] 영어 변환 과정 없이, 현재 한글 제시어를 바로 사용합니다.
         const word = gameState.gameData.word;
+        console.log(`이미지 뷰어 오픈: ${word}`);
         
-        console.log(`이미지 검색 준비: ${word}`);
+        openRefModal(word);
+    }
 
-        // 모달 열기
+    // 2. 모달 열기
+    function openRefModal(keyword) {
         const modal = document.getElementById('ref-modal');
-        const btn = document.getElementById('naver-search-btn');
+        const display = document.getElementById('ref-keyword-display');
         
-        // 버튼 텍스트 업데이트
-        btn.innerHTML = `🔍 '<strong>${word}</strong>' 이미지 검색`;
-        btn.setAttribute('data-word', word); // 단어 저장
+        currentRefKeyword = keyword;
+        // 랜덤 시드로 매번 다른 그림 생성
+        currentRefSeed = Math.floor(Math.random() * 10000); 
+        display.innerText = keyword; 
+        
+        updateRefImage(); 
         
         modal.classList.add('active');
     }
 
-    // 2. 버튼 클릭 시 네이버 이미지 검색 팝업 열기
-    function openNaverPopup() {
-        const btn = document.getElementById('naver-search-btn');
-        const word = btn.getAttribute('data-word');
-        if (!word) return;
+    function closeRefModal() {
+        document.getElementById('ref-modal').classList.remove('active');
+        if(imgLoadTimer) clearTimeout(imgLoadTimer);
+    }
 
-        // [핵심 수정] 제시어 뒤에 ' 그림'을 자동으로 붙여서 검색 (예: 사과 -> 사과 그림)
-        // 이렇게 해야 실사가 아닌 따라 그리기 쉬운 이미지가 나옵니다.
-        const searchQuery = word + " 그림";
+    // 3. 이미지 업데이트 (AI 생성 + 안전장치)
+    function updateRefImage() {
+        const img = document.getElementById('ref-image');
+        const loader = document.getElementById('ref-loading');
         
-        const url = `https://search.naver.com/search.naver?ssc=tab.image.all&where=image&sm=tab_jum&query=${encodeURIComponent(searchQuery)}`;
+        // UI 초기화
+        img.style.opacity = '0.3'; 
+        loader.innerHTML = "🤖 AI가 그리는 중...";
+        loader.style.display = 'block';
+        loader.style.cursor = 'default';
+        loader.onclick = null; // 클릭 이벤트 제거
         
-        // 팝업창 열기
-        const w = 400;
-        const h = 600;
+        // [핵심 1] 한글 -> 영어 번역 (사전에 없으면 한글 그대로 사용)
+        const translatedWord = WORD_TRANSLATION[currentRefKeyword] || currentRefKeyword;
+        
+        // [핵심 2] 프롬프트 최적화 (단순한 선화 스타일 요청)
+        const prompt = `simple line drawing of ${translatedWord}, white background, sketch style, minimal`; 
+        
+        // [핵심 3] 속도 최적화: width/height를 300으로 줄여서 전송량 감소
+        const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?nologo=true&seed=${currentRefSeed}&width=300&height=300&model=flux`;
+
+        // 기존 이미지 초기화
+        img.src = ""; 
+        
+        // 새 이미지 로드
+        const newImg = new Image();
+        newImg.src = url;
+        
+        // [핵심 4] 비상구: 4초가 지나도 안 뜨면 '네이버 버튼' 노출
+        if(imgLoadTimer) clearTimeout(imgLoadTimer);
+        imgLoadTimer = setTimeout(() => {
+            if(loader.style.display === 'block') {
+                loader.innerHTML = `⚠️ 너무 느린가요?<br><span style="color:#03C75A; text-decoration:underline; cursor:pointer;">🔍 네이버에서 보기</span>`;
+                loader.style.cursor = 'pointer';
+                loader.onclick = () => openNaverPopup(); // 클릭 시 네이버 팝업
+            }
+        }, 4000);
+
+        newImg.onload = () => {
+            if(imgLoadTimer) clearTimeout(imgLoadTimer);
+            img.src = url;
+            img.style.opacity = '1';
+            loader.style.display = 'none';
+        };
+        
+        newImg.onerror = () => {
+            if(imgLoadTimer) clearTimeout(imgLoadTimer);
+            loader.innerHTML = `❌ 생성 실패<br><span style="color:#03C75A; text-decoration:underline; cursor:pointer;">🔍 네이버에서 보기</span>`;
+            loader.style.cursor = 'pointer';
+            loader.onclick = () => openNaverPopup();
+        };
+    }
+
+    // [비상용] 네이버 팝업 열기
+    function openNaverPopup() {
+        const word = currentRefKeyword;
+        const url = `https://search.naver.com/search.naver?ssc=tab.image.all&where=image&sm=tab_jum&query=${encodeURIComponent(word + " 그림")}`;
+        const w = 400, h = 600;
         const left = (window.screen.width / 2) - (w / 2);
         const top = (window.screen.height / 2) - (h / 2);
-        
         window.open(url, 'naverRefWindow', `width=${w},height=${h},top=${top},left=${left},scrollbars=yes,resizable=yes`);
     }
 
-    function closeRefModal() {
-        document.getElementById('ref-modal').classList.remove('active');
+    // 4. 넘기기 기능
+    function prevImage() {
+        currentRefSeed--;
+        playSound('snd-pop');
+        updateRefImage();
+    }
+
+    function nextImage() {
+        currentRefSeed++;
+        playSound('snd-pop');
+        updateRefImage();
+    }
+
+    // 5. 스와이프 감지
+    let touchStartX = 0;
+    let touchEndX = 0;
+    const modalEl = document.getElementById('ref-modal');
+
+    modalEl.addEventListener('touchstart', e => {
+        touchStartX = e.changedTouches[0].screenX;
+    }, {passive: true});
+
+    modalEl.addEventListener('touchend', e => {
+        touchEndX = e.changedTouches[0].screenX;
+        handleSwipe();
+    }, {passive: true});
+
+    function handleSwipe() {
+        const threshold = 50; 
+        if (touchEndX < touchStartX - threshold) nextImage();
+        else if (touchEndX > touchStartX + threshold) prevImage();
     }
 </script>
 </body>
