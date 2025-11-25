@@ -22,336 +22,257 @@
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; touch-action: none; /* 중요: 스크롤 방지 */ }
+        
         html, body {
             width: 100%; height: 100%; overflow: hidden; font-family: var(--font-main);
             background-color: var(--bg-color); color: var(--text-color-dark);
-            display: flex; flex-direction: column;
-            position: fixed; /* 화면 고정 */
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
         }
 
+        /* === 🏗️ 전체 레이아웃 (세로 배치 4단) === */
         #game-wrapper {
-            width: 100%; flex-grow: 1; display: flex; flex-direction: column;
-            padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom);
-            position: relative;
-        }
-/* [핵심] 전체 게임 보드 (캔버스 + 사이드바를 감싸는 껍데기) */
-        #main-area {
-            flex-grow: 1; 
-            display: flex; flex-direction: row;
-            overflow: hidden; 
-            position: relative;
-            
-            /* 여기서 전체 테두리를 줍니다 (일체감 형성) */
-            margin: 10px 10px 0 10px; /* 아래쪽 여백 0 (도구랑 붙이기 위해) */
-            border: 4px solid var(--text-color-dark);
-            border-bottom: none; /* 아래쪽은 뚫어서 도구/채팅창과 연결 */
-            border-radius: 15px 15px 0 0; /* 위쪽만 둥글게 */
-            background: white;
-            box-shadow: 5px 5px 0 var(--panel-shadow); /* 입체감 */
+            width: 100%; height: 100%;
+            display: flex; flex-direction: column;
+            background: var(--bg-color);
+            overflow: hidden;
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
         }
 
-/* 1. 캔버스 영역 (테두리 제거 -> 부모 테두리 사용) */
-        #canvas-wrapper {
-            flex-grow: 1; 
-            position: relative; 
-            overflow: hidden; 
-            touch-action: none !important;
-            display: flex; flex-direction: column;
-            
-            /* 기존의 테두리, 마진, 그림자 모두 제거 (부모에게 넘김) */
-            border: none; margin: 0; border-radius: 0; box-shadow: none; 
+        /* 1. 최상단: 제시어 영역 (높이 축소) */
+        #top-word-bar {
+            flex-shrink: 0;
+            height: 45px; /* 높이 줄임 */
+            background: white;
+            border-bottom: 2px solid var(--text-color-dark);
+            display: flex; justify-content: center; align-items: center;
+            font-size: 1.1em; font-weight: bold;
+            z-index: 20;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
         }
-/* ✨ [수정] 상단바 왼쪽 정렬 (긴 단어도 한 줄 표시 가능) */
-        #game-info-bar {
-            position: absolute; top: 10px; left: 0; width: 100%;
-            display: flex; 
-            justify-content: flex-start; /* ✨ 왼쪽 정렬로 변경 */
-            align-items: center; 
-            gap: 6px; /* 간격 살짝 좁힘 */
-            padding: 0 10px; /* ✨ 좌우 여백 추가 (보드 테두리와 정렬) */
+        #word-display { color: var(--text-color-dark); }
+
+        /* 2. 중앙 상단: 캔버스 영역 (비중 확대 [문제4 해결]) */
+        #main-canvas-area {
+            flex: 7; /* 비율 5 -> 7로 증가 */
+            position: relative;
+            background: white;
+            border-bottom: 2px solid var(--text-color-dark);
+            overflow: hidden;
+            touch-action: none;
+        }
+        
+        canvas { 
+            width: 100%; height: 100%; 
+            display: block; cursor: crosshair; 
+            touch-action: none !important;
+        }
+
+        /* [문제1 해결] 오버레이: 타이머와 라운드를 가로로 컴팩트하게 배치 */
+        #canvas-overlay-info {
+            position: absolute;
+            top: 10px; left: 10px;
+            display: flex; flex-direction: row; /* 가로 정렬 */
+            align-items: center;
+            gap: 8px;
             pointer-events: none; 
             z-index: 10;
         }
-        
-        /* ✨ [수정] 배지 스타일 (줄 바꿈 방지 추가) */
-        .info-badge {
-            background: rgba(0,0,0,0.7); color: white;
-            padding: 6px 12px; border-radius: 20px;
-            font-size: 1.0em; font-weight: bold;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-            
-            /* ✨ [핵심] 글자가 길어져도 무조건 한 줄 유지 */
-            white-space: nowrap; 
-            
-            /* (선택) 화면이 극도로 좁을 때 말줄임표(...) 처리하려면 아래 주석 해제 */
-            /* max-width: 60%; overflow: hidden; text-overflow: ellipsis; */
-        }
-        
-       /* ✨ [수정] 타이머 스타일 (상단바 배치용) */
+
+        /* 시간 타이머 배지 */
         #timer-badge {
-            position: relative;
-            background: white; 
-            border: 3px solid var(--text-color-dark);
-            width: 40px; height: 40px; /* 크기 적당히 조절 */
-            border-radius: 50%;
-            display: flex; justify-content: center; align-items: center;
-            font-weight: 900; font-size: 1.1em; 
-            color: var(--primary-color);
-            box-shadow: 2px 2px 0 rgba(0,0,0,0.2); 
-            z-index: 20; /* 다른 배지보다 위에 오도록 */
-            flex-shrink: 0;
-            
-            /* 상단바 안에서 자연스럽게 배치되도록 마진 제거 */
-            margin: 0; 
-            margin-right: 5px; /* ROUND 배지와의 간격 */
+            width: 38px; height: 38px;
+            background: white; border: 3px solid var(--text-color-dark);
+            border-radius: 50%; display: flex; justify-content: center; align-items: center;
+            font-weight: 900; font-size: 1.1em; color: var(--primary-color);
+            box-shadow: 2px 2px 0 rgba(0,0,0,0.2);
         }
         #timer-badge.urgent { color: var(--danger-color); animation: pulse 0.5s infinite; }
 
-        canvas { 
-            width: 100%; height: 0; flex-grow: 1;
-            display: block; cursor: crosshair; 
-            touch-action: none !important;
-            -webkit-user-select: none; user-select: none;
+        /* 라운드 텍스트 (컴팩트 스타일) */
+        .round-badge {
+            font-size: 0.9em; font-weight: 800;
+            color: var(--text-color-dark);
+            background: rgba(255, 255, 255, 0.9);
+            padding: 6px 12px; border-radius: 20px;
+            border: 2px solid var(--text-color-dark);
+            white-space: nowrap;
+            box-shadow: 1px 1px 2px rgba(0,0,0,0.1);
         }
 
-#player-bar {
-            width: 56px; 
-            flex-shrink: 0; /* 찌그러짐 방지 */
-            background: #FFFAE0;
-            border-left: 2px solid var(--panel-border); 
-            
-            /* [핵심 수정] 5명 이상일 때 스크롤이 씹히는 문제 해결 */
-            display: flex; flex-direction: column; 
-            gap: 8px; 
-            overflow-y: auto; /* 스크롤 활성화 */
-            min-height: 0; /* 플렉스 박스 내부 스크롤 버그 방지 (필수) */
+        /* [문제2 해결] 팔레트 바 (유저 프로필 위 1자 배치) */
+        #palette-bar {
+            flex-shrink: 0;
+            height: 50px;
+            background: #f4f4f4;
+            border-bottom: 2px solid var(--text-color-dark);
+            display: none; /* JS로 제어 (출제자만 보임) */
             align-items: center;
-            
-            padding: 10px 4px;
-            
-            -ms-overflow-style: none; scrollbar-width: none;
+            justify-content: center; /* 중앙 정렬 */
+            gap: 8px;
+            padding: 0 10px;
+            overflow-x: auto;
+            white-space: nowrap;
+        }
+        #palette-bar::-webkit-scrollbar { display: none; }
+
+        /* 팔레트 버튼 스타일 */
+        .palette-btn {
+            width: 34px; height: 34px;
+            border-radius: 50%;
+            display: inline-flex; justify-content: center; align-items: center;
+            font-size: 1em; cursor: pointer;
+            border: 2px solid transparent;
+            transition: transform 0.1s;
+            flex-shrink: 0;
+        }
+        .palette-btn:active { transform: scale(0.9); }
+        .palette-btn.active { border-color: var(--text-color-dark); transform: scale(1.1); box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        .color-circle { border: 1px solid rgba(0,0,0,0.1); }
+
+        /* 3. 유저 목록 (컴팩트화 [문제3 해결]) */
+        #player-bar {
+            flex-shrink: 0;
+            height: 70px; /* 90px -> 70px 축소 */
+            background: #FFFAE0;
+            border-bottom: 2px solid var(--text-color-dark);
+            display: flex; align-items: center;
+            overflow-x: auto; overflow-y: hidden;
+            gap: 15px; padding: 0 10px;
+            white-space: nowrap;
         }
         #player-bar::-webkit-scrollbar { display: none; }
-        
+
+        /* 플레이어 슬롯 컴팩트 */
         .player-slot {
-            display: flex; flex-direction: column; align-items: center; 
-            width: 100%; flex-shrink: 0; position: relative;
+            display: inline-flex; flex-direction: column; align-items: center;
+            width: 50px; /* 너비 축소 */
+            flex-shrink: 0; position: relative;
         }
         .player-avatar {
-            width: 36px; height: 36px; /* [수정] 40px -> 36px */
-            border-radius: 10px; background: #fff;
-            border: 2px solid var(--panel-border); overflow: hidden;
+            width: 38px; height: 38px; /* 아바타 축소 */
+            border-radius: 12px; background: #fff;
+            border: 2px solid var(--panel-border);
             display: flex; justify-content: center; align-items: center;
+            overflow: hidden;
+            position: relative;
         }
         .player-avatar img { width: 100%; height: 100%; object-fit: contain; }
         .player-name { 
-            font-size: 0.6em; margin-top: 4px; font-weight: bold; 
-            width: 100%; text-align: center; 
-            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            font-size: 0.7em; margin-top: 3px; width: 100%; 
+            text-align: center; overflow: hidden; text-overflow: ellipsis; 
+            font-weight: bold;
         }
-        .player-score { font-size: 0.8em; color: var(--primary-color); font-weight: 900; }
+        .player-score { font-size: 0.7em; color: var(--primary-color); font-weight: 900; margin-top: -2px; }
         
-        .player-slot.drawer .player-avatar { border-color: var(--accent-color); box-shadow: 0 0 0 3px var(--accent-color); }
-        .player-slot.drawer::after { content: '🎨'; position: absolute; top: -5px; right: -5px; font-size: 1.2em; }
-
- /* 3. 그리기 도구 */
-        /* 3. 그리기 도구 & 하단 연결부 */
-        #drawing-tools {
-            flex-shrink: 0;
-            display: none; /* JS 제어 */
-            justify-content: center; 
-            align-items: center; /* 수직 중앙 정렬 */
-            gap: 8px; /* 간격 넓힘 */
-            padding: 10px; /* 패딩 넓힘 */
-            flex-wrap: wrap; 
-            background: #f8f8f8; 
-            
-            /* 위쪽 보드와 자연스럽게 연결 */
-            margin: 0 10px;
-            border-left: 4px solid var(--text-color-dark);
-            border-right: 4px solid var(--text-color-dark);
-            border-top: 1px solid #ddd;
+        .player-slot.drawer .player-avatar { 
+            border-color: var(--accent-color); 
+            box-shadow: 0 0 0 2px var(--accent-color); 
         }
 
-        /* [복구] 도구 버튼 크기 고정 (이게 없어서 작게 나왔음) */
-        .tool-btn {
-            width: 42px; height: 42px;
-            border-radius: 50%; /* 동그랗게 */
-            display: flex; justify-content: center; align-items: center;
-            font-size: 1.4em; cursor: pointer;
-            border: 2px solid transparent;
-            transition: transform 0.1s;
-            flex-shrink: 0; /* 찌그러짐 방지 */
+        /* 4. 채팅 및 입력 (비중 축소 [문제4 해결]) */
+        #chat-section {
+            flex: 2; /* 비율 4 -> 2로 축소 */
+            display: flex; flex-direction: column;
+            background: var(--bg-color);
+            min-height: 0; 
+            position: relative;
         }
-        .tool-btn:active { transform: scale(0.9); }
-        .tool-btn.active { border-color: var(--text-color-dark); transform: scale(1.1); box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+
+        #chat-log-container {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 10px;
+            display: flex; flex-direction: column; justify-content: flex-start;
+        }
+        #chat-list { list-style: none; width: 100%; padding-bottom: 5px; }
         
-        /* 색상 버튼은 테두리 추가 */
-        .color-btn { border: 2px solid rgba(0,0,0,0.1); }
+        .chat-item { margin-bottom: 5px; font-size: 0.9em; line-height: 1.3; word-break: break-all;}
+        .chat-item .sender { font-weight: bold; margin-right: 5px; color: var(--text-color-dark); }
+        .chat-item.system { 
+            color: #888; text-align: center; font-size: 0.85em; 
+            background: rgba(0,0,0,0.05); border-radius: 10px; 
+            padding: 4px 8px; margin: 5px 0; 
+        }
+        .chat-item.correct { 
+            color: var(--primary-color); font-weight: bold; 
+            background: #FFF9C4; padding: 6px; border-radius: 8px; 
+            text-align: center; margin: 5px 0; border: 2px dashed var(--accent-color);
+        }
 
-        /* [신규] 캐릭터 옆 말풍선 레이어 (클릭 통과) */
+        /* 입력바 */
+        #input-bar {
+            padding: 8px; background: white; flex-shrink: 0;
+            border-top: 2px solid var(--panel-border);
+            padding-bottom: calc(8px + env(safe-area-inset-bottom));
+        }
+        #open-input-btn {
+            width: 100%; padding: 10px; font-size: 1em; /* 버튼 크기 축소 */
+            background: var(--primary-color); color: white;
+            font-weight: 900; border: none; border-radius: 10px;
+            cursor: pointer; border-bottom: 3px solid #C04A4A;
+        }
+        #open-input-btn:active { transform: translateY(2px); border-bottom-width: 2px; }
+
+        /* 말풍선 레이어 */
         #speech-bubble-layer {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             pointer-events: none; z-index: 50; overflow: hidden;
         }
-
-/* ✨ [수정] 깔끔한 흰색 반투명 말풍선 스타일 */
         .speech-bubble-item {
             position: absolute;
-            background: rgba(255, 255, 255, 0.9); /* 흰색 반투명 배경 */
-            color: #333; /* 글씨는 진한 회색 */
-            padding: 8px 12px;
-            border-radius: 12px;
-            /* ✨ [수정] 배경과 구분되도록 진한 테두리 추가 */
+            background: rgba(255, 255, 255, 0.95);
+            color: #333; padding: 6px 10px; border-radius: 10px;
             border: 2px solid var(--text-color-dark);
-            box-shadow: 0 4px 10px rgba(0,0,0,0.1); /* 부드러운 그림자 */
-            font-size: 0.9em;
-            font-weight: bold;
-            max-width: 200px;
-            word-break: break-word;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            font-size: 0.85em; font-weight: bold;
+            max-width: 160px; word-break: break-word;
             animation: popIn 0.3s ease-out, fadeOut 0.5s ease-in 2.5s forwards;
-            right: 65px;
             z-index: 50;
         }
-
-  /* ✨ [수정] 말풍선 꼬리 (테두리 색상 반영) */
         .speech-bubble-item::after {
-            content: ''; 
-            position: absolute; 
-            top: 50%; 
-            right: -8px; /* 위치 미세 조정 */
-            margin-top: -6px;
-            
-            /* 꼬리 모양 */
-            border-width: 6px 0 6px 8px; 
-            border-style: solid;
-            
-            /* 꼬리 색상: 몸통 테두리 색(갈색)으로 설정 */
-            border-color: transparent transparent transparent var(--text-color-dark);
+            content: ''; position: absolute; bottom: -8px; left: 50%; margin-left: -6px;
+            border-width: 8px 6px 0; border-style: solid;
+            border-color: var(--text-color-dark) transparent transparent transparent;
         }
-        
-        /* ✨ [추가] 꼬리 안쪽 채우기 (흰색 덧대기) - 테두리 느낌 구현 */
         .speech-bubble-item::before {
-            content: ''; 
-            position: absolute; 
-            top: 50%; 
-            right: -5px; 
-            margin-top: -4px;
-            border-width: 4px 0 4px 6px; 
-            border-style: solid;
-            border-color: transparent transparent transparent rgba(255, 255, 255, 0.9);
+            content: ''; position: absolute; bottom: -5px; left: 50%; margin-left: -4px;
+            border-width: 6px 4px 0; border-style: solid;
+            border-color: rgba(255, 255, 255, 0.95) transparent transparent transparent;
             z-index: 1;
         }
+        .speech-bubble-item.correct { background: #FFF9C4; border-color: #FBC02D; }
+        .speech-bubble-item.correct::after { border-top-color: #FBC02D; }
+        .speech-bubble-item.correct::before { border-top-color: #FFF9C4; }
 
-        /* 정답 말풍선 (노란색) */
-        .speech-bubble-item.correct {
-            background: rgba(255, 217, 61, 0.9); color: #574141;
-            font-weight: bold; border: 2px solid white; z-index: 60;
-            font-size: 1.0em;
-        }
-        .speech-bubble-item.correct::after {
-            border-color: transparent transparent transparent rgba(255, 217, 61, 0.9);
-        }
-
-  /* ✨ [수정] 튀어오르는 애니메이션 (위치 고정됨) */
-        @keyframes popIn { 
-            from { 
-                opacity: 0; 
-                /* 수직 중앙(-50%)을 유지하면서 왼쪽에서 살짝(-10px) 등장 */
-                transform: translateY(-50%) translateX(-10px) scale(0.8); 
-            } 
-            to { 
-                opacity: 1; 
-                /* 수직 중앙(-50%)을 유지하며 제자리(0)로 */
-                transform: translateY(-50%) translateX(0) scale(1); 
-            } 
-        }
-        @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
-        /* 5. 입력 버튼 (채팅창과 연결) */
-        /* 5. 입력 버튼 (크기 축소 및 마무으리) */
-        #input-bar { 
-            padding: 8px; background: white; flex-shrink: 0; 
-            
-            /* 전체 박스의 바닥 부분 완성 */
-            margin: 0 10px 10px 10px; 
-            border: 4px solid var(--text-color-dark);
-            border-top: none; 
-            border-radius: 0 0 15px 15px; /* 아래쪽만 둥글게 */
-        }
-
-        #open-input-btn {
-            width: 100%; 
-            padding: 10px; /* [수정] 14px -> 10px (높이 줄임) */
-            font-size: 1em; /* [수정] 글자 크기 줄임 */
-            background: var(--primary-color);
-            color: white; font-weight: 900; border: none;
-            border-radius: 8px; cursor: pointer; border-bottom: 4px solid #C04A4A;
-        }
-        #open-input-btn:active { transform: translateY(2px); border-bottom-width: 2px; }
-        #open-input-btn:disabled { background: #ccc; border-color: #999; cursor: not-allowed; transform: none; }
-
-/* ✨ [수정] 오버레이 배경을 투명하게 변경 (그림 보이게) */
+        /* 모달 등 공통 */
         .modal-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.1); /* 배경 거의 투명하게 */
-            z-index: 2000;
-            display: none; 
-            justify-content: center; 
-            align-items: center; /* 화면 정중앙 배치 */
+            background: rgba(0,0,0,0.3); z-index: 2000;
+            display: none; justify-content: center; align-items: center;
         }
         .modal-overlay.active { display: flex; }
         
-.input-modal {
-            width: 90%; /* 85% -> 90% (모바일에서 조금 더 넓게) */
-            max-width: 400px;
-            background: rgba(255, 255, 255, 0.85); /* 가독성 위해 투명도 살짝 낮춤 */
-            backdrop-filter: blur(8px);
-            padding: 20px;
-            border-radius: 20px;
-            border: 2px solid rgba(255,255,255,0.8);
+        .input-modal {
+            width: 90%; max-width: 400px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(5px);
+            padding: 20px; border-radius: 20px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            animation: popInInput 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            animation: popInInput 0.3s;
             margin-bottom: 20%;
-            
-            /* [핵심] 내부 요소가 튀어나가지 않도록 박스 크기 계산 방식 고정 */
-            box-sizing: border-box; 
         }
-
-        @keyframes popInInput { 
-            from { opacity: 0; transform: scale(0.8) translateY(20px); } 
-            to { opacity: 1; transform: scale(1) translateY(0); } 
-        }
-
-        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
-.input-group { 
-            display: flex; 
-            gap: 8px; 
-            width: 100%; /* [핵심] 부모 너비를 꽉 채움 */
-            align-items: center; /* 높이 중앙 정렬 */
-        }
-#answer-input {
-            flex: 1; /* 남은 공간을 차지하되 */
-            min-width: 0; /* [★핵심★] 이 코드가 없으면 화면 밖으로 뚫고 나갑니다! */
-            padding: 12px; 
-            font-size: 1.1em; 
-            border: 2px solid var(--text-color-dark);
-            border-radius: 10px; 
-            font-family: var(--font-main);
+        .input-group { display: flex; gap: 8px; width: 100%; }
+        #answer-input {
+            flex: 1; min-width: 0; padding: 12px; font-size: 1.1em;
+            border: 2px solid var(--text-color-dark); border-radius: 10px;
             outline: none;
-            background: white;
         }
-/* (참고) 전송 버튼: 찌그러짐 방지 */
         #send-btn {
-            flex-shrink: 0; /* 공간이 좁아도 버튼 크기는 줄어들지 않음 */
-            padding: 0 20px; 
-            height: 48px; /* 높이 명시 */
-            background: var(--secondary-color); 
-            color: white;
-            border: none; 
-            border-radius: 10px; 
-            font-weight: bold; 
-            border-bottom: 4px solid #379A93;
-            white-space: nowrap; /* 글자 줄바꿈 방지 */
+            padding: 0 20px; height: 48px;
+            background: var(--secondary-color); color: white; border: none;
+            border-radius: 10px; font-weight: bold; border-bottom: 4px solid #379A93;
+            flex-shrink: 0;
         }
 
         .fullscreen-overlay {
@@ -367,120 +288,119 @@
             border-radius: 20px; border: 4px solid var(--text-color-dark);
             overflow: hidden; color: var(--text-color-dark);
         }
-        .result-header { background: var(--primary-color); padding: 15px; text-align: center; color: white; font-size: 1.5em; font-weight: bold; border-bottom: 4px solid #C04A4A; }
+        .result-header { background: var(--primary-color); padding: 15px; text-align: center; color: white; font-size: 1.5em; font-weight: bold; }
         .result-body { padding: 20px; max-height: 50vh; overflow-y: auto; }
-        .result-item { display: flex; justify-content: space-between; padding: 10px; background: #f5f5f5; border-radius: 10px; margin-bottom: 5px; font-weight: bold; align-items: center; }
+        .result-item { display: flex; justify-content: space-between; padding: 10px; background: #f5f5f5; border-radius: 10px; margin-bottom: 5px; font-weight: bold; }
         .result-item.winner { background: #FFF9C4; border: 2px solid var(--accent-color); }
         .result-footer { padding: 15px; display: flex; gap: 10px; background: #FFFAE0; border-top: 2px solid #eee; }
         .footer-btn { flex: 1; padding: 12px; border-radius: 10px; border: none; color: white; font-weight: bold; cursor: pointer; }
         .btn-retry { background: var(--primary-color); border-bottom: 4px solid #C04A4A; }
         .btn-exit { background: var(--secondary-color); border-bottom: 4px solid #379A93; }
-        .btn-retry:disabled { background: #ccc; border-color: #999; transform: none; }
 
-        #countdown-text { font-size: 6em; font-weight: 900; text-shadow: 0 0 20px rgba(255,255,255,0.5); animation: pop 0.5s infinite alternate; }
-        .status-ready { color: #28a745; font-size: 0.8em; margin-left: 5px; }
-        
-        @keyframes pop { from { transform: scale(1); } to { transform: scale(1.1); } }
+        .player-slot.winner-highlight .player-avatar {
+            border-color: #FFD700 !important;
+            box-shadow: 0 0 15px #FFD700; transform: scale(1.2);
+            transition: all 0.3s;
+        }
+
+        @keyframes popIn { from { opacity: 0; transform: translateY(10px) scale(0.8); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+        @keyframes popInInput { from { opacity: 0; transform: scale(0.8) translateY(20px); } to { opacity: 1; transform: scale(1) translateY(0); } }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
 
-        /* [신규] 정답자 아바타 하이라이트 효과 */
-        .player-slot.winner-highlight { z-index: 100; }
-        .player-slot.winner-highlight .player-avatar {
-            border-color: #FFD700 !important; /* 금색 테두리 */
-            box-shadow: 0 0 20px #FFD700, 0 0 40px orange; /* 번쩍이는 효과 */
-            transform: scale(1.3) translateY(10px); /* 확 커짐 */
-            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        }
+        /* [신규] 확장 컬러 팝업 스타일 */
+        #palette-bar { position: relative; overflow: visible; } /* 팝업이 잘리지 않게 visible로 변경 */
         
-        /* 오버레이 등장 애니메이션 */
-        #correct-answer-overlay.active {
-            display: flex;
-            animation: bounceIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        }
-        @keyframes bounceIn {
-            0% { transform: scale(0.5); opacity: 0; }
-            80% { transform: scale(1.05); opacity: 1; }
-            100% { transform: scale(1); }
-        }
-        /* [신규] 퀵 팔레트 (확장 색상) 스타일 */
-        #quick-palette {
+        #color-popup {
+            display: none; /* 기본 숨김 */
             position: absolute;
-            bottom: 60px; /* 툴바 바로 위에 위치 */
+            bottom: 60px; /* 팔레트 바 위쪽으로 띄움 */
             left: 50%;
             transform: translateX(-50%);
-            background: white;
-            border: 3px solid var(--text-color-dark);
-            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(5px);
             padding: 10px;
-            display: none; /* 평소엔 숨김 */
+            border-radius: 16px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.15);
+            border: 2px solid var(--text-color-dark);
             grid-template-columns: repeat(4, 1fr); /* 4열 배치 */
             gap: 8px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-            z-index: 50;
+            z-index: 100;
+            animation: popUpColor 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
-        #quick-palette.active { display: grid; animation: popUp 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
         
-        /* 팔레트 화살표 (말풍선 꼬리) */
-        #quick-palette::after {
+        #color-popup.active { display: grid; }
+        
+        /* 말풍선 꼬리 */
+        #color-popup::after {
             content: ''; position: absolute; bottom: -8px; left: 50%; margin-left: -8px;
             border-width: 8px 8px 0; border-style: solid;
             border-color: var(--text-color-dark) transparent transparent transparent;
         }
 
-        @keyframes popUp { from { transform: translateX(-50%) scale(0.5); opacity: 0; } to { transform: translateX(-50%) scale(1); opacity: 1; } }
+        @keyframes popUpColor {
+            from { opacity: 0; transform: translateX(-50%) scale(0.8) translateY(10px); }
+            to { opacity: 1; transform: translateX(-50%) scale(1) translateY(0); }
+        }
+
+        /* [카운트다운 업그레이드] 애니팡 스타일 */
+        #countdown-text {
+            font-size: 7em; /* 크기 대폭 확대 */
+            font-weight: 900;
+            color: white;
+            text-shadow: 0 0 20px rgba(255,255,255,0.8), 4px 4px 0px rgba(0,0,0,0.2);
+            /* 애니메이션은 JS에서 제어합니다 */
+        }
+
+        @keyframes countdown-pop { 
+            0% { transform: scale(0.5); opacity: 0; } 
+            50% { transform: scale(1.2); opacity: 1; } 
+            100% { transform: scale(1); opacity: 1; } 
+        }
+
     </style>
 </head>
 <body>
 <div id="game-wrapper">
         
-        <div id="main-area">
-            
-            <div id="canvas-wrapper">
-                <div id="game-info-bar">
-                    <div id="timer-badge">--</div>
-                    
-                    <div class="info-badge">ROUND <span id="round-display">1/5</span></div>
-                    <div class="info-badge" style="background:var(--accent-color); color:var(--text-color-dark);">
-                        <span id="word-display">대기중...</span>
-                    </div>
-                </div>
-                
-                <canvas id="game-canvas"></canvas>
-            </div>
+    <!-- 1. 최상단: 제시어 (높이 축소) -->
+    <div id="top-word-bar">
+        <span id="word-display">대기중...</span>
+    </div>
 
-            <div id="player-bar">
-                </div>
-            
+    <!-- 2. 캔버스 영역 (비중 확대) -->
+    <div id="main-canvas-area">
+        <canvas id="game-canvas"></canvas>
+        
+        <!-- [문제1 해결] 오버레이: 타이머와 라운드를 묶어서 가로 배치 -->
+        <div id="canvas-overlay-info">
+            <div id="timer-badge">--</div>
+            <div class="round-badge">ROUND <span id="round-display">1/5</span></div>
         </div>
-            
-        <div id="drawing-tools" style="position:relative;">
-                <div id="quick-palette">
-                    <div class="tool-btn color-btn" style="background:#FF9F43;" onclick="selectPaletteColor('#FF9F43')"></div>
-                    <div class="tool-btn color-btn" style="background:#FFD1DC;" onclick="selectPaletteColor('#FFD1DC')"></div>
-                    <div class="tool-btn color-btn" style="background:#FF9FF3;" onclick="selectPaletteColor('#FF9FF3')"></div>
-                    <div class="tool-btn color-btn" style="background:#9B59B6;" onclick="selectPaletteColor('#9B59B6')"></div>
-                    
-                    <div class="tool-btn color-btn" style="background:#00d2d3;" onclick="selectPaletteColor('#00d2d3')"></div>
-                    <div class="tool-btn color-btn" style="background:#8B4513;" onclick="selectPaletteColor('#8B4513')"></div>
-                    <div class="tool-btn color-btn" style="background:#7f8c8d;" onclick="selectPaletteColor('#7f8c8d')"></div>
-                    <div class="tool-btn color-btn" style="background:#0abde3;" onclick="selectPaletteColor('#0abde3')"></div>
-                </div>
+    </div>
 
-                <div class="tool-btn color-btn active" style="background:black;" onclick="setColor('black', this)">⚫</div>
-                <div class="tool-btn color-btn" style="background:#FF6B6B;" onclick="setColor('#FF6B6B', this)">🔴</div>
-                <div class="tool-btn color-btn" style="background:#FFD93D;" onclick="setColor('#FFD93D', this)">🟡</div>
-                <div class="tool-btn color-btn" style="background:#4ECDC4;" onclick="setColor('#4ECDC4', this)">🟢</div>
-                <div class="tool-btn color-btn" style="background:#3333FF;" onclick="setColor('#3333FF', this)">🔵</div>
+    <!-- [문제2 해결] 팔레트 바: 유저 프로필 위에 가로 1자 배치 -->
+    <div id="palette-bar">
+        <div class="palette-btn color-circle active" style="background:black;" onclick="setColor('black', this)"></div>
+        <div class="palette-btn color-circle" style="background:#FF6B6B;" onclick="setColor('#FF6B6B', this)"></div> <div class="palette-btn color-circle" style="background:#FFD93D;" onclick="setColor('#FFD93D', this)"></div> <div class="palette-btn color-circle" style="background:#4ECDC4;" onclick="setColor('#4ECDC4', this)"></div> <div class="palette-btn color-circle" style="background:#3333FF;" onclick="setColor('#3333FF', this)"></div> <div class="palette-btn" id="rainbow-btn" onclick="toggleColorPopup()" style="background: white; border: 2px dashed #ccc; font-size: 1.2em;">🌈</div>
 
-                <div id="palette-toggle-btn" class="tool-btn" onclick="togglePalette()" style="background:white; font-size:1.2em; border:2px dashed #999;">🎨</div>
+        <div style="width:1px; height:20px; background:#ccc; margin:0 5px; flex-shrink:0;"></div>
+        
+        <div class="palette-btn" onclick="setColor('white', this, 20)" style="font-size:1.2em;">🧽</div>
+        <div class="palette-btn" onclick="clearCanvas()" style="color:var(--danger-color); font-size:1.2em;">🗑️</div>
 
-                <div style="width:1px; background:#ccc; margin:0 3px;"></div>
+        <div id="color-popup">
+            <div class="palette-btn color-circle" style="background:#FF9F43;" onclick="selectExtendedColor('#FF9F43', this)"></div> <div class="palette-btn color-circle" style="background:#FF9FF3;" onclick="selectExtendedColor('#FF9FF3', this)"></div> <div class="palette-btn color-circle" style="background:#8B4513;" onclick="selectExtendedColor('#8B4513', this)"></div> <div class="palette-btn color-circle" style="background:#7f8c8d;" onclick="selectExtendedColor('#7f8c8d', this)"></div> <div class="palette-btn color-circle" style="background:#9b59b6;" onclick="selectExtendedColor('#9b59b6', this)"></div> <div class="palette-btn color-circle" style="background:#2ecc71;" onclick="selectExtendedColor('#2ecc71', this)"></div> </div>
+    </div>
 
-                <div class="tool-btn" onclick="setColor('white', this, 20)">🧽</div>
-                <div class="tool-btn" onclick="clearCanvas()" style="color:var(--danger-color); font-weight:bold;">🗑️</div>
-            </div>
+    <!-- 3. 플레이어 목록 (컴팩트 [문제3 해결]) -->
+    <div id="player-bar"></div>
 
-        <div id="floating-chat-overlay"></div>
+    <!-- 4. 채팅창 (축소 [문제4 해결]) -->
+    <div id="chat-section">
+        <div id="chat-log-container">
+            <ul id="chat-list"></ul>
+        </div>
         
         <div id="speech-bubble-layer"></div> 
 
@@ -488,1260 +408,1037 @@
             <button id="open-input-btn">💬 정답 / 채팅 입력</button>
         </div>
     </div>
+</div>
 
-    <div id="input-modal-overlay" class="modal-overlay">
-        <div class="input-modal">
-            <form class="input-group" action="#" onsubmit="event.preventDefault(); sendAnswer();">
-                <input type="text" id="answer-input" placeholder="정답을 입력하세요!" autocomplete="off">
-                <button type="submit" id="send-btn">전송</button>
-            </form>
+<!-- 모달 (기존 유지) -->
+<div id="input-modal-overlay" class="modal-overlay">
+    <div class="input-modal">
+        <form class="input-group" action="#" onsubmit="event.preventDefault(); sendAnswer();">
+            <input type="text" id="answer-input" placeholder="정답을 입력하세요!" autocomplete="off">
+            <button type="submit" id="send-btn">전송</button>
+        </form>
+    </div>
+</div>
+
+<div id="loading-overlay" class="fullscreen-overlay active">
+    <div id="loading-text" style="font-size:1.5em; margin-bottom:20px;">접속 중...</div>
+    <div id="countdown-text"></div>
+</div>
+
+<div id="correct-answer-overlay" class="fullscreen-overlay" style="background: rgba(0,0,0,0.85); z-index: 2500;">
+    <div style="text-align: center; color: white;">
+        <div style="font-size: 1.5em; margin-bottom: 10px; color: #FFD700; font-weight: bold;">✨정답자✨</div>
+        <div id="winner-name-display" style="font-size: 2.5em; font-weight: 900; margin-bottom: 20px;">닉네임</div>
+        <div style="width: 100%; height: 2px; background: rgba(255,255,255,0.3); margin: 20px 0;"></div>
+        <div style="font-size: 1.2em; margin-bottom: 5px; opacity: 0.8;">정답은?</div>
+        <div id="answer-text-display" style="font-size: 4em; font-weight: 900; color: var(--secondary-color); text-shadow: 3px 3px 0 #000;">사과</div>
+    </div>
+</div>
+
+<div id="result-overlay" class="fullscreen-overlay">
+    <div class="result-card">
+        <div class="result-header">🏆 최종 순위</div>
+        <div class="result-body" id="result-list"></div>
+        <div class="result-footer">
+            <button class="footer-btn btn-retry" id="retry-btn">다시하기</button>
+            <button class="footer-btn btn-exit" id="exit-btn">대기실로</button>
         </div>
     </div>
+</div>
 
-    <div id="loading-overlay" class="fullscreen-overlay active">
-        <div id="loading-text" style="font-size:1.5em; margin-bottom:20px;">접속 중...</div>
-        <div id="countdown-text"></div>
-    </div>
+<audio id="bgm-player" loop volume="0.3"></audio>
+<audio id="snd-start" src="https://raw.githubusercontent.com/bangat/game/main/sound/start.mp3"></audio>
+<audio id="snd-correct" src="./캐치마인드효과음/캐치마인드정답.mp3"></audio>
+<audio id="snd-wrong" src="./캐치마인드효과음/캐치마인드오답.mp3"></audio>
+<audio id="snd-win" src="./캐치마인드효과음/캐치마인드승리.mp3"></audio>
+<audio id="snd-lose" src="./캐치마인드효과음/캐치마인드패배.mp3"></audio>
 
-    <div id="correct-answer-overlay" class="fullscreen-overlay" style="background: rgba(0,0,0,0.85); z-index: 2500;">
-        <div style="text-align: center; color: white;">
-            <div style="font-size: 1.5em; margin-bottom: 10px; color: #FFD700; font-weight: bold;">✨정답자✨</div>
-            <div id="winner-name-display" style="font-size: 2.5em; font-weight: 900; margin-bottom: 20px;">닉네임</div>
-            
-            <div style="width: 100%; height: 2px; background: rgba(255,255,255,0.3); margin: 20px 0;"></div>
-            
-            <div style="font-size: 1.2em; margin-bottom: 5px; opacity: 0.8;">정답은?</div>
-            <div id="answer-text-display" style="font-size: 4em; font-weight: 900; color: var(--secondary-color); text-shadow: 3px 3px 0 #000;">사과</div>
-        </div>
-    </div>
+<script>
+    const firebaseConfig = {
+        apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
+        authDomain: "goodluck-7c14b.firebaseapp.com",
+        databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com",
+        projectId: "goodluck-7c14b",
+        storageBucket: "goodluck-7c14b.appspot.com",
+        messagingSenderId: "858281658455",
+        appId: "1:858281658455:web:9131280a459be983933b12"
+    };
 
-    <div id="result-overlay" class="fullscreen-overlay">
-        <div class="result-card">
-            <div class="result-header">🏆 최종 순위</div>
-            <div class="result-body" id="result-list"></div>
-            <div class="result-footer">
-                <button class="footer-btn btn-retry" id="retry-btn">다시하기</button>
-                <button class="footer-btn btn-exit" id="exit-btn">대기실로</button>
-            </div>
-        </div>
-    </div>
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const auth = firebase.auth();
 
-    <audio id="bgm-player" loop volume="0.3"></audio>
-    <audio id="snd-start" src="https://raw.githubusercontent.com/bangat/game/main/sound/start.mp3"></audio>
-    <audio id="snd-correct" src="./캐치마인드효과음/캐치마인드정답.mp3"></audio>
-    <audio id="snd-wrong" src="./캐치마인드효과음/캐치마인드오답.mp3"></audio>
-    <audio id="snd-win" src="./캐치마인드효과음/캐치마인드승리.mp3"></audio>
-    <audio id="snd-lose" src="./캐치마인드효과음/캐치마인드패배.mp3"></audio>
+    let myUid, myNick, myAvatar, roomId;
+    let roomRef, myRef;
+    let isHost = false;
+    let resultSoundPlayed = false;
+    let isRoundProcessing = false;
+    let gameState = null;
+    let ctx, isDrawing = false;
+    let currentColor = 'black', currentWidth = 3;
+    let lastX = 0, lastY = 0;
+    let timerInterval;
+    let isExiting = false;
+    let countdownTimer = null;
+    let lastDrawerUid = null;
+    let isCountdownInProgress = false;
 
-    <script>
-       const firebaseConfig = {
-    apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
-    authDomain: "goodluck-7c14b.firebaseapp.com",
-    databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com",
-    projectId: "goodluck-7c14b",
-    storageBucket: "goodluck-7c14b.appspot.com",
-    messagingSenderId: "858281658455",
-    appId: "1:858281658455:web:9131280a459be983933b12"
-};
+    const WORDS = [
+        "강아지", "고양이", "토끼", "병아리", "오리", "돼지", "소", "양", "말", "사자",
+        "호랑이", "코끼리", "기린", "원숭이", "팬더", "펭귄", "북극곰", "다람쥐", "고래", "상어",
+        "거북이", "개구리", "뱀", "똥", "문어", "브라자", "가슴", "오징어", "물고기", "게", "새우", "하마", "악어",
+        "공룡", "박쥐", "나비", "꿀벌", "거미", "달팽이", "잠자리", "무당벌레", "개미", "파리",
+        "모기", "바퀴벌레", "지렁이", "전갈", "사마귀", "메뚜기", "여우", "늑대", "곰", "사슴",
+        "낙타", "캥거루", "코알라", "두더지", "고슴도치", "수달", "물개", "해파리", "불가사리", "카멜레온",
+        "타조", "독수리", "부엉이", "참새", "비둘기", "까치", "앵무새", "공작새", 
+        "사과", "바나나", "포도", "수박", "딸기", "복숭아", "귤", "파인애플", "체리", "당근",
+        "옥수수", "오이", "고추", "호박", "버섯", "브로콜리", "피자", "햄버거", "치킨", "감자튀김",
+        "핫도그", "샌드위치", "김밥", "라면", "만두", "떡볶이", "도넛", "케이크", "사탕", "초콜릿",
+        "우유", "주스", "콜라", "치즈", "달걀", "빵", "밥", "국수", "물", "조개",
+        "아이스크림", "팥빙수", "붕어빵", "호떡", "군고구마", "순대", "오뎅", "튀김", "족발", "보쌈",
+        "삼겹살", "갈비", "스테이크", "스파게티", "초밥", "회", "비빔밥", "김치", "된장찌개", "미역국",
+        "카레", "짜장면", "짬뽕", "탕수육", "팝콘", "시리얼", "요거트", "커피", "맥주", "소주", 
+        "텔레비전", "냉장고", "세탁기", "선풍기", "청소기", "컴퓨터", "휴대폰", "카메라", "시계", "침대",
+        "이불", "베개", "소파", "의자", "책상", "거울", "빗", "칫솔", "치약", "비누",
+        "수건", "휴지", "컵", "숟가락", "젓가락", "그릇", "냄비", "후라이팬", "칼", "도마",
+        "연필", "지우개", "가위", "풀", "자", "공책", "책", "가방", "안경", "모자",
+        "신발", "양말", "장갑", "목도리", "우산", "지갑", "열쇠", "리모컨", "마우스", "키보드",
+        "헤드폰", "마이크", "스피커", "전구", "건전지", "충전기", "드라이기", "다리미", "바늘", "실",
+        "단추", "지퍼", "옷걸이", "휴지통", "변기", "욕조", "샤워기", "세면대", "신호등", "소화기",
+        "자동차", "버스", "택시", "경찰차", "소방차", "구급차", "트럭", "포크레인", "자전거", "오토바이",
+        "기차", "비행기", "헬리콥터", "배", "잠수함", "로켓", "UFO", "유모차", "휠체어", "스케이트보드",
+        "학교", "병원", "집", "아파트", "놀이터", "수영장", "도서관", "미용실", "마트",
+        "편의점", "경찰서", "소방서", "우체국", "은행", "식당", "카페", "영화관", "노래방", "PC방",
+        "주유소", "공항", "기차역", "항구", "등대", "다리", "터널", "성", "텐트", "이글루", 
+        "해", "달", "별", "구름", "비", "눈", "눈사람", "무지개", "번개", "불",
+        "물방울", "바다", "산", "나무", "꽃", "해바라기", "선인장", "돌", "모래", "흙",
+        "화산", "폭포", "동굴", "섬", "사막", "정글", "빙하", "온천", "호수", "강",
+        "바람", "태풍", "지진", "안개", "이슬", "단풍", "은행나무", "소나무", "잔디", "장미",
+        "의사", "간호사", "경찰관", "소방관", "선생님", "학생", "요리사", "화가", "가수", "배우",
+        "운동선수", "과학자", "우주인", "탐정", "도둑", "해적", "왕", "여왕", "공주", "왕자",
+        "천사", "악마", "귀신", "마녀", "좀비", "미라", "드라큘라", "로봇", "외계인", "산타클로스",
+        "축구", "농구", "야구", "배구", "테니스", "배드민턴", "골프", "볼링", "수영", "달리기",
+        "스키", "스케이트", "권투", "양궁", "태권도", "탁구", "당구", "낚시", "등산", "캠핑",
+        "사랑", "결혼", "생일", "크리스마스", "설날", "추석", "졸업", "입학",
+        "시험", "숙제", "일기", "편지", "선물", "약속", "비밀", "거짓말", "꿈", "악몽",
+        "감기", "주사", "약", "반창고", "휠체어", "목발", "마스크",
+        "유튜브", "넷플릭스", "카카오톡", "인스타그램", "페이스북",  "게임", "웹툰", "영화", "드라마"
+    ];
+    const MAX_ROUNDS = 5;
+    const TURN_TIME = 140;
 
-if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-const db = firebase.database();
-const auth = firebase.auth();
+    const canvas = document.getElementById('game-canvas');
+    const chatList = document.getElementById('chat-list');
+    const inputModal = document.getElementById('input-modal-overlay');
+    const inputField = document.getElementById('answer-input');
+    const openInputBtn = document.getElementById('open-input-btn');
+    const loadingOverlay = document.getElementById('loading-overlay');
+    const resultOverlay = document.getElementById('result-overlay');
+    const timerBadge = document.getElementById('timer-badge');
+    const roundDisplay = document.getElementById('round-display');
+    const wordDisplay = document.getElementById('word-display');
+    const playerBar = document.getElementById('player-bar');
+    
+    // [문제2] 팔레트 바 (신규)
+    const paletteBar = document.getElementById('palette-bar');
 
-let myUid, myNick, myAvatar, roomId;
-let roomRef, myRef;
-let isHost = false;
-let resultSoundPlayed = false; // [신규] 결과창 사운드 중복 재생 방지 플래그
-let isRoundProcessing = false; // [신규] 라운드 종료 처리 중인지 확인하는 변수
-let gameState = null;
-let ctx, isDrawing = false;
-let currentColor = 'black', currentWidth = 3;
-let lastX = 0, lastY = 0;
-let timerInterval;
-let isExiting = false;
-let countdownTimer = null;
-let lastDrawerUid = null;
-let isCountdownInProgress = false; // [신규] 카운트다운 중복 방지 플래그
-const WORDS = [
-    // 🐶 동물 & 곤충
-    "강아지", "고양이", "토끼", "병아리", "오리", "돼지", "소", "양", "말", "사자",
-    "호랑이", "코끼리", "기린", "원숭이", "팬더", "펭귄", "북극곰", "다람쥐", "고래", "상어",
-    "거북이", "개구리", "뱀", "똥", "문어", "브라자", "가슴", "오징어", "물고기", "게", "새우", "하마", "악어",
-    "공룡", "박쥐", "나비", "꿀벌", "거미", "달팽이", "잠자리", "무당벌레", "개미", "파리",
-    "모기", "바퀴벌레", "지렁이", "전갈", "사마귀", "메뚜기", "여우", "늑대", "곰", "사슴",
-    "낙타", "캥거루", "코알라", "두더지", "고슴도치", "수달", "물개", "해파리", "불가사리", "카멜레온",
-    "타조", "독수리", "부엉이", "참새", "비둘기", "까치", "앵무새", "공작새", 
+    const bgmFiles = ["캐치마인드브금1.mp3", "캐치마인드브금2.mp3", "캐치마인드브금3.mp3"];
+    const bgmPlayer = document.getElementById('bgm-player');
+    let isBgmPlaying = false;
 
-    // 🍎 음식 & 과일
-    "사과", "바나나", "포도", "수박", "딸기", "복숭아", "귤", "파인애플", "체리", "당근",
-    "옥수수", "오이", "고추", "호박", "버섯", "브로콜리", "피자", "햄버거", "치킨", "감자튀김",
-    "핫도그", "샌드위치", "김밥", "라면", "만두", "떡볶이", "도넛", "케이크", "사탕", "초콜릿",
-    "우유", "주스", "콜라", "치즈", "달걀", "빵", "밥", "국수", "물", "조개",
-    "아이스크림", "팥빙수", "붕어빵", "호떡", "군고구마", "순대", "오뎅", "튀김", "족발", "보쌈",
-    "삼겹살", "갈비", "스테이크", "스파게티", "초밥", "회", "비빔밥", "김치", "된장찌개", "미역국",
-    "카레", "짜장면", "짬뽕", "탕수육", "팝콘", "시리얼", "요거트", "커피", "맥주", "소주", 
-
-    // 🏠 사물 & 도구
-    "텔레비전", "냉장고", "세탁기", "선풍기", "청소기", "컴퓨터", "휴대폰", "카메라", "시계", "침대",
-    "이불", "베개", "소파", "의자", "책상", "거울", "빗", "칫솔", "치약", "비누",
-    "수건", "휴지", "컵", "숟가락", "젓가락", "그릇", "냄비", "후라이팬", "칼", "도마",
-    "연필", "지우개", "가위", "풀", "자", "공책", "책", "가방", "안경", "모자",
-    "신발", "양말", "장갑", "목도리", "우산", "지갑", "열쇠", "리모컨", "마우스", "키보드",
-    "헤드폰", "마이크", "스피커", "전구", "건전지", "충전기", "드라이기", "다리미", "바늘", "실",
-    "단추", "지퍼", "옷걸이", "휴지통", "변기", "욕조", "샤워기", "세면대", "신호등", "소화기",
-
-    // 🚗 탈것 & 장소
-    "자동차", "버스", "택시", "경찰차", "소방차", "구급차", "트럭", "포크레인", "자전거", "오토바이",
-    "기차", "비행기", "헬리콥터", "배", "잠수함", "로켓", "UFO", "유모차", "휠체어", "스케이트보드",
-    "학교", "병원", "집", "아파트", "놀이터", "수영장", "도서관", "미용실", "마트",
-    "편의점", "경찰서", "소방서", "우체국", "은행", "식당", "카페", "영화관", "노래방", "PC방",
-    "주유소", "공항", "기차역", "항구", "등대", "다리", "터널", "성", "텐트", "이글루", 
-
-    // 🌈 자연 & 날씨
-    "해", "달", "별", "구름", "비", "눈", "눈사람", "무지개", "번개", "불",
-    "물방울", "바다", "산", "나무", "꽃", "해바라기", "선인장", "돌", "모래", "흙",
-    "화산", "폭포", "동굴", "섬", "사막", "정글", "빙하", "온천", "호수", "강",
-    "바람", "태풍", "지진", "안개", "이슬", "단풍", "은행나무", "소나무", "잔디", "장미",
-
-    // 🏃 직업 & 캐릭터 & 스포츠
-    "의사", "간호사", "경찰관", "소방관", "선생님", "학생", "요리사", "화가", "가수", "배우",
-    "운동선수", "과학자", "우주인", "탐정", "도둑", "해적", "왕", "여왕", "공주", "왕자",
-    "천사", "악마", "귀신", "마녀", "좀비", "미라", "드라큘라", "로봇", "외계인", "산타클로스",
-    "축구", "농구", "야구", "배구", "테니스", "배드민턴", "골프", "볼링", "수영", "달리기",
-    "스키", "스케이트", "권투", "양궁", "태권도", "탁구", "당구", "낚시", "등산", "캠핑",
-
-    // 🤔 추상적 개념 & 기타 (난이도 상)
-    "사랑", "결혼", "생일", "크리스마스", "설날", "추석", "졸업", "입학",
-    "시험", "숙제", "일기", "편지", "선물", "약속", "비밀", "거짓말", "꿈", "악몽",
-    "감기", "주사", "약", "반창고", "휠체어", "목발", "마스크",
-    "유튜브", "넷플릭스", "카카오톡", "인스타그램", "페이스북",  "게임", "웹툰", "영화", "드라마"
-];
-const MAX_ROUNDS = 5;
-const TURN_TIME = 140;
-
-// DOM
-const canvas = document.getElementById('game-canvas');
-const chatList = document.getElementById('chat-list');
-const inputModal = document.getElementById('input-modal-overlay');
-const inputField = document.getElementById('answer-input');
-const openInputBtn = document.getElementById('open-input-btn');
-const loadingOverlay = document.getElementById('loading-overlay');
-const resultOverlay = document.getElementById('result-overlay');
-const timerBadge = document.getElementById('timer-badge');
-const roundDisplay = document.getElementById('round-display');
-const wordDisplay = document.getElementById('word-display');
-const playerBar = document.getElementById('player-bar');
-const drawingTools = document.getElementById('drawing-tools');
-
-// [신규] 사운드 시스템 추가
-const bgmFiles = ["캐치마인드브금1.mp3", "캐치마인드브금2.mp3", "캐치마인드브금3.mp3"];
-const bgmPlayer = document.getElementById('bgm-player');
-let isBgmPlaying = false;
-
-function playRandomBgm() {
-    if (isBgmPlaying) return;
-    const randomIndex = Math.floor(Math.random() * bgmFiles.length);
-    // 폴더 경로 반영
-    bgmPlayer.src = "./캐치마인드효과음/" + bgmFiles[randomIndex];
-    bgmPlayer.volume = 0.3; 
-    bgmPlayer.play().then(() => {
-        isBgmPlaying = true;
-    }).catch(e => console.log("BGM 재생 실패:", e));
-}
-
-function stopBgm() {
-    bgmPlayer.pause();
-    bgmPlayer.currentTime = 0;
-    isBgmPlaying = false;
-}
-
-function playSound(id) {
-    const sound = document.getElementById(id);
-    if (sound) {
-        sound.currentTime = 0;
-        sound.play().catch(() => {});
+    function playRandomBgm() {
+        if (isBgmPlaying) return;
+        const randomIndex = Math.floor(Math.random() * bgmFiles.length);
+        bgmPlayer.src = "./캐치마인드효과음/" + bgmFiles[randomIndex];
+        bgmPlayer.volume = 0.3; 
+        bgmPlayer.play().then(() => {
+            isBgmPlaying = true;
+        }).catch(e => console.log("BGM 재생 실패:", e));
     }
-}
 
-// HTML 이스케이프 함수
-function escapeHTML(str) {
-    if (typeof str !== 'string') return '';
-    const map = {'&': '&amp;','<': '&lt;','>': '&gt;','"': '&quot;',"'": '&#039;'};
-    return str.replace(/[&<>"']/g, m => map[m]);
-}
+    function stopBgm() {
+        bgmPlayer.pause();
+        bgmPlayer.currentTime = 0;
+        isBgmPlaying = false;
+    }
 
-document.addEventListener('DOMContentLoaded', () => {
-    auth.onAuthStateChanged(user => {
-        if (user) {
-            myUid = user.uid;
-            myNick = localStorage.getItem('userNickname') || 'User';
-            myAvatar = localStorage.getItem('userAvatar');
-            
-            const params = new URLSearchParams(location.search);
-            roomId = params.get('roomId');
-            
-            if (roomId) initGame(roomId);
-            else location.href = '대기실.html';
-        } else location.href = 'index.html';
-    });
+    function playSound(id) {
+        const sound = document.getElementById(id);
+        if (sound) {
+            sound.currentTime = 0;
+            sound.play().catch(() => {});
+        }
+    }
 
-    ctx = canvas.getContext('2d');
-    resizeCanvas();
-    
-    openInputBtn.addEventListener('click', () => {
-        inputModal.classList.add('active');
-        setTimeout(() => inputField.focus(), 100);
-    });
-    inputModal.addEventListener('click', (e) => {
-        if(e.target === inputModal) inputModal.classList.remove('active');
-    });
- 
-    
-    document.getElementById('retry-btn').addEventListener('click', sendRematchRequest);
-    document.getElementById('exit-btn').addEventListener('click', exitGame);
-});
+    function escapeHTML(str) {
+        if (typeof str !== 'string') return '';
+        const map = {'&': '&amp;','<': '&lt;','>': '&gt;','"': '&quot;',"'": '&#039;'};
+        return str.replace(/[&<>"']/g, m => map[m]);
+    }
 
-function initGame(id) {
-    roomRef = db.ref(`rooms/${id}`);
-    myRef = roomRef.child(`players/${myUid}`);
+    document.addEventListener('DOMContentLoaded', () => {
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                myUid = user.uid;
+                myNick = localStorage.getItem('userNickname') || 'User';
+                myAvatar = localStorage.getItem('userAvatar');
+                
+                const params = new URLSearchParams(location.search);
+                roomId = params.get('roomId');
+                
+                if (roomId) initGame(roomId);
+                else location.href = '대기실.html';
+            } else location.href = 'index.html';
+        });
 
-    myRef.update({
-        nickname: myNick,
-        avatar: myAvatar,
-        score: 0,
-        online: true,
-        isReady: false
-    });
-    myRef.onDisconnect().remove();
-
-    // [수정] resize 이벤트 리스너 제거 (그림 사라짐 방지)
-    window.removeEventListener('resize', resizeCanvas);
-
-    // 채팅 리스너 설정
-    let isInitialLoad = true;
-    roomRef.child('chat').on('child_added', snap => {
-        const chatData = snap.val();
-        if (!chatData) return;
+        ctx = canvas.getContext('2d');
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
         
-        if (isInitialLoad) {
-            const msgTime = chatData.timestamp || 0;
-            const now = Date.now();
-            if (now - msgTime < 60000) {
+        openInputBtn.addEventListener('click', () => {
+            inputModal.classList.add('active');
+            setTimeout(() => inputField.focus(), 100);
+        });
+        inputModal.addEventListener('click', (e) => {
+            if(e.target === inputModal) inputModal.classList.remove('active');
+        });
+    
+        document.getElementById('retry-btn').addEventListener('click', sendRematchRequest);
+        document.getElementById('exit-btn').addEventListener('click', exitGame);
+    });
+
+    function initGame(id) {
+        roomRef = db.ref(`rooms/${id}`);
+        myRef = roomRef.child(`players/${myUid}`);
+
+        myRef.update({
+            nickname: myNick,
+            avatar: myAvatar,
+            score: 0,
+            online: true,
+            isReady: false
+        });
+        myRef.onDisconnect().remove();
+
+        resizeCanvas();
+
+        let isInitialLoad = true;
+        roomRef.child('chat').on('child_added', snap => {
+            const chatData = snap.val();
+            if (!chatData) return;
+            
+            if (isInitialLoad) {
+                const msgTime = chatData.timestamp || 0;
+                const now = Date.now();
+                if (now - msgTime < 60000) {
+                    addChatBubble(chatData);
+                }
+            } else {
                 addChatBubble(chatData);
+                if (chatData.type === 'correct') {
+                    showCorrectEffect(chatData);
+                }
+                if (isHost && chatData.type === 'correct' && gameState?.status === 'playing') {
+                    if (isRoundProcessing) return; 
+                    isRoundProcessing = true;
+                    setTimeout(() => nextTurn("정답!"), 2500);
+                }
             }
-        } else {
-            addChatBubble(chatData);
-            
-            // [신규] 정답 발생 시 화면 중앙에 크게 표시 & 아바타 강조
-            if (chatData.type === 'correct') {
-                showCorrectEffect(chatData);
-            }
-
-            // [수정] 호스트가 'correct' 메시지를 감지하면 턴을 넘김 (중복 실행 방지 적용)
-            if (isHost && chatData.type === 'correct' && gameState?.status === 'playing') {
-                // [핵심] 이미 누군가 정답을 맞춰서 처리 중이라면, 뒤늦게 온 정답은 무시
-                if (isRoundProcessing) return; 
-
-                // 처리 시작 플래그 설정
-                isRoundProcessing = true;
-
-                // 오버레이 감상 시간(2초)을 고려해 턴 넘김 대기 시간을 1.5초 -> 2.5초로 늘림
-                setTimeout(() => nextTurn("정답!"), 2500);
-            }
-        }
-    });
-    
-    roomRef.child('chat').once('value', () => {
-        isInitialLoad = false;
-    });
-
-    // [수정] 캔버스 초기화 리스너 개선: 최초 접속 시점의 데이터는 무시하고, 이후 변경사항만 반영
-    let isFirstClearCheck = true;
-    roomRef.child('clearCanvas').on('value', snap => {
-        if (isFirstClearCheck) {
-            isFirstClearCheck = false;
-            return; // 접속하자마자 캔버스가 지워지는 문제 방지
-        }
-        const timestamp = snap.val();
-        if (timestamp) {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-        }
-    });
-
-   // [여기서부터 복사] initGame 내부의 roomRef.on 부분
-    // [여기서부터 복사하세요] initGame 내부 roomRef.on 전체 교체
-    let lastPlayersJson = ''; 
-
-    roomRef.on('value', snap => {
-        if (isExiting) return;
+        });
         
-        if (!snap.exists()) { 
-            alert('방이 사라졌습니다.'); 
-            location.href = '대기실.html'; 
-            return; 
-        }
+        roomRef.child('chat').once('value', () => {
+            isInitialLoad = false;
+        });
 
-        const data = snap.val();
-        gameState = data;
-        isHost = (data.hostId === myUid);
-
-
-        // 1. 리매치 로직 (방장 전용)
-        if (isHost && data.status === 'gameOver') {
-            const players = data.players || {};
-            const reqs = data.rematchRequests || {};
-            const playerIds = Object.keys(players);
-            
-            const allReady = playerIds.length > 0 && playerIds.every(uid => reqs[uid] === true);
-
-            if (allReady) {
-                const updates = {};
-                updates['status'] = 'waiting';
-                updates['starting'] = true; 
-                updates['gameData'] = {
-                    round: 1,
-                    drawer: playerIds[0],
-                    word: '',
-                    timer: TURN_TIME
-                };
-                updates['chat'] = null; 
-                updates['drawLines'] = null;
-                updates['rematchRequests'] = null;
-                updates['clearCanvas'] = Date.now();
-                playerIds.forEach(pid => { updates[`players/${pid}/score`] = 0; });
-
-                roomRef.update(updates);
+        let isFirstClearCheck = true;
+        roomRef.child('clearCanvas').on('value', snap => {
+            if (isFirstClearCheck) {
+                isFirstClearCheck = false;
+                return; 
             }
-        }
+            const timestamp = snap.val();
+            if (timestamp) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }
+        });
 
-        // 2. 초기화 안전장치
-        if (isHost && !data.gameData && data.status !== 'gameOver') {
-            roomRef.update({
-                status: 'waiting',
-                gameData: { round: 1, timer: TURN_TIME, drawer: '', word: '' }
-            });
-        }
+        let lastPlayersJson = ''; 
 
-        // 3. 렌더링 최적화
-        const currentPlayersJson = JSON.stringify(data.players) + (data.gameData?.drawer || '');
-        if (lastPlayersJson !== currentPlayersJson) {
-            renderPlayers(data.players, data.gameData?.drawer);
-            lastPlayersJson = currentPlayersJson;
-        }
+        roomRef.on('value', snap => {
+            if (isExiting) return;
+            if (!snap.exists()) { 
+                alert('방이 사라졌습니다.'); 
+                location.href = '대기실.html'; 
+                return; 
+            }
 
-        // 4. UI 상태 처리 (오버레이 제어는 여기서 다 합니다)
-        handleGameState(data);
+            const data = snap.val();
+            gameState = data;
+            isHost = (data.hostId === myUid);
 
-        // ⚠️ 주의: 여기에 loadingOverlay.style.display = 'none'; 코드가 있으면 절대 안 됩니다!
-        // handleGameState가 알아서 오버레이를 켰다 껐다 합니다.
-    });
-    // [여기까지 복사하세요]
+            if (isHost && data.status === 'gameOver') {
+                const players = data.players || {};
+                const reqs = data.rematchRequests || {};
+                const playerIds = Object.keys(players);
+                const allReady = playerIds.length > 0 && playerIds.every(uid => reqs[uid] === true);
 
-    roomRef.child('drawLines').on('child_added', snap => drawLineRemote(snap.val()));
+                if (allReady) {
+                    const updates = {};
+                    updates['status'] = 'waiting';
+                    updates['starting'] = true; 
+                    updates['gameData'] = {
+                        round: 1,
+                        drawer: playerIds[0],
+                        word: '',
+                        timer: TURN_TIME
+                    };
+                    updates['chat'] = null; 
+                    updates['drawLines'] = null;
+                    updates['rematchRequests'] = null;
+                    updates['clearCanvas'] = Date.now();
+                    playerIds.forEach(pid => { updates[`players/${pid}/score`] = 0; });
+                    roomRef.update(updates);
+                }
+            }
 
-    // [치트키] E키를 누르면 강제 종료 (방장 전용)
-    window.addEventListener('keydown', (e) => {
-        // 채팅창 입력 중일 때는 치트키 동작 안 함
-        if (document.activeElement === document.getElementById('answer-input')) return;
-
-        if (e.key.toLowerCase() === 'e') {
-            if (isHost && roomRef) {
-                console.log("🛑 치트키: 강제 게임 종료 실행");
-                // 서버 상태를 gameOver로 바꾸면 -> handleGameState가 감지하고 -> showResult 호출함
-                roomRef.update({ 
-                    status: 'gameOver',
-                    // (선택사항) 강제 종료임을 알리고 싶다면 아래 주석 해제
-                    // gameData: { ...gameState.gameData, word: '강제 종료' } 
+            if (isHost && !data.gameData && data.status !== 'gameOver') {
+                roomRef.update({
+                    status: 'waiting',
+                    gameData: { round: 1, timer: TURN_TIME, drawer: '', word: '' }
                 });
-            } else if (!isHost) {
-                console.log("방장만 강제 종료할 수 있습니다.");
+            }
+
+            const currentPlayersJson = JSON.stringify(data.players) + (data.gameData?.drawer || '');
+            if (lastPlayersJson !== currentPlayersJson) {
+                renderPlayers(data.players, data.gameData?.drawer);
+                lastPlayersJson = currentPlayersJson;
+            }
+
+            handleGameState(data);
+        });
+
+        roomRef.child('drawLines').on('child_added', snap => drawLineRemote(snap.val()));
+
+        window.addEventListener('keydown', (e) => {
+            if (document.activeElement === document.getElementById('answer-input')) return;
+            if (e.key.toLowerCase() === 'e') {
+                if (isHost && roomRef) {
+                    console.log("🛑 치트키: 강제 게임 종료 실행");
+                    roomRef.update({ status: 'gameOver' });
+                }
+            }
+        });
+    }
+
+    function handleGameState(data) {
+        const status = data.status;
+        const gData = data.gameData || {};
+
+        if (status === 'waiting') {
+            loadingOverlay.classList.add('active');
+            resultOverlay.classList.remove('active');
+
+            if (data.starting) {
+                const chatList = document.getElementById('chat-list');
+                if (chatList) chatList.innerHTML = '';
+            }
+
+            if (!data.starting) {
+                const playerCount = Object.keys(data.players || {}).length;
+                document.getElementById('loading-text').style.display = 'block';
+                document.getElementById('loading-text').innerText = `대기중 (${playerCount}명)...`;
+                document.getElementById('countdown-text').innerText = "";
+                
+                isCountdownInProgress = false;
+                if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+
+                if (isHost && playerCount >= 2) {
+                    roomRef.update({ starting: true });
+                }
+            } else {
+                loadingOverlay.classList.add('active'); 
+                document.getElementById('loading-text').style.display = 'none';
+                
+                if (!isCountdownInProgress) {
+                    startCountdown(); 
+                }
             }
         }
-    });
-}
-
-function handleGameState(data) {
-    const status = data.status;
-    const gData = data.gameData || {};
-
-    if (status === 'waiting') {
-        loadingOverlay.classList.add('active');
-        resultOverlay.classList.remove('active');
-
-        // 게임 시작 신호(starting: true)가 오면 채팅창 비우기
-        if (data.starting) {
-            const chatList = document.getElementById('chat-list');
-            if (chatList) chatList.innerHTML = '';
-        }
-
-        if (!data.starting) {
-            // [대기 중 상태]
-            const playerCount = Object.keys(data.players || {}).length;
-            document.getElementById('loading-text').style.display = 'block';
-            document.getElementById('loading-text').innerText = `대기중 (${playerCount}명)...`;
-            document.getElementById('countdown-text').innerText = "";
+        else if (status === 'playing') {
+            isRoundProcessing = false;
+            loadingOverlay.classList.remove('active');
+            resultOverlay.classList.remove('active');
             
-            // 카운트다운 관련 변수 초기화
             isCountdownInProgress = false;
             if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
 
-            // [핵심 수정] 방장이고, 2명 이상이면, 시작 신호를 보냄
-            if (isHost && playerCount >= 2) {
-                console.log("✅ 2명 이상 접속 확인! 게임 시작 신호 전송...");
-                roomRef.update({ starting: true });
-            }
-        } else {
-            // [카운트다운 시작 상태]
-            loadingOverlay.classList.add('active'); 
-            document.getElementById('loading-text').style.display = 'none';
+            playRandomBgm();
+
+            roundDisplay.innerText = `${gData.round || 1}/${MAX_ROUNDS}`;
+            timerBadge.innerText = gData.timer || 0;
             
-            // 중복 실행 방지하며 카운트다운 시작
-            if (!isCountdownInProgress) {
-                startCountdown(); 
-            }
-        }
-    }
-else if (status === 'playing') {
-        // [신규] 새 라운드가 시작되었으므로 진행 중 플래그 초기화 (가장 중요!)
-        isRoundProcessing = false;
+            if ((gData.timer || 0) <= 10) timerBadge.classList.add('urgent');
+            else timerBadge.classList.remove('urgent');
 
-        // 오버레이 끄기
-        loadingOverlay.classList.remove('active');
-        resultOverlay.classList.remove('active');
-        
-        // 카운트다운 정리
-        isCountdownInProgress = false;
-        if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
-
-        playRandomBgm(); // BGM 재생
-
-        // 정보 표시 업데이트
-        roundDisplay.innerText = `${gData.round || 1}/${MAX_ROUNDS}`;
-        timerBadge.innerText = gData.timer || 0;
-        
-        if ((gData.timer || 0) <= 10) timerBadge.classList.add('urgent');
-        else timerBadge.classList.remove('urgent');
-
-        // 그리는 사람 UI 설정
-        if (gData.drawer !== lastDrawerUid) {
-            lastDrawerUid = gData.drawer;
-            
-            const isDrawer = (gData.drawer === myUid);
-           // UI 요소 가져오기
-            const inputBar = document.getElementById('input-bar');
-            // const chatArea... 삭제됨
-
-            if (isDrawer) {
-                // [출제자]
-                drawingTools.style.display = 'flex'; // 도구함 보이기
-                inputBar.style.display = 'none';     // 입력 버튼 숨기기
+            if (gData.drawer !== lastDrawerUid) {
+                lastDrawerUid = gData.drawer;
                 
-                wordDisplay.innerText = `제시어: ${gData.word}`;
-          } else {
-                // [정답자]
-                drawingTools.style.display = 'none'; // 도구함 숨기기
-                inputBar.style.display = 'block';    // 입력 버튼 보이기
-                
-                // ✨ [수정] 정답 공개 상태면 정답을 보여주고, 아니면 힌트(ㅇㅇ) 표시
-                if (gData.revealAnswer) {
-                    wordDisplay.innerText = `정답: ${gData.word}`;
-                    wordDisplay.style.color = "var(--danger-color)"; // 빨간색 강조
+                const isDrawer = (gData.drawer === myUid);
+                const inputBar = document.getElementById('input-bar');
+
+                if (isDrawer) {
+                    // [문제2 해결] 출제자에게 팔레트 바 보이기
+                    paletteBar.style.display = 'flex';
+                    inputBar.style.display = 'none';     
+                    wordDisplay.innerText = `제시어: ${gData.word}`;
+                    wordDisplay.style.color = "var(--text-color-dark)";
                 } else {
-                    const wordLen = gData.word ? gData.word.length : 0;
-                    const hint = "O ".repeat(wordLen);
-                    wordDisplay.innerText = `힌트: ${hint}`;
-                    wordDisplay.style.color = "var(--text-color-dark)"; // 색상 원복
-                }
-                
-                openInputBtn.innerText = "💬 정답 / 채팅 입력";
-                openInputBtn.disabled = false;
-                openInputBtn.style.background = "var(--primary-color)";
-            }
-        }
-
-        // 방장이면 타이머 가동
-        if (isHost && !timerInterval && gData.timer > 0) {
-            runTimer();
-        }
-    }
-    else if (status === 'gameOver') {
-        showResult(data.players, data.rematchRequests);
-    }
-}
-
-function startCountdown() {
-    if (isCountdownInProgress) return;
-    isCountdownInProgress = true;
-    resultSoundPlayed = false;
-    
-    const winSound = document.getElementById('snd-win');
-    const loseSound = document.getElementById('snd-lose');
-    if (winSound) { winSound.pause(); winSound.currentTime = 0; }
-    if (loseSound) { loseSound.pause(); loseSound.currentTime = 0; }
-
-    document.getElementById('loading-text').style.display = 'none';
-    
-    let count = 3;
-    const countText = document.getElementById('countdown-text');
-    countText.innerText = count;
-    playSound('snd-start'); // 카운트다운 소리
-
-    countdownTimer = setInterval(() => {
-        count--;
-        if (count > 0) {
-            countText.innerText = count;
-            playSound('snd-start');
-        } else {
-            clearInterval(countdownTimer);
-            countdownTimer = null;
-            
-            // "GO!" 표시
-            countText.innerText = "GO!";
-            playSound('snd-start'); // GO 소리
-            
-          // [중요] 방장만 1초 뒤에 게임을 실제로 시작시킴 (싱크 맞춤)
-            if (isHost) {
-                setTimeout(() => {
-                    const pIds = Object.keys(gameState.players);
+                    paletteBar.style.display = 'none';
+                    inputBar.style.display = 'block';    
                     
-                    // [수정] 1라운드 시작: 중복 방지 목록 초기화 (true 옵션)
-                    const pick = getUniqueWord(true); 
+                    if (gData.revealAnswer) {
+                        wordDisplay.innerText = `정답: ${gData.word}`;
+                        wordDisplay.style.color = "var(--danger-color)"; 
+                    } else {
+                        const wordLen = gData.word ? gData.word.length : 0;
+                        const hint = "O ".repeat(wordLen);
+                        wordDisplay.innerText = `힌트: ${hint}`;
+                        wordDisplay.style.color = "var(--text-color-dark)"; 
+                    }
+                    
+                    openInputBtn.innerText = "💬 정답 / 채팅 입력";
+                    openInputBtn.disabled = false;
+                    openInputBtn.style.background = "var(--primary-color)";
+                }
+            }
 
-                    roomRef.update({
-                        status: 'playing',
-                        starting: false,
-                        gameData: {
-                            round: 1,
-                            drawer: pIds[0],
-                            word: pick.word,        // [변경] 뽑힌 단어
-                            usedWords: pick.list,   // [추가] 사용된 단어 목록 저장
-                            timer: TURN_TIME
-                        },
-                        drawLines: null,
-                        clearCanvas: Date.now()
-                    }).then(() => {
-                        // 게임 시작 후 타이머 가동
-                        runTimer();
-                    });
-                }, 1000);
+            // [문제5 해결] 호스트인데 타이머가 작동 안 하면 강제 시작
+            if (isHost && !timerInterval && gData.timer > 0) {
+                runTimer();
             }
         }
-    }, 1000);
-}
-
-// [수정] 중복 선언된 runTimer 함수 통합 및 안정화 수정
-function runTimer() {
-    if (!isHost) return;
-    
-    // 1. 기존 타이머가 돌고 있다면 확실하게 정지 및 초기화 (메모리 누수 및 중복 실행 방지)
-    if (timerInterval) {
-        clearInterval(timerInterval);
-        timerInterval = null;
+        else if (status === 'gameOver') {
+            showResult(data.players, data.rematchRequests);
+        }
     }
 
-    // 2. 타이머 시작
-    timerInterval = setInterval(() => {
-        // 방장이 나가거나 연결이 끊기면 타이머 중지 방어 코드
-        if (!roomRef) {
+    function startCountdown() {
+        if (isCountdownInProgress) return;
+        isCountdownInProgress = true;
+        resultSoundPlayed = false;
+        
+        const winSound = document.getElementById('snd-win');
+        const loseSound = document.getElementById('snd-lose');
+        if (winSound) { winSound.pause(); winSound.currentTime = 0; }
+        if (loseSound) { loseSound.pause(); loseSound.currentTime = 0; }
+
+        document.getElementById('loading-text').style.display = 'none';
+        
+        let count = 3;
+        const countText = document.getElementById('countdown-text');
+        
+        // [애니메이션 효과 함수]
+        const triggerAnim = (text) => {
+            countText.innerText = text;
+            countText.style.animation = 'none'; // 애니메이션 리셋
+            countText.offsetHeight; // Reflow 발생 (브라우저가 다시 그리도록 강제)
+            countText.style.animation = 'countdown-pop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards';
+        };
+
+        triggerAnim(count);
+        playSound('snd-start'); 
+
+        countdownTimer = setInterval(() => {
+            count--;
+            if (count > 0) {
+                triggerAnim(count); // 2, 1 카운트 애니메이션
+                playSound('snd-start');
+            } else {
+                clearInterval(countdownTimer);
+                countdownTimer = null;
+                
+                triggerAnim("GO!"); // GO! 애니메이션
+                playSound('snd-start'); 
+                
+                if (isHost) {
+                    setTimeout(() => {
+                        const pIds = Object.keys(gameState.players);
+                        const pick = getUniqueWord(true); 
+
+                        roomRef.update({
+                            status: 'playing',
+                            starting: false,
+                            gameData: {
+                                round: 1,
+                                drawer: pIds[0],
+                                word: pick.word,        
+                                usedWords: pick.list,   
+                                timer: TURN_TIME
+                            },
+                            drawLines: null,
+                            clearCanvas: Date.now()
+                        }).then(() => {
+                            runTimer();
+                        });
+                    }, 1000);
+                }
+            }
+        }, 1000);
+    }
+
+    // [문제5 해결] 타이머 로직 수정 (안전장치 추가)
+    function runTimer() {
+        if (!isHost) return;
+        
+        if (timerInterval) {
             clearInterval(timerInterval);
-            return;
+            timerInterval = null;
         }
 
-        roomRef.child('gameData/timer').transaction(t => {
-            // 값이 없으면 기본값 설정
-            if (t === null || t === undefined) return TURN_TIME;
-            // 0보다 크면 1 감소, 아니면 0 유지
-            return t > 0 ? t - 1 : 0;
-        }, (err, committed, snap) => {
-            if (err) {
-                console.warn("타이머 업데이트 실패 (네트워크 불안정 가능성):", err);
+        timerInterval = setInterval(() => {
+            if (!roomRef) {
+                clearInterval(timerInterval);
                 return;
             }
-            // 3. 시간이 0이 되면 턴 넘기기
-            if (committed && snap.val() === 0) {
-                clearInterval(timerInterval);
-                timerInterval = null;
-                nextTurn("⏰ 시간 초과!");
+
+            roomRef.child('gameData/timer').transaction(t => {
+                // null이나 undefined면 140으로 복구
+                if (t === null || t === undefined) return TURN_TIME;
+                return t > 0 ? t - 1 : 0;
+            }, (err, committed, snap) => {
+                if (err) {
+                    console.warn("타이머 업데이트 실패:", err);
+                    return;
+                }
+                if (committed && snap.val() === 0) {
+                    clearInterval(timerInterval);
+                    timerInterval = null;
+                    nextTurn("⏰ 시간 초과!");
+                }
+            });
+        }, 1000);
+    }
+
+    function nextTurn(reasonMsg) {
+        if (!isHost) return;
+        
+        if (timerInterval) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+        }
+
+        if (reasonMsg && gameState && gameState.gameData) {
+            const word = gameState.gameData.word || '';
+            sendSysMsg(`${reasonMsg} 정답: ${word}`);
+        }
+
+        roomRef.child('gameData/revealAnswer').set(true);
+
+        setTimeout(() => {
+            if (!gameState || !gameState.gameData || !gameState.players) return;
+            
+            const gData = gameState.gameData;
+            const pIds = Object.keys(gameState.players).sort(); 
+            
+            const currIdx = pIds.indexOf(gData.drawer);
+            let nextIdx = currIdx + 1;
+            let nextRound = gData.round;
+
+            if (nextIdx >= pIds.length) {
+                nextIdx = 0;
+                nextRound++;
             }
+
+            if (nextRound > MAX_ROUNDS) {
+                roomRef.update({ status: 'gameOver' });
+            } else {
+                const pick = getUniqueWord();
+
+                roomRef.update({
+                    gameData: {
+                        round: nextRound,
+                        drawer: pIds[nextIdx],
+                        word: pick.word,       
+                        usedWords: pick.list, 
+                        timer: TURN_TIME,
+                        revealAnswer: false 
+                    },
+                    drawLines: null,
+                    clearCanvas: Date.now()
+                });
+            }
+        }, 3000); 
+    }
+
+    function getUniqueWord(isReset = false) {
+        let used = [];
+        if (!isReset && gameState && gameState.gameData && gameState.gameData.usedWords) {
+            used = gameState.gameData.usedWords;
+        }
+
+        const available = WORDS.filter(w => !used.includes(w));
+
+        if (available.length === 0) {
+            const resetWord = WORDS[Math.floor(Math.random() * WORDS.length)];
+            return { word: resetWord, list: [resetWord] };
+        }
+
+        const newWord = available[Math.floor(Math.random() * available.length)];
+        const newList = [...used, newWord];
+        
+        return { word: newWord, list: newList };
+    }
+
+    function resizeCanvas() {
+        const wrapper = document.getElementById('main-canvas-area');
+        if (wrapper && canvas) {
+            canvas.width = wrapper.clientWidth;
+            canvas.height = wrapper.clientHeight; 
+        }
+    }
+
+    function getPos(e) {
+        const r = canvas.getBoundingClientRect();
+        let clientX, clientY;
+
+        if (e.touches && e.touches.length > 0) {
+            clientX = e.touches[0].clientX;
+            clientY = e.touches[0].clientY;
+        } else if (e.changedTouches && e.changedTouches.length > 0) {
+            clientX = e.changedTouches[0].clientX;
+            clientY = e.changedTouches[0].clientY;
+        } else {
+            clientX = e.clientX;
+            clientY = e.clientY;
+        }
+
+        return { 
+            x: (clientX - r.left) / r.width, 
+            y: (clientY - r.top) / r.height 
+        };
+    }
+
+    const startDraw = (e) => {
+        if (e.cancelable) e.preventDefault(); 
+        if (gameState?.gameData?.drawer !== myUid) return;
+        isDrawing = true;
+        const p = getPos(e);
+        lastX = p.x; lastY = p.y;
+    };
+
+    const draw = (e) => {
+        if (e.cancelable) e.preventDefault();
+        if (!isDrawing) return;
+        const p = getPos(e);
+        
+        drawLineRemote({ lx: lastX, ly: lastY, x: p.x, y: p.y, c: currentColor, w: currentWidth });
+
+        roomRef.child('drawLines').push({
+            lx: lastX, ly: lastY, x: p.x, y: p.y, c: currentColor, w: currentWidth
         });
-    }, 1000);
-}
+        lastX = p.x; lastY = p.y;
+    };
+    const endDraw = () => { isDrawing = false; };
 
-function nextTurn(reasonMsg) {
-    if (!isHost) return;
-    
-    // 타이머가 실행 중이면 정지
-    if (timerInterval) {
-        clearInterval(timerInterval);
-        timerInterval = null;
+    canvas.addEventListener('mousedown', startDraw);
+    canvas.addEventListener('touchstart', startDraw, {passive:false});
+    canvas.addEventListener('mousemove', draw);
+    canvas.addEventListener('touchmove', draw, {passive:false});
+    window.addEventListener('mouseup', endDraw);
+    window.addEventListener('touchend', endDraw);
+
+    function drawLineRemote(l) {
+        const w = canvas.width; 
+        const h = canvas.height;
+        ctx.beginPath();
+        ctx.moveTo(l.lx*w, l.ly*h);
+        ctx.lineTo(l.x*w, l.y*h);
+        ctx.strokeStyle = l.c; 
+        ctx.lineWidth = l.w;
+        ctx.lineCap = 'round'; 
+        ctx.stroke();
     }
 
-    // 1. 시스템 메시지로 알림
-    if (reasonMsg && gameState && gameState.gameData) {
-        const word = gameState.gameData.word || '';
-        sendSysMsg(`${reasonMsg} 정답: ${word}`);
-    }
+    window.setColor = (color, btn, width = 3) => {
+        document.querySelectorAll('.palette-btn').forEach(b => b.classList.remove('active'));
+        if(btn) btn.classList.add('active');
+        
+        currentColor = color; 
+        currentWidth = width;
+    };
 
-    // ✨ [추가] 힌트칸에 정답을 보여주기 위해 'revealAnswer' 상태를 true로 변경
-    // (이렇게 하면 위의 handleGameState 수정본이 작동하여 화면에 정답을 띄웁니다)
-    roomRef.child('gameData/revealAnswer').set(true);
+    window.clearCanvas = () => {
+        if (gameState?.gameData?.drawer === myUid) roomRef.child('clearCanvas').set(Date.now());
+    };
 
-    // ✨ [추가] 3초 동안 정답을 감상할 시간을 주고 다음 라운드로 이동
-    setTimeout(() => {
-        if (!gameState || !gameState.gameData || !gameState.players) {
-            console.error("게임 상태가 유효하지 않습니다.");
+    function sendAnswer() {
+        const txt = inputField.value.trim();
+        if (!txt) return;
+        
+        inputModal.classList.remove('active');
+        inputField.value = '';
+
+        if (!gameState || !gameState.gameData) return;
+
+        if (isRoundProcessing) {
+            roomRef.child('chat').push({
+                senderId: myUid,
+                senderNickname: myNick,
+                content: txt,
+                type: 'chat',
+                timestamp: firebase.database.ServerValue.TIMESTAMP
+            });
             return;
         }
-        
-const gData = gameState.gameData;
-        
-        // ✨ [핵심 수정] 렌더링과 똑같이 '정렬된 순서'로 다음 사람을 찾음
-        const pIds = Object.keys(gameState.players).sort(); 
-        
-        const currIdx = pIds.indexOf(gData.drawer);
-        let nextIdx = currIdx + 1;
-        let nextRound = gData.round;
 
-        if (nextIdx >= pIds.length) {
-            nextIdx = 0;
-            nextRound++;
+        const answer = gameState.gameData.word || "";
+        const isDrawer = gameState.gameData.drawer === myUid;
+        
+        if (isDrawer) {
+            roomRef.child('chat').push({
+                senderId: myUid,
+                senderNickname: myNick,
+                content: txt,
+                type: 'chat',
+                timestamp: firebase.database.ServerValue.TIMESTAMP
+            });
+            return;
         }
 
-        if (nextRound > MAX_ROUNDS) {
-            roomRef.update({ status: 'gameOver' }).catch(err => {
-                console.error("게임 종료 업데이트 실패:", err);
+        const normalizedAnswer = answer.replace(/\s+/g, '').trim();
+        const normalizedInput = txt.replace(/\s+/g, '').trim();
+        
+        if (normalizedInput === normalizedAnswer) {
+            playSound('snd-correct');
+            const remainingTime = gameState.gameData.timer || 0;
+            const guesserScore = 50 + (remainingTime * 2); 
+            const drawerScore = 50 + remainingTime;        
+
+            roomRef.child(`players/${myUid}/score`).transaction(s => (s||0) + guesserScore);
+            
+            const drawerId = gameState.gameData.drawer;
+            if (drawerId) {
+                roomRef.child(`players/${drawerId}/score`).transaction(s => (s||0) + drawerScore);
+            }
+
+            roomRef.child('chat').push({
+                senderId: myUid,
+                senderNickname: myNick,
+                content: `🎉 정답! (+${guesserScore}점)`, 
+                type: 'correct',
+                answer: answer, 
+                timestamp: firebase.database.ServerValue.TIMESTAMP
             });
         } else {
-          // [수정] 중복 없는 단어 뽑기
-            const pick = getUniqueWord();
-
-            // 다음 라운드 데이터 업데이트
-            roomRef.update({
-                gameData: {
-                    round: nextRound,
-                    drawer: pIds[nextIdx],
-                    word: pick.word,       
-                    usedWords: pick.list, 
-                    timer: TURN_TIME,
-                    
-                    // ✨ [필수 수정] 새 판 시작할 땐 정답 공개 상태를 끕니다!
-                    revealAnswer: false 
-                },
-                drawLines: null,
-                clearCanvas: Date.now()
-            }).then(() => {
-                // ✨ [수정] 레이스 컨디션 방지: 여기서 runTimer()를 직접 호출하지 않습니다.
-                // Firebase 데이터가 바뀌면 handleGameState()가 감지해서 알아서 타이머를 켭니다.
-                console.log("다음 턴으로 안전하게 이동 완료");
-            }).catch(err => {
-                console.error("다음 턴 업데이트 실패:", err);
+            playSound('snd-wrong');
+            roomRef.child('chat').push({
+                senderId: myUid,
+                senderNickname: myNick,
+                content: txt,
+                type: 'chat',
+                timestamp: firebase.database.ServerValue.TIMESTAMP
             });
         }
-    }, 3000); // 3초 딜레이 (정답 확인 시간)
-}
-
-function getRandomWord() { 
-    return WORDS[Math.floor(Math.random() * WORDS.length)]; 
-}
-
-function resizeCanvas() {
-    const wrapper = document.getElementById('canvas-wrapper');
-    canvas.width = wrapper.clientWidth;
-    canvas.height = wrapper.clientHeight; 
-}
-
-function getPos(e) {
-    const r = canvas.getBoundingClientRect();
-    let clientX, clientY;
-
-    if (e.touches && e.touches.length > 0) {
-        clientX = e.touches[0].clientX;
-        clientY = e.touches[0].clientY;
-    } else if (e.changedTouches && e.changedTouches.length > 0) {
-        clientX = e.changedTouches[0].clientX;
-        clientY = e.changedTouches[0].clientY;
-    } else {
-        clientX = e.clientX;
-        clientY = e.clientY;
     }
 
-    return { 
-        x: (clientX - r.left) / r.width, 
-        y: (clientY - r.top) / r.height 
-    };
-}
-
-const startDraw = (e) => {
-    if (e.cancelable) e.preventDefault(); 
-
-    if (gameState?.gameData?.drawer !== myUid) return;
-    
-    isDrawing = true;
-    const p = getPos(e);
-    lastX = p.x; lastY = p.y;
-};
-
-const draw = (e) => {
-    if (e.cancelable) e.preventDefault();
-
-    if (!isDrawing) return;
-    
-    const p = getPos(e);
-    
-    drawLineRemote({ lx: lastX, ly: lastY, x: p.x, y: p.y, c: currentColor, w: currentWidth });
-
-    roomRef.child('drawLines').push({
-        lx: lastX, ly: lastY, x: p.x, y: p.y, c: currentColor, w: currentWidth
-    });
-    lastX = p.x; lastY = p.y;
-};
-const endDraw = () => { isDrawing = false; };
-
-canvas.addEventListener('mousedown', startDraw);
-canvas.addEventListener('touchstart', startDraw, {passive:false});
-canvas.addEventListener('mousemove', draw);
-canvas.addEventListener('touchmove', draw, {passive:false});
-window.addEventListener('mouseup', endDraw);
-window.addEventListener('touchend', endDraw);
-
-function drawLineRemote(l) {
-    const w = canvas.width; 
-    const h = canvas.height;
-    ctx.beginPath();
-    ctx.moveTo(l.lx*w, l.ly*h);
-    ctx.lineTo(l.x*w, l.y*h);
-    ctx.strokeStyle = l.c; 
-    ctx.lineWidth = l.w;
-    ctx.lineCap = 'round'; 
-    ctx.stroke();
-}
-
-window.setColor = (color, btn, width = 3) => {
-    document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    currentColor = color; 
-    currentWidth = width;
-};
-
-window.clearCanvas = () => {
-    if (gameState?.gameData?.drawer === myUid) roomRef.child('clearCanvas').set(Date.now());
-};
-
-function sendAnswer() {
-    const txt = inputField.value.trim();
-    if (!txt) return;
-    
-    // 입력창 닫기 및 초기화
-    inputModal.classList.remove('active');
-    inputField.value = '';
-
-    if (!gameState || !gameState.gameData) return;
-
-    // [신규] 이미 누군가 정답을 맞춰서 넘어가는 중이라면? -> 정답 체크 안 하고 일반 채팅으로 보냄
-    // (이렇게 해야 늦게 낸 사람 점수 중복 획득 및 턴 꼬임 방지)
-    if (isRoundProcessing) {
+    function sendSysMsg(msg) {
+        if (!roomRef) return;
         roomRef.child('chat').push({
-            senderId: myUid,
-            senderNickname: myNick,
-            content: txt,
-            type: 'chat',
+            content: msg,
+            type: 'system',
             timestamp: firebase.database.ServerValue.TIMESTAMP
-        });
-        return;
-    }
-
-    const answer = gameState.gameData.word || "";
-    const isDrawer = gameState.gameData.drawer === myUid;
-    
-    if (isDrawer) {
-        // 출제자는 채팅만 가능
-        roomRef.child('chat').push({
-            senderId: myUid,
-            senderNickname: myNick,
-            content: txt,
-            type: 'chat',
-            timestamp: firebase.database.ServerValue.TIMESTAMP
-        });
-        return;
-    }
-
-    // [핵심] 정답 비교 강화 (모든 공백 제거)
-    // "사 과"라고 입력해도 "사과" 정답 처리됨
-    const normalizedAnswer = answer.replace(/\s+/g, '').trim();
-    const normalizedInput = txt.replace(/\s+/g, '').trim();
-    
-    if (normalizedInput === normalizedAnswer) {
-        // 정답 처리
-        playSound('snd-correct');
-        
-        // [신규] 시간 비례 점수 계산
-        // 남은 시간이 많을수록 고득점!
-        const remainingTime = gameState.gameData.timer || 0;
-        const guesserScore = 50 + (remainingTime * 2); // 맞힌 사람 점수
-        const drawerScore = 50 + remainingTime;        // 그린 사람 점수 (잘 그려서 빨리 맞히게 한 보상)
-
-        // 1. 맞힌 사람(나) 점수 획득
-        roomRef.child(`players/${myUid}/score`).transaction(s => (s||0) + guesserScore);
-        
-        // 2. 출제자도 점수 획득 (그림 그린 보상)
-        const drawerId = gameState.gameData.drawer;
-        if (drawerId) {
-             roomRef.child(`players/${drawerId}/score`).transaction(s => (s||0) + drawerScore);
-        }
-
-        // 채팅창에 획득 점수 표시
-        roomRef.child('chat').push({
-            senderId: myUid,
-            senderNickname: myNick,
-            content: `🎉 정답! (+${guesserScore}점)`, // 점수까지 보여줌
-            type: 'correct',
-            answer: answer, // 아까 추가한 정답 표시용 필드
-            timestamp: firebase.database.ServerValue.TIMESTAMP
-        });
-    } else {
-        // 오답
-        playSound('snd-wrong');
-        roomRef.child('chat').push({
-            senderId: myUid,
-            senderNickname: myNick,
-            content: txt,
-            type: 'chat',
-            timestamp: firebase.database.ServerValue.TIMESTAMP
+        }).catch(err => {
+            console.error("시스템 메시지 전송 실패:", err);
         });
     }
-}
 
-function sendSysMsg(msg) {
-    if (!roomRef) return;
-    roomRef.child('chat').push({
-        content: msg,
-        type: 'system',
-        timestamp: firebase.database.ServerValue.TIMESTAMP
-    }).catch(err => {
-        console.error("시스템 메시지 전송 실패:", err);
-    });
-}
+    function addChatBubble(data) {
+        if (!data) return;
 
-function addChatBubble(data) {
-    if (!data) return;
-
-    // 1. System messages are displayed as a top toast (not a speech bubble)
-    if (data.type === 'system') {
-        showToast(`📢 ${data.content}`);
-        return;
-    }
-
-    const layer = document.getElementById('speech-bubble-layer');
-    const senderId = data.senderId;
-    
-    // 2. Find the slot (profile) of the person who sent the message
-    const targetSlot = document.querySelector(`.player-slot[data-uid="${senderId}"]`);
-    
-    if (targetSlot && layer) {
-        // ✨ [수정] 슬롯 전체가 아니라 '아바타 이미지'의 위치를 기준으로 잡음
-        const avatarEl = targetSlot.querySelector('.player-avatar');
-        const rect = avatarEl.getBoundingClientRect();
+        const chatList = document.getElementById('chat-list');
+        const chatLogContainer = document.getElementById('chat-log-container');
         
-        // 4. Create speech bubble
-        const bubble = document.createElement('div');
-        bubble.className = 'speech-bubble-item';
-        if (data.type === 'correct') bubble.classList.add('correct');
-        
-        // Insert content
-        bubble.textContent = data.content || '';
-        
-        // 5. Position (Vertical center of the slot)
-        // Since the sidebar is on the right, position it to the left of the slot
-        // right: 60px is already set in CSS, so just calculate top
-        bubble.style.top = (rect.top + rect.height / 2) + 'px';
-        bubble.style.transform = "translateY(-50%)"; 
-        
-        // 6. Add to layer
-        layer.appendChild(bubble);
-        
-        // 7. Delete after 3 seconds
-        setTimeout(() => {
-            if (bubble.parentNode) bubble.parentNode.removeChild(bubble);
-        }, 3000);
-        
-        // [Option] Confetti if correct answer
-        if (data.type === 'correct' && typeof fireConfetti === 'function') {
-            fireConfetti();
-        }
-    } else {
-        // If the user is not visible on my screen (scroll, error, etc.), show as toast
-        if (data.senderNickname && data.content) {
-             showToast(`${data.senderNickname}: ${data.content}`);
-        }
-    }
-}
-
-// [신규] 토스트 메시지 함수 (시스템 메시지용)
-function showToast(msg) {
-    const layer = document.getElementById('speech-bubble-layer');
-    if(!layer) return;
-    
-    const toast = document.createElement('div');
-    toast.style.position = 'absolute';
-    toast.style.top = '60px'; // 상단 중앙
-    toast.style.left = '50%';
-    toast.style.transform = 'translateX(-50%)';
-    toast.style.background = 'rgba(0,0,0,0.6)';
-    toast.style.color = '#fff';
-    toast.style.padding = '5px 12px';
-    toast.style.borderRadius = '20px';
-    toast.style.fontSize = '0.8em';
-    toast.style.zIndex = '100';
-    toast.textContent = msg;
-    
-    layer.appendChild(toast);
-    setTimeout(() => { if(toast.parentNode) toast.remove(); }, 3000);
-}
-// [수정] 렌더링 안전장치 추가 (중간에 에러나도 호스트가 사라지지 않음)
-function renderPlayers(players, drawerUid) {
-    playerBar.innerHTML = '';
-    if (!players) return;
-
-    // 1. ✨ [디자인 수정] 패딩 대신 '투명 빈 공간'을 넣어 1번 유저를 아래로 내림
-    // (패딩을 쓰면 스크롤바 위치가 꼬이지만, 이건 물리적인 공간이라 안전함)
-    const spacer = document.createElement('div');
-    spacer.style.height = '120px'; // 유저가 원했던 120px 공간 확보
-    spacer.style.width = '100%';
-    spacer.style.flexShrink = '0';
-    playerBar.appendChild(spacer);
-
-    // 2. ✨ [핵심 수정] 플레이어 ID를 정렬(Sort)하여 순서 고정
-    // Firebase는 키 순서를 보장하지 않으므로, 우리가 강제로 정렬해야 턴이 안 꼬임
-    const sortedUids = Object.keys(players).sort();
-
-    sortedUids.forEach(uid => {
-        try {
-            const p = players[uid];
-            if (!p) return; // 데이터 깨짐 방지
-
-            const div = document.createElement('div');
-            div.className = `player-slot ${uid === drawerUid ? 'drawer' : ''}`;
+        if (chatList) {
+            const li = document.createElement('li');
+            li.className = 'chat-item';
             
-            // 말풍선 위치 추적용 태그
-            div.setAttribute('data-uid', String(uid));
-            
-            const avatarSet = typeof AVATAR_SETS !== 'undefined' ? AVATAR_SETS[p.avatar] : null;
-            let imgHtml = '';
-            
-            if(avatarSet) imgHtml = `<img src="${avatarSet.front}" alt="av">`;
-            else if(p.avatar && p.avatar.includes('.')) imgHtml = `<img src="${p.avatar}" alt="av">`;
-            else imgHtml = `<span style="font-size:2em">${p.avatar || '👤'}</span>`;
-
-            div.innerHTML = `
-                <div class="player-avatar">${imgHtml}</div>
-                <div class="player-name">${escapeHTML(p.nickname)}</div>
-                <div class="player-score">${p.score || 0}점</div>
-            `;
-            playerBar.appendChild(div);
-
-        } catch (err) {
-            // ✨ [안전장치] 한 명 그리는 데 실패해도 다음 사람은 계속 그림
-            console.error(`플레이어(${uid}) 렌더링 실패:`, err);
-        }
-    });
-}
-
-function showResult(players, reqs={}) {
-    // ▼▼▼ [핵심 수정 1] 게임 상태가 gameOver가 아니면(이미 재시작됐으면) 즉시 종료 ▼▼▼
-    // 이 부분이 있어야 '다시하기' 카운트다운 때 승리/패배 소리가 또 나는 것을 막습니다.
-    if (gameState && gameState.status !== 'gameOver') {
-        if(resultOverlay) resultOverlay.classList.remove('active');
-        return;
-    }
-
-    // ▼▼▼ [핵심 수정 2] 결과창이 이미 떠 있다면(데이터 갱신 시) 소리 재생 없이 버튼만 갱신 ▼▼▼
-    if (resultOverlay.classList.contains('active')) {
-        updateRetryBtnState(reqs); 
-        return; 
-    }
-
-    // 1. 배경음악 정지
-    stopBgm();
-
-    // 2. 결과 모달 표시
-    if (resultOverlay) {
-        resultOverlay.classList.add('active');
-    }
-
-    // 3. 순위 목록 요소 가져오기
-    const resultList = document.getElementById('result-list');
-    if (!resultList) return;
-    
-    resultList.innerHTML = ''; // 목록 초기화
-    
-    // 4. 점수 내림차순 정렬
-    const sorted = Object.entries(players).sort((a, b) => (b[1].score || 0) - (a[1].score || 0));
-    
-    // 5. 순위 목록 렌더링
-    sorted.forEach(([uid, p], i) => {
-        const rank = i + 1;
-        const isMe = uid === myUid;
-        const scoreVal = p.score || 0;
-        
-        // 리매치 요청 상태 확인
-        const isReady = reqs && reqs[uid] === true;
-        
-        // 준비 완료 뱃지
-        const readyBadge = isReady ? '<span style="font-size:0.8em; color:#28a745; margin-left:5px; font-weight:bold;">(준비완료)</span>' : '';
-
-        const row = document.createElement('div');
-        row.className = 'result-item';
-        if (i === 0) row.classList.add('winner'); 
-        if (isMe) row.style.border = "2px solid var(--primary-color)"; 
-
-        row.innerHTML = `
-            <div style="display:flex; align-items:center; gap:10px;">
-                <span style="font-size:1.2em; margin-right:5px;">${rank === 1 ? '🥇' : rank + '위'}</span>
-                <span>${escapeHTML(p.nickname)}</span>
-                ${readyBadge} 
-            </div>
-            <div style="color:var(--primary-color);">${scoreVal}점</div>
-        `;
-        
-        resultList.appendChild(row);
-        
-        // 사운드 재생 (플래그 체크)
-        if(isMe && !resultSoundPlayed) {
-            if(rank === 1) {
-                playSound('snd-win');
-                if(typeof applyExpAndPoints === 'function') applyExpAndPoints(db, myUid, 150, 100);
+            if (data.type === 'system') {
+                li.classList.add('system');
+                li.textContent = data.content;
+            } else if (data.type === 'correct') {
+                li.classList.add('correct');
+                li.textContent = `🎉 ${data.senderNickname}님이 정답을 맞혔습니다! (${data.answer || '정답'})`;
             } else {
-                playSound('snd-lose');
-                if(typeof applyExpAndPoints === 'function') applyExpAndPoints(db, myUid, 50, 30);
+                li.innerHTML = `<span class="sender">${escapeHTML(data.senderNickname)}:</span> ${escapeHTML(data.content)}`;
+            }
+            
+            chatList.appendChild(li);
+            if(chatLogContainer) chatLogContainer.scrollTop = chatLogContainer.scrollHeight;
+        }
+
+        if (data.type === 'system') return;
+
+        const layer = document.getElementById('speech-bubble-layer');
+        const senderId = data.senderId;
+        
+        const targetSlot = document.querySelector(`.player-slot[data-uid="${senderId}"]`);
+        
+        if (targetSlot && layer) {
+            const avatarEl = targetSlot.querySelector('.player-avatar');
+            const rect = avatarEl.getBoundingClientRect();
+            
+            const bubble = document.createElement('div');
+            bubble.className = 'speech-bubble-item';
+            if (data.type === 'correct') bubble.classList.add('correct');
+            
+            bubble.textContent = data.content || '';
+            
+            bubble.style.left = (rect.left + rect.width / 2) + 'px'; 
+            bubble.style.top = (rect.top - 10) + 'px'; 
+            bubble.style.transform = "translate(-50%, -100%)"; 
+            
+            layer.appendChild(bubble);
+            
+            setTimeout(() => {
+                if (bubble.parentNode) bubble.parentNode.removeChild(bubble);
+            }, 3000);
+            
+            if (data.type === 'correct' && typeof fireConfetti === 'function') {
+                fireConfetti();
             }
         }
-    });
-    
-    // 사운드 재생 완료 처리
-    resultSoundPlayed = true;
-
-    // 6. 버튼 상태 업데이트 (최초 로드 시)
-    updateRetryBtnState(reqs);
-}
-
-// 버튼 상태 갱신용 헬퍼 함수
-function updateRetryBtnState(reqs) {
-    const retryBtn = document.getElementById('retry-btn');
-    if (retryBtn) {
-        if (reqs && reqs[myUid]) {
-            retryBtn.disabled = true;
-            retryBtn.innerText = "준비완료";
-        } else {
-            retryBtn.disabled = false;
-            retryBtn.innerText = "다시하기";
-        }
-    }
-}
-
-function sendRematchRequest() {
-    const retryBtn = document.getElementById('retry-btn');
-    if(retryBtn) {
-        retryBtn.disabled = true;
-        retryBtn.innerText = "신호 보내는 중...";
-    }
-    
-    // [수정] 토글 없이 무조건 true로 설정 (준비 완료)
-    roomRef.child(`rematchRequests/${myUid}`).set(true);
-}
-
-function exitGame() {
-    isExiting = true;
-    roomRef.off();
-    roomRef.child(`players/${myUid}`).remove();
-    location.href = '대기실.html';
-}
-
-// [신규] 정답자 강조 및 오버레이 표시 함수
-function showCorrectEffect(data) {
-    // 1. 오버레이 텍스트 설정 및 표시
-    const overlay = document.getElementById('correct-answer-overlay');
-    const winnerText = document.getElementById('winner-name-display');
-    const answerText = document.getElementById('answer-text-display');
-    
-    // 데이터에 answer 필드가 없으면 내용에서 추출 (구버전 호환)
-    let rawAnswer = data.answer;
-    if (!rawAnswer && data.content) {
-        const match = data.content.match(/\[(.*?)\]/);
-        rawAnswer = match ? match[1] : '정답';
     }
 
-    winnerText.textContent = data.senderNickname;
-    answerText.textContent = rawAnswer;
-    
-    overlay.classList.add('active'); // 오버레이 켜기
-    
-    // 2. 상단 플레이어 바에서 정답자 아바타 강조
-    // (player-bar를 다시 그리면 클래스가 날아가므로, DOM에서 직접 찾음)
-    const playerSlots = document.querySelectorAll('.player-slot');
-    const players = gameState.players || {};
-    const playerIds = Object.keys(players);
-    
-    // 순서를 찾아야 함 (renderPlayers 로직에 따라 playerIds 순서대로 렌더링됨)
-    // 하지만 renderPlayers가 닉네임 등을 기준으로 하지 않으므로, 
-    // 확실한 방법은 렌더링 시 data-id를 심는 것이지만, 여기서는 순서로 추정하거나 닉네임으로 찾습니다.
-    
-    playerSlots.forEach(slot => {
-        // 이름으로 찾기 (가장 간단)
-        if (slot.querySelector('.player-name').textContent === data.senderNickname) {
-            slot.classList.add('winner-highlight');
-        }
-    });
+    function renderPlayers(players, drawerUid) {
+        playerBar.innerHTML = '';
+        if (!players) return;
 
-    // 3. 2.5초 뒤에 효과 끄기
-    setTimeout(() => {
-        overlay.classList.remove('active');
-        playerSlots.forEach(slot => slot.classList.remove('winner-highlight'));
-    }, 2500);
-}
+        const sortedUids = Object.keys(players).sort();
 
-// [신규] 중복 방지 단어 선택 함수
-function getUniqueWord(isReset = false) {
-    // 1. 현재까지 사용된 단어 목록 가져오기
-    let used = [];
-    if (!isReset && gameState && gameState.gameData && gameState.gameData.usedWords) {
-        used = gameState.gameData.usedWords;
-    }
+        sortedUids.forEach(uid => {
+            try {
+                const p = players[uid];
+                if (!p) return;
 
-    // 2. 전체 단어에서 사용된 단어를 뺀 '남은 단어들' 구하기
-    const available = WORDS.filter(w => !used.includes(w));
+                const div = document.createElement('div');
+                div.className = `player-slot ${uid === drawerUid ? 'drawer' : ''}`;
+                div.setAttribute('data-uid', String(uid));
+                
+                const avatarSet = typeof AVATAR_SETS !== 'undefined' ? AVATAR_SETS[p.avatar] : null;
+                let imgHtml = '';
+                
+                if(avatarSet) imgHtml = `<img src="${avatarSet.front}" alt="av">`;
+                else if(p.avatar && p.avatar.includes('.')) imgHtml = `<img src="${p.avatar}" alt="av">`;
+                else imgHtml = `<span style="font-size:1.5em">${p.avatar || '👤'}</span>`;
 
-    // 3. 만약 단어가 다 떨어졌으면? (혹시 모를 상황 대비) -> 초기화 후 다시 뽑기
-    if (available.length === 0) {
-        const resetWord = WORDS[Math.floor(Math.random() * WORDS.length)];
-        return { word: resetWord, list: [resetWord] };
-    }
+                div.innerHTML = `
+                    <div class="player-avatar">${imgHtml}</div>
+                    <div class="player-name">${escapeHTML(p.nickname)}</div>
+                    <div class="player-score">${p.score || 0}</div>
+                `;
+                playerBar.appendChild(div);
 
-    // 4. 남은 단어 중에서 랜덤 하나 뽑기
-    const newWord = available[Math.floor(Math.random() * available.length)];
-    
-    // 5. 사용된 목록에 추가해서 반환
-    // (Firebase에는 이 'list'를 저장해야 함)
-    const newList = [...used, newWord];
-    
-    return { word: newWord, list: newList };
-}
-
-// [복구] 단어 패스(변경) 기능
-function passWord() {
-    if (!isHost && gameState.gameData.drawer !== myUid) return; // 방장이나 출제자만 가능
-    
-    // 효과음 재생
-    playSound('snd-start'); 
-
-    // [수정] 중복 없는 새 단어 뽑기
-    const pick = getUniqueWord();
-    
-    // 시스템 메시지로 알림
-    sendSysMsg(`🔄 출제자가 단어를 변경했습니다!`);
-
-    // Firebase 업데이트
-    if (roomRef) {
-        roomRef.child('gameData').update({
-            word: pick.word,
-            usedWords: pick.list
+            } catch (err) {
+                console.error(`플레이어(${uid}) 렌더링 실패:`, err);
+            }
         });
-        // 캔버스도 지워줌
-        roomRef.child('clearCanvas').set(Date.now());
-    }
-}
-
-// [복구] 꽃가루 발사 함수 (정답 맞힐 때 사용)
-function fireConfetti() {
-    if (typeof confetti === 'undefined') return; // 라이브러리 없으면 무시
-
-    var duration = 2 * 1000;
-    var animationEnd = Date.now() + duration;
-    var defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 9999 };
-
-    function randomInRange(min, max) {
-        return Math.random() * (max - min) + min;
     }
 
-    var interval = setInterval(function() {
-        var timeLeft = animationEnd - Date.now();
-
-        if (timeLeft <= 0) {
-            return clearInterval(interval);
+    function showResult(players, reqs={}) {
+        if (gameState && gameState.status !== 'gameOver') {
+            if(resultOverlay) resultOverlay.classList.remove('active');
+            return;
         }
 
-        var particleCount = 50 * (timeLeft / duration);
-        confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 } }));
-        confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } }));
-    }, 250);
-}
+        if (resultOverlay.classList.contains('active')) {
+            updateRetryBtnState(reqs); 
+            return; 
+        }
 
+        stopBgm();
 
-// [신규] 퀵 팔레트 열고 닫기 (토글)
-function togglePalette() {
-    const palette = document.getElementById('quick-palette');
-    if (palette) {
-        palette.classList.toggle('active'); // 클래스를 넣었다 뺐다 하며 보이기/숨기기
+        if (resultOverlay) {
+            resultOverlay.classList.add('active');
+        }
+
+        const resultList = document.getElementById('result-list');
+        if (!resultList) return;
+        
+        resultList.innerHTML = ''; 
+        
+        const sorted = Object.entries(players).sort((a, b) => (b[1].score || 0) - (a[1].score || 0));
+        
+        sorted.forEach(([uid, p], i) => {
+            const rank = i + 1;
+            const isMe = uid === myUid;
+            const scoreVal = p.score || 0;
+            
+            const isReady = reqs && reqs[uid] === true;
+            
+            const readyBadge = isReady ? '<span style="font-size:0.8em; color:#28a745; margin-left:5px; font-weight:bold;">(준비완료)</span>' : '';
+
+            const row = document.createElement('div');
+            row.className = 'result-item';
+            if (i === 0) row.classList.add('winner'); 
+            if (isMe) row.style.border = "2px solid var(--primary-color)"; 
+
+            row.innerHTML = `
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="font-size:1.2em; margin-right:5px;">${rank === 1 ? '🥇' : rank + '위'}</span>
+                    <span>${escapeHTML(p.nickname)}</span>
+                    ${readyBadge} 
+                </div>
+                <div style="color:var(--primary-color);">${scoreVal}점</div>
+            `;
+            
+            resultList.appendChild(row);
+            
+            if(isMe && !resultSoundPlayed) {
+                if(rank === 1) {
+                    playSound('snd-win');
+                    if(typeof applyExpAndPoints === 'function') applyExpAndPoints(db, myUid, 150, 100);
+                } else {
+                    playSound('snd-lose');
+                    if(typeof applyExpAndPoints === 'function') applyExpAndPoints(db, myUid, 50, 30);
+                }
+            }
+        });
+        
+        resultSoundPlayed = true;
+        updateRetryBtnState(reqs);
     }
-}
 
-// [신규] 팔레트에서 색상 선택 시 실행
-function selectPaletteColor(color) {
-    const paletteBtn = document.getElementById('palette-toggle-btn');
-    
-    // 1. 다른 색상 버튼들의 active 표시 제거
-    document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
-    
-    // 2. [🎨] 버튼을 활성화하고, 선택한 색상으로 배경 변경 (직관적 피드백)
-    if (paletteBtn) {
-        paletteBtn.classList.add('active');
-        paletteBtn.style.background = color;
-        // 배경색 밝기에 따라 글자색(🎨)을 검정/흰색으로 자동 조절
-        paletteBtn.style.color = isLightColor(color) ? 'black' : 'white';
-    }
-    
-    // 3. 실제 그리기 색상 변경 (전역 변수 업데이트)
-    if (typeof setColor === 'function') {
-        // 기존 setColor 로직을 활용하되, UI 처리는 위에서 했으므로 색상만 변경
-        currentColor = color;
-        currentWidth = 3; 
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 3;
-    }
-
-    // 4. 팔레트 닫기
-    const palette = document.getElementById('quick-palette');
-    if (palette) palette.classList.remove('active');
-}
-
-// (보너스) 배경색이 밝은지 어두운지 판별하는 함수 (글자색 조절용)
-function isLightColor(color) {
-    // hex 코드(#RRGGBB)를 rgb로 변환하여 밝기 계산
-    if(!color) return true;
-    const hex = color.replace('#', '');
-    if (hex.length !== 6) return true;
-    
-    const r = parseInt(hex.substr(0, 2), 16);
-    const g = parseInt(hex.substr(2, 2), 16);
-    const b = parseInt(hex.substr(4, 2), 16);
-    // 밝기 공식
-    const brightness = ((r * 299) + (g * 587) + (b * 114)) / 1000;
-    return brightness > 155; // 155보다 크면 밝은 색
-}
-
-// [편의성] 화면의 빈 곳을 누르면 팔레트 닫기
-document.addEventListener('click', function(e) {
-    const palette = document.getElementById('quick-palette');
-    const toggleBtn = document.getElementById('palette-toggle-btn');
-    
-    // 팔레트가 존재하고 열려있을 때
-    if (palette && palette.classList.contains('active')) {
-        // 클릭한 곳이 팔레트 내부도 아니고, 토글 버튼도 아니면 닫기
-        if (!palette.contains(e.target) && !toggleBtn.contains(e.target)) {
-            palette.classList.remove('active');
+    function updateRetryBtnState(reqs) {
+        const retryBtn = document.getElementById('retry-btn');
+        if (retryBtn) {
+            if (reqs && reqs[myUid]) {
+                retryBtn.disabled = true;
+                retryBtn.innerText = "준비완료";
+            } else {
+                retryBtn.disabled = false;
+                retryBtn.innerText = "다시하기";
+            }
         }
     }
-});
 
-    </script>
+    function sendRematchRequest() {
+        const retryBtn = document.getElementById('retry-btn');
+        if(retryBtn) {
+            retryBtn.disabled = true;
+            retryBtn.innerText = "신호 보내는 중...";
+        }
+        roomRef.child(`rematchRequests/${myUid}`).set(true);
+    }
+
+    function exitGame() {
+        isExiting = true;
+        roomRef.off();
+        roomRef.child(`players/${myUid}`).remove();
+        location.href = '대기실.html';
+    }
+
+    function showCorrectEffect(data) {
+        const overlay = document.getElementById('correct-answer-overlay');
+        const winnerText = document.getElementById('winner-name-display');
+        const answerText = document.getElementById('answer-text-display');
+        
+        let rawAnswer = data.answer;
+        if (!rawAnswer && data.content) {
+            const match = data.content.match(/\[(.*?)\]/);
+            rawAnswer = match ? match[1] : '정답';
+        }
+
+        winnerText.textContent = data.senderNickname;
+        answerText.textContent = rawAnswer;
+        
+        overlay.classList.add('active'); 
+        
+        const playerSlots = document.querySelectorAll('.player-slot');
+        playerSlots.forEach(slot => {
+            if (slot.querySelector('.player-name').textContent === data.senderNickname) {
+                slot.classList.add('winner-highlight');
+            }
+        });
+
+        setTimeout(() => {
+            overlay.classList.remove('active');
+            playerSlots.forEach(slot => slot.classList.remove('winner-highlight'));
+        }, 2500);
+    }
+
+    function fireConfetti() {
+        if (typeof confetti === 'undefined') return;
+
+        var duration = 2 * 1000;
+        var animationEnd = Date.now() + duration;
+        var defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 9999 };
+
+        function randomInRange(min, max) {
+            return Math.random() * (max - min) + min;
+        }
+
+        var interval = setInterval(function() {
+            var timeLeft = animationEnd - Date.now();
+
+            if (timeLeft <= 0) {
+                return clearInterval(interval);
+            }
+
+            var particleCount = 50 * (timeLeft / duration);
+            confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 } }));
+            confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } }));
+        }, 250);
+    }
+
+    function isLightColor(color) {
+        if(!color) return true;
+        const hex = color.replace('#', '');
+        if (hex.length !== 6) return true;
+        
+        const r = parseInt(hex.substr(0, 2), 16);
+        const g = parseInt(hex.substr(2, 2), 16);
+        const b = parseInt(hex.substr(4, 2), 16);
+        const brightness = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+        return brightness > 155; 
+    }
+
+// [신규] 무지개 버튼 팝업 토글 함수
+    window.toggleColorPopup = () => {
+        const popup = document.getElementById('color-popup');
+        popup.classList.toggle('active');
+        playSound('snd-pop'); // (선택사항) 팝업 열릴 때 소리나게 하려면 추가
+    };
+
+    // [신규] 팝업 내부 색상 선택 시 처리
+    window.selectExtendedColor = (color, btn) => {
+        // 1. 기존 setColor 함수 호출 (색상 적용)
+        setColor(color, btn);
+        
+        // 2. 무지개 버튼을 활성화된 상태처럼 보이게 스타일 변경 (선택사항 UI 피드백)
+        document.querySelectorAll('.palette-btn').forEach(b => b.classList.remove('active'));
+        const rainbowBtn = document.getElementById('rainbow-btn');
+        if(rainbowBtn) {
+            rainbowBtn.classList.add('active');
+            rainbowBtn.style.background = color; // 무지개 버튼 색을 선택한 색으로 변경
+            rainbowBtn.style.borderColor = "var(--text-color-dark)";
+        }
+
+        // 3. 팝업 닫기
+        document.getElementById('color-popup').classList.remove('active');
+    };
+    
+    // [추가 수정] 기존 setColor 함수도 약간 수정하여 무지개 버튼 스타일 초기화
+    const originalSetColor = window.setColor;
+    window.setColor = (color, btn, width = 3) => {
+        originalSetColor(color, btn, width);
+        
+        // 만약 기본 5색이나 지우개를 눌렀다면, 무지개 버튼의 색상을 원래대로(흰색) 복구
+        const rainbowBtn = document.getElementById('rainbow-btn');
+        if (btn !== rainbowBtn && rainbowBtn) {
+            rainbowBtn.style.background = 'white';
+            rainbowBtn.style.borderColor = '#ccc';
+        }
+    };
+</script>
 </body>
 </html>
