@@ -644,8 +644,7 @@
         <button id="ref-close-btn" onclick="closeRefModal()">✕</button>
         
         <div id="ref-img-container">
-            <button id="style-toggle-btn" onclick="toggleStyleMode()">📷 실사로 보기</button>
-
+           
             <button class="nav-btn prev" onclick="prevImage()">‹</button>
             <button class="nav-btn next" onclick="nextImage()">›</button>
             
@@ -975,6 +974,14 @@
             isInitialLoad = false;
         });
 
+        // [신규] gameState 객체 안전 초기화 (추가할 코드)
+        gameState = {
+            players: {},
+            gameData: {},
+            status: 'waiting',
+            rematchRequests: {}
+        };
+
         let isFirstClearCheck = true;
         roomRef.child('clearCanvas').on('value', snap => {
             if (isFirstClearCheck) {
@@ -991,144 +998,164 @@
         // 기존 변수 (유지)
         let lastPlayersJson = ''; 
 
-        // [수정] 방 데이터 수신 리스너 (자동 복구 기능 탑재)
-        roomRef.on('value', snap => {
-            if (isExiting) return; // 내가 나가는 중이면 무시
+       // ===============================================================
+        // ⚡ [최적화] 팅김 방지 & 좀비 부활 통합 솔루션 (천재 코딩전문가 ver)
+        // ===============================================================
+        
+        // 0. 게임 상태 통합 관리 함수 (데이터가 조각조각 들어와도 여기서 합침)
+        const updateGameState = () => {
+            if (isExiting || !gameState) return;
             
-            if (!snap.exists()) { 
-                // 방 자체가 폭파됨
-                if (!gameOverOverlay.style.display || gameOverOverlay.style.display === 'none') {
-                    alert('방이 종료되었습니다.'); 
-                }
-                location.href = '대기실.html'; 
-                return; 
-            }
+            const data = gameState; 
 
-            const data = snap.val();
-
-            // [핵심] 고스트 현상 감지 및 자동 부활 (Auto-Resurrection)
-            if (!data.players || !data.players[myUid]) {
-                console.warn("⚠️ 고스트 현상 발생! (DB에서 사라짐) -> 즉시 부활 시도");
-                
-                // 1. 이전 점수 복구 (없으면 0점)
-                let savedScore = 0;
-                if (gameState && gameState.players && gameState.players[myUid]) {
-                    savedScore = gameState.players[myUid].score || 0;
-                }
-                
-                // 2. 내 정보 다시 입력 (몰래 복구)
-                myRef.update({
-                    nickname: myNick,
-                    avatar: myAvatar,
-                    score: savedScore, // 점수 유지
-                    online: true,
-                    isReady: false,
-                    // [신규] 팅겼다 돌아왔음을 표시 (선택사항)
-                    // restored: true 
-                });
-                
-                // 3. 연결 끊김 감지 다시 설정
-                myRef.onDisconnect().remove();
-                
-                // 4. 토스트 알림으로 살짝 알려줌
-                if (typeof showToast === 'function') showToast("♻️ 접속이 불안정하여 복구했습니다.");
-                
-                // 이번 데이터는 불완전하므로 처리하지 않고 리턴 (다음 업데이트 대기)
-                return; 
-            }
-
-            // --- 여기부터는 정상적인 게임 로직 ---
-            
-            gameState = data;
-            
-            // [호스트 마이그레이션]
+            // [호스트 승계 로직] - 방장이 팅겼을 때 내가 방장 권한 획득
             const playerIds = Object.keys(data.players || {}).sort();
-            if (!data.players[data.hostId] && playerIds.length > 0) {
-                const newHostId = playerIds[0];
-                if (newHostId === myUid) {
-                    console.log("👑 방장이 떠나 내가 새로운 방장이 되었습니다!");
+            if (data.hostId && !data.players?.[data.hostId] && playerIds.length > 0) {
+                if (playerIds[0] === myUid) {
+                    // console.log("👑 방장이 떠나 내가 새로운 방장이 되었습니다!");
                     roomRef.update({ hostId: myUid });
-                    if (typeof showToast === 'function') showToast("👑 내가 방장이 되었습니다!");
+                    isHost = true;
+                    if (typeof showToast === 'function') showToast("👑 방장이 되었습니다!");
                 }
             }
-
             isHost = (data.hostId === myUid);
 
-            // [게임 종료 후 재시작 대기]
-            if (isHost && data.status === 'gameOver') {
-                const players = data.players || {};
-                const reqs = data.rematchRequests || {};
-                const allReady = playerIds.length > 0 && playerIds.every(uid => reqs[uid] === true);
-
-                if (allReady) {
-                    const updates = {};
-                    updates['status'] = 'waiting';
-                    updates['starting'] = true; 
-                    updates['gameData'] = {
-                        round: 1,
-                        drawer: playerIds[0],
-                        word: '',
-                        timer: TURN_TIME,
-                        roundWinner: null 
-                    };
-                    updates['chat'] = null; 
-                    updates['drawLines'] = null;
-                    updates['rematchRequests'] = null;
-                    updates['clearCanvas'] = Date.now();
-                    playerIds.forEach(pid => { updates[`players/${pid}/score`] = 0; });
-                    roomRef.update(updates);
-                }
-            }
-
-            // [방장 전용] 데이터 깨짐 방지 초기화
-            if (isHost && !data.gameData && data.status !== 'gameOver') {
-                roomRef.update({
-                    status: 'waiting',
-                    gameData: { round: 1, timer: TURN_TIME, drawer: '', word: '', roundWinner: null }
-                });
-            }
-
-            // [UI 업데이트]
+            // [UI 업데이트] - 화면 멈춤 방지
             const currentPlayersJson = JSON.stringify(data.players) + (data.gameData?.drawer || '');
             if (lastPlayersJson !== currentPlayersJson) {
                 renderPlayers(data.players, data.gameData?.drawer);
                 lastPlayersJson = currentPlayersJson;
 
+                // 게임 종료 상태면 결과창 띄우기
                 if (data.status === 'gameOver') {
                     showResult(data.players, data.rematchRequests);
                     if (isHost) checkAutoStartByHost();
                 }
             }
 
-            // [수정 2] 출제자 탈주 감지 (유예 시간 4초 적용)
+            // [출제자 탈주 감지] - 출제자가 팅기면 게임이 멈추는 현상 방지
             if (isHost && data.status === 'playing') {
                 const currentDrawer = data.gameData?.drawer;
                 const currentPlayers = data.players || {};
                 
-                // 출제자가 플레이어 목록에 없는 경우
                 if (currentDrawer && !currentPlayers[currentDrawer]) {
                     if (!drawerMissingSince) {
-                        // 최초 감지 시 시간 기록
                         drawerMissingSince = Date.now();
-                        console.log("⚠️ 출제자 실종 감지... 재접속 대기 중");
-                    } else {
-                        // 4초 이상 돌아오지 않으면 턴 넘기기
-                        if (Date.now() - drawerMissingSince > 4000) {
-                            console.warn("🚨 출제자 탈주 확정 (4초 경과)! 강제로 턴을 넘깁니다.");
-                            roomRef.child('gameData/timer').set(0);
-                            drawerMissingSince = null; // 초기화
-                        }
-                    }
-                } else {
-                    // 출제자가 존재하면 (혹은 복귀했으면) 타이머 초기화
-                    if (drawerMissingSince) {
-                        console.log("✅ 출제자 복귀 확인!");
+                    } else if (Date.now() - drawerMissingSince > 4000) {
+                        // 4초 이상 출제자 없으면 턴 넘기기
+                        roomRef.child('gameData/timer').set(0); 
                         drawerMissingSince = null;
                     }
+                } else {
+                    drawerMissingSince = null;
                 }
             }
 
+            // 게임 로직 처리
             handleGameState(data);
+        };
+
+        // 1. 방 폭파 감지 (Status만 따로 감시하므로 그림 데이터 과부하에 영향 안 받음)
+        roomRef.child('status').on('value', snap => {
+            if (isExiting) return;
+            
+            // 데이터가 null이면 진짜 방이 사라진 것
+            if (!snap.exists()) {
+                 if (!document.getElementById('result-overlay').classList.contains('active')) {
+                    alert('방이 종료되었습니다.');
+                 }
+                 location.href = '대기실.html';
+                 return;
+            }
+            
+            if(!gameState) gameState = { players:{}, gameData:{}, rematchRequests:{} };
+            gameState.status = snap.val();
+            updateGameState();
+        });
+
+        // 2. 플레이어 목록 감지 (좀비 현상 해결 핵심)
+        roomRef.child('players').on('value', snap => {
+            if (isExiting) return;
+
+            const players = snap.val() || {};
+            if(!gameState) gameState = { status:'waiting', gameData:{}, rematchRequests:{} };
+            gameState.players = players;
+
+            // [🚨 좀비 부활 로직]
+            // "대화창만 보이고 게임은 멈춘 상황" = 내 데이터가 서버에서 지워진 상태
+            if (!players[myUid]) {
+                console.warn("♻️ 연결 끊김 감지! 즉시 재접속 시도합니다.");
+                
+                // 내 점수 복구 시도 (로컬에 남아있던 점수 활용)
+                let savedScore = 0;
+                try {
+                     // 직전 상태의 내 점수 확인
+                     const oldMe = document.querySelector(`.player-slot[data-uid="${myUid}"] .player-score`);
+                     if(oldMe) savedScore = parseInt(oldMe.innerText) || 0;
+                } catch(e) {}
+
+                // 강제 부활 (다시 방에 입장시킴)
+                myRef.update({
+                    nickname: myNick,
+                    avatar: myAvatar,
+                    score: savedScore,
+                    online: true,
+                    isReady: false
+                });
+                myRef.onDisconnect().remove(); // 연결 끊김 감지 다시 설정
+            }
+            
+            updateGameState();
+        });
+
+        // 3. 게임 데이터 감지 (그림 데이터 제외하고 가볍게 받음)
+        roomRef.child('gameData').on('value', snap => {
+            if (isExiting) return;
+            if(!gameState) gameState = { players:{}, status:'waiting', rematchRequests:{} };
+            gameState.gameData = snap.val() || {};
+            updateGameState();
+        });
+
+        // 4. 기타 데이터 감지
+        roomRef.child('rematchRequests').on('value', snap => {
+            if(!gameState) gameState.rematchRequests = {};
+            gameState.rematchRequests = snap.val() || {};
+            updateGameState();
+        });
+        
+        roomRef.child('hostId').on('value', snap => {
+            if(!gameState) gameState.hostId = null;
+            gameState.hostId = snap.val();
+            updateGameState();
+        });
+
+        // 6. [누락된 부분 추가 & 버그 수정] 시작 신호 감지 (강제 실행 트리거)
+        roomRef.child('starting').on('value', snap => {
+            if(!gameState) gameState = { players:{}, gameData:{} };
+            
+            const isStarting = snap.val();
+            gameState.starting = isStarting;
+
+            // [핵심 수정] 방장 화면이 하얗게 보이거나 게스트가 GO에서 멈추는 현상 해결
+            // 상태가 꼬여있더라도 'starting' 신호가 오면 무조건 카운트다운을 강제 시작합니다.
+            if (isStarting) {
+                if (!isCountdownInProgress) {
+                    console.log("🚀 카운트다운 강제 시작!");
+                    
+                    // 1. 강제로 대기 화면(검은 화면)을 띄움 (방장 화면이 게임화면으로 보이는 문제 해결)
+                    const loader = document.getElementById('loading-overlay');
+                    if(loader) loader.classList.add('active');
+                    
+                    // 2. 로딩 텍스트 숨김 (카운트다운 숫자만 보이게)
+                    const loadText = document.getElementById('loading-text');
+                    if(loadText) loadText.style.display = 'none';
+
+                    // 3. 카운트다운 로직 실행 (이게 실행돼야 끝나고 'playing'으로 넘어감)
+                    startCountdown();
+                }
+            }
+
+            updateGameState();
         });
 
         roomRef.child('drawLines').on('child_added', snap => drawLineRemote(snap.val()));
@@ -2215,10 +2242,8 @@ let isGameStarting = false; // 전역 플래그 추가
         const display = document.getElementById('ref-keyword-display');
         
         currentRefKeyword = word;
-        currentRefSeed = Date.now();
-        isSketchMode = true; // 항상 그림 모드로 시작
+        currentRefSeed = Date.now(); // 매번 새로운 이미지 시드 생성
         
-        updateToggleBtn(); // 버튼 UI 초기화
         display.innerText = word; 
         
         updateRefImage(); 
@@ -2249,40 +2274,26 @@ let isGameStarting = false; // 전역 플래그 추가
         }
     }
 
-    // 3. 이미지 업데이트 (하이브리드 로직)
-    // 3. 이미지 업데이트 (하이브리드 로직 - 안전장치 강화)
+    // 3. 이미지 업데이트 (심플 버전: 그냥 이미지만 보여줌)
     function updateRefImage() {
         const img = document.getElementById('ref-image');
         const loader = document.getElementById('ref-loading');
         
         img.style.opacity = '0'; 
         loader.style.display = 'block';
-        loader.innerText = isSketchMode ? "🎨 그림 찾는 중..." : "📷 사진 불러오는 중...";
+        loader.innerHTML = "🔍 이미지 찾는 중...";
         
-        // [핵심 1] 번역 시도
+        // 1. 번역 (한글 -> 영어)
         let engWord = WORD_TRANSLATION[currentRefKeyword];
 
-        // [핵심 2] 사전에 없는 단어일 경우 처리
+        // 2. 사전에 없으면 그냥 한글로 검색 시도
         if (!engWord) {
-            console.warn(`'${currentRefKeyword}' 단어가 번역 사전에 없습니다. 한글로 검색을 시도합니다.`);
-            // 한글이라도 보내보지만, 실패 확률이 높음. 
-            // (추후 사전을 보강하거나, 영어로 된 넌센스 힌트를 제공하는 것이 좋음)
             engWord = currentRefKeyword; 
         }
         
-        let url = "";
-        
-        // [핵심 3] 검색어 인코딩 및 태그 조합 최적화
-        // 쉼표(,) 대신 띄어쓰기나 다른 구분자를 써야 LoremFlickr가 더 잘 인식할 때도 있음
-        if (isSketchMode) {
-            // 그림 모드: 태그를 너무 많이 붙이면 오히려 검색 결과가 좁아져서 고양이가 나옴
-            // 핵심 태그 1~2개만 붙이는 게 유리함
-            const tags = encodeURIComponent(engWord) + ",sketch"; 
-            url = `https://loremflickr.com/400/240/${tags}?lock=${currentRefSeed}`;
-        } else {
-            // 실사 모드
-            url = `https://loremflickr.com/400/240/${encodeURIComponent(engWord)}?lock=${currentRefSeed}`;
-        }
+        // 3. URL 생성 (스케치 필터 제거 -> 그냥 랜덤 이미지)
+        // lock 파라미터는 화살표 넘길 때 다른 이미지를 보여주기 위한 고유번호입니다.
+        const url = `https://loremflickr.com/400/240/${encodeURIComponent(engWord)}?lock=${currentRefSeed}`;
 
         const newImg = new Image();
         newImg.src = url;
@@ -2294,7 +2305,6 @@ let isGameStarting = false; // 전역 플래그 추가
         };
         
         newImg.onerror = () => {
-            // 이미지 로드 자체가 실패했을 때 (404 등)
             loader.innerHTML = "❌ 이미지 없음<br><span style='font-size:0.8em'>단어 사전을 확인해주세요</span>";
         };
     }
