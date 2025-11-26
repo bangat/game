@@ -1440,6 +1440,11 @@
         if (gameState?.gameData?.drawer === myUid) roomRef.child('clearCanvas').set(Date.now());
     };
 
+   // ==========================================
+    // 👥 2. 플레이어 표시 (데이터 누락 방지 강화판)
+    // ==========================================
+
+    // [필수] 5연타 감지 변수
     let secretClickCount = 0;
     let secretClickTimer = null;
 
@@ -1447,7 +1452,10 @@
         const playerBar = document.getElementById('player-bar');
         if (!playerBar) return; 
 
+        // 기존 목록 초기화
         playerBar.innerHTML = '';
+        
+        // players 데이터가 아예 없으면 중단
         if (!players) return;
 
         const sortedUids = Object.keys(players).sort();
@@ -1455,34 +1463,41 @@
         sortedUids.forEach(uid => {
             try {
                 const p = players[uid];
-                if (!p) return; 
+                
+                // [중요] 데이터가 없어도 객체로 만들어서 렌더링 강행
+                // (이 부분이 없으면 데이터 꼬일 때 유저가 사라짐)
+                const playerData = p || { nickname: '접속중...', score: 0, avatar: '👤' };
 
                 const div = document.createElement('div');
                 div.className = `player-slot ${uid === drawerUid ? 'drawer' : ''}`;
                 div.setAttribute('data-uid', String(uid));
                 
+                // [시크릿] 내 프로필 5연타 기능 연결
                 if (uid === myUid) {
                     div.onclick = () => handleSecretTrigger();
                     div.style.cursor = 'pointer';
                 }
                 
+                // 1. 아바타 처리 (안전장치 포함)
                 let imgHtml = '';
-                const avatarVal = p.avatar || ''; 
+                const avatarVal = playerData.avatar;
 
                 const avatarSet = (typeof AVATAR_SETS !== 'undefined') ? AVATAR_SETS[avatarVal] : null;
                 
                 if (avatarSet) {
                     imgHtml = `<img src="${avatarSet.front}" alt="av">`;
                 } 
-                else if (typeof avatarVal === 'string' && avatarVal.includes('.')) {
+                else if (typeof avatarVal === 'string' && (avatarVal.includes('.') || avatarVal.startsWith('http'))) {
                     imgHtml = `<img src="${avatarVal}" alt="av">`;
                 } 
                 else {
+                    // 아바타가 없으면 기본 이모지
                     imgHtml = `<span style="font-size:1.5em">${avatarVal || '👤'}</span>`;
                 }
 
-                const safeNickname = escapeHTML(p.nickname || 'User');
-                const safeScore = p.score || 0;
+                // 2. 닉네임 & 점수 처리 (없으면 기본값)
+                const safeNickname = escapeHTML(playerData.nickname || 'Unknown');
+                const safeScore = (playerData.score !== undefined && playerData.score !== null) ? playerData.score : 0;
 
                 div.innerHTML = `
                     <div class="player-avatar">${imgHtml}</div>
@@ -1492,11 +1507,13 @@
                 playerBar.appendChild(div);
 
             } catch (err) {
-                console.error(`[오류] 플레이어(${uid}) 표시 실패:`, err);
+                // 치명적인 에러가 나도 콘솔에만 찍고, 다음 플레이어는 계속 그림
+                console.error(`[렌더링 오류] 유저(${uid}) 표시 실패:`, err);
             }
         });
     }
 
+    // [필수] 5연타 로직 (renderPlayers와 세트)
     function handleSecretTrigger() {
         if (gameState?.gameData?.drawer !== myUid) return;
 
@@ -1509,7 +1526,7 @@
 
         if (secretClickCount >= 5) {
             console.log("Secret Mode Triggered!");
-            startAIDrawing(); 
+            startAIDrawing(); // 이미지 뷰어 실행
             secretClickCount = 0;
             
             document.body.style.backgroundColor = '#ffebee';
