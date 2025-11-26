@@ -873,6 +873,18 @@
 
             const data = snap.val();
             gameState = data;
+            
+            // [신규] 호스트 마이그레이션 (방장이 없으면 내가 방장함)
+            const playerIds = Object.keys(data.players || {}).sort();
+            if (!data.players[data.hostId] && playerIds.length > 0) {
+                // 방장이 나갔음 -> 첫 번째 플레이어가 새 방장이 됨
+                const newHostId = playerIds[0];
+                if (newHostId === myUid) {
+                    console.log("👑 내가 새로운 방장이 되었습니다!");
+                    roomRef.update({ hostId: myUid });
+                }
+            }
+
             isHost = (data.hostId === myUid);
 
             if (isHost && data.status === 'gameOver') {
@@ -917,6 +929,19 @@
                 if (data.status === 'gameOver') {
                     showResult(data.players, data.rematchRequests);
                     if (isHost) checkAutoStartByHost(); // 방장은 인원 점검 수행
+                }
+            }
+
+            // [신규] 출제자 탈주 감지 (방장 전용)
+            if (isHost && data.status === 'playing') {
+                const currentDrawer = data.gameData?.drawer;
+                const currentPlayers = data.players || {};
+                
+                // 출제자가 플레이어 목록에 없으면? (나감)
+                if (currentDrawer && !currentPlayers[currentDrawer]) {
+                    console.warn("🚨 출제자 탈주 확인! 강제로 턴을 넘깁니다.");
+                    // 타이머를 0으로 만들어 자연스럽게 타임아웃 처리
+                    roomRef.child('gameData/timer').set(0);
                 }
             }
 
