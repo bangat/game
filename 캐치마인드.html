@@ -989,34 +989,50 @@
         let lastPlayersJson = ''; 
 
         roomRef.on('value', snap => {
-            if (isExiting) return;
+            if (isExiting) return; // 이미 나가는 중이면 무시
+            
             if (!snap.exists()) { 
-                alert('방이 사라졌습니다.'); 
+                // 방 자체가 사라짐
+                if (!gameOverOverlay.style.display || gameOverOverlay.style.display === 'none') {
+                    alert('방이 종료되었습니다.'); 
+                }
                 location.href = '대기실.html'; 
                 return; 
             }
 
             const data = snap.val();
+
+            // [핵심] 내가 '고스트'가 되었는지 확인 (데이터에서 내 이름이 사라졌는지 체크)
+            if (!data.players || !data.players[myUid]) {
+                // 나는 방에 있다고 생각하는데, 서버 명단에는 내가 없음 -> 팅긴 상태
+                console.warn("서버 데이터에서 플레이어 정보가 사라졌습니다. (고스트 현상 방지)");
+                alert("네트워크 불안정으로 접속이 종료되었습니다.");
+                location.href = '대기실.html'; // 대기실로 강제 이동
+                return;
+            }
+
             gameState = data;
             
+            // [호스트 마이그레이션] 방장이 팅기면 다음 사람이 방장 이어받기
             const playerIds = Object.keys(data.players || {}).sort();
             if (!data.players[data.hostId] && playerIds.length > 0) {
                 const newHostId = playerIds[0];
                 if (newHostId === myUid) {
-                    console.log("👑 내가 새로운 방장이 되었습니다!");
+                    console.log("👑 방장이 떠나 내가 새로운 방장이 되었습니다!");
                     roomRef.update({ hostId: myUid });
                 }
             }
 
             isHost = (data.hostId === myUid);
 
+            // [게임 종료 처리]
             if (isHost && data.status === 'gameOver') {
                 const players = data.players || {};
                 const reqs = data.rematchRequests || {};
-                const playerIds = Object.keys(players);
                 const allReady = playerIds.length > 0 && playerIds.every(uid => reqs[uid] === true);
 
                 if (allReady) {
+                    // 전원 준비 완료 시 재시작
                     const updates = {};
                     updates['status'] = 'waiting';
                     updates['starting'] = true; 
@@ -1036,6 +1052,7 @@
                 }
             }
 
+            // [방장 전용] 데이터 초기화 (게임 데이터가 깨졌을 때 복구)
             if (isHost && !data.gameData && data.status !== 'gameOver') {
                 roomRef.update({
                     status: 'waiting',
@@ -1043,17 +1060,20 @@
                 });
             }
 
+            // [플레이어 목록 렌더링] (변경사항이 있을 때만)
             const currentPlayersJson = JSON.stringify(data.players) + (data.gameData?.drawer || '');
             if (lastPlayersJson !== currentPlayersJson) {
                 renderPlayers(data.players, data.gameData?.drawer);
                 lastPlayersJson = currentPlayersJson;
 
+                // 결과창 갱신
                 if (data.status === 'gameOver') {
                     showResult(data.players, data.rematchRequests);
                     if (isHost) checkAutoStartByHost();
                 }
             }
 
+            // [출제자 탈주 감지] 게임 중인데 출제자가 목록에 없으면 패스
             if (isHost && data.status === 'playing') {
                 const currentDrawer = data.gameData?.drawer;
                 const currentPlayers = data.players || {};
@@ -1064,6 +1084,7 @@
                 }
             }
 
+            // UI 및 상태 처리
             handleGameState(data);
         });
 
