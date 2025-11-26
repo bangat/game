@@ -745,6 +745,8 @@
     let lastDrawerUid = null;
     let isCountdownInProgress = false;
 
+    // [수정 1] 출제자 실종 시간 체크용 변수 추가
+    let drawerMissingSince = null;
     // [최종] 제시어 리스트 (600개 이상)
     const WORDS = [
         "강아지", "고양이", "토끼", "병아리", "오리", "돼지", "소", "양", "말", "사자",
@@ -1098,14 +1100,31 @@
                 }
             }
 
-            // [출제자 탈주 감지]
+            // [수정 2] 출제자 탈주 감지 (유예 시간 4초 적용)
             if (isHost && data.status === 'playing') {
                 const currentDrawer = data.gameData?.drawer;
                 const currentPlayers = data.players || {};
                 
+                // 출제자가 플레이어 목록에 없는 경우
                 if (currentDrawer && !currentPlayers[currentDrawer]) {
-                    console.warn("🚨 출제자 탈주 확인! 강제로 턴을 넘깁니다.");
-                    roomRef.child('gameData/timer').set(0);
+                    if (!drawerMissingSince) {
+                        // 최초 감지 시 시간 기록
+                        drawerMissingSince = Date.now();
+                        console.log("⚠️ 출제자 실종 감지... 재접속 대기 중");
+                    } else {
+                        // 4초 이상 돌아오지 않으면 턴 넘기기
+                        if (Date.now() - drawerMissingSince > 4000) {
+                            console.warn("🚨 출제자 탈주 확정 (4초 경과)! 강제로 턴을 넘깁니다.");
+                            roomRef.child('gameData/timer').set(0);
+                            drawerMissingSince = null; // 초기화
+                        }
+                    }
+                } else {
+                    // 출제자가 존재하면 (혹은 복귀했으면) 타이머 초기화
+                    if (drawerMissingSince) {
+                        console.log("✅ 출제자 복귀 확인!");
+                        drawerMissingSince = null;
+                    }
                 }
             }
 
@@ -1497,12 +1516,16 @@
         const playerBar = document.getElementById('player-bar');
         if (!playerBar) return; 
 
-        // 기존 목록 초기화
+        // [수정 핵심] players 데이터가 없거나 비어있으면
+        // 화면을 지우지(innerHTML = '') 않고 그냥 리턴해서 기존 화면을 유지함
+        if (!players || Object.keys(players).length === 0) {
+            console.warn("⚠️ 플레이어 데이터 없음 - 화면 갱신 건너뜀 (깜빡임 방지)");
+            return; 
+        }
+
+        // [수정] 데이터가 확실히 있을 때만 기존 목록 초기화
         playerBar.innerHTML = '';
         
-        // players 데이터가 아예 없으면 중단
-        if (!players) return;
-
         const sortedUids = Object.keys(players).sort();
 
         sortedUids.forEach(uid => {
