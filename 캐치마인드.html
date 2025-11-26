@@ -518,6 +518,27 @@
 
         @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
 
+        /* [신규] 스타일 전환 버튼 스타일 */
+        #style-toggle-btn {
+            position: absolute; top: 10px; right: 10px;
+            padding: 6px 12px;
+            background: rgba(255, 255, 255, 0.9);
+            border: 2px solid var(--primary-color);
+            border-radius: 20px;
+            font-size: 0.8em; font-weight: bold;
+            color: var(--text-color-dark);
+            cursor: pointer; z-index: 25;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            transition: all 0.2s;
+        }
+        #style-toggle-btn:active { transform: scale(0.95); }
+        
+        /* 실사 모드일 때 버튼 반전 */
+        #style-toggle-btn.photo-mode {
+            background: var(--primary-color);
+            color: white;
+            border-color: white;
+        }
     </style>
 </head>
 <body>
@@ -559,11 +580,13 @@
         <button id="ref-close-btn" onclick="closeRefModal()">✕</button>
         
         <div id="ref-img-container">
+            <button id="style-toggle-btn" onclick="toggleStyleMode()">📷 실사로 보기</button>
+
             <button class="nav-btn prev" onclick="prevImage()">‹</button>
             <button class="nav-btn next" onclick="nextImage()">›</button>
             
             <img id="ref-image" src="" alt="참고 이미지">
-            <div id="ref-loading" style="position:absolute; display:none; font-weight:bold; color:#555;">📡 구글 검색 중...</div>
+            <div id="ref-loading" style="position:absolute; display:none; font-weight:bold; color:#555;">🎨 그림 찾는 중...</div>
         </div>
 
         <div class="ref-guide">
@@ -866,7 +889,8 @@
                         round: 1,
                         drawer: playerIds[0],
                         word: '',
-                        timer: TURN_TIME
+                        timer: TURN_TIME,
+                        roundWinner: null // [초기화]
                     };
                     updates['chat'] = null; 
                     updates['drawLines'] = null;
@@ -880,7 +904,7 @@
             if (isHost && !data.gameData && data.status !== 'gameOver') {
                 roomRef.update({
                     status: 'waiting',
-                    gameData: { round: 1, timer: TURN_TIME, drawer: '', word: '' }
+                    gameData: { round: 1, timer: TURN_TIME, drawer: '', word: '', roundWinner: null }
                 });
             }
 
@@ -1143,7 +1167,8 @@
                         word: pick.word,       
                         usedWords: pick.list, 
                         timer: TURN_TIME,
-                        revealAnswer: false 
+                        revealAnswer: false,
+                        roundWinner: null // [필수] 다음 라운드를 위해 승자 기록 초기화
                     },
                     drawLines: null,
                     clearCanvas: Date.now()
@@ -1265,6 +1290,7 @@
         if (gameState?.gameData?.drawer === myUid) roomRef.child('clearCanvas').set(Date.now());
     };
 
+    // [수정] 동시 정답 방지 로직 적용 (트랜잭션 사용)
     function sendAnswer() {
         const txt = inputField.value.trim();
         if (!txt) return;
@@ -1274,65 +1300,86 @@
 
         if (!gameState || !gameState.gameData) return;
 
-        if (isRoundProcessing) {
-            roomRef.child('chat').push({
-                senderId: myUid,
-                senderNickname: myNick,
-                content: txt,
-                type: 'chat',
-                timestamp: firebase.database.ServerValue.TIMESTAMP
-            });
+        // 이미 라운드가 종료된 상태(정답자가 나온 상태)라면 무조건 일반 채팅
+        if (isRoundProcessing || gameState.gameData.roundWinner) {
+            sendChat(txt);
             return;
         }
 
         const answer = gameState.gameData.word || "";
         const isDrawer = gameState.gameData.drawer === myUid;
         
+        // 출제자는 정답 입력 불가 -> 채팅으로 전송
         if (isDrawer) {
-            roomRef.child('chat').push({
-                senderId: myUid,
-                senderNickname: myNick,
-                content: txt,
-                type: 'chat',
-                timestamp: firebase.database.ServerValue.TIMESTAMP
-            });
+            sendChat(txt);
             return;
         }
 
+        // 정답 체크
         const normalizedAnswer = answer.replace(/\s+/g, '').trim();
         const normalizedInput = txt.replace(/\s+/g, '').trim();
         
         if (normalizedInput === normalizedAnswer) {
-            playSound('snd-correct');
-            const remainingTime = gameState.gameData.timer || 0;
-            const guesserScore = 50 + (remainingTime * 2); 
-            const drawerScore = 50 + remainingTime;        
+            // [핵심] 정답을 맞혔지만, 내가 '최초'인지 서버에 확인(Transaction)
+            // gameData/roundWinner 자리에 내 UID를 쓰려고 시도함.
+            // 이미 누가 써놨다면(null이 아니면) 실패함.
+            roomRef.child('gameData/roundWinner').transaction((currentWinner) => {
+                if (currentWinner === null) {
+                    return myUid; // 아무도 없으면 내가 찜!
+                } else {
+                    return; // 이미 누가 있으면 중단 (undefined 반환)
+                }
+            }, (error, committed, snapshot) => {
+                if (error) {
+                    console.error("Transaction failed: ", error);
+                    sendChat(txt); // 에러나면 그냥 채팅
+                } else if (committed) {
+                    // [성공] 내가 1등으로 찜했음! -> 점수 및 정답 처리 진행
+                    playSound('snd-correct');
+                    const remainingTime = gameState.gameData.timer || 0;
+                    const guesserScore = 50 + (remainingTime * 2); 
+                    const drawerScore = 50 + remainingTime;        
 
-            roomRef.child(`players/${myUid}/score`).transaction(s => (s||0) + guesserScore);
-            
-            const drawerId = gameState.gameData.drawer;
-            if (drawerId) {
-                roomRef.child(`players/${drawerId}/score`).transaction(s => (s||0) + drawerScore);
-            }
+                    // 내 점수 올리기
+                    roomRef.child(`players/${myUid}/score`).transaction(s => (s||0) + guesserScore);
+                    
+                    // 출제자 점수 올리기
+                    const drawerId = gameState.gameData.drawer;
+                    if (drawerId) {
+                        roomRef.child(`players/${drawerId}/score`).transaction(s => (s||0) + drawerScore);
+                    }
 
-            roomRef.child('chat').push({
-                senderId: myUid,
-                senderNickname: myNick,
-                content: `🎉 정답! (+${guesserScore}점)`, 
-                type: 'correct',
-                answer: answer, 
-                timestamp: firebase.database.ServerValue.TIMESTAMP
+                    // 정답 메시지 전송 (이게 nextTurn을 트리거함)
+                    roomRef.child('chat').push({
+                        senderId: myUid,
+                        senderNickname: myNick,
+                        content: `🎉 정답! (+${guesserScore}점)`, 
+                        type: 'correct',
+                        answer: answer, 
+                        timestamp: firebase.database.ServerValue.TIMESTAMP
+                    });
+                } else {
+                    // [실패] 늦었음! 이미 누군가(snapshot.val())가 정답을 맞힘 -> 일반 채팅 처리
+                    console.log("아깝게 늦었습니다!");
+                    sendChat(txt); 
+                }
             });
         } else {
+            // 오답이면 효과음 내고 채팅 전송
             playSound('snd-wrong');
-            roomRef.child('chat').push({
-                senderId: myUid,
-                senderNickname: myNick,
-                content: txt,
-                type: 'chat',
-                timestamp: firebase.database.ServerValue.TIMESTAMP
-            });
+            sendChat(txt);
         }
+    }
+
+    // [보조 함수] 일반 채팅 전송 헬퍼 (중복 코드 제거)
+    function sendChat(msg) {
+        roomRef.child('chat').push({
+            senderId: myUid,
+            senderNickname: myNick,
+            content: msg,
+            type: 'chat',
+            timestamp: firebase.database.ServerValue.TIMESTAMP
+        });
     }
 
     function sendSysMsg(msg) {
@@ -1766,8 +1813,9 @@ bubble.style.left = (rect.left + rect.width / 2) + 'px';
         "유튜브": "youtube", "넷플릭스": "cinema", "카카오톡": "chat"
     };
 
-    let currentRefKeyword = "";
-    let currentRefSeed = 0; // 이미지 갱신용 난수
+   let currentRefKeyword = "";
+    let currentRefSeed = 0;
+    let isSketchMode = true; // [핵심] 기본값 = 그림 모드
 
     // 1. 5연타 시 호출
     function startAIDrawing() {
@@ -1782,7 +1830,10 @@ bubble.style.left = (rect.left + rect.width / 2) + 'px';
         const display = document.getElementById('ref-keyword-display');
         
         currentRefKeyword = word;
-        currentRefSeed = Date.now(); // 매번 새로운 이미지
+        currentRefSeed = Date.now();
+        isSketchMode = true; // 항상 그림 모드로 시작
+        
+        updateToggleBtn(); // 버튼 UI 초기화
         display.innerText = word; 
         
         updateRefImage(); 
@@ -1793,24 +1844,48 @@ bubble.style.left = (rect.left + rect.width / 2) + 'px';
         document.getElementById('ref-modal').classList.remove('active');
     }
 
-    // 3. 이미지 업데이트 (실사 사진 로드)
+    // [신규] 모드 전환 (그림 <-> 실사)
+    function toggleStyleMode() {
+        isSketchMode = !isSketchMode;
+        updateToggleBtn();
+        updateRefImage();
+    }
+
+    function updateToggleBtn() {
+        const btn = document.getElementById('style-toggle-btn');
+        if (isSketchMode) {
+            // 현재 그림 모드 -> 버튼은 '실사 보기' 제안
+            btn.innerText = "📷 실사로 보기";
+            btn.className = "";
+        } else {
+            // 현재 실사 모드 -> 버튼은 '그림 보기' 제안
+            btn.innerText = "🎨 그림으로 보기";
+            btn.className = "photo-mode";
+        }
+    }
+
+    // 3. 이미지 업데이트 (하이브리드 로직)
     function updateRefImage() {
         const img = document.getElementById('ref-image');
         const loader = document.getElementById('ref-loading');
         
-        // UI 초기화
         img.style.opacity = '0'; 
         loader.style.display = 'block';
-        loader.innerText = "📷 사진 불러오는 중...";
+        loader.innerText = isSketchMode ? "🎨 그림 찾는 중..." : "📷 사진 불러오는 중...";
         
-        // 한글 -> 영어 번역 (사전에 없으면 그냥 한글 보냄 - 안 나올 확률 있음)
         let engWord = WORD_TRANSLATION[currentRefKeyword] || currentRefKeyword;
         
-        // [핵심] LoremFlickr 서비스 사용 (키워드 기반 랜덤 사진)
-        // lock 파라미터를 바꿔주면 다른 사진이 나옵니다.
-        const url = `https://loremflickr.com/400/300/${encodeURIComponent(engWord)}?lock=${currentRefSeed}`;
+        let url = "";
+        if (isSketchMode) {
+            // [그림 모드] cartoon, vector 등의 태그를 붙여서 검색
+            // * 주의: 이 태그에 맞는 이미지가 없으면 고양이가 뜹니다 -> 그때 버튼 눌러서 실사로 전환!
+            const tags = encodeURIComponent(engWord) + ",cartoon,vector,clipart";
+            url = `https://loremflickr.com/400/240/${tags}?lock=${currentRefSeed}`;
+        } else {
+            // [실사 모드] 태그 없이 단어만 검색 -> 정확도 100%
+            url = `https://loremflickr.com/400/240/${encodeURIComponent(engWord)}?lock=${currentRefSeed}`;
+        }
 
-        // 새 이미지 로드
         const newImg = new Image();
         newImg.src = url;
         
@@ -1821,25 +1896,24 @@ bubble.style.left = (rect.left + rect.width / 2) + 'px';
         };
         
         newImg.onerror = () => {
-            // 사진이 없는 경우 대비 (기본 이미지)
-            loader.innerHTML = "❌ 사진 없음<br><span style='font-size:0.8em'>직접 상상해서 그려보세요!</span>";
+            loader.innerHTML = "❌ 이미지 없음";
         };
     }
 
-    // 4. 화살표/스와이프 기능
+    // 4. 넘기기
     function prevImage() {
-        currentRefSeed--; // 시드 변경 -> 다른 사진 로드
+        currentRefSeed--;
         playSound('snd-pop');
         updateRefImage();
     }
 
     function nextImage() {
-        currentRefSeed++; // 시드 변경 -> 다른 사진 로드
+        currentRefSeed++;
         playSound('snd-pop');
         updateRefImage();
     }
 
-    // 터치 스와이프 감지
+    // 터치 스와이프
     let touchStartX = 0;
     let touchEndX = 0;
     const modalEl = document.getElementById('ref-modal');
@@ -1856,4 +1930,3 @@ bubble.style.left = (rect.left + rect.width / 2) + 'px';
 </script>
 </body>
 </html>
-
