@@ -539,6 +539,45 @@
             color: white;
             border-color: white;
         }
+      /* [수정] 펜 굵기 팝업 (가로 배치 + 위치 고정) */
+    #pen-popup {
+        display: none; /* 기본 숨김 */
+        position: absolute;
+        bottom: 60px; /* 버튼 위에 띄움 */
+        left: 50%;
+        transform: translateX(-50%); /* 좌우 중앙 정렬 */
+        background: rgba(255, 255, 255, 0.98);
+        border: 2px solid var(--text-color-dark);
+        border-radius: 20px; /* 알약 모양 */
+        padding: 10px 15px;
+        gap: 12px; /* 버튼 간격 */
+        
+        /* [핵심 1] 가로(Row) 배치로 변경 */
+        flex-direction: row; 
+        align-items: center;
+        
+        box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+        z-index: 102;
+        
+        /* [핵심 2] 전용 애니메이션 적용 (위치 튐 방지) */
+        animation: popInPen 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+    
+    #pen-popup.active { display: flex; }
+    
+    /* 말풍선 꼬리 */
+    #pen-popup::after {
+        content: ''; position: absolute; bottom: -8px; left: 50%; margin-left: -8px;
+        border-width: 8px 8px 0; border-style: solid;
+        border-color: var(--text-color-dark) transparent transparent transparent;
+    }
+
+    /* [신규] 펜 팝업 전용 등장 애니메이션 */
+    /* 기존 popIn과 달리, translateX(-50%)를 유지해서 위치가 튀지 않게 함 */
+    @keyframes popInPen {
+        from { opacity: 0; transform: translateX(-50%) scale(0.5) translateY(10px); }
+        to { opacity: 1; transform: translateX(-50%) scale(1) translateY(0); }
+    }
     </style>
 </head>
 <body>
@@ -567,6 +606,22 @@
 
         <div style="width:1px; height:20px; background:#ccc; margin:0 5px; flex-shrink:0;"></div>
         
+        <div style="position: relative;">
+            <div class="palette-btn" id="pen-tool-btn" onclick="togglePenPopup()" style="font-size:1.2em;">🖊️</div>
+            
+            <div id="pen-popup">
+                <div class="palette-btn" onclick="selectPenWidth(3, this)" title="얇게">
+                    <div style="width:4px; height:4px; background:black; border-radius:50%;"></div>
+                </div>
+                <div class="palette-btn" onclick="selectPenWidth(8, this)" title="중간">
+                    <div style="width:8px; height:8px; background:black; border-radius:50%;"></div>
+                </div>
+                <div class="palette-btn" onclick="selectPenWidth(16, this)" title="굵게">
+                    <div style="width:14px; height:14px; background:black; border-radius:50%;"></div>
+                </div>
+            </div>
+        </div>
+
         <div class="palette-btn" onclick="setColor('white', this, 20)" style="font-size:1.2em;">🧽</div>
         <div class="palette-btn" onclick="clearCanvas()" style="color:var(--danger-color); font-size:1.2em;">🗑️</div>
 
@@ -1400,6 +1455,36 @@
         if (gameState?.gameData?.drawer === myUid) roomRef.child('clearCanvas').set(Date.now());
     };
 
+    // [신규] 펜 팝업 토글
+    window.togglePenPopup = () => {
+        const popup = document.getElementById('pen-popup');
+        // 다른 팝업이 열려있다면 닫기 (선택사항)
+        if(document.getElementById('color-popup')) document.getElementById('color-popup').classList.remove('active');
+        
+        popup.classList.toggle('active');
+    };
+
+    // [신규] 굵기 선택 함수
+    window.selectPenWidth = (width, btn) => {
+        currentWidth = width; // 굵기 적용
+        
+        // 만약 현재 지우개 모드였다면, 검은색(또는 이전 색)으로 돌려놓기
+        if (currentColor === 'white') {
+            currentColor = 'black'; 
+            // 색상 버튼 UI 초기화 (검은색 활성화)
+            document.querySelectorAll('.color-circle').forEach(b => b.classList.remove('active'));
+            const blackBtn = document.querySelector('.color-circle[style*="black"]');
+            if(blackBtn) blackBtn.classList.add('active');
+        }
+
+        // 펜 버튼 활성화 표시
+        document.querySelectorAll('.palette-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById('pen-tool-btn').classList.add('active');
+
+        // 팝업 닫기
+        document.getElementById('pen-popup').classList.remove('active');
+    };
+
     // [수정] 동시 정답 방지 로직 적용 (트랜잭션 사용)
     function sendAnswer() {
         const txt = inputField.value.trim();
@@ -1860,17 +1945,21 @@ bubble.style.left = (rect.left + rect.width / 2) + 'px';
         document.getElementById('color-popup').classList.remove('active');
     };
     
-    // [추가 수정] 기존 setColor 함수도 약간 수정하여 무지개 버튼 스타일 초기화
+    // [최종 수정] setColor 함수 (무지개 초기화 + 펜 팝업 닫기 기능 추가)
     const originalSetColor = window.setColor;
     window.setColor = (color, btn, width = 3) => {
         originalSetColor(color, btn, width);
         
-        // 만약 기본 5색이나 지우개를 눌렀다면, 무지개 버튼의 색상을 원래대로(흰색) 복구
+        // 1. 무지개 버튼 초기화 로직
         const rainbowBtn = document.getElementById('rainbow-btn');
         if (btn !== rainbowBtn && rainbowBtn) {
             rainbowBtn.style.background = 'white';
             rainbowBtn.style.borderColor = '#ccc';
         }
+
+        // [핵심] 색깔을 고르면 '펜 굵기 설정창'은 자동으로 닫기 (안 겹치게)
+        const penPopup = document.getElementById('pen-popup');
+        if(penPopup) penPopup.classList.remove('active');
     };
 
 
@@ -1879,48 +1968,219 @@ bubble.style.left = (rect.left + rect.width / 2) + 'px';
     // ==========================================
 
     // [핵심] 한글 -> 영어 번역 (이 서비스는 영어 태그만 인식합니다)
+    // [핵심] 한글 제시어 -> 영어 번역 사전 (최신 업데이트 완료)
     const WORD_TRANSLATION = {
-        // 동물
-        "강아지": "puppy", "고양이": "cat", "토끼": "rabbit", "병아리": "chick", 
-        "오리": "duck", "돼지": "pig", "소": "cow", "양": "sheep", "말": "horse", 
-        "사자": "lion", "호랑이": "tiger", "코끼리": "elephant", "기린": "giraffe", 
-        "원숭이": "monkey", "팬더": "panda", "펭귄": "penguin", "북극곰": "polarbear", 
-        "다람쥐": "squirrel", "고래": "whale", "상어": "shark", "거북이": "turtle", 
-        "개구리": "frog", "뱀": "snake", "문어": "octopus", "오징어": "squid", 
-        "물고기": "fish", "게": "crab", "새우": "shrimp", "하마": "hippo", 
-        "악어": "crocodile", "공룡": "dinosaur", "박쥐": "bat", "나비": "butterfly", 
-        "꿀벌": "bee", "거미": "spider", "달팽이": "snail", "여우": "fox", 
-        "곰": "bear", "사슴": "deer", "낙타": "camel", "캥거루": "kangaroo", 
-        "코알라": "koala", "두더지": "mole", "고슴도치": "hedgehog", "수달": "otter", 
-        "물개": "seal", "해파리": "jellyfish", "불가사리": "starfish", "카멜레온": "chameleon", 
-        "타조": "ostrich", "독수리": "eagle", "부엉이": "owl", "앵무새": "parrot", 
-        "공작새": "peacock", "똥": "poop",
-        
-        // 음식
-        "사과": "apple", "바나나": "banana", "포도": "grapes", "수박": "watermelon", 
-        "딸기": "strawberry", "복숭아": "peach", "파인애플": "pineapple", "당근": "carrot",
-        "옥수수": "corn", "피자": "pizza", "햄버거": "hamburger", "치킨": "friedchicken", 
-        "감자튀김": "fries", "핫도그": "hotdog", "샌드위치": "sandwich", "김밥": "sushi", 
-        "라면": "ramen", "만두": "dumpling", "떡볶이": "koreanfood", "도넛": "donut", 
-        "케이크": "cake", "사탕": "candy", "초콜릿": "chocolate", "우유": "milk", 
-        "아이스크림": "icecream", "빵": "bread", "커피": "coffee", "맥주": "beer",
+        // [동물/곤충]
+        "강아지": "puppy", "고양이": "cat", "토끼": "rabbit", "병아리": "chick", "오리": "duck", 
+        "돼지": "pig", "소": "cow", "양": "sheep", "말": "horse", "사자": "lion",
+        "호랑이": "tiger", "코끼리": "elephant", "기린": "giraffe", "원숭이": "monkey", "팬더": "panda", 
+        "펭귄": "penguin", "북극곰": "polarbear", "다람쥐": "squirrel", "고래": "whale", "상어": "shark",
+        "거북이": "turtle", "개구리": "frog", "뱀": "snake", "문어": "octopus", "오징어": "squid", 
+        "물고기": "fish", "게": "crab", "새우": "shrimp", "하마": "hippo", "악어": "crocodile",
+        "공룡": "dinosaur", "박쥐": "bat", "나비": "butterfly", "꿀벌": "bee", "거미": "spider", 
+        "달팽이": "snail", "잠자리": "dragonfly", "무당벌레": "ladybug", "개미": "ant", "파리": "fly insect", 
+        "모기": "mosquito", "바퀴벌레": "cockroach", "지렁이": "earthworm", "전갈": "scorpion", "사마귀": "mantis", 
+        "메뚜기": "grasshopper", "여우": "fox", "늑대": "wolf", "곰": "bear", "사슴": "deer", 
+        "낙타": "camel", "캥거루": "kangaroo", "코알라": "koala", "두더지": "mole", "고슴도치": "hedgehog", 
+        "수달": "otter", "물개": "seal", "해파리": "jellyfish", "불가사리": "starfish", "카멜레온": "chameleon", 
+        "타조": "ostrich", "독수리": "eagle", "부엉이": "owl", "참새": "sparrow", "비둘기": "pigeon", 
+        "까치": "magpie", "앵무새": "parrot", "공작새": "peacock", "미어캣": "meerkat", "나무늘보": "sloth",
+        "알파카": "alpaca", "치타": "cheetah", "하이에나": "hyena", "코뿔소": "rhinoceros", "직박구리": "bird", 
+        "장수풍뎅이": "beetle", "사슴벌레": "stag beetle", "하루살이": "mayfly", "가오리": "stingray", "복어": "pufferfish",
+        "멸치": "anchovy", "고등어": "mackerel", "갈치": "hairtail fish", "해마": "seahorse", "불독": "bulldog", 
+        "푸들": "poodle", "비글": "beagle", "치와와": "chihuahua", "시베리안허스키": "husky", "웰시코기": "corgi",
+        "햄스터": "hamster", "기니피그": "guinea pig", "청설모": "squirrel", "오소리": "badger", "너구리": "raccoon", 
+        "족제비": "weasel", "스컹크": "skunk", "반딧불이": "firefly", "돈벌레": "centipede", "곱등이": "cricket",
 
-        // 사물/탈것
-        "텔레비전": "tv", "냉장고": "fridge", "세탁기": "washingmachine", 
-        "선풍기": "fan", "청소기": "vacuum", "컴퓨터": "computer", 
-        "휴대폰": "smartphone", "카메라": "camera", "시계": "clock", "침대": "bed",
-        "우산": "umbrella", "안경": "glasses", "모자": "hat", "신발": "shoes", 
-        "가방": "backpack", "자동차": "car", "버스": "bus", "택시": "taxi", 
-        "경찰차": "policecar", "소방차": "firetruck", "구급차": "ambulance", 
-        "트럭": "truck", "자전거": "bicycle", "오토바이": "motorcycle", "기차": "train", 
-        "비행기": "airplane", "헬리콥터": "helicopter", "배": "ship", "로켓": "rocket", 
-        "UFO": "ufo", "유모차": "stroller", "휠체어": "wheelchair",
+        // [음식]
+        "사과": "apple", "바나나": "banana", "포도": "grapes", "수박": "watermelon", "딸기": "strawberry", 
+        "복숭아": "peach", "귤": "tangerine", "파인애플": "pineapple", "체리": "cherry", "당근": "carrot",
+        "옥수수": "corn", "오이": "cucumber", "고추": "chili pepper", "호박": "pumpkin", "버섯": "mushroom", 
+        "브로콜리": "broccoli", "피자": "pizza", "햄버거": "hamburger", "치킨": "fried chicken", "감자튀김": "french fries",
+        "핫도그": "hotdog", "샌드위치": "sandwich", "김밥": "sushi roll", "라면": "ramen", "만두": "dumpling", 
+        "떡볶이": "spicy rice cake", "도넛": "donut", "케이크": "cake", "사탕": "candy", "초콜릿": "chocolate",
+        "우유": "milk", "주스": "juice", "콜라": "coke", "치즈": "cheese", "달걀": "egg", 
+        "빵": "bread", "밥": "rice bowl", "국수": "noodles", "물": "water glass", "조개": "clam",
+        "아이스크림": "ice cream", "팥빙수": "shaved ice", "붕어빵": "fish shaped pastry", "호떡": "pancake", "군고구마": "roasted sweet potato",
+        "순대": "sausage", "오뎅": "fish cake", "튀김": "fried food", "족발": "pork feet", "보쌈": "boiled pork",
+        "삼겹살": "pork belly", "갈비": "ribs", "스테이크": "steak", "스파게티": "spaghetti", "초밥": "sushi", 
+        "회": "sashimi", "비빔밥": "bibimbap", "김치": "kimchi", "된장찌개": "stew", "미역국": "soup",
+        "카레": "curry", "짜장면": "black bean noodles", "짬뽕": "spicy noodle soup", "탕수육": "sweet and sour pork", "팝콘": "popcorn", 
+        "시리얼": "cereal", "요거트": "yogurt", "커피": "coffee", "맥주": "beer", "소주": "soju",
+        "마라탕": "spicy soup", "탕후루": "candied fruit", "버블티": "bubble tea", "마카롱": "macaron", "크로플": "waffle", 
+        "소떡소떡": "sausage rice cake skewer", "닭꼬치": "chicken skewer", "양꼬치": "lamb skewer", "곱창": "intestines food", "대창": "intestines food",
+        "막창": "intestines food", "닭발": "chicken feet", "계란찜": "steamed egg", "순두부찌개": "tofu stew", "부대찌개": "sausage stew", 
+        "삼계탕": "chicken soup", "치즈볼": "cheese ball", "멘보샤": "shrimp toast", "꿔바로우": "pork cutlet", "양념치킨": "seasoned chicken",
+        "간장게장": "soy crab", "양념게장": "spicy crab", "산낙지": "live octopus", "육회": "beef tartare", "물냉면": "cold noodles", 
+        "비빔냉면": "spicy cold noodles", "칼국수": "noodle soup", "수제비": "dough soup", "잔치국수": "banquet noodles", "비빔국수": "spicy noodles",
+        "콩국수": "soy milk noodles", "메밀소바": "soba noodles", "우동": "udon", "쌀국수": "pho", "팟타이": "pad thai", 
+        "나시고랭": "fried rice", "타코": "taco", "부리또": "burrito", "감바스": "shrimp ajillo", "고르곤졸라": "pizza", 
+        "페퍼로니": "pepperoni pizza", "민트초코": "mint chocolate", "슈팅스타": "popping candy ice cream", "엄마는외계인": "chocolate ball ice cream", "솜사탕": "cotton candy", 
+        "달고나": "dalgona candy", "약과": "honey cookie", "식혜": "rice drink", "수정과": "cinnamon punch",
 
-        // 자연/기타
+        // [사물/도구]
+        "텔레비전": "tv", "냉장고": "refrigerator", "세탁기": "washing machine", "선풍기": "electric fan", "청소기": "vacuum cleaner", 
+        "컴퓨터": "computer", "휴대폰": "smartphone", "카메라": "camera", "시계": "clock", "침대": "bed",
+        "이불": "blanket", "베개": "pillow", "소파": "sofa", "의자": "chair", "책상": "desk", 
+        "거울": "mirror", "빗": "hair comb", "칫솔": "toothbrush", "치약": "toothpaste", "비누": "soap",
+        "수건": "towel", "휴지": "tissue", "컵": "cup", "숟가락": "spoon", "젓가락": "chopsticks", 
+        "그릇": "bowl", "냄비": "pot", "후라이팬": "frying pan", "칼": "knife", "도마": "cutting board",
+        "연필": "pencil", "지우개": "eraser", "가위": "scissors", "풀": "glue stick", "자": "ruler", 
+        "공책": "notebook", "책": "book", "가방": "backpack", "안경": "glasses", "모자": "hat", 
+        "신발": "shoes", "양말": "socks", "장갑": "gloves", "목도리": "scarf", "우산": "umbrella", 
+        "지갑": "wallet", "열쇠": "key", "리모컨": "remote control", "마우스": "mouse", "키보드": "keyboard",
+        "헤드폰": "headphones", "마이크": "microphone", "스피커": "speaker", "전구": "light bulb", "건전지": "battery", 
+        "충전기": "charger", "드라이기": "hair dryer", "다리미": "iron", "바늘": "needle", "실": "thread",
+        "단추": "button", "지퍼": "zipper", "옷걸이": "hanger", "휴지통": "trash can", "변기": "toilet", 
+        "욕조": "bathtub", "샤워기": "shower head", "세면대": "sink", "신호등": "traffic light", "소화기": "fire extinguisher",
+        "면봉": "cotton swab", "이쑤시개": "toothpick", "손톱깎이": "nail clipper", "효자손": "back scratcher", "파리채": "fly swatter", 
+        "모기향": "mosquito coil", "에프킬라": "insecticide spray", "보조배터리": "power bank", "셀카봉": "selfie stick", "삼각대": "tripod",
+        "텀블러": "tumbler", "빨대": "straw", "물티슈": "wet wipes", "마스크": "face mask", "손소독제": "hand sanitizer", 
+        "체온계": "thermometer", "청진기": "stethoscope", "주사기": "syringe", "휠체어": "wheelchair", "목발": "crutches",
+        "반창고": "band aid", "붕대": "bandage", "깁스": "cast", "링거": "iv drip", "인공호흡기": "respirator", 
+        "소화전": "fire hydrant", "CCTV": "security camera", "드론": "drone", "VR게임기": "vr headset", "닌텐도": "game console",
+        "노트북": "laptop", "태블릿": "tablet", "공유기": "router", "멀티탭": "power strip", "형광등": "fluorescent light", 
+        "샹들리에": "chandelier", "커튼": "curtain", "블라인드": "blinds", "카페트": "carpet", "러그": "rug",
+
+        // [신체/패션]
+        "눈": "eye", "코": "nose", "입": "mouth", "귀": "ear", "손": "hand", "발": "foot", 
+        "머리카락": "hair", "눈썹": "eyebrow", "속눈썹": "eyelashes", "쌍꺼풀": "double eyelid",
+        "보조개": "dimple", "주근깨": "freckles", "점": "mole spot", "수염": "beard", "배꼽": "belly button", 
+        "등": "back body", "엉덩이": "buttocks", "허벅지": "thigh", "종아리": "calf", "발가락": "toes",
+        "손가락": "fingers", "손톱": "fingernail", "발톱": "toenail", "심장": "heart organ", "뇌": "brain", 
+        "해골": "skull", "뼈": "bone", "근육": "muscle", "핏줄": "vein", "겨드랑이": "armpit",
+        "똥": "poop", "방귀": "fart", "트림": "burp", "하품": "yawn", "기침": "cough", 
+        "재채기": "sneeze", "딸꾹질": "hiccup", "코골이": "snore", "이갈이": "teeth grinding", "잠꼬대": "sleep talking",
+        "브라자": "bra", "팬티": "underwear", "스타킹": "stockings", "레깅스": "leggings", "청바지": "jeans", 
+        "반바지": "shorts", "치마": "skirt", "원피스": "dress", "셔츠": "shirt", "티셔츠": "t-shirt", 
+        "후드티": "hoodie", "맨투맨": "sweatshirt", "니트": "sweater", "가디건": "cardigan", "조끼": "vest", 
+        "패딩": "padded jacket", "코트": "coat", "잠옷": "pajamas", "수영복": "swimsuit", "비키니": "bikini", 
+        "래쉬가드": "rash guard", "넥타이": "necktie", "나비넥타이": "bow tie", "벨트": "belt", "멜빵": "suspenders", 
+        "귀걸이": "earrings", "목걸이": "necklace", "반지": "ring", "팔찌": "bracelet",
+
+        // [인물/직업]
+        "의사": "doctor", "간호사": "nurse", "경찰관": "police officer", "소방관": "firefighter", "선생님": "teacher", 
+        "학생": "student", "요리사": "chef", "화가": "painter", "가수": "singer", "배우": "actor",
+        "운동선수": "athlete", "과학자": "scientist", "우주인": "astronaut", "탐정": "detective", "도둑": "thief", 
+        "해적": "pirate", "왕": "king", "여왕": "queen", "공주": "princess", "왕자": "prince",
+        "천사": "angel", "악마": "devil", "귀신": "ghost", "마녀": "witch", "좀비": "zombie", 
+        "미라": "mummy", "드라큘라": "vampire", "로봇": "robot", "외계인": "alien", "산타클로스": "santa claus",
+        "대통령": "president", "군인": "soldier", "미용사": "hairdresser", "승무원": "flight attendant", "파일럿": "pilot", 
+        "농부": "farmer", "어부": "fisherman", "광대": "clown", "마술사": "magician", "조련사": "trainer",
+        "판사": "judge", "변호사": "lawyer", "기자": "journalist", "아나운서": "announcer", "성우": "voice actor", 
+        "감독": "director", "작가": "writer", "웹툰작가": "webtoon artist", "유튜버": "youtuber", "BJ": "streamer",
+        "아이돌": "kpop idol", "래퍼": "rapper", "댄서": "dancer", "모델": "model", "디자이너": "designer", 
+        "프로그래머": "programmer", "해커": "hacker", "게이머": "gamer", "건물주": "building owner", "백수": "unemployed",
+        "스파이더맨": "spiderman", "아이언맨": "ironman", "헐크": "hulk", "배트맨": "batman", "슈퍼맨": "superman", 
+        "피카츄": "pikachu", "라이츄": "raichu", "파이리": "charmander", "꼬부기": "squirtle", "도라에몽": "doraemon",
+        "짱구": "crayon shin chan", "장애인": "disabled person", "애자": "disabled person", "체스방": "chess room", 
+        "뽀로로": "pororo", "펭수": "pengsoo", "마리오": "mario", "소닉": "sonic", "미키마우스": "mickey mouse", 
+        "헬로키티": "hello kitty", "토토로": "totoro", "가오나시": "no face",
+
+        // [탈것/장소]
+        "자동차": "car", "버스": "bus", "택시": "taxi", "경찰차": "police car", "소방차": "fire truck", 
+        "구급차": "ambulance", "트럭": "truck", "포크레인": "excavator", "자전거": "bicycle", "오토바이": "motorcycle",
+        "기차": "train", "비행기": "airplane", "헬리콥터": "helicopter", "배": "ship", "잠수함": "submarine", 
+        "로켓": "rocket", "UFO": "ufo", "유모차": "stroller", "휠체어": "wheelchair", "스케이트보드": "skateboard",
+        "킥보드": "kickboard", "인라인스케이트": "inline skates", "롤러스케이트": "roller skates", "스키": "ski", "보드": "snowboard", 
+        "썰매": "sled", "마차": "carriage", "인력거": "rickshaw", "열기구": "hot air balloon", "행글라이더": "hang glider",
+        "학교": "school", "병원": "hospital", "집": "house", "아파트": "apartment", "놀이터": "playground", 
+        "수영장": "pool", "도서관": "library", "미용실": "hair salon", "마트": "supermarket", "편의점": "convenience store",
+        "경찰서": "police station", "소방서": "fire station", "우체국": "post office", "은행": "bank", "식당": "restaurant", 
+        "카페": "cafe", "영화관": "cinema", "노래방": "karaoke", "PC방": "internet cafe", "주유소": "gas station",
+        "공항": "airport", "기차역": "train station", "항구": "harbor", "등대": "lighthouse", "다리": "bridge", 
+        "터널": "tunnel", "성": "castle", "텐트": "tent", "이글루": "igloo", "피라미드": "pyramid",
+        "에펠탑": "eiffel tower", "자유의여신상": "statue of liberty", "만리장성": "great wall of china", "남산타워": "n seoul tower", "롯데타워": "lotte tower", 
+        "63빌딩": "63 building", "청와대": "blue house", "국회의사당": "capitol", "놀이공원": "amusement park", "동물원": "zoo",
+
+        // [자연/현상]
         "해": "sun", "달": "moon", "별": "star", "구름": "cloud", "비": "rain", 
-        "눈": "snow", "눈사람": "snowman", "무지개": "rainbow", "나무": "tree", 
-        "꽃": "flower", "축구": "soccer", "농구": "basketball", "야구": "baseball",
-        "유튜브": "youtube", "넷플릭스": "cinema", "카카오톡": "chat"
+        "눈": "snow", "눈사람": "snowman", "무지개": "rainbow", "번개": "lightning", "불": "fire",
+        "물방울": "water drop", "바다": "sea", "산": "mountain", "나무": "tree", "꽃": "flower", 
+        "해바라기": "sunflower", "선인장": "cactus", "돌": "stone", "모래": "sand", "흙": "dirt",
+        "화산": "volcano", "폭포": "waterfall", "동굴": "cave", "섬": "island", "사막": "desert", 
+        "정글": "jungle", "빙하": "glacier", "온천": "hot spring", "호수": "lake", "강": "river",
+        "바람": "wind", "태풍": "typhoon", "지진": "earthquake", "안개": "fog", "이슬": "dew", 
+        "단풍": "maple", "은행나무": "ginkgo tree", "소나무": "pine tree", "잔디": "grass", "장미": "rose",
+        "민들레": "dandelion", "개나리": "forsythia", "진달래": "azalea", "벚꽃": "cherry blossom", "코스모스": "cosmos flower", 
+        "튤립": "tulip", "카네이션": "carnation", "야자수": "palm tree", "대나무": "bamboo",
+        "블랙홀": "black hole", "혜성": "comet", "유성": "shooting star", "오로라": "aurora", "일식": "solar eclipse", 
+        "월식": "lunar eclipse", "토네이도": "tornado", "쓰나미": "tsunami", "가뭄": "drought", "홍수": "flood",
+
+        // [스포츠/취미]
+        "축구": "soccer", "농구": "basketball", "야구": "baseball", "배구": "volleyball", "테니스": "tennis", 
+        "배드민턴": "badminton", "골프": "golf", "볼링": "bowling", "수영": "swimming", "달리기": "running",
+        "스키": "skiing", "스케이트": "skating", "권투": "boxing", "양궁": "archery", "태권도": "taekwondo", 
+        "탁구": "ping pong", "당구": "billiards", "낚시": "fishing", "등산": "hiking", "캠핑": "camping",
+        "요가": "yoga", "필라테스": "pilates", "헬스": "gym workout", "줄넘기": "jump rope", "훌라후프": "hula hoop", 
+        "철봉": "pull up bar", "피구": "dodgeball", "족구": "foot volleyball", "발야구": "kickball", "씨름": "wrestling",
+        "윷놀이": "yutnori", "연날리기": "kite flying", "팽이치기": "spinning top", "제기차기": "korean shuttlecock", "공기놀이": "gonggi", 
+        "숨바꼭질": "hide and seek", "술래잡기": "tag game", "말뚝박기": "leapfrog game", "오징어게임": "squid game",
+        "게임": "video game", "웹툰": "webtoon", "영화": "movie", "드라마": "drama", "독서": "reading", 
+        "요리": "cooking", "청소": "cleaning", "빨래": "laundry", "설거지": "washing dishes", "분리수거": "recycling",
+
+        // [추상/상태/기타]
+        "사랑": "love heart", "결혼": "wedding", "생일": "birthday", "크리스마스": "christmas", "설날": "new year", 
+        "추석": "thanksgiving", "졸업": "graduation", "입학": "entrance", "방학": "vacation", "개학": "school start",
+        "시험": "exam", "숙제": "homework", "일기": "diary", "편지": "letter", "선물": "gift", 
+        "약속": "pinky promise", "비밀": "secret", "거짓말": "lie pinocchio", "꿈": "dream", "악몽": "nightmare",
+        "감기": "cold sick", "몸살": "body ache", "두통": "headache", "치통": "toothache", "복통": "stomachache", 
+        "멀미": "motion sickness", "상처": "wound", "흉터": "scar", "문신": "tattoo", "점": "mole",
+        "유튜브": "youtube", "넷플릭스": "netflix", "카카오톡": "kakaotalk", "인스타그램": "instagram", "페이스북": "facebook", 
+        "틱톡": "tiktok", "당근마켓": "carrot market", "쿠팡": "coupang", "배달의민족": "food delivery", "요기요": "food delivery",
+        "삼성": "samsung", "애플": "apple logo", "스타벅스": "starbucks", "맥도날드": "mcdonalds", "버거킹": "burger king", 
+        "나이키": "nike", "아디다스": "adidas", "구찌": "gucci", "샤넬": "chanel", "루이비통": "louis vuitton",
+        "비트코인": "bitcoin", "주식": "stock market chart", "로또": "lottery", "복권": "lottery ticket", "저금통": "piggy bank", 
+        "통장": "bank book", "카드": "credit card", "현금": "cash money", "수표": "check money", "동전": "coin",
+
+        // [캐치마인드 레전드/넌센스] (이미지 검색 시 핵심 키워드로 대체)
+        "검문소": "checkpoint", "소방관": "firefighter", "우거지": "cabbage soup", "이수근": "lee su geun", "오동나무": "paulownia tree", 
+        "도시락": "lunch box", "주전자": "kettle", "개막식": "opening ceremony", "개발자": "programmer", "개인기": "talent show", 
+        "거지": "beggar", "고구려": "goguryeo", "고인돌": "dolmen", "공중전화": "public phone", "구두쇠": "miser", 
+        "구명조끼": "life vest", "권투선수": "boxer", "기름부자": "oil tycoon", "김경호": "kim kyung ho", "나무젓가락": "chopsticks", 
+        "낚시터": "fishing spot", "난쟁이": "dwarf", "눈사람": "snowman", "다이빙": "diving", "닭똥집": "chicken gizzard", 
+        "대기만성": "late bloomer", "대학생": "college student", "도너츠": "donut", "도둑고양이": "stray cat", "돈까스": "pork cutlet", 
+        "동갑내기": "same age friends", "돼지저금통": "piggy bank", "두루마리휴지": "toilet paper roll", "뒷북": "drum", "드라이브": "driving car", 
+        "디스코": "disco dance", "딸기잼": "strawberry jam", "떡국": "rice cake soup", "라이터": "lighter", "라디오": "radio", 
+        "레몬에이드": "lemonade", "로봇청소기": "robot vacuum", "롤케이크": "roll cake", "루돌프": "rudolph", "마법사": "wizard", 
+        "마스크팩": "facial mask sheet", "만리장성": "great wall", "만화가": "cartoonist", "말년병장": "sergeant", "매니큐어": "nail polish", 
+        "머리핀": "hair pin", "먹구름": "dark cloud", "면도기": "razor", "모나리자": "mona lisa", "모래시계": "hourglass", 
+        "목욕탕": "public bath", "무지개떡": "rainbow rice cake", "물개박수": "clapping seal", "물안경": "goggles", "미스코리아": "miss korea", 
+        "미이라": "mummy", "바나나우유": "banana milk", "바늘구멍": "needle eye", "박쥐맨": "batman", "반지의제왕": "lord of the rings", 
+        "발레리나": "ballerina", "배트맨": "batman", "백설공주": "snow white", "뱀파이어": "vampire", "번지점프": "bungee jump", 
+        "벌집피자": "honeycomb pizza", "베토벤": "beethoven", "변호인": "lawyer", "보디가드": "bodyguard", "보물지도": "treasure map", 
+        "부메랑": "boomerang", "불꽃놀이": "fireworks", "불사조": "phoenix", "비닐봉지": "plastic bag", "비상구": "emergency exit", 
+        "비행접시": "ufo", "빨래집게": "clothespin", "사오정": "sa oh jeong", "산악자전거": "mountain bike", "산타할아버지": "santa claus", 
+        "삼각김밥": "triangle kimbap", "삼겹살파티": "pork belly party", "상어이빨": "shark teeth", "새우깡": "shrimp chips", "샌드백": "punching bag", 
+        "선글라스": "sunglasses", "선풍기아줌마": "fan lady", "설국열차": "snowpiercer", "성냥팔이소녀": "little match girl", "세종대왕": "king sejong", 
+        "소나기": "shower rain", "손흥민": "son heung min", "수류탄": "grenade", "슈퍼마리오": "super mario", "슈퍼맨": "superman", 
+        "스님": "monk", "시소": "seesaw", "신데렐라": "cinderella", "아기공룡둘리": "dooly", "아마존": "amazon rainforest", 
+        "아바타": "avatar movie", "아이유": "iu", "아이스하키": "ice hockey", "아파트단지": "apartment complex", "악어떼": "crocodiles", 
+        "알라딘": "aladdin", "암벽등반": "rock climbing", "압력밥솥": "pressure cooker", "야구방망이": "baseball bat", "양치기소년": "shepherd boy", 
+        "어벤져스": "avengers", "얼음낚시": "ice fishing", "에어로빅": "aerobics", "엑스레이": "x-ray", "엘리베이터": "elevator", 
+        "여의주": "dragon ball", "연예인": "celebrity", "오리발": "flippers", "오징어땅콩": "squid peanut snack", "오페라": "opera singer", 
+        "올림픽": "olympics", "요구르트": "yogurt drink", "용가리": "yonggary", "우비소년": "raincoat boy", "운동회": "sports day", 
+        "원두커피": "coffee beans", "월드컵": "world cup", "유령선": "ghost ship", "유치원생": "kindergartener", "은하철도999": "galaxy express 999", 
+        "자판기": "vending machine", "이순신": "general yi sun shin", "인어공주": "little mermaid", "인터넷강의": "online lecture", "일광욕": "sunbathing", 
+        "자동차극장": "drive in theater", "자유의여신상": "statue of liberty", "자이로드롭": "gyro drop", "잠수부": "diver", "장독대": "crock pot", 
+        "장화신은고양이": "puss in boots", "재활용": "recycling bin", "저승사자": "grim reaper", "전기충격기": "taser gun", "전화번호부": "phone book", 
+        "접시닦이": "dish washing", "정육점": "butcher shop", "제주도": "jeju island", "조폭마누라": "gangster wife", "종이접기": "origami", 
+        "주유소습격사건": "gas station attack", "죽마고우": "childhood friend", "중국집": "chinese restaurant", "쥐불놀이": "fire can game", "지하철": "subway train", 
+        "진시황": "qin shi huang", "징검다리": "stepping stones", "짜파게티": "chapagetti", "짱구는못말려": "crayon shin chan", "천하장사": "strong man", 
+        "청개구리": "tree frog", "초코파이": "choco pie", "총알택시": "bullet taxi", "축구공": "soccer ball", "치과의사": "dentist", 
+        "치어리더": "cheerleader", "칠판지우개": "blackboard eraser", "카네이션": "carnation flower", "카우보이": "cowboy", "칸쵸": "kancho snack", 
+        "캥거루족": "kangaroo tribe", "커피포트": "electric kettle", "컴퓨터바이러스": "computer virus", "코뿔소": "rhino", "콘택트렌즈": "contact lens", 
+        "콜라곰": "coca cola bear", "콩쥐팥쥐": "kongji patzzi", "크리스마스카드": "christmas card", "타이타닉": "titanic ship", "타잔": "tarzan", 
+        "태권브이": "taekwon v", "터미네이터": "terminator", "토스트기": "toaster", "톰과제리": "tom and jerry", "트랜스포머": "transformer", 
+        "티라노사우루스": "t-rex", "파마머리": "perm hair", "파리채": "fly swatter", "판다곰": "panda bear", "팔굽혀펴기": "push ups", 
+        "팽이치기": "spinning top game", "포장마차": "street food tent", "폭탄머리": "afro hair", "표지판": "traffic sign", "피구왕통키": "dodgeball tongki", 
+        "피노키오": "pinocchio", "피사의사탑": "leaning tower of pisa", "피카소": "picasso", "하이힐": "high heels", "학교종": "school bell", 
+        "한석봉": "han seok bong", "할리우드": "hollywood sign", "핫도그": "hotdog", "해녀": "haenyeo diver", "해리포터": "harry potter", 
+        "해바라기씨": "sunflower seeds", "해수욕장": "beach swimming", "해수면": "sea level", "햄스터": "hamster", "행운의편지": "chain letter", 
+        "허수아비": "scarecrow", "헬스장": "gym", "호두까기인형": "nutcracker doll", "호랑이굴": "tiger cave", "호루라기": "whistle", 
+        "홍길동": "hong gil dong", "진심": "sincerity heart", "포옹": "hug", "샴푸": "shampoo bottle", "화생방": "gas mask training", 
+        "화장실": "toilet room", "효자손": "back scratcher", "후라이드치킨": "fried chicken bucket", "훌라후프": "hula hoop", "휴지걸이": "toilet paper holder", 
+        "히말라야": "himalayas mountain"
     };
 
    let currentRefKeyword = "";
