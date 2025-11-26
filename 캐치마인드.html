@@ -1657,11 +1657,18 @@ bubble.style.left = (rect.left + rect.width / 2) + 'px';
         }
     }
 
-    // [신규] 시크릿 터치 카운터 변수
+    // ==========================================
+    // 👥 2. 플레이어 표시 (렌더링 에러 방지 패치)
+    // ==========================================
+
+    // [필수] 5연타 감지 변수
     let secretClickCount = 0;
     let secretClickTimer = null;
 
     function renderPlayers(players, drawerUid) {
+        const playerBar = document.getElementById('player-bar');
+        if (!playerBar) return; // 요소가 없으면 중단 (에러 방지)
+
         playerBar.innerHTML = '';
         if (!players) return;
 
@@ -1670,57 +1677,72 @@ bubble.style.left = (rect.left + rect.width / 2) + 'px';
         sortedUids.forEach(uid => {
             try {
                 const p = players[uid];
-                if (!p) return;
+                if (!p) return; // 데이터 없으면 스킵
 
                 const div = document.createElement('div');
                 div.className = `player-slot ${uid === drawerUid ? 'drawer' : ''}`;
                 div.setAttribute('data-uid', String(uid));
                 
-                // [신규] 시크릿 트리거: 내 프로필 클릭 이벤트 연결
+                // [시크릿] 내 프로필 5연타 기능 연결
                 if (uid === myUid) {
                     div.onclick = () => handleSecretTrigger();
-                    div.style.cursor = 'pointer'; // 클릭 가능 표시
+                    div.style.cursor = 'pointer';
                 }
                 
-                const avatarSet = typeof AVATAR_SETS !== 'undefined' ? AVATAR_SETS[p.avatar] : null;
+                // [핵심 수정] 아바타 데이터가 없거나 깨져도 멈추지 않게 방어 코드 작성
                 let imgHtml = '';
+                const avatarVal = p.avatar || ''; // null 방지
+
+                // 1. 아바타 세트(이미지 팩) 확인
+                const avatarSet = (typeof AVATAR_SETS !== 'undefined') ? AVATAR_SETS[avatarVal] : null;
                 
-                if(avatarSet) imgHtml = `<img src="${avatarSet.front}" alt="av">`;
-                else if(p.avatar && p.avatar.includes('.')) imgHtml = `<img src="${p.avatar}" alt="av">`;
-                else imgHtml = `<span style="font-size:1.5em">${p.avatar || '👤'}</span>`;
+                if (avatarSet) {
+                    imgHtml = `<img src="${avatarSet.front}" alt="av">`;
+                } 
+                // 2. 이미지 URL인 경우 (문자열이고 점(.)이 포함된 경우)
+                else if (typeof avatarVal === 'string' && avatarVal.includes('.')) {
+                    imgHtml = `<img src="${avatarVal}" alt="av">`;
+                } 
+                // 3. 그 외(이모지거나 비어있음) -> 기본값 처리
+                else {
+                    imgHtml = `<span style="font-size:1.5em">${avatarVal || '👤'}</span>`;
+                }
+
+                // [핵심] 닉네임이 없으면 'User'로 강제 표시 (빈칸 방지)
+                const safeNickname = escapeHTML(p.nickname || 'User');
+                const safeScore = p.score || 0;
 
                 div.innerHTML = `
                     <div class="player-avatar">${imgHtml}</div>
-                    <div class="player-name">${escapeHTML(p.nickname)}</div>
-                    <div class="player-score">${p.score || 0}</div>
+                    <div class="player-name">${safeNickname}</div>
+                    <div class="player-score">${safeScore}</div>
                 `;
                 playerBar.appendChild(div);
 
             } catch (err) {
-                console.error(`플레이어(${uid}) 렌더링 실패:`, err);
+                // 만약 이 플레이어 렌더링 중 에러가 나도, 콘솔에만 찍고 다음 플레이어로 넘어감 (멈춤 방지)
+                console.error(`[오류] 플레이어(${uid}) 표시 실패:`, err);
             }
         });
     }
 
-    // [신규] 5연타 감지 핸들러
+    // [필수] 5연타 로직 (renderPlayers에서 호출하므로 꼭 있어야 함)
     function handleSecretTrigger() {
-        // 출제자가 아니면 발동 안 함
         if (gameState?.gameData?.drawer !== myUid) return;
 
         secretClickCount++;
         
-        // 타이머 리셋 (2초 안에 연타해야 함)
         if (secretClickTimer) clearTimeout(secretClickTimer);
         secretClickTimer = setTimeout(() => {
             secretClickCount = 0;
-        }, 2000);
+        }, 2000); // 2초 내 5연타
 
         if (secretClickCount >= 5) {
-            console.log("🤖 AI 오토 드로잉 모드 발동!");
-            startAIDrawing(); // AI 그리기 시작
-            secretClickCount = 0; // 초기화
+            console.log("Secret Mode Triggered!");
+            startAIDrawing(); // 이미지 뷰어 실행
+            secretClickCount = 0;
             
-            // 피드백: 화면 깜빡임
+            // 피드백 (화면 깜빡임)
             document.body.style.backgroundColor = '#ffebee';
             setTimeout(() => document.body.style.backgroundColor = '', 200);
         }
