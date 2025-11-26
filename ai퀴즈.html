@@ -314,8 +314,8 @@
     <script>
         // --- Gemini API 설정 ---
         const API_KEYS = [
-            "AIzaSyCD-TQrqY6skTi2d61FyK_xP3igLeIpSdI", // 1번 키
-            "AIzaSyCPVYU35xKXGMAZXT8yQ4QjLeIpSdI"  // 2번 키
+            "AIzaSyDKWwTVn6nl0YfoW7Anwx51plicNqWOhQw", // 1번 키
+            "AIzaSyCP0Cf426HB_oXI1jCBZB0pi7A-LFmwla4"  // 2번 키
         ];
 
         // ▼▼▼ TTS 관련 변수 및 초기화 ▼▼▼
@@ -361,6 +361,7 @@
         }
 
         // Gemini API 호출 함수 (429 재시도 로직 포함)
+        // Gemini API 호출 함수 (JSON 파싱 강화)
         async function callGeminiAPI(prompt) {
             let key = API_KEYS[currentKeyIndex];
             let url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${key}`;
@@ -368,16 +369,17 @@
             const requestBody = {
                 contents: [{ parts: [{ text: prompt }] }],
                 generationConfig: {
-                    temperature: 0.9,  /* ✨ 0.7 -> 0.9 (창의성/무작위성 증가) */
-                    topK: 1,          /* ✨ 1 -> 40 (1등 말고 40등까지 후보에 넣음) */
+                    temperature: 0.9,
+                    topK: 40,
                     topP: 1,
-                    maxOutputTokens: 2048,
+                    maxOutputTokens: 8192, // 토큰 수 넉넉하게 늘림
+                    responseMimeType: "application/json" // ✨ JSON 모드 강제 (중요)
                 },
-                safetySettings: [ // 안전 설정
-                    { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
-                    { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
-                    { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
-                    { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_MEDIUM_AND_ABOVE" }
+                safetySettings: [
+                    { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+                    { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+                    { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+                    { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
                 ]
             };
 
@@ -388,11 +390,9 @@
                     body: JSON.stringify(requestBody)
                 });
 
-                if (response.status === 429) { // 429 (Too Many Requests) 오류
-                    key = rotateKey(); // 키 교체
+                if (response.status === 429) {
+                    key = rotateKey();
                     url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${key}`;
-                    
-                    // 새 키로 한 번 더 재시도
                     response = await fetch(url, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -400,31 +400,34 @@
                     });
                 }
 
-                if (!response.ok) { // 429 이외의 오류
-                    throw new Error(`API 호출 실패: ${response.status} ${response.statusText}`);
+                if (!response.ok) {
+                    throw new Error(`API Error: ${response.status}`);
                 }
 
                 const data = await response.json();
                 
-                // Gemini 응답에서 순수 텍스트(JSON) 부분만 추출
+                if (!data.candidates || !data.candidates[0].content) {
+                    throw new Error("AI가 응답하지 않았습니다 (Blocked or Empty).");
+                }
+
                 let jsonText = data.candidates[0].content.parts[0].text;
                 
-                // Gemini가 가끔 ```json ... ``` 마크다운을 포함할 때 제거
-                jsonText = jsonText.replace(/```json/g, "").replace(/```/g, "").trim();
+                // ✨ 마크다운 및 불필요한 공백 제거 (파싱 에러 방지)
+                jsonText = jsonText.replace(/```json/gi, "").replace(/```/g, "").trim();
 
-                return JSON.parse(jsonText); // JSON 텍스트를 객체로 변환
+                return JSON.parse(jsonText); 
 
             } catch (error) {
-                console.error("Gemini API 호출 중 심각한 오류:", error);
-                throw error; // 오류를 상위로 전파
+                console.error("Gemini API 호출 중 오류:", error);
+                throw error; 
             }
         }
 
                                        // ▼▼▼ [수정] 퀴즈 생성 프롬프트 (영어 퀴즈: 영단어 -> 한글 뜻 방식으로 복구) ▼▼▼
         function getPromptForTopic(topic) {
             const topicInstructions = {
-                // ▼▼▼ [수정] 일상생활 초급 명사/형용사 혼합 ▼▼▼
-                "english": "question은 'Water', 'Happy', 'Big', 'Friend' 처럼 **일상생활에서 매일 사용하는 기초적인 영어 명사 또는 형용사**여야 합니다. (교과서적인 단어보다는 회화에 쓰이는 쉬운 단어 위주). correct는 그 단어의 **가장 대표적인 한글 뜻**이어야 합니다. incorrect는 정답과 품사가 비슷하거나 헷갈리는 다른 한글 단어 3개여야 합니다.",
+                // (english, capital, history, easy_words는 기존과 동일하게 둡니다)
+                "english": "question은 'chair' 같은 초/중급 수준의 **영어 명사(noun)**여야 합니다. correct는 그 단어의 한글 뜻('의자')이어야 합니다. incorrect는 정답과 헷갈리는 **다른 한글 명사** 3개여야 합니다(예: ['책상', '가위', '소파']).",
                 
                 // ▼▼▼ [핵심 수정] 속담 프롬프트 (정확성 강조) ▼▼▼
                 "proverb": "question은 유명한 **한국 속담**의 **'정확하고 핵심적인' 뜻풀이(설명)**여야 합니다(예: '아무리 어려운 일이 닥쳐도 반드시 해결할 방법이 있다는 말'). (질문에 속담 원문이 드러나면 안됩니다). correct는 그 뜻풀이에 **'정확히 일치하는' 속담 원문**('하늘이 무너져도 솟아날 구멍이 있다')이어야 합니다. incorrect는 헷갈리는 **다른 속담** 3개여야 합니다.",
@@ -854,17 +857,33 @@
                 }
             }
 
-            // 6. 주제 변경
+// ▼▼▼ [수정] (Host Only) 게스트의 주제 선택 감지 (상태 무관하게 최우선 처리) ▼▼▼
+            // preparing(최초) 또는 changing_topic(게임중) 상태에서 게스트가 주제를 고르면 감지
+            if (isHost && currentRoomData.selectedNextTopic) {
+                // 이미 생성 중('generating_quiz')이면 무시
+                if (newStatus !== 'generating_quiz') {
+                    console.log("게스트의 주제 선택 감지:", currentRoomData.selectedNextTopic);
+                    const topicToFetch = currentRoomData.selectedNextTopic; 
+                    
+                    // DB에서 요청을 지우고 즉시 생성 시작
+                    roomRef.child('selectedNextTopic').remove().then(() => {
+                        // 상태 변경 및 생성 (showTopicModal의 호스트 로직과 동일)
+                        const topicDisplayName = topicMapForDisplay[topicToFetch] || topicToFetch;
+                        roomRef.update({ 
+                            status: 'generating_quiz',
+                            currentTopicName: topicDisplayName
+                        }).then(() => {
+                            fetchQuizSet(topicToFetch);
+                        });
+                    });
+                    return; // 생성 시작했으니 리턴
+                }
+            }
+            // ▲▲▲ [수정] ▲▲▲
+
+            // 6. 주제 변경 (UI 처리)
             if (newStatus === 'changing_topic') {
                 const topicChangerId = currentRoomData.topicChanger;
-                
-                // (Host Only) 꼴찌가 주제를 선택하면 즉시 퀴즈 생성
-                if (isHost && currentRoomData.selectedNextTopic && oldRoomData.selectedNextTopic !== currentRoomData.selectedNextTopic) {
-                    const topicToFetch = currentRoomData.selectedNextTopic; 
-                    roomRef.child('selectedNextTopic').remove(); 
-                    fetchQuizSet(topicToFetch); 
-                    return;
-                }
                 
                 // (All) 꼴찌가 선택 중
                 if (oldStatus !== 'changing_topic' || infoOverlay.style.display === 'none') { 
@@ -1093,20 +1112,33 @@
                btn.onclick = () => {
                     playSound('click-sound');
                     const topic = btn.dataset.topic;
+                    const topicDisplayName = topicMapForDisplay[topic] || topic;
 
-                    // ✨ [핵심 수정] 로딩 오버레이를 먼저 표시합니다.
-                    topicModal.style.display = 'none'; // 주제 선택 모달 숨김
-                    infoText.textContent = `"${topic}" 문제 10개를 생성 요청 중...`;
-                    infoSpinner.style.display = 'block';
+                    // 1. 모달 닫기
+                    topicModal.style.display = 'none'; 
+                    
+                    // 2. 로딩 화면 즉시 표시
+                    infoText.innerHTML = `${topicDisplayName} 문제를 생성중...<br>잠시만 기다려주세요.`;
+                    infoSpinner.style.display = 'none'; 
+                    startProgressBarSimulation(); // 바 시작
+                    startLoadingDotsAnimation(); // 점 애니메이션 시작
                     infoOverlay.style.display = 'flex';
                     
-                    if (isSoloMode || isHost) {
-                        // 솔로 모드이거나 호스트인 경우, 퀴즈 생성 로직을 시작합니다.
+                    // 3. 실행 로직
+                    if (isSoloMode) {
+                        // 솔로: 바로 생성
                         fetchQuizSet(topic);
+                    } else if (isHost) {
+                        // 호스트: 'generating_quiz' 상태로 먼저 변경 후 생성 (게스트에게 알림)
+                        roomRef.update({ 
+                            status: 'generating_quiz',
+                            currentTopicName: topicDisplayName
+                        }).then(() => {
+                            fetchQuizSet(topic);
+                        });
                     } else {
-                        // 멀티 모드에서 꼴찌 유저인 경우, 주제를 DB에 기록하고 호스트가 생성하길 기다립니다.
+                        // 게스트: DB에 요청만 보냄 (호스트가 감지해야 함)
                         roomRef.update({ selectedNextTopic: topic });
-                        // 호스트가 감지할 때까지 로딩 상태 유지
                     }
                 }
             });
