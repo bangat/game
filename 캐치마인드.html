@@ -2198,134 +2198,164 @@ let isGameStarting = false; // 전역 플래그 추가
         "히말라야": "himalayas mountain"
     };
 
-    let currentRefKeyword = "";
-    let currentRefSeed = 0;
-    let isSketchMode = true; // [핵심] 기본값 = 그림 모드
+    const PIXABAY_API_KEY = '53422377-a282eee2fb4645a5a87405e73'; 
 
-    // 1. 5연타 시 호출
+    let currentRefKeyword = "";
+    let isSketchMode = true; // 기본값: 그림 모드
+    
+    // Pixabay 데이터 저장용 변수
+    let pixabayHits = [];
+    let pixabayIndex = 0;
+
+    // 1. 5연타 시 호출 (진입점)
     function startAIDrawing() {
         if (!gameState || !gameState.gameData) return;
         const word = gameState.gameData.word;
         openRefModal(word);
     }
 
-    // 2. 모달 열기
+    // 2. 모달 열기 & 검색 시작
     function openRefModal(word) {
         const modal = document.getElementById('ref-modal');
         const display = document.getElementById('ref-keyword-display');
         
         currentRefKeyword = word;
-        currentRefSeed = Date.now();
-        isSketchMode = true; // 항상 그림 모드로 시작
+        isSketchMode = true; // 열 때마다 그림모드로 리셋
+        pixabayHits = [];    // 검색 결과 초기화
+        pixabayIndex = 0;
         
-        updateToggleBtn(); // 버튼 UI 초기화
         display.innerText = word; 
+        updateToggleBtn(); // 버튼 UI 초기화
         
-        updateRefImage(); 
         modal.classList.add('active');
+        
+        // Pixabay 검색 실행
+        searchPixabayImages();
     }
 
     function closeRefModal() {
         document.getElementById('ref-modal').classList.remove('active');
     }
 
-    // [신규] 모드 전환 (그림 <-> 실사)
+    // 3. 모드 전환 (그림 <-> 실사) 및 재검색
     function toggleStyleMode() {
         isSketchMode = !isSketchMode;
         updateToggleBtn();
-        updateRefImage();
+        // 모드가 바뀌었으니 다시 검색
+        pixabayHits = []; 
+        searchPixabayImages();
     }
 
     function updateToggleBtn() {
         const btn = document.getElementById('style-toggle-btn');
         if (isSketchMode) {
-            // 현재 그림 모드 -> 버튼은 '실사 보기' 제안
             btn.innerText = "📷 실사로 보기";
             btn.className = "";
         } else {
-            // 현재 실사 모드 -> 버튼은 '그림 보기' 제안
             btn.innerText = "🎨 그림으로 보기";
             btn.className = "photo-mode";
         }
     }
 
-    // 3. 이미지 업데이트 (하이브리드 로직)
-    // 3. 이미지 업데이트 (하이브리드 로직 - 안전장치 강화)
-    function updateRefImage() {
+    // 4. Pixabay API 검색 함수 (핵심 로직)
+    async function searchPixabayImages() {
         const img = document.getElementById('ref-image');
         const loader = document.getElementById('ref-loading');
-        
-        img.style.opacity = '0'; 
-        loader.style.display = 'block';
-        loader.innerText = isSketchMode ? "🎨 그림 찾는 중..." : "📷 사진 불러오는 중...";
-        
-        // [핵심 1] 번역 시도
-        let engWord = WORD_TRANSLATION[currentRefKeyword];
 
-        // [핵심 2] 사전에 없는 단어일 경우 처리
-        if (!engWord) {
-            console.warn(`'${currentRefKeyword}' 단어가 번역 사전에 없습니다. 한글로 검색을 시도합니다.`);
-            // 한글이라도 보내보지만, 실패 확률이 높음. 
-            // (추후 사전을 보강하거나, 영어로 된 넌센스 힌트를 제공하는 것이 좋음)
-            engWord = currentRefKeyword; 
+        // 로딩 표시
+        img.style.opacity = '0';
+        loader.style.display = 'block';
+        loader.innerHTML = isSketchMode ? "🎨 그림 검색 중..." : "📷 사진 검색 중...";
+
+        // 1) 검색어 준비 (번역 시도)
+        let query = WORD_TRANSLATION[currentRefKeyword];
+        if (!query) {
+            // 사전에 없으면 한글 그대로 검색 + " 그림" 키워드 조합
+            query = currentRefKeyword; 
         }
+
+        // 2) 이미지 타입 설정 (일러스트 vs 사진)
+        const imageType = isSketchMode ? 'illustration' : 'photo';
         
-        let url = "";
-        
-        // [핵심 3] 검색어 인코딩 및 태그 조합 최적화
-        // 쉼표(,) 대신 띄어쓰기나 다른 구분자를 써야 LoremFlickr가 더 잘 인식할 때도 있음
-        if (isSketchMode) {
-            // 그림 모드: 태그를 너무 많이 붙이면 오히려 검색 결과가 좁아져서 고양이가 나옴
-            // 핵심 태그 1~2개만 붙이는 게 유리함
-            const tags = encodeURIComponent(engWord) + ",sketch"; 
-            url = `https://loremflickr.com/400/240/${tags}?lock=${currentRefSeed}`;
-        } else {
-            // 실사 모드
-            url = `https://loremflickr.com/400/240/${encodeURIComponent(engWord)}?lock=${currentRefSeed}`;
+        try {
+            // 3) API 호출
+            const url = `https://pixabay.com/api/?key=${PIXABAY_API_KEY}&q=${encodeURIComponent(query)}&image_type=${imageType}&lang=ko&per_page=30&safesearch=true`;
+            
+            const response = await fetch(url);
+            const data = await response.json();
+
+            if (data.hits && data.hits.length > 0) {
+                pixabayHits = data.hits;
+                pixabayIndex = 0; // 첫 번째 이미지로 리셋
+                updateRefImageDisplay(); // 이미지 표시
+            } else {
+                loader.innerHTML = "❌ 결과 없음<br><span style='font-size:0.8em'>다른 모드로 시도해보세요</span>";
+            }
+
+        } catch (error) {
+            console.error('Pixabay API Error:', error);
+            loader.innerHTML = "❌ 통신 오류";
         }
+    }
+
+    // 5. 화면에 이미지 표시
+    function updateRefImageDisplay() {
+        const img = document.getElementById('ref-image');
+        const loader = document.getElementById('ref-loading');
+
+        if (pixabayHits.length === 0) return;
+
+        const hit = pixabayHits[pixabayIndex];
+        // webformatURL은 중간 크기, largeImageURL은 원본
+        const imgUrl = hit.webformatURL; 
 
         const newImg = new Image();
-        newImg.src = url;
-        
+        newImg.src = imgUrl;
+
         newImg.onload = () => {
-            img.src = url;
+            img.src = imgUrl;
             img.style.opacity = '1';
             loader.style.display = 'none';
         };
-        
-        newImg.onerror = () => {
-            // 이미지 로드 자체가 실패했을 때 (404 등)
-            loader.innerHTML = "❌ 이미지 없음<br><span style='font-size:0.8em'>단어 사전을 확인해주세요</span>";
-        };
     }
 
-    // 4. 넘기기
+    // 6. 이미지 넘기기 (화살표)
     function prevImage() {
-        currentRefSeed--;
+        if (pixabayHits.length === 0) return;
         playSound('snd-pop');
-        updateRefImage();
+        
+        pixabayIndex--;
+        if (pixabayIndex < 0) pixabayIndex = pixabayHits.length - 1; // 순환
+        
+        updateRefImageDisplay();
     }
 
     function nextImage() {
-        currentRefSeed++;
+        if (pixabayHits.length === 0) return;
         playSound('snd-pop');
-        updateRefImage();
+
+        pixabayIndex++;
+        if (pixabayIndex >= pixabayHits.length) pixabayIndex = 0; // 순환
+        
+        updateRefImageDisplay();
     }
 
-    // 터치 스와이프
+    // 7. 터치 스와이프 기능
     let touchStartX = 0;
     let touchEndX = 0;
-    const modalEl = document.getElementById('ref-modal');
+    const modalEl = document.getElementById('ref-image'); // 이미지 영역에서만 스와이프 감지
 
-    modalEl.addEventListener('touchstart', e => {
-        touchStartX = e.changedTouches[0].screenX;
-    }, {passive: true});
+    if(modalEl) {
+        modalEl.addEventListener('touchstart', e => {
+            touchStartX = e.changedTouches[0].screenX;
+        }, {passive: true});
 
-    modalEl.addEventListener('touchend', e => {
-        touchEndX = e.changedTouches[0].screenX;
-        if (touchEndX < touchStartX - 50) nextImage();
-        else if (touchEndX > touchStartX + 50) prevImage();
-    }, {passive: true});
+        modalEl.addEventListener('touchend', e => {
+            touchEndX = e.changedTouches[0].screenX;
+            if (touchEndX < touchStartX - 50) nextImage();
+            else if (touchEndX > touchStartX + 50) prevImage();
+        }, {passive: true});
+    }
 </script>
 </body>
 </html>
