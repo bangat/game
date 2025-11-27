@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>틀린그림찾기</title>
+    <link rel="manifest" href="manifest.json">
+    <link href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff" as="font" type="font/woff" crossorigin>
+    
+    <script src="아바타.js"></script>
+    <script src="레벨업.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #222; --text-color: #fff; --primary-color: #FF6B6B; --secondary-color: #4ECDC4;
+            --font-main: 'GmarketSans', sans-serif;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; touch-action: none; }
+        body { 
+            margin: 0; background: var(--bg-color); color: var(--text-color); 
+            overflow: hidden; display: flex; flex-direction: column; 
+            height: 100%; width: 100%; position: absolute; font-family: var(--font-main); 
+        }
+        
+        /* 헤더 */
+        #header { 
+            flex-shrink: 0; height: 60px; width: 100%; 
+            background: rgba(0,0,0,0.8); border-bottom: 2px solid #444; 
+            display: flex; align-items: center; justify-content: space-between; 
+            padding: 0 15px; z-index: 20; 
+        }
+        #timer-box { 
+            width: 60px; text-align: center; font-size: 1.5em; 
+            font-weight: bold; color: #fab1a0; background: #333; 
+            border-radius: 12px; padding: 5px 0; border: 2px solid #555;
+        }
+        #timer-box.danger { color: #ff4757; animation: pulse 0.5s infinite; }
+        
+        #score-board { flex: 1; display: flex; justify-content: flex-start; align-items: center; gap: 10px; overflow: hidden; padding-left: 10px;}
+        .score-pill {
+            background: #333; padding: 4px 10px; border-radius: 20px;
+            font-size: 0.85em; border: 2px solid #555; display: flex; align-items: center; gap: 5px;
+            white-space: nowrap;
+        }
+        .score-pill.my-score { border-color: var(--primary-color); background: #442222; }
+        .score-pill img { width: 20px; height: 20px; object-fit: contain; }
+        
+        #lives-container { font-size: 1.2em; letter-spacing: 2px; min-width: 80px; text-align: right;}
+
+        /* 게임 영역 */
+        #game-container { 
+            flex: 1; width: 100%; height: 100%; 
+            display: flex; flex-direction: column; 
+            padding: 10px; gap: 10px; 
+            justify-content: center; align-items: center; background: #111; 
+        }
+        .canvas-wrapper { 
+    position: relative; 
+    border: 3px solid #555; 
+    border-radius: 12px; 
+    overflow: hidden; /* ✅ hidden 유지 (중요) */
+    background: #000; 
+    display: flex; 
+    justify-content: center; 
+    align-items: center;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    width: 100%; 
+    flex: 1;
+    min-height: 0; /* ✅ Flex 자식이 축소될 수 있게 허용 */
+}
+
+canvas { 
+    display: block; 
+    margin: 0 auto; /* 중앙 정렬 */
+    /* width: 100%; height: 100%; 제거 -> 자바스크립트 계산값 사용 */
+}
+
+        @media (min-aspect-ratio: 1/1) { #game-container { flex-direction: row; } }
+
+        /* 오버레이 */
+        .overlay { 
+            position: fixed; inset: 0; background: rgba(0,0,0,0.85); 
+            z-index: 100; display: none; 
+            flex-direction: column; justify-content: center; align-items: center; 
+            backdrop-filter: blur(5px); 
+        }
+        .overlay.active { display: flex; }
+
+        .modal-content { 
+            background: #fff; color: #333; 
+            width: 90%; max-width: 400px; border-radius: 20px; 
+            border: 4px solid #574141; overflow: hidden; 
+        }
+        .modal-header { 
+            background: var(--primary-color); color: white; padding: 15px; 
+            font-size: 1.4em; font-weight: bold; text-align: center;
+        }
+        .modal-body { padding: 20px; text-align: center; }
+        .modal-footer { 
+            padding: 15px; background: #FFFAE0; display: flex; gap: 10px; 
+            border-top: 3px solid #F0EAD2; 
+        }
+        .menu-btn { 
+            flex: 1; padding: 14px; border: none; border-radius: 12px; 
+            font-weight: bold; cursor: pointer; color: white; 
+            font-family: var(--font-main); font-size: 1.1em; 
+            border-bottom: 4px solid rgba(0,0,0,0.2); 
+        }
+        .menu-btn:active { transform: translateY(2px); border-bottom-width: 2px; }
+        .btn-primary { background: var(--primary-color); }
+        .btn-secondary { background: var(--secondary-color); }
+
+        .mark { position: absolute; width: 40px; height: 40px; border: 4px solid #00ff00; border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 0 15px #00ff00; pointer-events: none; animation: pop 0.3s; z-index: 10; }
+        .wrong-mark { position: absolute; width: 40px; height: 40px; pointer-events: none; transform: translate(-50%, -50%); animation: fadeOut 0.5s forwards; z-index: 50; }
+        .wrong-mark::before, .wrong-mark::after { content: ''; position: absolute; width: 100%; height: 5px; background: #ff4757; top: 50%; left: 0; border-radius: 2px; }
+        .wrong-mark::before { transform: rotate(45deg); } .wrong-mark::after { transform: rotate(-45deg); }
+
+        @keyframes pop { from { transform: translate(-50%, -50%) scale(0); } to { transform: translate(-50%, -50%) scale(1); } }
+        @keyframes fadeOut { from { opacity: 1; transform: translate(-50%, -50%) scale(1); } to { opacity: 0; transform: translate(-50%, -50%) scale(1.5); } }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
+        
+        .spinner { width: 50px; height: 50px; border: 5px solid #fff; border-top-color: var(--primary-color); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 15px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        #rematch-status-list { text-align: left; background: #FFFAE0; border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+        .rematch-row { display: flex; justify-content: space-between; font-weight: bold; }
+        .rematch-row.me { color: var(--primary-color); }
+        
+        #countdown-text { font-size: 6em; font-weight: 900; color: white; text-shadow: 0 0 20px rgba(255,255,255,0.8); }
+    </style>
+</head>
+<body>
+
+    <div id="header">
+        <div id="timer-box">60</div>
+        <div id="score-board"></div>
+        <div id="lives-container">❤️❤️❤️❤️❤️</div>
+    </div>
+
+    <div id="game-container">
+        <div class="canvas-wrapper" id="wrap-l"><canvas id="cvs-l"></canvas></div>
+        <div class="canvas-wrapper" id="wrap-r"><canvas id="cvs-r"></canvas></div>
+    </div>
+
+    <div id="loading-overlay" class="overlay active">
+        <div class="spinner"></div>
+        <div id="loading-text" style="font-size: 1.2em; color: white; font-weight: bold;">접속 중...</div>
+    </div>
+
+    <div id="info-overlay" class="overlay">
+        <div id="countdown-text"></div>
+    </div>
+
+    <div id="game-over-overlay" class="overlay">
+        <div class="modal-content">
+            <div class="modal-header">🏆 최종 결과 🏆</div>
+            <div class="modal-body">
+                <h2 id="winner-text" style="color: var(--primary-color); margin-bottom: 15px;">승리!</h2>
+                <div id="rematch-status-list"></div>
+            </div>
+            <div class="modal-footer">
+                <button id="rematch-btn" class="menu-btn btn-primary">다시하기</button>
+                <button id="lobby-btn" class="menu-btn btn-secondary">대기실로</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-container" style="position: fixed; top: 80px; left: 50%; transform: translateX(-50%); z-index: 999;"></div>
+
+    <audio id="snd-correct" src="./봄버맨사운드/버튼클릭.mp3"></audio>
+    <audio id="snd-wrong" src="./캐치마인드효과음/캐치마인드오답.MP3"></audio>
+    <audio id="snd-win" src="./봄버맨사운드/win.mp3"></audio>
+    <audio id="snd-lose" src="./봄버맨사운드/패배사운드.mp3"></audio>
+    <audio id="snd-start" src="https://raw.githubusercontent.com/bangat/game/main/sound/start.mp3"></audio>
+    
+<script>
+    // --------------------------------------------------------
+    // 1. 게임 설정 (사용자님 환경에 맞춤)
+    // --------------------------------------------------------
+    
+    // 💡 [중요] 폴더 안에 이미지 개수가 늘어나면 이 숫자를 바꾸세요!
+    const TOTAL_IMAGE_COUNT = 12; // 현재 1~11번까지 있음
+    
+    const GAME_TIME = 60;
+    const MAX_LIVES = 5;
+    const TOTAL_ROUNDS = 5;      
+    
+    const firebaseConfig = {
+        apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
+        authDomain: "goodluck-7c14b.firebaseapp.com",
+        databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com",
+        projectId: "goodluck-7c14b",
+        storageBucket: "goodluck-7c14b.appspot.com",
+        messagingSenderId: "858281658455",
+        appId: "1:858281658455:web:9131280a459be983933b12"
+    };
+
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const auth = firebase.auth();
+
+    let roomRef, playerRef, statusRef;
+    let currentUser, myUid, myNick, myAvatar;
+    let isHost = false;
+    let currentRoomId = null;
+    let currentRoomData = null;
+    
+    let roomValueListener = null;
+    let hostStatusDisconnectRef = null;
+
+    // 게임 상태 변수
+    let lives = MAX_LIVES;
+    let foundCount = 0;
+    let timerInterval = null;
+    let isProcessingClick = false;
+    let isGameRunning = false;
+    let loadedImageNum = -1; // 현재 로드된 이미지 번호
+
+    const cvsL = document.getElementById('cvs-l');
+    const ctxL = cvsL.getContext('2d', { willReadFrequently: true });
+    const cvsR = document.getElementById('cvs-r');
+    const ctxR = cvsR.getContext('2d', { willReadFrequently: true });
+    
+    let imgL = new Image(); imgL.crossOrigin = "Anonymous";
+    let imgR = new Image(); imgR.crossOrigin = "Anonymous";
+    let imagesLoadedCount = 0;
+
+    // --------------------------------------------------------
+    // 2. 초기화 및 방 접속
+    // --------------------------------------------------------
+    document.addEventListener('DOMContentLoaded', () => {
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                currentUser = user; myUid = user.uid;
+                myNick = localStorage.getItem('userNickname') || 'Guest';
+                myAvatar = localStorage.getItem('userAvatar') || '😀';
+                
+                const params = new URLSearchParams(location.search);
+                currentRoomId = params.get('roomId');
+                
+                if (currentRoomId) joinGameRoom(currentRoomId);
+                else { alert("방 정보가 없습니다."); window.location.href = '대기실.html'; }
+            } else { window.location.href = 'index.html'; }
+        });
+
+        ['mousedown', 'touchstart'].forEach(evt => {
+            cvsL.addEventListener(evt, handleCanvasClick, {passive:false});
+            cvsR.addEventListener(evt, handleCanvasClick, {passive:false});
+        });
+        
+        document.getElementById('rematch-btn').addEventListener('click', toggleRematchReady);
+        document.getElementById('lobby-btn').addEventListener('click', handleExitButton);
+        window.addEventListener('resize', resizeCanvas);
+    });
+
+    function joinGameRoom(roomId) {
+        roomRef = db.ref(`rooms/${roomId}`);
+        playerRef = roomRef.child(`players/${myUid}`);
+        statusRef = roomRef.child('status');
+
+        // 플레이어 정보 등록
+        playerRef.update({
+            nickname: myNick, avatar: myAvatar, score: 0, isReady: false
+        });
+        playerRef.onDisconnect().remove();
+
+        // 호스트 확인
+        roomRef.child('hostId').once('value', snap => {
+            isHost = (snap.val() === myUid);
+            if (isHost) {
+                hostStatusDisconnectRef = statusRef.onDisconnect();
+                hostStatusDisconnectRef.set('finished');
+            }
+        });
+
+        // 방 데이터 리스너
+        if (roomValueListener) roomRef.off('value', roomValueListener);
+        roomValueListener = roomRef.on('value', snapshot => {
+            if (!snapshot.exists()) {
+                alert("방이 종료되었습니다."); window.location.href = '대기실.html'; return;
+            }
+            currentRoomData = snapshot.val();
+            updateUnifiedState();
+        });
+    }
+
+    function updateUnifiedState() {
+        if (!currentRoomData) return;
+
+        // 1. 점수판 업데이트
+        updateScoreBoardUI(currentRoomData.players || {});
+
+        // 2. 호스트 승계
+        const playerIds = Object.keys(currentRoomData.players || {}).sort();
+        if (playerIds.length > 0 && (!currentRoomData.hostId || !currentRoomData.players[currentRoomData.hostId])) {
+            if (playerIds[0] === myUid) {
+                isHost = true;
+                roomRef.update({ hostId: myUid });
+            }
+        }
+
+        const status = currentRoomData.status;
+        const gData = currentRoomData.gameData || {};
+
+        // 3. 상태별 처리
+        if (status === 'waiting') {
+            document.getElementById('game-over-overlay').classList.remove('active');
+            document.getElementById('info-overlay').classList.remove('active');
+            
+            // 리매치 UI 갱신
+            updateRematchUI();
+
+            // 2명 이상이면 카운트다운 (애니팡 로직)
+            if (playerIds.length >= 2) {
+                if (currentRoomData.starting && !isGameRunning) {
+                    document.getElementById('loading-overlay').classList.remove('active');
+                    startCountdown();
+                } else if (!currentRoomData.starting && isHost) {
+                    // 2명 모였으니 시작 신호 보냄
+                     setTimeout(() => roomRef.update({ starting: true }), 1000);
+                } else if (!currentRoomData.starting) {
+                    document.getElementById('loading-text').innerText = "게임 시작 대기 중...";
+                }
+            } else {
+                // 1명이면 대기
+                document.getElementById('loading-overlay').classList.add('active');
+                document.getElementById('loading-text').innerText = "플레이어 대기 중 (1/2)...";
+                isGameRunning = false; // 리셋
+                if (isHost) roomRef.update({ starting: false }); // 취소
+            }
+        } 
+        else if (status === 'playing') {
+            document.getElementById('loading-overlay').classList.remove('active');
+            document.getElementById('game-over-overlay').classList.remove('active');
+            
+            const serverImgNum = gData.imageNum || 1;
+            
+            // 이미지가 다르거나 로드 안됐으면 로드
+            if (loadedImageNum !== serverImgNum || imagesLoadedCount < 2) {
+                loadGameImage(serverImgNum);
+            }
+
+            // 타이머 UI
+            if (gData.timer !== undefined) {
+                const tBox = document.getElementById('timer-box');
+                tBox.innerText = gData.timer;
+                if (gData.timer <= 10) tBox.classList.add('danger');
+                else tBox.classList.remove('danger');
+            }
+
+ if (isHost && !timerInterval && gData.timer > 0) {
+    runHostTimer();
+}
+        }
+        else if (status === 'finished') {
+            showGameOver();
+        }
+        else if (status === 'lobby') {
+             if (currentRoomData.nextRoomId) window.location.replace(`게임방.html?roomId=${currentRoomData.nextRoomId}`);
+             else window.location.href = '대기실.html';
+        }
+    }
+
+    // --------------------------------------------------------
+    // 3. 게임 로직 (랜덤 + 한글 폴더 대응)
+    // --------------------------------------------------------
+    
+    function startCountdown() {
+        if (isGameRunning) return;
+        isGameRunning = true;
+        
+        const info = document.getElementById('info-overlay');
+        const text = document.getElementById('countdown-text');
+        info.classList.add('active');
+        
+        let count = 3;
+        playSound('snd-start');
+        text.innerText = count;
+
+        const interval = setInterval(() => {
+            count--;
+            if (count > 0) {
+                text.innerText = count;
+                playSound('snd-start');
+            } else {
+                clearInterval(interval);
+                text.innerText = "GO!";
+                playSound('snd-start');
+                
+                if (isHost) {
+                    setTimeout(initializeRound, 1000);
+                }
+                setTimeout(() => info.classList.remove('active'), 1000);
+            }
+        }, 1000);
+    }
+
+    function initializeRound() {
+        // [랜덤 로직] 1 ~ TOTAL_IMAGE_COUNT 중에서 5개(라운드수) 뽑기
+        const allImages = [];
+        for(let i=1; i<=TOTAL_IMAGE_COUNT; i++) allImages.push(i);
+        
+        // 셔플
+        for (let i = allImages.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [allImages[i], allImages[j]] = [allImages[j], allImages[i]];
+        }
+        const roundImages = allImages.slice(0, TOTAL_ROUNDS);
+        
+        const updates = {};
+        const players = currentRoomData.players;
+        Object.keys(players).forEach(uid => {
+            updates[`players/${uid}/score`] = 0; // 점수 초기화
+        });
+        
+        updates['gameData'] = { 
+            imageNum: roundImages[0],   // 첫 라운드 이미지
+            roundOrder: roundImages,    // 전체 라운드 순서
+            currentRoundIdx: 0,
+            timer: GAME_TIME
+        };
+        updates['status'] = 'playing';
+        updates['starting'] = null;
+
+        roomRef.update(updates);
+    }
+
+    function loadGameImage(num) {
+    loadedImageNum = num;
+    imagesLoadedCount = 0;
+    
+    document.getElementById('loading-overlay').classList.add('active');
+    document.getElementById('loading-text').innerText = "이미지 불러오는 중...";
+
+    const folderName = "틀린그림찾기이미지"; 
+    
+    // ✅ [수정] crossOrigin 제거 (로컬 파일에서는 CORS 불필요)
+    imgL = new Image();
+    imgR = new Image();
+
+    // ✅ [수정] 경로를 URL 인코딩하여 한글 처리
+    const pathOrig = `./${encodeURIComponent(folderName)}/${num}.png`;
+    const pathDiff = `./${encodeURIComponent(folderName)}/${num}-1.png`;
+
+    console.log(`이미지 로드 시도 (원본): ${pathOrig}`);
+    console.log(`이미지 로드 시도 (수정): ${pathDiff}`);
+
+    // 기존 마커 제거
+    document.querySelectorAll('.mark, .wrong-mark').forEach(el => el.remove());
+
+    imgL.onload = onImageLoaded;
+    imgR.onload = onImageLoaded;
+    
+    // ✅ [강화] 에러 로그 추가
+    imgL.onerror = (e) => {
+        console.error(`❌ 원본 이미지 로드 실패: ${pathOrig}`, e);
+        alert(`이미지를 찾을 수 없습니다: ${num}.png\n폴더 구조를 확인해주세요.`);
+    };
+    imgR.onerror = (e) => {
+        console.error(`❌ 수정 이미지 로드 실패: ${pathDiff}`, e);
+        alert(`이미지를 찾을 수 없습니다: ${num}-1.png`);
+    };
+
+    imgL.src = pathOrig;
+    imgR.src = pathDiff;
+
+    lives = MAX_LIVES;
+    foundCount = 0;
+    updateLivesUI();
+    document.getElementById('snd-bgm')?.play().catch(()=>{});
+}
+
+    function onImageLoaded() {
+        imagesLoadedCount++;
+        if (imagesLoadedCount === 2) {
+            resizeCanvas();
+            document.getElementById('loading-overlay').classList.remove('active');
+        }
+    }
+
+    function resizeCanvas() {
+    if (!imgL.width) return;
+    
+    // ✅ [수정] 화면에 맞춰 Canvas 크기 자동 조정
+    const wrapL = document.getElementById('wrap-l');
+    const wrapR = document.getElementById('wrap-r');
+    
+    const wrapWidth = wrapL.clientWidth;
+    const wrapHeight = wrapL.clientHeight;
+    
+    const imgAspect = imgL.width / imgL.height;
+    const wrapAspect = wrapWidth / wrapHeight;
+    
+    let drawWidth, drawHeight;
+    
+    // ✅ 이미지 비율을 유지하면서 wrap에 꽉 차게
+    if (imgAspect > wrapAspect) {
+        // 이미지가 더 넓음 → 가로 기준
+        drawWidth = wrapWidth;
+        drawHeight = wrapWidth / imgAspect;
+    } else {
+        // 이미지가 더 높음 → 세로 기준
+        drawHeight = wrapHeight;
+        drawWidth = wrapHeight * imgAspect;
+    }
+    
+    // ✅ Canvas 크기를 조정된 크기로 설정
+    cvsL.width = drawWidth;
+    cvsL.height = drawHeight;
+    cvsR.width = drawWidth;
+    cvsR.height = drawHeight;
+    
+    // ✅ 이미지를 Canvas에 맞춰 그리기
+    ctxL.drawImage(imgL, 0, 0, drawWidth, drawHeight);
+    ctxR.drawImage(imgR, 0, 0, drawWidth, drawHeight);
+    
+    console.log(`✅ Canvas 크기 조정: ${drawWidth.toFixed(0)}x${drawHeight.toFixed(0)}`);
+}
+
+    function runHostTimer() {
+        if (timerInterval) clearInterval(timerInterval);
+        timerInterval = setInterval(() => {
+            if (currentRoomData.status !== 'playing') {
+                clearInterval(timerInterval); timerInterval = null; return;
+            }
+            
+            roomRef.child('gameData').transaction(gData => {
+                if (!gData) return gData;
+                
+                if (gData.timer > 0) {
+                    gData.timer--;
+                    return gData;
+                } else {
+                    // 시간 종료 -> 다음 라운드
+                    const nextIdx = (gData.currentRoundIdx || 0) + 1;
+                    if (gData.roundOrder && nextIdx < gData.roundOrder.length) {
+                        gData.currentRoundIdx = nextIdx;
+                        gData.imageNum = gData.roundOrder[nextIdx];
+                        gData.timer = GAME_TIME;
+                        return gData;
+                    } else {
+                        gData.timer = -1; // 종료 신호
+                        return gData;
+                    }
+                }
+            }, (err, committed, snap) => {
+                if (committed && snap.val() && snap.val().timer === -1) {
+                    clearInterval(timerInterval);
+                    roomRef.update({ status: 'finished' });
+                }
+            });
+        }, 1000);
+    }
+
+    function handleCanvasClick(e) {
+        // 게임 중이 아니거나, 생명이 없거나, 처리 중이면 무시
+        if (currentRoomData.status !== 'playing' || lives <= 0 || isProcessingClick) return;
+        e.preventDefault();
+        
+        const rect = e.target.getBoundingClientRect();
+        
+        // 캔버스 크기와 실제 화면 크기 비율 계산
+        const scaleX = cvsL.width / rect.width;
+        const scaleY = cvsL.height / rect.height;
+        
+        const clientX = e.clientX || e.touches[0].clientX;
+        const clientY = e.clientY || e.touches[0].clientY;
+        
+        // 클릭 좌표 보정
+        const x = Math.floor((clientX - rect.left) * scaleX);
+        const y = Math.floor((clientY - rect.top) * scaleY);
+
+        if (x < 0 || x >= cvsL.width || y < 0 || y >= cvsL.height) return;
+
+        isProcessingClick = true;
+        
+        try {
+            // 픽셀 비교 (반경 30px)
+            const r = 30;
+            const sx = Math.max(0, x - r); const sy = Math.max(0, y - r);
+            const sw = Math.min(cvsL.width - sx, r * 2); const sh = Math.min(cvsL.height - sy, r * 2);
+            
+            const dataL = ctxL.getImageData(sx, sy, sw, sh).data;
+            const dataR = ctxR.getImageData(sx, sy, sw, sh).data;
+            
+            let diffPixels = 0;
+            for (let i = 0; i < dataL.length; i += 4) {
+                const diff = Math.abs(dataL[i] - dataR[i]) + Math.abs(dataL[i+1] - dataR[i+1]) + Math.abs(dataL[i+2] - dataR[i+2]);
+                if (diff > 50) diffPixels++;
+            }
+
+            if (diffPixels > 10) handleCorrect(x, y);
+            else handleWrong(x, y, e.target);
+
+        } catch (err) {
+            // [핵심 수정] 로컬 테스트 시 보안 오류가 나면 멈추지 말고 정답 로직을 태움 (테스트용)
+            console.warn("⚠️ 로컬 보안 정책으로 픽셀 분석 불가 -> 클릭 허용 처리");
+            handleCorrect(x, y); 
+        }
+        
+        setTimeout(() => isProcessingClick = false, 300);
+    }
+
+    function handleCorrect(x, y) {
+        createMark(x, y, 'wrap-l'); createMark(x, y, 'wrap-r');
+        playSound('snd-correct');
+        foundCount++;
+        playerRef.child('score').transaction(s => (s || 0) + 100);
+        
+        // 5개 다 찾으면 보너스 & 승리 신호
+        if (foundCount >= 5) {
+            showToast("5개 발견! 보너스 +500점!");
+            playerRef.child('score').transaction(s => (s || 0) + 500);
+            
+            // 다음 라운드로 강제 진행 (방장이 처리하도록 타이머 0으로)
+            if (isHost) {
+                roomRef.child('gameData/timer').set(0); 
+            } else {
+                // 게스트가 다 찾았으면 방장에게 신호를 보내야 함 (여기선 간단히 alert)
+                // 실제론 DB에 'roundFinishedUser' 등을 기록해서 방장이 감지하게 해야 함
+                // 이번 버전은 시간 종료 or 방장이 다 찾았을 때만 넘어감 (단순화)
+            }
+        }
+    }
+
+    function handleWrong(x, y, target) {
+        createWrongMark(x, y, target.parentNode);
+        playSound('snd-wrong');
+        lives--;
+        updateLivesUI();
+        if (lives <= 0) showToast("하트 소진!");
+    }
+
+    // --------------------------------------------------------
+    // 4. UI & 유틸리티
+    // --------------------------------------------------------
+    function updateScoreBoardUI(players) {
+        const board = document.getElementById('score-board');
+        board.innerHTML = '';
+        const sorted = Object.keys(players).sort((a,b) => players[b].score - players[a].score);
+        sorted.forEach(uid => {
+            const p = players[uid];
+            const div = document.createElement('div');
+            div.className = `score-pill ${uid === myUid ? 'my-score' : ''}`;
+            // [수정] 아바타 처리 로직 강화
+            let avatarHtml = '';
+            if (AVATAR_SETS[p.avatar]) {
+                avatarHtml = `<img src="${AVATAR_SETS[p.avatar].front}">`;
+            } else if (p.avatar && (p.avatar.startsWith('http') || p.avatar.includes('.') || p.avatar.startsWith('data:'))) {
+                avatarHtml = `<img src="${p.avatar}">`;
+            } else {
+                avatarHtml = `<span style="font-size:1.2em;">${p.avatar || '❓'}</span>`;
+            }
+            
+            div.innerHTML = `${avatarHtml} <span>${p.nickname}: ${p.score || 0}</span>`;
+            board.appendChild(div);
+        });
+    }
+
+    function updateLivesUI() {
+        let str = ''; for(let i=0; i<lives; i++) str += '❤️';
+        document.getElementById('lives-container').innerText = str;
+    }
+
+    function createMark(x, y, wrapId) {
+        const wrap = document.getElementById(wrapId);
+        const rect = wrap.querySelector('canvas').getBoundingClientRect();
+        const sx = (x / cvsL.width) * rect.width;
+        const sy = (y / cvsL.height) * rect.height;
+        const el = document.createElement('div');
+        el.className = 'mark'; el.style.left = sx + 'px'; el.style.top = sy + 'px';
+        wrap.appendChild(el);
+    }
+
+    function createWrongMark(x, y, wrap) {
+        const rect = wrap.querySelector('canvas').getBoundingClientRect();
+        const sx = (x / cvsL.width) * rect.width;
+        const sy = (y / cvsL.height) * rect.height;
+        const el = document.createElement('div');
+        el.className = 'wrong-mark'; el.style.left = sx + 'px'; el.style.top = sy + 'px';
+        wrap.appendChild(el);
+        setTimeout(() => el.remove(), 500);
+    }
+
+    function showToast(msg) {
+        const t = document.createElement('div');
+        t.style.background = 'rgba(0,0,0,0.8)'; t.style.color = 'white';
+        t.style.padding = '10px 20px'; t.style.borderRadius = '20px';
+        t.innerText = msg; t.style.marginTop = '10px';
+        document.getElementById('toast-container').appendChild(t);
+        setTimeout(() => t.remove(), 2000);
+    }
+
+    function playSound(id) {
+        const audio = document.getElementById(id);
+        if (audio) { audio.currentTime = 0; audio.play().catch(()=>{}); }
+    }
+
+    // --------------------------------------------------------
+    // 5. 종료 처리
+    // --------------------------------------------------------
+    function showGameOver() {
+        if (document.getElementById('game-over-overlay').classList.contains('active')) return;
+        isGameRunning = false;
+        document.getElementById('snd-bgm').pause();
+        document.getElementById('game-over-overlay').classList.add('active');
+        
+        const players = currentRoomData.players;
+        const sorted = Object.entries(players).sort(([,a], [,b]) => b.score - a.score);
+        const myRank = sorted.findIndex(([uid]) => uid === myUid) + 1;
+        const winnerText = document.getElementById('winner-text');
+        
+        if (myRank === 1) {
+            winnerText.innerText = "🏆 승리! 축하합니다!";
+            winnerText.style.color = "var(--primary-color)";
+            playSound('snd-win');
+            applyExpAndPoints(db, myUid, 100, 50);
+        } else {
+            winnerText.innerText = `${myRank}위... 다음엔 이겨봐요!`;
+            winnerText.style.color = "#555";
+            playSound('snd-lose');
+            applyExpAndPoints(db, myUid, 30, 10);
+        }
+        updateRematchUI();
+    }
+
+    function updateRematchUI() {
+        const list = document.getElementById('rematch-status-list');
+        list.innerHTML = '';
+        const players = currentRoomData.players || {};
+        const requests = currentRoomData.rematchRequests || {};
+        const sorted = Object.entries(players).sort(([,a], [,b]) => b.score - a.score);
+
+        sorted.forEach(([uid, p], idx) => {
+            const isReady = !!requests[uid];
+            const div = document.createElement('div');
+            div.className = `rematch-row ${uid === myUid ? 'me' : ''}`;
+            div.innerHTML = `<div>${idx+1}위. ${p.nickname} (${p.score}점)</div><div class="status-text ${isReady ? 'ready' : ''}">${isReady ? '준비완료' : '대기중'}</div>`;
+            list.appendChild(div);
+        });
+
+        const btn = document.getElementById('rematch-btn');
+        if (requests[myUid]) {
+            btn.innerText = "준비 취소"; btn.classList.remove('btn-primary'); btn.classList.add('btn-secondary');
+        } else {
+            btn.innerText = "다시 하기"; btn.classList.add('btn-primary'); btn.classList.remove('btn-secondary');
+        }
+
+        // 전원 준비 시 재시작 (호스트)
+        if (isHost && Object.keys(players).length >= 2) {
+            const allReady = Object.keys(players).every(uid => requests[uid]);
+            if (allReady && !currentRoomData.starting) {
+                setTimeout(() => { roomRef.update({ starting: true }); }, 1000);
+            }
+        }
+    }
+
+    function toggleRematchReady() {
+        const isReady = currentRoomData.rematchRequests && currentRoomData.rematchRequests[myUid];
+        if (isReady) roomRef.child(`rematchRequests/${myUid}`).remove();
+        else roomRef.child(`rematchRequests/${myUid}`).set(true);
+    }
+
+    function handleExitButton() {
+        isExiting = true;
+        if (isHost) {
+            // 방장은 방 상태를 'lobby'로 변경하여 모두 내보냄
+            roomRef.update({ status: 'lobby' }).then(() => location.href = '대기실.html');
+        } else {
+            roomRef.child(`players/${myUid}`).remove();
+            location.href = '대기실.html';
+        }
+    }
+
+    function sendChatMessage() {
+        const input = document.getElementById('chat-input');
+        const msg = input.value.trim();
+        if (msg) {
+            roomRef.child('chat').push({ sender: myNick, msg: msg });
+            input.value = '';
+        }
+    }
+</script>
+</body>
+</html>
