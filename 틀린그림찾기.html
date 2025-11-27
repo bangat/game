@@ -66,21 +66,27 @@
             padding: 10px; gap: 10px; 
             justify-content: center; align-items: center; background: #111; 
         }
-        .canvas-wrapper { 
-            position: relative; 
-            border: 2px solid #555; 
-            border-radius: 8px; 
-            overflow: hidden;
-            background: #000; 
-            display: flex; 
-            justify-content: center; 
-            align-items: center;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
-            width: 100%; 
-            flex: 1;
-            min-height: 0;
-        }
-        canvas { display: block; margin: 0 auto; }
+        /* 현재 CSS에서 이 부분이 중요합니다 */
+.canvas-wrapper { 
+    position: relative; 
+    border: 2px solid #555; 
+    border-radius: 8px; 
+    overflow: hidden;
+    background: #000; 
+    display: flex; 
+    justify-content: center;  /* ✅ 중앙 정렬 */
+    align-items: center;       /* ✅ 중앙 정렬 */
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    width: 100%; 
+    flex: 1;
+    min-height: 0;
+}
+
+canvas { 
+    display: block; 
+    margin: 0 auto; 
+    /* ✅ max-width/max-height 제거 (있으면 문제) */
+}
 
         @media (min-aspect-ratio: 1/1) { #game-container { flex-direction: row; } }
 
@@ -485,46 +491,54 @@
         roomRef.update(updates);
     }
 
-    function loadGameImage(num) {
-        if (loadedImageNum === num && imagesLoadedCount >= 2) return;
-        
-        loadedImageNum = num;
-        imagesLoadedCount = 0;
-        
-        document.getElementById('loading-overlay').classList.add('active');
-        document.getElementById('loading-text').innerText = "이미지 불러오는 중...";
+    // ✅ 변경 코드
+function loadGameImage(num) {
+    if (loadedImageNum === num && imagesLoadedCount >= 2) return;
+    
+    loadedImageNum = num;
+    imagesLoadedCount = 0;
+    
+    document.getElementById('loading-overlay').classList.add('active');
+    document.getElementById('loading-text').innerText = "이미지 불러오는 중...";
 
-        // [수정] 폴더명 경로를 단순화하여 로컬 호환성 확보
-        const pathOrig = `./틀린그림찾기이미지/${num}.png`;
-        const pathDiff = `./틀린그림찾기이미지/${num}-1.png`;
+    // ✅ 원래 경로 그대로 사용
+    const pathOrig = `./틀린그림찾기이미지/${num}.png`;
+    const pathDiff = `./틀린그림찾기이미지/${num}-1.png`;
 
-        document.querySelectorAll('.mark, .wrong-mark').forEach(el => el.remove());
+    document.querySelectorAll('.mark, .wrong-mark').forEach(el => el.remove());
 
-        imgL = new Image(); imgL.crossOrigin = "Anonymous";
-        imgR = new Image(); imgR.crossOrigin = "Anonymous";
+    // ✅ 이 부분은 유지 (검은 화면 방지)
+    cvsL.width = cvsL.clientWidth;
+    cvsL.height = cvsL.clientHeight;
+    cvsR.width = cvsR.clientWidth;
+    cvsR.height = cvsR.clientHeight;
+    ctxL.fillStyle = '#000';
+    ctxL.fillRect(0, 0, cvsL.width, cvsL.height);
+    ctxR.fillStyle = '#000';
+    ctxR.fillRect(0, 0, cvsR.width, cvsR.height);
 
-        imgL.onload = onImageLoaded;
-        imgR.onload = onImageLoaded;
-        
-        imgL.onerror = () => { 
-            console.error("Image load fail:", pathOrig);
-            alert("이미지 로드 실패. 경로를 확인하세요: " + num); 
-            // 실패해도 검은 화면 방지용 리사이즈 호출
-            imagesLoadedCount=2; 
-            resizeCanvas();
-            document.getElementById('loading-overlay').classList.remove('active'); 
-        };
-        imgR.onerror = () => { 
-            console.error("Image load fail:", pathDiff);
-            alert("이미지 로드 실패. 경로를 확인하세요: " + num + "-1"); 
-            imagesLoadedCount=2; 
-            resizeCanvas();
-            document.getElementById('loading-overlay').classList.remove('active'); 
-        };
+    imgL = new Image(); imgL.crossOrigin = "Anonymous";
+    imgR = new Image(); imgR.crossOrigin = "Anonymous";
 
-        imgL.src = pathOrig;
-        imgR.src = pathDiff;
-    }
+    imgL.onload = onImageLoaded;
+    imgR.onload = onImageLoaded;
+    
+    imgL.onerror = () => { 
+        console.error("Image load fail:", pathOrig);
+        showToast(`이미지 ${num}.png를 찾을 수 없습니다`); 
+        imagesLoadedCount=2; 
+        document.getElementById('loading-overlay').classList.remove('active'); 
+    };
+    imgR.onerror = () => { 
+        console.error("Image load fail:", pathDiff);
+        showToast(`이미지 ${num}-1.png를 찾을 수 없습니다`); 
+        imagesLoadedCount=2; 
+        document.getElementById('loading-overlay').classList.remove('active'); 
+    };
+
+    imgL.src = pathOrig;
+    imgR.src = pathDiff;
+}
 
     function onImageLoaded() {
         imagesLoadedCount++;
@@ -535,32 +549,51 @@
         }
     }
 
-    function resizeCanvas() {
-        // [수정] 이미지가 없어도 캔버스 초기화 (검은 화면 원인 방지)
-        cvsL.width = cvsL.clientWidth; cvsL.height = cvsL.clientHeight;
-        cvsR.width = cvsR.clientWidth; cvsR.height = cvsR.clientHeight;
-        
-        if (!imgL.width) return;
-        
-        const wrapL = document.getElementById('wrap-l');
-        const wrapWidth = wrapL.clientWidth;
-        const wrapHeight = wrapL.clientHeight;
-        const imgAspect = imgL.width / imgL.height;
-        const wrapAspect = wrapWidth / wrapHeight;
-        
-        let drawWidth, drawHeight;
-        if (imgAspect > wrapAspect) {
-            drawWidth = wrapWidth; drawHeight = wrapWidth / imgAspect;
-        } else {
-            drawHeight = wrapHeight; drawWidth = wrapHeight * imgAspect;
-        }
-        
-        cvsL.width = drawWidth; cvsL.height = drawHeight;
-        cvsR.width = drawWidth; cvsR.height = drawHeight;
-        
-        ctxL.drawImage(imgL, 0, 0, drawWidth, drawHeight);
-        ctxR.drawImage(imgR, 0, 0, drawWidth, drawHeight);
+    // ✅ 개선된 resizeCanvas 함수
+function resizeCanvas() {
+    // 1단계: 이미지가 없으면 기본 크기로 초기화
+    if (!imgL.width || !imgL.height) {
+        cvsL.width = cvsL.clientWidth || 300;
+        cvsL.height = cvsL.clientHeight || 300;
+        cvsR.width = cvsR.clientWidth || 300;
+        cvsR.height = cvsR.clientHeight || 300;
+        return;
     }
+    
+    // 2단계: wrapper 크기 가져오기
+    const wrapL = document.getElementById('wrap-l');
+    const wrapWidth = wrapL.clientWidth;
+    const wrapHeight = wrapL.clientHeight;
+    
+    // 3단계: 이미지 비율 계산
+    const imgAspect = imgL.width / imgL.height;
+    const wrapAspect = wrapWidth / wrapHeight;
+    
+    let drawWidth, drawHeight;
+    
+    // 4단계: 이미지가 wrapper를 꽉 채우도록 계산 (여백 없음)
+    if (imgAspect > wrapAspect) {
+        // 이미지가 더 넓음 → 가로를 꽉 채우기
+        drawWidth = wrapWidth;
+        drawHeight = wrapWidth / imgAspect;
+    } else {
+        // 이미지가 더 높음 → 세로를 꽉 채우기
+        drawHeight = wrapHeight;
+        drawWidth = wrapHeight * imgAspect;
+    }
+    
+    // 5단계: 캔버스 크기를 계산된 크기로 정확히 설정
+    cvsL.width = drawWidth;
+    cvsL.height = drawHeight;
+    cvsR.width = drawWidth;
+    cvsR.height = drawHeight;
+    
+    // 6단계: 이미지를 캔버스 전체에 그리기 (여백 0)
+    ctxL.clearRect(0, 0, drawWidth, drawHeight);
+    ctxR.clearRect(0, 0, drawWidth, drawHeight);
+    ctxL.drawImage(imgL, 0, 0, drawWidth, drawHeight);
+    ctxR.drawImage(imgR, 0, 0, drawWidth, drawHeight);
+}
 
     function runHostTimer() {
         if (timerInterval) clearInterval(timerInterval);
@@ -580,53 +613,77 @@
         }, 1000);
     }
 
-    function handleCanvasClick(e) {
-        if (currentRoomData.status !== 'playing' || lives <= 0 || isProcessingClick || imagesLoadedCount < 2) return;
-        e.preventDefault();
+    // ✅ 변경 코드
+function handleCanvasClick(e) {
+    if (currentRoomData.status !== 'playing' || lives <= 0 || isProcessingClick || imagesLoadedCount < 2) return;
+    e.preventDefault();
 
-        const targetCanvas = e.target;
-        const rect = targetCanvas.getBoundingClientRect();
+    const targetCanvas = e.target;
+    const rect = targetCanvas.getBoundingClientRect();
+    
+    // ✅ 정확한 스케일 계산
+    const scaleX = targetCanvas.width / rect.width;
+    const scaleY = targetCanvas.height / rect.height;
+    
+    // ✅ 터치/마우스 좌표 통합
+    const clientX = e.clientX;
+    const clientY = e.clientY;
+    
+    // ✅ 캔버스 내부 좌표로 변환
+    const x = (clientX - rect.left) * scaleX;
+    const y = (clientY - rect.top) * scaleY;
+
+    // ✅ 디버깅용 로그 (나중에 제거 가능)
+    console.log('Click:', {
+        client: [clientX, clientY],
+        rect: [rect.left, rect.top, rect.width, rect.height],
+        canvas: [targetCanvas.width, targetCanvas.height],
+        scale: [scaleX, scaleY],
+        final: [x, y]
+    });
+
+    // ✅ 범위 체크 강화
+    if (x < 0 || x >= targetCanvas.width || y < 0 || y >= targetCanvas.height) {
+        console.warn('Click out of bounds:', x, y);
+        return;
+    }
+
+    isProcessingClick = true;
+
+    try {
+        // ✅ 검사 영역을 더 크게 (모바일 손가락 고려)
+        const r = Math.max(20, Math.floor(Math.min(cvsL.width, cvsL.height) * 0.04));
+        const sx = Math.max(0, Math.floor(x - r));
+        const sy = Math.max(0, Math.floor(y - r));
+        const sw = Math.min(cvsL.width - sx, r * 2);
+        const sh = Math.min(cvsL.height - sy, r * 2);
+
+        const dataL = ctxL.getImageData(sx, sy, sw, sh).data;
+        const dataR = ctxR.getImageData(sx, sy, sw, sh).data;
         
-        const scaleX = targetCanvas.width / rect.width;
-        const scaleY = targetCanvas.height / rect.height;
+        let diffPixels = 0;
+        const totalPixels = (sw * sh);
         
-        const clientX = e.clientX || e.touches[0].clientX;
-        const clientY = e.clientY || e.touches[0].clientY;
-        
-        const x = (clientX - rect.left) * scaleX;
-        const y = (clientY - rect.top) * scaleY;
-
-        if (x < 0 || x >= targetCanvas.width || y < 0 || y >= targetCanvas.height) return;
-
-        isProcessingClick = true;
-
-        try {
-            const r = Math.max(15, Math.floor(Math.min(cvsL.width, cvsL.height) * 0.03));
-            const sx = Math.max(0, Math.floor(x - r));
-            const sy = Math.max(0, Math.floor(y - r));
-            const sw = Math.min(cvsL.width - sx, r * 2);
-            const sh = Math.min(cvsL.height - sy, r * 2);
-
-            const dataL = ctxL.getImageData(sx, sy, sw, sh).data;
-            const dataR = ctxR.getImageData(sx, sy, sw, sh).data;
-            
-            let diffPixels = 0;
-            const totalPixels = (sw * sh);
-            
-            for (let i = 0; i < dataL.length; i += 4) {
-                const diff = Math.abs(dataL[i] - dataR[i]) + Math.abs(dataL[i+1] - dataR[i+1]) + Math.abs(dataL[i+2] - dataR[i+2]);
-                if (diff > 50) diffPixels++;
-            }
-            
-            if ( (diffPixels / totalPixels) > 0.05 ) handleCorrect(x, y);
-            else handleWrong(x, y, targetCanvas);
-
-        } catch (err) {
-            handleCorrect(x, y);
+        for (let i = 0; i < dataL.length; i += 4) {
+            const diff = Math.abs(dataL[i] - dataR[i]) + 
+                        Math.abs(dataL[i+1] - dataR[i+1]) + 
+                        Math.abs(dataL[i+2] - dataR[i+2]);
+            if (diff > 50) diffPixels++;
         }
         
-        setTimeout(() => isProcessingClick = false, 300);
+        const diffRatio = diffPixels / totalPixels;
+        console.log('Diff ratio:', diffRatio); // 디버깅용
+        
+        if (diffRatio > 0.05) handleCorrect(x, y);
+        else handleWrong(x, y, targetCanvas);
+
+    } catch (err) {
+        console.error('Canvas click error:', err);
+        handleCorrect(x, y);
     }
+    
+    setTimeout(() => isProcessingClick = false, 300);
+}
 
     function handleCorrect(x, y) {
         createMark(x, y, 'wrap-l'); 
