@@ -617,11 +617,12 @@ const diffCtx = diffCvs.getContext('2d');
 diffCvs.width = 1; diffCvs.height = 1;
 
 // [수정] 클릭 핸들러
+// [수정] 색상 변경도 잘 잡는 '주변 픽셀 스캔' 방식의 클릭 핸들러
 function handleCanvasClick(e) {
     if (currentRoomData.status !== 'playing' || lives <= 0 || isProcessingClick || imagesLoadedCount < 2) return;
     e.preventDefault();
 
-    // 1. 클릭한 화면 좌표 (Canvas 기준)
+    // 1. 화면 좌표 계산
     const rect = e.target.getBoundingClientRect();
     let clientX = e.clientX;
     let clientY = e.clientY;
@@ -632,57 +633,69 @@ function handleCanvasClick(e) {
     const x = clientX - rect.left;
     const y = clientY - rect.top;
 
-    // 2. 검은 여백(Letterbox) 클릭 시 무시
+    // 2. 검은 여백 클릭 무시
     const { scale, offsetX, offsetY, drawW, drawH } = gameLayout;
     if (x < offsetX || x > offsetX + drawW || y < offsetY || y > offsetY + drawH) {
-        return; // 이미지 밖(검은 부분) 클릭 무시
+        return;
     }
 
     isProcessingClick = true;
 
     try {
-        // 3. 화면 좌표(x,y)를 -> 원본 이미지 좌표(imgX, imgY)로 변환
-        const imgX = Math.floor((x - offsetX) / scale);
-        const imgY = Math.floor((y - offsetY) / scale);
+        // 3. 클릭한 위치를 원본 이미지 좌표로 변환
+        const imgCenterX = Math.floor((x - offsetX) / scale);
+        const imgCenterY = Math.floor((y - offsetY) / scale);
 
-        // 4. 원본 이미지 픽셀 비교 (정확도 100%)
-        // 왼쪽 이미지 1px 추출
-        diffCtx.clearRect(0,0,1,1);
-        diffCtx.drawImage(imgL, imgX, imgY, 1, 1, 0, 0, 1, 1);
-        const dataL = diffCtx.getImageData(0,0,1,1).data;
-
-        // 오른쪽 이미지 1px 추출
-        diffCtx.clearRect(0,0,1,1);
-        diffCtx.drawImage(imgR, imgX, imgY, 1, 1, 0, 0, 1, 1);
-        const dataR = diffCtx.getImageData(0,0,1,1).data;
-
-        // 색상 차이 계산 (반경 검사 없이 핀포인트 검사 + 약간의 허용오차)
-        // 사용자가 터치한 곳 주변 5x5 픽셀 정도를 검사해주면 더 좋지만, 
-        // 일단 정확한 좌표 매칭을 위해 1:1 비교를 수행합니다.
+        // 4. [핵심 수정] 주변 픽셀 스캔 (Area Scanning)
+        // 딱 1픽셀만 보지 않고, 클릭한 곳 주변 10x10 영역을 훑어서
+        // 미세한 색상 변화라도 있으면 정답으로 인정합니다.
         
-        // 오차 범위 50 (JPG 압축 노이즈 등 고려)
-        const diff = Math.abs(dataL[0] - dataR[0]) + 
-                     Math.abs(dataL[1] - dataR[1]) + 
-                     Math.abs(dataL[2] - dataR[2]);
+        const scanRange = 5; // 반경 5px (총 10x10px 영역 검사)
+        const scanW = scanRange * 2;
+        const scanH = scanRange * 2;
 
-        // 틀린 그림이면 (차이가 크면)
-        if (diff > 50) { 
-            // 검사 범위를 조금 더 넓게 잡아주려면 여기서 주변 픽셀 루프를 돌릴 수 있음
-            // 하지만 현재 가장 큰 문제는 '좌표 밀림'이므로 우선 1:1 매칭
-            handleCorrect(x, y); // 화면 좌표 그대로 전달
+        // 왼쪽 이미지 영역 추출
+        diffCtx.canvas.width = scanW; // 캔버스 크기 임시 조정
+        diffCtx.canvas.height = scanH;
+        diffCtx.clearRect(0, 0, scanW, scanH);
+        diffCtx.drawImage(imgL, imgCenterX - scanRange, imgCenterY - scanRange, scanW, scanH, 0, 0, scanW, scanH);
+        const dataL = diffCtx.getImageData(0, 0, scanW, scanH).data;
+
+        // 오른쪽 이미지 영역 추출
+        diffCtx.clearRect(0, 0, scanW, scanH);
+        diffCtx.drawImage(imgR, imgCenterX - scanRange, imgCenterY - scanRange, scanW, scanH, 0, 0, scanW, scanH);
+        const dataR = diffCtx.getImageData(0, 0, scanW, scanH).data;
+
+        let isDiffFound = false;
+        
+        // 픽셀 전수 조사
+        for (let i = 0; i < dataL.length; i += 4) {
+            const diff = Math.abs(dataL[i] - dataR[i]) +     // R 차이
+                         Math.abs(dataL[i+1] - dataR[i+1]) + // G 차이
+                         Math.abs(dataL[i+2] - dataR[i+2]);  // B 차이
+            
+            // [핵심] 민감도 완화 (50 -> 30)
+            // 30 이상 차이나는 픽셀이 하나라도 있으면 정답!
+            if (diff > 30) { 
+                isDiffFound = true;
+                break; // 하나 찾았으면 루프 종료
+            }
+        }
+
+        if (isDiffFound) {
+            handleCorrect(x, y);
         } else {
-            // 여기가 핵심: 내 주변에 정답이 있는지 살짝 찾아줌 (터치 보정)
-            // 15px 반경 내에 다른점이 있는지 2차 검사
-            let foundNear = false;
-            // 성능을 위해 간단히 상하좌우 체크
-            const scanRange = 15; 
-            // (복잡한 로직 생략하고 일단 정확한 좌표 기준으로 판정)
-             handleWrong(x, y, e.target.parentNode);
+            handleWrong(x, y, e.target.parentNode);
         }
 
     } catch (err) {
         console.error(err);
     }
+    
+    // 임시 캔버스 크기 복구 (혹시 모를 사이드이펙트 방지)
+    diffCtx.canvas.width = 1; 
+    diffCtx.canvas.height = 1;
+    
     setTimeout(() => isProcessingClick = false, 300);
 }
 
