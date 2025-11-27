@@ -113,7 +113,8 @@ canvas {
         .btn-primary { background: var(--primary-color); }
         .btn-secondary { background: var(--secondary-color); }
 
-        .mark { position: absolute; width: 40px; height: 40px; border: 4px solid #00ff00; border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 0 15px #00ff00; pointer-events: none; animation: pop 0.3s; z-index: 10; }
+        /* 넷마블 스타일: 빨간색 동그라미 */
+        .mark { position: absolute; width: 50px; height: 50px; border: 5px solid #ff0000; border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 0 10px #ff0000, inset 0 0 10px #ff0000; pointer-events: none; animation: pop 0.3s; z-index: 10; }
         .wrong-mark { position: absolute; width: 40px; height: 40px; pointer-events: none; transform: translate(-50%, -50%); animation: fadeOut 0.5s forwards; z-index: 50; }
         .wrong-mark::before, .wrong-mark::after { content: ''; position: absolute; width: 100%; height: 5px; background: #ff4757; top: 50%; left: 0; border-radius: 2px; }
         .wrong-mark::before { transform: rotate(45deg); } .wrong-mark::after { transform: rotate(-45deg); }
@@ -399,31 +400,35 @@ canvas {
     }
 
     function initializeRound() {
-        // [랜덤 로직] 1 ~ TOTAL_IMAGE_COUNT 중에서 5개(라운드수) 뽑기
+        // [수정] 1~12번 이미지 중 랜덤으로 5개 뽑기 (중복 없이)
         const allImages = [];
         for(let i=1; i<=TOTAL_IMAGE_COUNT; i++) allImages.push(i);
         
-        // 셔플
+        // 피셔-예이츠 셔플 (완벽한 랜덤)
         for (let i = allImages.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
             [allImages[i], allImages[j]] = [allImages[j], allImages[i]];
         }
-        const roundImages = allImages.slice(0, TOTAL_ROUNDS);
+        
+        // 정확히 5라운드 분량 자르기
+        const roundImages = allImages.slice(0, 5); 
         
         const updates = {};
         const players = currentRoomData.players;
+        
+        // [수정] 점수(score) 대신 승수(roundWins)를 0으로 초기화
         Object.keys(players).forEach(uid => {
-            updates[`players/${uid}/score`] = 0; // 점수 초기화
+            updates[`players/${uid}/roundWins`] = 0; 
         });
         
         updates['gameData'] = { 
-            imageNum: roundImages[0],   // 첫 라운드 이미지
-            roundOrder: roundImages,    // 전체 라운드 순서
+            imageNum: roundImages[0],   // 첫 번째 랜덤 이미지
+            roundOrder: roundImages,    // 5개의 이미지 순서 저장
             currentRoundIdx: 0,
-            timer: GAME_TIME
+            timer: GAME_TIME            // 시간초는 흐르게 설정
         };
         updates['status'] = 'playing';
-        updates['starting'] = null;
+        updates['starting'] = null; // 시작 신호 리셋
 
         roomRef.update(updates);
     }
@@ -608,21 +613,18 @@ canvas {
         createMark(x, y, 'wrap-l'); createMark(x, y, 'wrap-r');
         playSound('snd-correct');
         foundCount++;
-        playerRef.child('score').transaction(s => (s || 0) + 100);
-        
-        // 5개 다 찾으면 보너스 & 승리 신호
+        // 점수 획득 로직 삭제 (요청사항)
+
+        // [수정] 5개를 모두 찾으면 라운드 승리
         if (foundCount >= 5) {
-            showToast("5개 발견! 보너스 +500점!");
-            playerRef.child('score').transaction(s => (s || 0) + 500);
+            showToast("라운드 승리! 다음 라운드로 이동합니다.");
             
-            // 다음 라운드로 강제 진행 (방장이 처리하도록 타이머 0으로)
-            if (isHost) {
-                roomRef.child('gameData/timer').set(0); 
-            } else {
-                // 게스트가 다 찾았으면 방장에게 신호를 보내야 함 (여기선 간단히 alert)
-                // 실제론 DB에 'roundFinishedUser' 등을 기록해서 방장이 감지하게 해야 함
-                // 이번 버전은 시간 종료 or 방장이 다 찾았을 때만 넘어감 (단순화)
-            }
+            // 1. 내 승수(roundWins) 1 증가
+            playerRef.child('roundWins').transaction(w => (w || 0) + 1);
+            
+            // 2. 타이머를 0으로 만들어 강제로 다음 라운드 진행 (방장/게스트 모두 실행 가능)
+            // Firebase 트랜잭션으로 충돌 방지
+            roomRef.child('gameData/timer').transaction(t => 0);
         }
     }
 
@@ -655,7 +657,8 @@ canvas {
                 avatarHtml = `<span style="font-size:1.2em;">${p.avatar || '❓'}</span>`;
             }
             
-            div.innerHTML = `${avatarHtml} <span>${p.nickname}: ${p.score || 0}</span>`;
+            // 점수 대신 라운드 승수(Wins) 표시
+            div.innerHTML = `${avatarHtml} <span>${p.nickname}: ${p.roundWins || 0}승</span>`;
             board.appendChild(div);
         });
     }
@@ -709,7 +712,8 @@ canvas {
         document.getElementById('game-over-overlay').classList.add('active');
         
         const players = currentRoomData.players;
-        const sorted = Object.entries(players).sort(([,a], [,b]) => b.score - a.score);
+        // [수정] 점수(score)가 아닌 승수(roundWins) 내림차순 정렬
+        const sorted = Object.entries(players).sort(([,a], [,b]) => (b.roundWins || 0) - (a.roundWins || 0));
         const myRank = sorted.findIndex(([uid]) => uid === myUid) + 1;
         const winnerText = document.getElementById('winner-text');
         
@@ -732,13 +736,15 @@ canvas {
         list.innerHTML = '';
         const players = currentRoomData.players || {};
         const requests = currentRoomData.rematchRequests || {};
-        const sorted = Object.entries(players).sort(([,a], [,b]) => b.score - a.score);
+        // [수정] 승수 기준 정렬
+        const sorted = Object.entries(players).sort(([,a], [,b]) => (b.roundWins || 0) - (a.roundWins || 0));
 
         sorted.forEach(([uid, p], idx) => {
             const isReady = !!requests[uid];
             const div = document.createElement('div');
             div.className = `rematch-row ${uid === myUid ? 'me' : ''}`;
-            div.innerHTML = `<div>${idx+1}위. ${p.nickname} (${p.score}점)</div><div class="status-text ${isReady ? 'ready' : ''}">${isReady ? '준비완료' : '대기중'}</div>`;
+            // 점수 대신 승수 표시
+            div.innerHTML = `<div>${idx+1}위. ${p.nickname} (${p.roundWins || 0}승)</div><div class="status-text ${isReady ? 'ready' : ''}">${isReady ? '준비완료' : '대기중'}</div>`;
             list.appendChild(div);
         });
 
