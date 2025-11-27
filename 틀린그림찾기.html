@@ -117,11 +117,10 @@
         .btn-primary { background: var(--primary-color); }
         .btn-secondary { background: var(--secondary-color); }
 
-        /* [핵심] 마커: 퍼센트(%) 좌표로 찍히도록 JS 수정됨 */
+        /* 마커 (퍼센트 좌표 사용) */
         .mark { 
             position: absolute; 
-            width: 8%; /* 반응형 크기 */
-            padding-bottom: 8%; /* 원형 유지 */
+            width: 8%; padding-bottom: 8%; /* 원형 유지 */
             border: 3px solid #ff0000; 
             border-radius: 50%; 
             transform: translate(-50%, -50%); 
@@ -132,8 +131,7 @@
         }
         .wrong-mark { 
             position: absolute; 
-            width: 8%; 
-            padding-bottom: 8%;
+            width: 8%; padding-bottom: 8%;
             pointer-events: none; 
             transform: translate(-50%, -50%); 
             animation: fadeOut 0.5s forwards; 
@@ -268,14 +266,13 @@
     let isExiting = false;
     let timerInterval = null;
 
-    // 게임 변수
     let lives = MAX_LIVES;
     let foundCount = 0;
     let isProcessingClick = false;
     let isGameRunning = false;
     let loadedImageNum = -1;
     let imagesLoadedCount = 0;
-    let hasReportedWin = false; // 중복 승리 보고 방지
+    let hasReportedWin = false;
 
     const TTS_ENABLED_KEY = 'gameLobbyTTSOn';
     let isTTSOn = localStorage.getItem(TTS_ENABLED_KEY) !== 'false';
@@ -305,20 +302,18 @@
             } else { window.location.href = 'index.html'; }
         });
 
-        // [핵심] 모바일 터치 대응 (pointerdown 사용)
+        // 모바일 터치 대응
         cvsL.addEventListener('pointerdown', handleCanvasClick);
         cvsR.addEventListener('pointerdown', handleCanvasClick);
         
         document.getElementById('rematch-btn').addEventListener('click', toggleRematchReady);
         document.getElementById('lobby-btn').addEventListener('click', handleExitButton);
         
-        // 리사이즈 디바운싱
         let resizeTimeout;
         window.addEventListener('resize', () => {
             clearTimeout(resizeTimeout);
             resizeTimeout = setTimeout(() => {
                 resizeCanvas();
-                // 화면 바뀌면 마커 위치가 틀어질 수 있으므로 제거 (새로 맞추기 어려움)
                 document.querySelectorAll('.mark, .wrong-mark').forEach(el => el.remove());
             }, 300);
         });
@@ -364,7 +359,6 @@
         if (!currentRoomData) return;
         updateScoreBoardUI(currentRoomData.players || {});
 
-        // 호스트 승계 로직
         const playerIds = Object.keys(currentRoomData.players || {}).sort();
         if (playerIds.length > 0 && (!currentRoomData.hostId || !currentRoomData.players[currentRoomData.hostId])) {
             if (playerIds[0] === myUid) {
@@ -401,12 +395,14 @@
             document.getElementById('loading-overlay').classList.remove('active');
             document.getElementById('game-over-overlay').classList.remove('active');
             
-            // [중요] gData.imageNum이 없으면 아직 초기화 안된 것이므로 대기
             const serverImgNum = gData.imageNum;
-            if (!serverImgNum) return;
+            if (!serverImgNum) {
+                // 이미지가 없으면 호스트가 강제 리셋 (1번 방지)
+                if (isHost && !isGameRunning) initializeRound();
+                return;
+            }
 
             if (loadedImageNum !== serverImgNum) {
-                // 새 이미지 로드 시 상태 리셋
                 foundCount = 0;
                 lives = MAX_LIVES;
                 updateLivesUI();
@@ -414,7 +410,6 @@
                 loadGameImage(serverImgNum);
             }
 
-            // 타이머 UI 업데이트
             if (gData.timer !== undefined) {
                 const tBox = document.getElementById('timer-box');
                 tBox.innerText = gData.timer;
@@ -422,11 +417,9 @@
                 else tBox.classList.remove('danger');
             }
 
-            // [중요] 호스트 타이머 로직: 이미지가 로드된 후에만 돌림
             if (isHost && !timerInterval && imagesLoadedCount === 2 && gData.timer > 0) {
                 runHostTimer();
             } else if (isHost && gData.timer === 0) {
-                // 타이머가 0이면 라운드 종료 처리
                 handleRoundEnd();
             }
         }
@@ -460,10 +453,7 @@
                 text.innerText = "GO!";
                 playSound('snd-start');
                 
-                if (isHost) {
-                    // [중요] 호스트가 셔플 후 DB 업데이트 -> 게스트는 updateUnifiedState에서 로드
-                    setTimeout(initializeRound, 500);
-                }
+                if (isHost) setTimeout(initializeRound, 500);
                 setTimeout(() => info.classList.remove('active'), 1000);
             }
         }, 1000);
@@ -473,20 +463,18 @@
         const allImages = [];
         for(let i=1; i<=TOTAL_IMAGE_COUNT; i++) allImages.push(i);
         
-        // [랜덤] 피셔-예이츠 셔플
         for (let i = allImages.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
             [allImages[i], allImages[j]] = [allImages[j], allImages[i]];
         }
         
         const roundImages = allImages.slice(0, 5);
-        
         const updates = {};
         const players = currentRoomData.players;
         Object.keys(players).forEach(uid => { updates[`players/${uid}/roundWins`] = 0; });
         
         updates['gameData'] = { 
-            imageNum: roundImages[0], // [핵심] 여기가 1로 고정되지 않고 셔플된 첫번째 값이어야 함
+            imageNum: roundImages[0], 
             roundOrder: roundImages,    
             currentRoundIdx: 0,
             timer: GAME_TIME            
@@ -506,9 +494,9 @@
         document.getElementById('loading-overlay').classList.add('active');
         document.getElementById('loading-text').innerText = "이미지 불러오는 중...";
 
-        const folderName = "틀린그림찾기이미지";
-        const pathOrig = `./${encodeURIComponent(folderName)}/${num}.png`;
-        const pathDiff = `./${encodeURIComponent(folderName)}/${num}-1.png`;
+        // [수정] 폴더명 경로를 단순화하여 로컬 호환성 확보
+        const pathOrig = `./틀린그림찾기이미지/${num}.png`;
+        const pathDiff = `./틀린그림찾기이미지/${num}-1.png`;
 
         document.querySelectorAll('.mark, .wrong-mark').forEach(el => el.remove());
 
@@ -518,8 +506,21 @@
         imgL.onload = onImageLoaded;
         imgR.onload = onImageLoaded;
         
-        imgL.onerror = () => { alert("이미지 로드 실패: " + num); imagesLoadedCount=2; document.getElementById('loading-overlay').classList.remove('active'); };
-        imgR.onerror = () => { alert("이미지 로드 실패: " + num + "-1"); imagesLoadedCount=2; document.getElementById('loading-overlay').classList.remove('active'); };
+        imgL.onerror = () => { 
+            console.error("Image load fail:", pathOrig);
+            alert("이미지 로드 실패. 경로를 확인하세요: " + num); 
+            // 실패해도 검은 화면 방지용 리사이즈 호출
+            imagesLoadedCount=2; 
+            resizeCanvas();
+            document.getElementById('loading-overlay').classList.remove('active'); 
+        };
+        imgR.onerror = () => { 
+            console.error("Image load fail:", pathDiff);
+            alert("이미지 로드 실패. 경로를 확인하세요: " + num + "-1"); 
+            imagesLoadedCount=2; 
+            resizeCanvas();
+            document.getElementById('loading-overlay').classList.remove('active'); 
+        };
 
         imgL.src = pathOrig;
         imgR.src = pathDiff;
@@ -530,13 +531,17 @@
         if (imagesLoadedCount === 2) {
             resizeCanvas();
             document.getElementById('loading-overlay').classList.remove('active');
-            // 호스트라면 여기서 타이머 시작 트리거 가능
             if (isHost && currentRoomData && currentRoomData.status === 'playing') runHostTimer();
         }
     }
 
     function resizeCanvas() {
+        // [수정] 이미지가 없어도 캔버스 초기화 (검은 화면 원인 방지)
+        cvsL.width = cvsL.clientWidth; cvsL.height = cvsL.clientHeight;
+        cvsR.width = cvsR.clientWidth; cvsR.height = cvsR.clientHeight;
+        
         if (!imgL.width) return;
+        
         const wrapL = document.getElementById('wrap-l');
         const wrapWidth = wrapL.clientWidth;
         const wrapHeight = wrapL.clientHeight;
@@ -563,7 +568,6 @@
             if (currentRoomData.status !== 'playing') {
                 clearInterval(timerInterval); timerInterval = null; return;
             }
-            // 트랜잭션으로 타이머 감소 (안전하게)
             roomRef.child('gameData/timer').transaction(current => {
                 return (current || 0) > 0 ? current - 1 : 0;
             }, (err, committed, snap) => {
@@ -576,18 +580,13 @@
         }, 1000);
     }
 
-    // ------------------------------------
-    // 터치 및 판정 로직
-    // ------------------------------------
     function handleCanvasClick(e) {
-        // 클릭 가능 상태 체크
         if (currentRoomData.status !== 'playing' || lives <= 0 || isProcessingClick || imagesLoadedCount < 2) return;
         e.preventDefault();
 
         const targetCanvas = e.target;
         const rect = targetCanvas.getBoundingClientRect();
         
-        // [핵심] 정확한 좌표 계산 (CSS 크기 대비 내부 캔버스 크기 비율)
         const scaleX = targetCanvas.width / rect.width;
         const scaleY = targetCanvas.height / rect.height;
         
@@ -597,15 +596,12 @@
         const x = (clientX - rect.left) * scaleX;
         const y = (clientY - rect.top) * scaleY;
 
-        // 캔버스 밖 터치 무시
         if (x < 0 || x >= targetCanvas.width || y < 0 || y >= targetCanvas.height) return;
 
         isProcessingClick = true;
 
         try {
-            // [판정] 캔버스 크기에 비례한 반경 (3%)
             const r = Math.max(15, Math.floor(Math.min(cvsL.width, cvsL.height) * 0.03));
-            
             const sx = Math.max(0, Math.floor(x - r));
             const sy = Math.max(0, Math.floor(y - r));
             const sw = Math.min(cvsL.width - sx, r * 2);
@@ -622,12 +618,10 @@
                 if (diff > 50) diffPixels++;
             }
             
-            // 5% 이상 다르면 정답으로 인정
             if ( (diffPixels / totalPixels) > 0.05 ) handleCorrect(x, y);
             else handleWrong(x, y, targetCanvas);
 
         } catch (err) {
-            console.warn("로컬 테스트 등 오류: 정답 처리");
             handleCorrect(x, y);
         }
         
@@ -635,21 +629,17 @@
     }
 
     function handleCorrect(x, y) {
-        // [중요] 마커 위치를 퍼센트로 저장하여 화면 크기 변경에 대응
         createMark(x, y, 'wrap-l'); 
         createMark(x, y, 'wrap-r');
         playSound('snd-correct');
         foundCount++;
 
-        // [승리 조건] 5개 찾음
         if (foundCount >= 5 && !hasReportedWin) {
             hasReportedWin = true;
-            foundCount = 999; // 추가 클릭 방지
+            foundCount = 999; 
             showToast("라운드 승리! 다음 라운드로 이동합니다.");
             
             playerRef.child('roundWins').transaction(w => (w || 0) + 1);
-            
-            // 호스트가 아니어도 트리거 가능하게 (트랜잭션으로 타이머 0 만듦)
             roomRef.child('gameData/timer').transaction(() => 0); 
         }
     }
@@ -660,11 +650,10 @@
         lives--;
         updateLivesUI();
 
-        // [하트 소진]
         if (lives <= 0) {
             showToast("하트 소진! 다음 라운드로...");
-            foundCount = 999; // 클릭 방지
-            // 죽은 사람이 직접 서버 타이머를 0으로 만들어 라운드 강제 종료시킴
+            foundCount = 999;
+            // 하트 소진 시 즉시 다음 라운드로 넘김
             roomRef.child('gameData/timer').transaction(() => 0);
         }
     }
@@ -677,13 +666,11 @@
             const nextIdx = (gData.currentRoundIdx || 0) + 1;
             
             if (gData.roundOrder && nextIdx < gData.roundOrder.length) {
-                // 다음 라운드 설정
                 gData.currentRoundIdx = nextIdx;
                 gData.imageNum = gData.roundOrder[nextIdx];
                 gData.timer = GAME_TIME;
                 return gData;
             } else {
-                // 모든 라운드 종료
                 gData.timer = -1;
                 return gData;
             }
@@ -694,19 +681,12 @@
         });
     }
 
-    // ------------------------------------
-    // UI 업데이트 (마커 위치 %)
-    // ------------------------------------
     function createMark(x, y, wrapId) {
         const wrap = document.getElementById(wrapId);
         const cvs = wrap.querySelector('canvas');
         if(!cvs) return;
-        
-        // [핵심] 픽셀 좌표(x,y)를 캔버스 전체 크기 대비 퍼센트(%)로 변환
-        // 이렇게 해야 화면 크기가 바뀌어도 마커가 제자리에 있음
         const percentX = (x / cvs.width) * 100;
         const percentY = (y / cvs.height) * 100;
-
         const el = document.createElement('div');
         el.className = 'mark'; 
         el.style.left = percentX + '%'; 
@@ -718,7 +698,6 @@
         const cvs = wrap.querySelector('canvas');
         const percentX = (x / cvs.width) * 100;
         const percentY = (y / cvs.height) * 100;
-
         const el = document.createElement('div');
         el.className = 'wrong-mark'; 
         el.style.left = percentX + '%'; 
@@ -772,9 +751,6 @@
         if (audio) { audio.currentTime = 0; audio.play().catch(()=>{}); }
     }
 
-    // ------------------------------------
-    // 종료 및 리매치 (애니팡 방식)
-    // ------------------------------------
     function showGameOver() {
         if (document.getElementById('game-over-overlay').classList.contains('active')) return;
         isGameRunning = false;
