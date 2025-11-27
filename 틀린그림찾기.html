@@ -324,7 +324,23 @@
         
         document.getElementById('rematch-btn').addEventListener('click', toggleRematchReady);
         document.getElementById('lobby-btn').addEventListener('click', handleExitButton);
-        window.addEventListener('resize', resizeCanvas);
+        // 변경 코드
+let resizeTimeout;
+window.addEventListener('resize', () => {
+    // ✅ 디바운싱 적용 (성능 최적화)
+    clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(() => {
+        resizeCanvas();
+        
+        // ✅ 마커 위치 재조정
+        document.querySelectorAll('.mark, .wrong-mark').forEach(el => {
+            // 마커가 너무 많으면 제거 (성능 고려)
+            if (document.querySelectorAll('.mark').length > 10) {
+                el.remove();
+            }
+        });
+    }, 300);
+});
         
         setupResultScreenUI();
     });
@@ -377,13 +393,21 @@
         updateScoreBoardUI(currentRoomData.players || {});
 
         // 호스트 승계
-        const playerIds = Object.keys(currentRoomData.players || {}).sort();
-        if (playerIds.length > 0 && (!currentRoomData.hostId || !currentRoomData.players[currentRoomData.hostId])) {
-            if (playerIds[0] === myUid) {
-                isHost = true;
-                roomRef.update({ hostId: myUid });
-            }
+        // 변경 코드
+const playerIds = Object.keys(currentRoomData.players || {}).sort();
+if (playerIds.length > 0 && (!currentRoomData.hostId || !currentRoomData.players[currentRoomData.hostId])) {
+    if (playerIds[0] === myUid) {
+        const wasNotHost = !isHost;
+        isHost = true;
+        roomRef.update({ hostId: myUid });
+        
+        // ✅ 새로운 호스트가 되었을 때 타이머 인계
+        if (wasNotHost && status === 'playing' && gData.timer > 0) {
+            console.log("호스트 승계: 타이머 시작");
+            runHostTimer();
         }
+    }
+}
 
         const status = currentRoomData.status;
         const gData = currentRoomData.gameData || {};
@@ -409,27 +433,40 @@
                 if (isHost) roomRef.update({ starting: false });
             }
         } 
-        else if (status === 'playing') {
-            document.getElementById('loading-overlay').classList.remove('active');
-            document.getElementById('game-over-overlay').classList.remove('active');
-            
-            const serverImgNum = gData.imageNum || 1;
-            
-            if (loadedImageNum !== serverImgNum || imagesLoadedCount < 2) {
-                loadGameImage(serverImgNum);
-            }
-
-            if (gData.timer !== undefined) {
-                const tBox = document.getElementById('timer-box');
-                tBox.innerText = gData.timer;
-                if (gData.timer <= 10) tBox.classList.add('danger');
-                else tBox.classList.remove('danger');
-            }
-
-            if (isHost && !timerInterval && gData.timer > 0) {
-                runHostTimer();
-            }
+        // 변경 코드
+else if (status === 'playing') {
+    document.getElementById('loading-overlay').classList.remove('active');
+    document.getElementById('game-over-overlay').classList.remove('active');
+    
+    const serverImgNum = gData.imageNum || 1;
+    
+            if (loadedImageNum !== serverImgNum) {
+            foundCount = 0;
+            lives = MAX_LIVES;
+            updateLivesUI();
         }
+        
+    if (loadedImageNum !== serverImgNum || imagesLoadedCount < 2) {
+        loadGameImage(serverImgNum);
+    }
+
+    if (gData.timer !== undefined) {
+        const tBox = document.getElementById('timer-box');
+        tBox.innerText = gData.timer;
+        if (gData.timer <= 10) tBox.classList.add('danger');
+        else tBox.classList.remove('danger');
+    }
+
+    // 변경 코드
+// ✅ playing 상태일 때만 타이머 시작
+if (status === 'playing' && isHost && !timerInterval) {
+    if (gData.timer > 0 && imagesLoadedCount === 2) {
+        runHostTimer();
+    } else if (gData.timer === 0) {
+        handleRoundEnd();
+    }
+}
+}
         else if (status === 'finished') {
             showGameOver();
         }
@@ -470,71 +507,92 @@
         }, 1000);
     }
 
-    function initializeRound() {
-        // [수정] 랜덤 로직 강화: 12개 중 5개 셔플
-        const allImages = [];
-        for(let i=1; i<=TOTAL_IMAGE_COUNT; i++) allImages.push(i);
-        
-        // 피셔-예이츠 셔플
-        for (let i = allImages.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [allImages[i], allImages[j]] = [allImages[j], allImages[i]];
-        }
-        
-        const roundImages = allImages.slice(0, 5);
-        console.log("라운드 이미지 순서:", roundImages); // 디버깅용
-        
-        const updates = {};
-        const players = currentRoomData.players;
-        
-        Object.keys(players).forEach(uid => {
-            updates[`players/${uid}/roundWins`] = 0; 
-        });
-        
-        updates['gameData'] = { 
-            imageNum: roundImages[0],   
-            roundOrder: roundImages,    
-            currentRoundIdx: 0,
-            timer: GAME_TIME            
-        };
-        updates['status'] = 'playing';
-        updates['starting'] = null; 
-
-        roomRef.update(updates);
+   // 변경 코드
+function initializeRound() {
+    const allImages = [];
+    for(let i=1; i<=TOTAL_IMAGE_COUNT; i++) allImages.push(i);
+    
+    // ✅ 피셔-예이츠 셔플 (완전 랜덤)
+    for (let i = allImages.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [allImages[i], allImages[j]] = [allImages[j], allImages[i]];
     }
+    
+    // ✅ 셔플된 배열에서 앞 5개 선택 (이제 랜덤)
+    const roundImages = allImages.slice(0, 5);
+    console.log("🎲 랜덤 라운드 순서:", roundImages);
+    
+    const updates = {};
+    const players = currentRoomData.players;
+    
+    Object.keys(players).forEach(uid => {
+        updates[`players/${uid}/roundWins`] = 0; 
+    });
+    
+    updates['gameData'] = { 
+        imageNum: roundImages[0],   // ✅ 랜덤 첫 이미지
+        roundOrder: roundImages,    
+        currentRoundIdx: 0,
+        timer: GAME_TIME            
+    };
+    updates['status'] = 'playing';
+    updates['starting'] = null; 
 
-    function loadGameImage(num) {
-        loadedImageNum = num;
-        imagesLoadedCount = 0;
-        
-        document.getElementById('loading-overlay').classList.add('active');
-        document.getElementById('loading-text').innerText = "이미지 불러오는 중...";
+    roomRef.update(updates);
+}
 
-        const folderName = "틀린그림찾기이미지"; 
-        
-        imgL = new Image();
-        imgR = new Image();
-
-        const pathOrig = `./${encodeURIComponent(folderName)}/${num}.png`;
-        const pathDiff = `./${encodeURIComponent(folderName)}/${num}-1.png`;
-
-        // 마커 제거
-        document.querySelectorAll('.mark, .wrong-mark').forEach(el => el.remove());
-
-        imgL.onload = onImageLoaded;
-        imgR.onload = onImageLoaded;
-        
-        imgL.onerror = () => { alert(`이미지 오류: ${num}.png`); };
-        imgR.onerror = () => { alert(`이미지 오류: ${num}-1.png`); };
-
-        imgL.src = pathOrig;
-        imgR.src = pathDiff;
-
-        lives = MAX_LIVES;
-        foundCount = 0;
-        updateLivesUI();
-        document.getElementById('snd-bgm')?.play().catch(()=>{});
+    // 변경 코드
+function loadGameImage(num) {
+    // ✅ 이미 로딩 중이면 무시
+    if (loadedImageNum === num && imagesLoadedCount > 0) {
+        console.log("이미지 로딩 중 또는 이미 로드됨");
+        return;
     }
+    
+    loadedImageNum = num;
+    imagesLoadedCount = 0;
+    
+    document.getElementById('loading-overlay').classList.add('active');
+    document.getElementById('loading-text').innerText = "이미지 불러오는 중...";
+
+    // ✅ 이전 이미지 로드 이벤트 제거
+    imgL.onload = null;
+    imgR.onload = null;
+    imgL.onerror = null;
+    imgR.onerror = null;
+    
+    const folderName = "틀린그림찾기이미지"; 
+    
+    imgL = new Image();
+    imgR = new Image();
+
+    const pathOrig = `./${encodeURIComponent(folderName)}/${num}.png`;
+    const pathDiff = `./${encodeURIComponent(folderName)}/${num}-1.png`;
+
+    document.querySelectorAll('.mark, .wrong-mark').forEach(el => el.remove());
+
+    imgL.onload = onImageLoaded;
+    imgR.onload = onImageLoaded;
+    
+    imgL.onerror = () => { 
+        alert(`이미지 오류: ${num}.png`); 
+        imagesLoadedCount = 2; // ✅ 오류 시에도 진행
+        document.getElementById('loading-overlay').classList.remove('active');
+    };
+    imgR.onerror = () => { 
+        alert(`이미지 오류: ${num}-1.png`); 
+        imagesLoadedCount = 2;
+        document.getElementById('loading-overlay').classList.remove('active');
+    };
+
+    imgL.src = pathOrig;
+    imgR.src = pathDiff;
+
+    hasReportedWin = false;  // ✅ 플래그 리셋
+    lives = MAX_LIVES;
+    foundCount = 0;
+    updateLivesUI();
+}
 
     function onImageLoaded() {
         imagesLoadedCount++;
@@ -574,31 +632,32 @@
         ctxR.drawImage(imgR, 0, 0, drawWidth, drawHeight);
     }
 
-    function runHostTimer() {
-        if (timerInterval) clearInterval(timerInterval);
-        timerInterval = setInterval(() => {
-            if (currentRoomData.status !== 'playing') {
-                clearInterval(timerInterval); timerInterval = null; return;
+    // 변경 코드
+function runHostTimer() {
+    if (timerInterval) clearInterval(timerInterval);
+    timerInterval = setInterval(() => {
+        if (currentRoomData.status !== 'playing') {
+            clearInterval(timerInterval); 
+            timerInterval = null; 
+            return;
+        }
+        
+        roomRef.child('gameData/timer').transaction(timer => {
+            if (timer > 0) {
+                return timer - 1;
+            } else {
+                return 0; // ✅ 0에서 멈춤
             }
-            
-            roomRef.child('gameData').transaction(gData => {
-                if (!gData) return gData;
-                
-                if (gData.timer > 0) {
-                    gData.timer--;
-                    return gData;
-                } else {
-                    // 시간 종료 -> 다음 라운드 강제 이동 로직
-                    return moveToNextRoundData(gData);
-                }
-            }, (err, committed, snap) => {
-                if (committed && snap.val() && snap.val().timer === -1) {
-                    clearInterval(timerInterval);
-                    roomRef.update({ status: 'finished' });
-                }
-            });
-        }, 1000);
-    }
+        }, (err, committed, snap) => {
+            if (committed && snap.val() === 0) {
+                // ✅ 타이머 종료 시 라운드 종료 처리
+                clearInterval(timerInterval);
+                timerInterval = null;
+                handleRoundEnd();
+            }
+        });
+    }, 1000);
+}
     
     // [신규] 다음 라운드 데이터 계산 헬퍼
     function moveToNextRoundData(gData) {
@@ -613,9 +672,17 @@
         return gData;
     }
 
-    function handleCanvasClick(e) {
-        if (currentRoomData.status !== 'playing' || lives <= 0 || isProcessingClick) return;
-        e.preventDefault();
+// 변경 코드
+function handleCanvasClick(e) {
+    // ✅ 이미지 로딩 상태 체크 추가
+    if (currentRoomData.status !== 'playing' || 
+        lives <= 0 || 
+        isProcessingClick || 
+        imagesLoadedCount < 2 ||  // 이미지 로딩 중
+        !imgL.width || !imgR.width) {  // 이미지 데이터 없음
+        return;
+    }
+    e.preventDefault();
         
         // [수정] 좌표 정확도 향상 (e.target 사용, pointer event)
         const targetCanvas = e.target; // 클릭한 캔버스 요소
@@ -636,66 +703,145 @@
 
         isProcessingClick = true;
         
-        try {
-            // 픽셀 비교 (반경 30px)
-            const r = 30;
-            const sx = Math.max(0, x - r); const sy = Math.max(0, y - r);
-            const sw = Math.min(cvsL.width - sx, r * 2); const sh = Math.min(cvsL.height - sy, r * 2);
-            
-            const dataL = ctxL.getImageData(sx, sy, sw, sh).data;
-            const dataR = ctxR.getImageData(sx, sy, sw, sh).data;
-            
-            let diffPixels = 0;
-            for (let i = 0; i < dataL.length; i += 4) {
-                const diff = Math.abs(dataL[i] - dataR[i]) + Math.abs(dataL[i+1] - dataR[i+1]) + Math.abs(dataL[i+2] - dataR[i+2]);
-                if (diff > 50) diffPixels++;
-            }
+       // 변경 코드
+try {
+    // ✅ 캔버스 크기에 비례하는 반경 사용
+    const canvasSize = Math.min(cvsL.width, cvsL.height);
+    const r = Math.max(15, Math.floor(canvasSize * 0.03)); // 최소 15px, 최대 캔버스의 3%
+    
+    const sx = Math.max(0, Math.floor(x - r)); 
+    const sy = Math.max(0, Math.floor(y - r));
+    const sw = Math.min(cvsL.width - sx, r * 2); 
+    const sh = Math.min(cvsL.height - sy, r * 2);
+    
+    // ✅ 범위 검증
+    if (sw <= 0 || sh <= 0) {
+        handleWrong(x, y, targetCanvas);
+        return;
+    }
+    
+    const dataL = ctxL.getImageData(sx, sy, sw, sh).data;
+    const dataR = ctxR.getImageData(sx, sy, sw, sh).data;
+    
+    let diffPixels = 0;
+    const totalPixels = (sw * sh);
+    
+    for (let i = 0; i < dataL.length; i += 4) {
+        const diff = Math.abs(dataL[i] - dataR[i]) + 
+                     Math.abs(dataL[i+1] - dataR[i+1]) + 
+                     Math.abs(dataL[i+2] - dataR[i+2]);
+        if (diff > 50) diffPixels++;
+    }
 
-            if (diffPixels > 10) handleCorrect(x, y);
-            else handleWrong(x, y, targetCanvas);
+    // ✅ 비율 기반 판정 (최소 5% 차이 필요)
+    const diffRatio = diffPixels / totalPixels;
+    if (diffRatio > 0.05) {
+        handleCorrect(x, y);
+    } else {
+        handleWrong(x, y, targetCanvas);
+    }
 
-        } catch (err) {
-            console.warn("로컬 테스트: 클릭 허용");
-            handleCorrect(x, y); 
-        }
+} catch (err) {
+    console.error("픽셀 비교 오류:", err);
+    handleWrong(x, y, targetCanvas); // ✅ 오류 시 오답 처리
+}
         
         setTimeout(() => isProcessingClick = false, 300);
     }
 
-    function handleCorrect(x, y) {
-        // 양쪽 캔버스에 마커 표시
-        createMark(x, y, 'wrap-l'); createMark(x, y, 'wrap-r');
-        playSound('snd-correct');
-        foundCount++;
+   let hasReportedWin = false;  // ✅ 전역 변수 추가 (상단에)
 
-        // [수정] 5개를 모두 찾으면 즉시 라운드 승리 처리
-        if (foundCount >= 5) {
-            showToast("라운드 승리! 다음 라운드로 이동합니다.");
-            
-            // 1. 내 승수 증가
-            playerRef.child('roundWins').transaction(w => (w || 0) + 1);
-            
-            // 2. [핵심] 타이머를 0으로 설정 -> 호스트가 감지 후 다음 라운드 진행
-            // 트랜잭션으로 안전하게 0으로 설정
-            roomRef.child('gameData').transaction(gData => {
-                if (gData) {
-                    // [버그 수정] 단순히 0으로 만드는 것보다, 즉시 다음 라운드 로직을 태우는게 안전함
-                    // 여기서는 0으로 만들고 호스트 루프가 처리하게 함
-                    gData.timer = 0; 
-                }
-                return gData;
-            });
+function handleCorrect(x, y) {
+    createMark(x, y, 'wrap-l'); createMark(x, y, 'wrap-r');
+    playSound('snd-correct');
+    foundCount++;
+
+    if (foundCount >= 5 && !hasReportedWin) {  // ✅ 중복 방지
+        hasReportedWin = true;
+        foundCount = 999; // 클릭 차단
+        
+        showToast("라운드 승리! 다음 라운드로 이동합니다.");
+        
+        playerRef.child('roundWins').transaction(w => (w || 0) + 1);
+        
+        if (isHost) {
+            setTimeout(() => {
+                handleRoundEnd();
+            }, 500);
         }
     }
+}
 
-    function handleWrong(x, y, targetCanvas) {
-        // [수정] 틀린 마커 위치 정확하게 부모 찾기
-        createWrongMark(x, y, targetCanvas.parentNode);
-        playSound('snd-wrong');
-        lives--;
-        updateLivesUI();
-        if (lives <= 0) showToast("하트 소진!");
+// ✅ 새로운 함수 추가: 라운드 종료 처리
+function handleRoundEnd() {
+    if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
     }
+    
+    roomRef.child('gameData').transaction(gData => {
+        if (!gData) return gData;
+        
+        const nextIdx = (gData.currentRoundIdx || 0) + 1;
+        
+        if (gData.roundOrder && nextIdx < gData.roundOrder.length) {
+            // 다음 라운드로
+            gData.currentRoundIdx = nextIdx;
+            gData.imageNum = gData.roundOrder[nextIdx];
+            gData.timer = GAME_TIME;
+            
+            // ✅ 모든 플레이어의 상태 초기화 신호
+            return gData;
+        } else {
+            // 게임 종료
+            gData.timer = -1;
+            return gData;
+        }
+    }, (err, committed, snap) => {
+        if (err) {
+            console.error("라운드 종료 트랜잭션 실패:", err);
+            return;
+        }
+        
+        if (committed && snap.val()) {
+            const newData = snap.val();
+            
+            if (newData.timer === -1) {
+                // 게임 종료
+                roomRef.update({ status: 'finished' });
+            } else {
+                // 다음 라운드 시작 - 클라이언트 상태 초기화
+                foundCount = 0;
+                lives = MAX_LIVES;
+                updateLivesUI();
+                document.querySelectorAll('.mark, .wrong-mark').forEach(el => el.remove());
+            }
+        }
+    });
+}
+
+    // 변경 코드
+function handleWrong(x, y, targetCanvas) {
+    createWrongMark(x, y, targetCanvas.parentNode);
+    playSound('snd-wrong');
+    lives--;
+    updateLivesUI();
+    
+    // ✅ 하트 소진 시 라운드 패배 처리
+    if (lives <= 0) {
+        showToast("하트 소진! 라운드 패배");
+        
+        // 클릭 차단
+        foundCount = 999; // 더 이상 클릭 못하게
+        
+        // 호스트만 다음 라운드 진행 (3초 후)
+        if (isHost) {
+            setTimeout(() => {
+                handleRoundEnd();
+            }, 3000);
+        }
+    }
+}
 
     // --------------------------------------------------------
     // 4. UI & 유틸리티
@@ -709,11 +855,26 @@
             const div = document.createElement('div');
             div.className = `score-pill ${uid === myUid ? 'my-score' : ''}`;
             
+            // [수정] 아바타 처리 로직 (경로 인식 강화)
             let avatarHtml = '';
-            if (AVATAR_SETS[p.avatar]) {
+            
+            // 1. 아바타 세트(AVATAR_SETS)에 정의된 키값인 경우
+            if (typeof AVATAR_SETS !== 'undefined' && AVATAR_SETS[p.avatar]) {
                 avatarHtml = `<img src="${AVATAR_SETS[p.avatar].front}">`;
-            } else {
-                avatarHtml = `<span style="font-size:1.0em;">${p.avatar || '😀'}</span>`;
+            } 
+            // 2. 이미지 경로(http, .png, /, ./ 등)인 경우 -> 확실하게 img 태그로 변환
+            else if (p.avatar && (
+                p.avatar.startsWith('http') || 
+                p.avatar.includes('/') ||  // 슬래시(/)가 있으면 경로로 인식
+                p.avatar.includes('.') || 
+                p.avatar.startsWith('data:')
+            )) {
+                // 에러 발생 시(이미지 못 찾을 때) 숨김 처리하는 코드 추가
+                avatarHtml = `<img src="${p.avatar}" onerror="this.style.display='none'">`;
+            } 
+            // 3. 그 외엔 텍스트(이모지 등)로 표시
+            else {
+                avatarHtml = `<span style="font-size:1.2em;">${p.avatar || '😀'}</span>`;
             }
             
             div.innerHTML = `${avatarHtml} <span>${p.nickname}: ${p.roundWins || 0}승</span>`;
@@ -732,46 +893,41 @@
         }
     }
 
-    function createMark(x, y, wrapId) {
-        const wrap = document.getElementById(wrapId);
-        // 캔버스 기준 비율 계산
-        const cvs = wrap.querySelector('canvas');
-        if(!cvs) return;
-        
-        // CSS상의 캔버스 크기
-        const rect = cvs.getBoundingClientRect(); 
-        
-        // 캔버스 내부 좌표(x,y)를 CSS 픽셀로 변환
-        // x는 캔버스 내부 좌표임.
-        // 마커는 wrap(relative) 안에 absolute로 배치됨.
-        // wrap과 canvas의 크기는 같음(flex).
-        // 따라서 x 그대로 써도 되는데, 캔버스가 CSS로 리사이즈 되었을 수 있으므로 비율 계산
-        
-        // canvas internal width: cvsL.width
-        // canvas css width: rect.width
-        const cssX = (x / cvsL.width) * rect.width;
-        const cssY = (y / cvsL.height) * rect.height;
+    // 변경 코드
+function createMark(x, y, wrapId) {
+    const wrap = document.getElementById(wrapId);
+    const cvs = wrap.querySelector('canvas');
+    if(!cvs) return;
+    
+    const rect = cvs.getBoundingClientRect(); 
+    
+    // ✅ 해당 캔버스의 실제 크기 사용
+    const cssX = (x / cvs.width) * rect.width;
+    const cssY = (y / cvs.height) * rect.height;
 
-        const el = document.createElement('div');
-        el.className = 'mark'; 
-        el.style.left = cssX + 'px'; 
-        el.style.top = cssY + 'px';
-        wrap.appendChild(el);
-    }
+    const el = document.createElement('div');
+    el.className = 'mark'; 
+    el.style.left = cssX + 'px'; 
+    el.style.top = cssY + 'px';
+    wrap.appendChild(el);
+}
 
-    function createWrongMark(x, y, wrap) {
-        const cvs = wrap.querySelector('canvas');
-        const rect = cvs.getBoundingClientRect();
-        const cssX = (x / cvsL.width) * rect.width;
-        const cssY = (y / cvsL.height) * rect.height;
+    // 변경 코드
+function createWrongMark(x, y, wrap) {
+    const cvs = wrap.querySelector('canvas');
+    const rect = cvs.getBoundingClientRect();
+    
+    // ✅ 해당 캔버스의 실제 크기 사용
+    const cssX = (x / cvs.width) * rect.width;
+    const cssY = (y / cvs.height) * rect.height;
 
-        const el = document.createElement('div');
-        el.className = 'wrong-mark'; 
-        el.style.left = cssX + 'px'; 
-        el.style.top = cssY + 'px';
-        wrap.appendChild(el);
-        setTimeout(() => el.remove(), 500);
-    }
+    const el = document.createElement('div');
+    el.className = 'wrong-mark'; 
+    el.style.left = cssX + 'px'; 
+    el.style.top = cssY + 'px';
+    wrap.appendChild(el);
+    setTimeout(() => el.remove(), 500);
+}
 
     function showToast(msg) {
         const t = document.createElement('div');
@@ -852,27 +1008,60 @@
         else roomRef.child(`rematchRequests/${myUid}`).set(true);
     }
 
-    async function handleExitButton() {
-        isExiting = true;
-        if (isHost) {
-            // 방장은 새 방 만들고 이동
-            const newRoomRef = db.ref('rooms').push();
-            const newRoomId = newRoomRef.key;
-            const newRoomData = {
-                roomName: `${myNick}의 방`, hostId: myUid, gameType: '틀린그림찾기', status: 'waiting',
-                players: { [myUid]: { nickname: myNick, avatar: myAvatar, isHost: true } }
-            };
-            try {
-                await newRoomRef.set(newRoomData);
-                await roomRef.update({ nextRoomId: newRoomId, status: 'finished' });
-                await roomRef.remove(); 
-                window.location.replace(`틀린그림찾기.html?roomId=${newRoomId}`);
-            } catch(e) { location.href = '대기실.html'; }
-        } else {
-            if(roomRef) roomRef.child(`players/${myUid}`).remove();
-            location.href = '대기실.html';
+    // 변경 코드
+async function handleExitButton() {
+    isExiting = true;
+    
+    // ✅ 모든 리스너 정리
+    cleanupListeners();
+    
+    if (isHost) {
+        const newRoomRef = db.ref('rooms').push();
+        const newRoomId = newRoomRef.key;
+        const newRoomData = {
+            roomName: `${myNick}의 방`, 
+            hostId: myUid, 
+            gameType: 'diffSpot', 
+            status: 'waiting',
+            players: { 
+                [myUid]: { 
+                    nickname: myNick, 
+                    avatar: myAvatar, 
+                    isHost: true 
+                } 
+            }
+        };
+        try {
+            await newRoomRef.set(newRoomData);
+            await roomRef.update({ nextRoomId: newRoomId, status: 'finished' });
+            await roomRef.remove(); 
+            window.location.replace(`틀린그림찾기.html?roomId=${newRoomId}`);
+        } catch(e) { 
+            location.href = '대기실.html'; 
         }
+    } else {
+        if(roomRef) await roomRef.child(`players/${myUid}`).remove();
+        location.href = '대기실.html';
     }
+}
+
+// ✅ 새로운 함수: 리스너 정리
+function cleanupListeners() {
+    if (roomValueListener && roomRef) {
+        roomRef.off('value', roomValueListener);
+        roomValueListener = null;
+    }
+    
+    if (chatListenerRef) {
+        chatListenerRef.off();
+        chatListenerRef = null;
+    }
+    
+    if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+    }
+}
 
     // 채팅 관련 함수들
     function setupChatListener() {
