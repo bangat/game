@@ -156,8 +156,33 @@ canvas {
         .spinner { width: 40px; height: 40px; border: 4px solid #fff; border-top-color: var(--primary-color); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 15px; }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        #rematch-status-list { text-align: left; background: #FFFAE0; border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
-        .rematch-row { display: flex; justify-content: space-between; font-weight: bold; font-size: 0.9em; }
+/* [수정] 결과창 리스트 스타일 (애니팡 스타일) */
+        #rematch-status-list { 
+            text-align: left; 
+            background: #FFF; 
+            border: 2px solid #ddd;
+            border-radius: 10px; 
+            padding: 10px; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 8px; 
+            max-height: 150px;
+            overflow-y: auto;
+        }
+        .rematch-row { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center;
+            font-weight: bold; 
+            font-size: 0.95em; 
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+        }
+        .rematch-row:last-child { border-bottom: none; }
+        .rematch-row.me { color: var(--primary-color); }
+        .ready-status { font-weight: 900; font-size: 0.9em; }
+        .ready-status.ready { color: #28a745; }
+        .ready-status.waiting { color: #ccc; }        .rematch-row { display: flex; justify-content: space-between; font-weight: bold; font-size: 0.9em; }
         
         #countdown-text { font-size: 5em; font-weight: 900; color: white; text-shadow: 0 0 20px rgba(255,255,255,0.8); }
 
@@ -270,6 +295,7 @@ canvas {
     let roomValueListener = null;
     let chatListenerRef = null;
     let isExiting = false;
+    let isGameOverProcessed = false; // [신규] 결과창 중복 실행 방지 플래그
     let timerInterval = null;
 
     let lives = MAX_LIVES;
@@ -361,78 +387,100 @@ canvas {
         setupChatListener();
     }
 
-    function updateUnifiedState() {
-        if (!currentRoomData) return;
-        updateScoreBoardUI(currentRoomData.players || {});
+   function updateUnifiedState() {
+    if (!currentRoomData) return;
+    
+    updateScoreBoardUI(currentRoomData.players || {});
 
-        const playerIds = Object.keys(currentRoomData.players || {}).sort();
-        if (playerIds.length > 0 && (!currentRoomData.hostId || !currentRoomData.players[currentRoomData.hostId])) {
-            if (playerIds[0] === myUid) {
-                isHost = true;
-                roomRef.update({ hostId: myUid });
-            }
-        }
-
-        const status = currentRoomData.status;
-        const gData = currentRoomData.gameData || {};
-
-        if (status === 'waiting') {
-            document.getElementById('game-over-overlay').classList.remove('active');
-            document.getElementById('info-overlay').classList.remove('active');
-            updateRematchUI();
-
-            if (playerIds.length >= 2) {
-                if (currentRoomData.starting && !isGameRunning) {
-                    document.getElementById('loading-overlay').classList.remove('active');
-                    startCountdown();
-                } else if (!currentRoomData.starting && isHost) {
-                     setTimeout(() => roomRef.update({ starting: true }), 1000);
-                } else if (!currentRoomData.starting) {
-                    document.getElementById('loading-text').innerText = "게임 시작 대기 중...";
-                }
-            } else {
-                document.getElementById('loading-overlay').classList.add('active');
-                document.getElementById('loading-text').innerText = "플레이어 대기 중...";
-                isGameRunning = false;
-                if (isHost) roomRef.update({ starting: false });
-            }
-        } 
-        else if (status === 'playing') {
-            document.getElementById('loading-overlay').classList.remove('active');
-            document.getElementById('game-over-overlay').classList.remove('active');
-            
-            const serverImgNum = gData.imageNum;
-            if (!serverImgNum) {
-                // 이미지가 없으면 호스트가 강제 리셋 (1번 방지)
-                if (isHost && !isGameRunning) initializeRound();
-                return;
-            }
-
-            if (loadedImageNum !== serverImgNum) {
-                foundCount = 0;
-                lives = MAX_LIVES;
-                updateLivesUI();
-                hasReportedWin = false;
-                loadGameImage(serverImgNum);
-            }
-
-            if (gData.timer !== undefined) {
-                const tBox = document.getElementById('timer-box');
-                tBox.innerText = gData.timer;
-                if (gData.timer <= 10) tBox.classList.add('danger');
-                else tBox.classList.remove('danger');
-            }
-
-            if (isHost && !timerInterval && imagesLoadedCount === 2 && gData.timer > 0) {
-                runHostTimer();
-            } else if (isHost && gData.timer === 0) {
-                handleRoundEnd();
-            }
-        }
-        else if (status === 'finished') {
-            showGameOver();
+    const playerIds = Object.keys(currentRoomData.players || {}).sort();
+    if (playerIds.length > 0 && (!currentRoomData.hostId || !currentRoomData.players[currentRoomData.hostId])) {
+        if (playerIds[0] === myUid) {
+            isHost = true;
+            roomRef.update({ hostId: myUid });
         }
     }
+
+    const status = currentRoomData.status;
+    const gData = currentRoomData.gameData || {};
+
+    // [핵심 수정] finished 상태일 때 중복 실행 방지
+    if (status === 'finished') {
+        if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+        isGameRunning = false;
+
+        document.getElementById('loading-overlay').classList.remove('active');
+        document.getElementById('info-overlay').classList.remove('active');
+        
+        // [중요] 플래그로 중복 실행 차단
+        if (!isGameOverProcessed) {
+            isGameOverProcessed = true; // 플래그 설정
+            showGameOver();
+        }
+        
+        return; 
+    }
+
+    // [수정 2] waiting 상태로 돌아올 때 플래그 초기화
+    if (status === 'waiting') {
+        isGameOverProcessed = false; // 플래그 리셋
+        
+        document.getElementById('game-over-overlay').classList.remove('active');
+        document.getElementById('info-overlay').classList.remove('active');
+        
+        updateRematchUI();
+
+        if (playerIds.length >= 2) {
+            if (currentRoomData.starting && !isGameRunning) {
+                document.getElementById('loading-overlay').classList.remove('active');
+                startCountdown();
+            } else if (!currentRoomData.starting && isHost) {
+                 setTimeout(() => roomRef.update({ starting: true }), 1000);
+            } else if (!currentRoomData.starting) {
+                document.getElementById('loading-text').innerText = "게임 시작 대기 중...";
+            }
+        } else {
+            document.getElementById('loading-overlay').classList.add('active');
+            document.getElementById('loading-text').innerText = "플레이어 대기 중...";
+            isGameRunning = false;
+            if (isHost) roomRef.update({ starting: false });
+        }
+        return;
+    } 
+    
+    // playing 상태 처리 (기존 코드 유지)
+    if (status === 'playing') {
+        document.getElementById('loading-overlay').classList.remove('active');
+        document.getElementById('game-over-overlay').classList.remove('active');
+        
+        const serverImgNum = gData.imageNum;
+        if (!serverImgNum) {
+            if (isHost && !isGameRunning) initializeRound();
+            return;
+        }
+
+        if (loadedImageNum !== serverImgNum) {
+            foundCount = 0;
+            lives = MAX_LIVES;
+            updateLivesUI();
+            hasReportedWin = false;
+            loadGameImage(serverImgNum);
+        }
+
+        if (gData.timer !== undefined) {
+            const tBox = document.getElementById('timer-box');
+            tBox.innerText = gData.timer;
+            if (gData.timer <= 10) tBox.classList.add('danger');
+            else tBox.classList.remove('danger');
+        }
+
+        if (isHost && !timerInterval && imagesLoadedCount === 2 && gData.timer > 0) {
+            runHostTimer();
+        } else if (isHost && gData.timer === 0) {
+            handleRoundEnd();
+        }
+    }
+}
+
 
     // ------------------------------------
     // 게임 로직
@@ -733,24 +781,33 @@ function handleWrong(x, y, wrapper) {
     }
 }
 
+    // [수정] 5라운드 종료 시 -1초 멈춤 없이 즉시 종료하는 함수
+// [수정] 5라운드 종료 처리 및 상태 변경
     function handleRoundEnd() {
         if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
         
         roomRef.child('gameData').transaction(gData => {
             if (!gData) return gData;
+            
             const nextIdx = (gData.currentRoundIdx || 0) + 1;
             
+            // 다음 라운드가 남아있는지 확인
             if (gData.roundOrder && nextIdx < gData.roundOrder.length) {
+                // 다음 라운드 진행
                 gData.currentRoundIdx = nextIdx;
                 gData.imageNum = gData.roundOrder[nextIdx];
                 gData.timer = GAME_TIME;
                 return gData;
             } else {
-                gData.timer = -1;
+                // [핵심] 모든 라운드 종료! 플래그 설정
+                gData.timer = 0; 
+                gData.isGameComplete = true; 
                 return gData;
             }
+
         }, (err, committed, snap) => {
-            if (committed && snap.val() && snap.val().timer === -1) {
+            // 트랜잭션 성공 후, 종료 플래그가 확인되면 방 상태를 'finished'로 변경
+            if (committed && snap.val() && snap.val().isGameComplete) {
                 roomRef.update({ status: 'finished' });
             }
         });
@@ -828,65 +885,127 @@ function createWrongMark(x, y, wrap) {
     }
 
     function showGameOver() {
-        if (document.getElementById('game-over-overlay').classList.contains('active')) return;
-        isGameRunning = false;
-        document.getElementById('snd-bgm').pause();
-        document.getElementById('game-over-overlay').classList.add('active');
-        
-        const players = currentRoomData.players;
-        const sorted = Object.entries(players).sort(([,a], [,b]) => (b.roundWins || 0) - (a.roundWins || 0));
+    const modal = document.getElementById('game-over-overlay');
+    
+    // [제거] 이 체크는 무한루프의 원인이었습니다
+    // if (modal.classList.contains('active')) {
+    //     updateRematchUI();
+    //     return; 
+    // }
+    
+    isGameRunning = false;
+    modal.classList.add('active');
+    
+    const players = currentRoomData.players || {};
+    const sorted = Object.entries(players).sort(([,a], [,b]) => (b.roundWins || 0) - (a.roundWins || 0));
+    
+    const maxWins = sorted.length > 0 ? (sorted[0][1].roundWins || 0) : 0;
+    const myData = players[myUid];
+    const myWins = myData ? (myData.roundWins || 0) : 0;
+    
+    const winnerText = document.getElementById('winner-text');
+    
+    if (myWins === maxWins && maxWins > 0) {
+        winnerText.innerText = "🏆 승리! 축하합니다!";
+        winnerText.style.color = "var(--primary-color)";
+        playSound('snd-win');
+        applyExpAndPoints(db, myUid, 100, 50);
+    } else {
         const myRank = sorted.findIndex(([uid]) => uid === myUid) + 1;
-        const winnerText = document.getElementById('winner-text');
-        
-        if (myRank === 1) {
-            winnerText.innerText = "🏆 승리! 축하합니다!";
-            winnerText.style.color = "var(--primary-color)";
-            playSound('snd-win');
-            applyExpAndPoints(db, myUid, 100, 50);
-        } else {
-            winnerText.innerText = `${myRank}위... 수고하셨습니다!`;
-            winnerText.style.color = "#555";
-            playSound('snd-lose');
-            applyExpAndPoints(db, myUid, 30, 10);
-        }
-        updateRematchUI();
-        setupResultScreenUI(); 
+        winnerText.innerText = `${myRank}위... 수고하셨습니다!`;
+        winnerText.style.color = "#555";
+        playSound('snd-lose');
+        applyExpAndPoints(db, myUid, 30, 10);
     }
+    
+    updateRematchUI();
+    setupResultScreenUI(); 
+}
 
-    function updateRematchUI() {
+   function updateRematchUI() {
         const list = document.getElementById('rematch-status-list');
+        if (!list) return; // 안전장치
+        
         list.innerHTML = '';
-        const players = currentRoomData.players || {};
+        
+        if (!currentRoomData || !currentRoomData.players) return; // 데이터 없음 방지
+
+        const players = currentRoomData.players;
         const requests = currentRoomData.rematchRequests || {};
+        
         const sorted = Object.entries(players).sort(([,a], [,b]) => (b.roundWins || 0) - (a.roundWins || 0));
 
+        // 리스트 그리기
         sorted.forEach(([uid, p], idx) => {
             const isReady = !!requests[uid];
             const div = document.createElement('div');
             div.className = `rematch-row ${uid === myUid ? 'me' : ''}`;
-            div.innerHTML = `<div>${idx+1}위. ${p.nickname} (${p.roundWins || 0}승)</div><div style="color:${isReady?'#28a745':'#ccc'}">${isReady ? '준비됨' : '대기'}</div>`;
+            
+            div.innerHTML = `
+                <div>${idx+1}위. ${escapeHTML(p.nickname)} <span style="font-size:0.8em; color:#666;">(${p.roundWins || 0}승)</span></div>
+                <div class="ready-status ${isReady ? 'ready' : 'waiting'}">
+                    ${isReady ? '준비완료' : '대기중...'}
+                </div>
+            `;
             list.appendChild(div);
         });
 
+        // 내 버튼 상태
         const btn = document.getElementById('rematch-btn');
         if (requests[myUid]) {
-            btn.innerText = "취소"; btn.classList.remove('btn-primary'); btn.classList.add('btn-secondary');
+            btn.innerText = "준비 취소"; 
+            btn.classList.remove('btn-primary'); 
+            btn.classList.add('btn-secondary');
         } else {
-            btn.innerText = "다시 하기"; btn.classList.add('btn-primary'); btn.classList.remove('btn-secondary');
+            btn.innerText = "다시 하기"; 
+            btn.classList.add('btn-primary'); 
+            btn.classList.remove('btn-secondary');
         }
 
-        if (isHost && Object.keys(players).length >= 2) {
-            const allReady = Object.keys(players).every(uid => requests[uid]);
-            if (allReady && !currentRoomData.starting) {
-                setTimeout(() => { roomRef.update({ starting: true }); }, 1000);
+        // [호스트] 전원 준비 시 자동 시작
+        if (isHost) {
+            const playerIds = Object.keys(players);
+            const totalPlayers = playerIds.length;
+            const readyCount = playerIds.filter(uid => requests[uid]).length;
+
+            if (totalPlayers >= 2 && readyCount === totalPlayers) {
+                setTimeout(() => {
+                    const updates = {};
+                    updates['status'] = 'playing';
+                    updates['rematchRequests'] = null;
+                    
+                    const allImages = [];
+                    for(let i=1; i<=TOTAL_IMAGE_COUNT; i++) allImages.push(i);
+                    for (let i = allImages.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [allImages[i], allImages[j]] = [allImages[j], allImages[i]];
+                    }
+                    const roundImages = allImages.slice(0, 5);
+                    
+                    playerIds.forEach(uid => { updates[`players/${uid}/roundWins`] = 0; });
+
+                    updates['gameData'] = { 
+                        imageNum: roundImages[0], 
+                        roundOrder: roundImages,    
+                        currentRoundIdx: 0,
+                        timer: GAME_TIME            
+                    };
+                    
+                    roomRef.update(updates);
+                }, 1000);
             }
         }
     }
 
     function toggleRematchReady() {
         const isReady = currentRoomData.rematchRequests && currentRoomData.rematchRequests[myUid];
-        if (isReady) roomRef.child(`rematchRequests/${myUid}`).remove();
-        else roomRef.child(`rematchRequests/${myUid}`).set(true);
+        if (isReady) {
+            roomRef.child(`rematchRequests/${myUid}`).remove();
+        } else {
+            roomRef.child(`rematchRequests/${myUid}`).set(true);
+        }
+        // 버튼 클릭 효과음
+        playSound('snd-correct'); 
     }
 
     async function handleExitButton() {
@@ -981,6 +1100,22 @@ function createWrongMark(x, y, wrap) {
             document.getElementById('rematch-chat-input-modal').classList.remove('active');
         }
     }
+
+    // ------------------------------------
+    // [테스트용] 치트키 설정
+    // ------------------------------------
+    document.addEventListener('keydown', (e) => {
+        // 게임 진행 중일 때 'e' 또는 'E' 키를 누르면
+        if ((e.key === 'e' || e.key === 'E') && isGameRunning) {
+            console.log("🛑 [TEST] E키 감지: 강제 게임 종료 실행");
+            
+            // Firebase 상태를 'finished'로 강제 변경
+            // -> updateUnifiedState가 감지 -> showGameOver 실행 -> 모달 표시
+            if (roomRef) {
+                roomRef.update({ status: 'finished' });
+            }
+        }
+    });
 </script>
 </body>
 </html>
