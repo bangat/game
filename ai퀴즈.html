@@ -314,8 +314,8 @@
     <script>
         // --- Gemini API 설정 ---
         const API_KEYS = [
-            "AIzaSyD5fWpBRDEbqcLBquXtTKlLkIjIOaM3L-U", // 1번 키
-            "AIzaSyAuSrNNZF3blYnOdajFFtZ8wDmK2oKn4zA"  // 2번 키
+            "AIzaSyD55Qjfm4u8vhmki6-6JE3qshThouFYFBQ", // 1번 키
+            "AIzaSyDKWwTVn6nl0YfoW7Anwx51plicNqWOhQw"  // 2번 키
         ];
 
         // ▼▼▼ TTS 관련 변수 및 초기화 ▼▼▼
@@ -363,115 +363,127 @@
         // Gemini API 호출 함수 (429 재시도 로직 포함)
         // Gemini API 호출 함수 (JSON 파싱 강화)
         async function callGeminiAPI(prompt) {
-            let key = API_KEYS[currentKeyIndex];
-            let url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${key}`;
+    let key = API_KEYS[currentKeyIndex];
+    let url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${key}`;
 
-            const requestBody = {
-                contents: [{ parts: [{ text: prompt }] }],
-                generationConfig: {
-                    temperature: 0.9,
-                    topK: 40,
-                    topP: 1,
-                    maxOutputTokens: 8192, // 토큰 수 넉넉하게 늘림
-                    responseMimeType: "application/json" // ✨ JSON 모드 강제 (중요)
-                },
-                safetySettings: [
-                    { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-                    { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-                    { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-                    { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
-                ]
-            };
+    const requestBody = {
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+            temperature: 0.9,
+            topK: 40,
+            topP: 1,
+            maxOutputTokens: 8192,
+            // ▼▼▼ [중요] JSON 모드 해제 (이 줄을 삭제하거나 text/plain으로 변경) ▼▼▼
+            responseMimeType: "text/plain" 
+        },
+        safetySettings: [
+            { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+        ]
+    };
 
-            try {
-                let response = await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(requestBody)
-                });
+    try {
+        let response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody)
+        });
 
-                if (response.status === 429) {
-                    key = rotateKey();
-                    url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${key}`;
-                    response = await fetch(url, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(requestBody)
-                    });
-                }
-
-                if (!response.ok) {
-                    throw new Error(`API Error: ${response.status}`);
-                }
-
-                const data = await response.json();
-                
-                if (!data.candidates || !data.candidates[0].content) {
-                    throw new Error("AI가 응답하지 않았습니다 (Blocked or Empty).");
-                }
-
-                let jsonText = data.candidates[0].content.parts[0].text;
-                
-                // ✨ 마크다운 및 불필요한 공백 제거 (파싱 에러 방지)
-                jsonText = jsonText.replace(/```json/gi, "").replace(/```/g, "").trim();
-
-                return JSON.parse(jsonText); 
-
-            } catch (error) {
-                console.error("Gemini API 호출 중 오류:", error);
-                throw error; 
-            }
+        if (response.status === 429) {
+            key = rotateKey();
+            url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${key}`;
+            response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody)
+            });
         }
+
+        if (!response.ok) {
+            throw new Error(`API Error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        
+        if (!data.candidates || !data.candidates[0].content) {
+            throw new Error("AI가 응답하지 않았습니다.");
+        }
+
+        let rawText = data.candidates[0].content.parts[0].text;
+        
+        // ▼▼▼ [수정됨] 텍스트 파싱 로직 (JSON.parse 대신 split 사용) ▼▼▼
+        // 마크다운 제거
+        rawText = rawText.replace(/```/g, "").trim();
+
+        const quizList = [];
+        const lines = rawText.split('\n'); // 줄바꿈으로 문제 나누기
+
+        lines.forEach(line => {
+            if (line.trim() === "") return; // 빈 줄 무시
+            
+            // 파이프(|)로 데이터 쪼개기
+            const parts = line.split('|').map(p => p.trim());
+            
+            // 데이터가 5개(문제, 정답, 오답3개) 다 있는지 확인
+            if (parts.length >= 5) {
+                quizList.push({
+                    question: parts[0],
+                    correct: parts[1],
+                    incorrect: [parts[2], parts[3], parts[4]]
+                });
+            }
+        });
+
+        if (quizList.length === 0) {
+            throw new Error("파싱된 퀴즈가 없습니다. 형식이 잘못되었습니다.");
+        }
+
+        return quizList; 
+        // ▲▲▲ [수정 완료] ▲▲▲
+
+    } catch (error) {
+        console.error("Gemini API 호출 중 오류:", error);
+        throw error; 
+    }
+}
 
                                        // ▼▼▼ [수정] 퀴즈 생성 프롬프트 (영어 퀴즈: 영단어 -> 한글 뜻 방식으로 복구) ▼▼▼
-        function getPromptForTopic(topic) {
-            const topicInstructions = {
-                // (english, capital, history, easy_words는 기존과 동일하게 둡니다)
-                "english": "question은 'chair' 같은 초/중급 수준의 **영어 명사(noun)**여야 합니다. correct는 그 단어의 한글 뜻('의자')이어야 합니다. incorrect는 정답과 헷갈리는 **다른 한글 명사** 3개여야 합니다(예: ['책상', '가위', '소파']).",
-                
-                // ▼▼▼ [핵심 수정] 속담 프롬프트 (정확성 강조) ▼▼▼
-                "proverb": "question은 유명한 **한국 속담**의 **'정확하고 핵심적인' 뜻풀이(설명)**여야 합니다(예: '아무리 어려운 일이 닥쳐도 반드시 해결할 방법이 있다는 말'). (질문에 속담 원문이 드러나면 안됩니다). correct는 그 뜻풀이에 **'정확히 일치하는' 속담 원문**('하늘이 무너져도 솟아날 구멍이 있다')이어야 합니다. incorrect는 헷갈리는 **다른 속담** 3개여야 합니다.",
-                
-                // ▼▼▼ [핵심 수정] 사자성어 프롬프트 (정확성 강조) ▼▼▼
-                "idiom": "question은 '나아갈 수도 물러설 수도 없는 곤란한 처지'처럼, 유명한 **4글자 한자 사자성어**의 **'정확하고 핵심적인' 뜻풀이**여야 합니다. correct는 그 뜻풀이에 **'정확히 일치하는' 4글자 사자성어**('진퇴양난')여야 합니다. [가장 중요] incorrect 배열 3개는 **반드시** '과유불급', '오매불망'처럼 헷갈리는 **다른 4글자 한자 사자성어**여야 합니다. (절대 '사정', '할 말을 잃음' 같은 일반 단어나 문장을 섞지 마세요).",
-                
-                "capital": "question은 '프랑스'처럼 국가 이름이어야 합니다. '수도는?' 같은 말을 절대 붙이지 마세요. correct는 그 국가의 수도('파리')여야 합니다. incorrect는 헷갈리는 다른 도시 이름 3개여야 합니다.",
-                "history": "question은 '고조선을 세운 사람은?'처럼 **초등학생~중1 수준의 일반 한국사** 문제여야 합니다. correct는 그 질문의 정답('단군왕검')이어야 합니다. incorrect는 헷갈리는 다른 오답 3개여야 합니다.",
-                "easy_words": `question은 "'하늘을 나는 것'처럼 **6~8세 수준**의 쉽고 짧은 설명이어야 합니다. correct는 설명에 맞는 **한 글자 또는 두 글자** 명사여야 합니다(예: '새'). incorrect는 정답과 **다른 카테고리**의 쉬운 명사 3개여야 합니다(예: ['나무', '책상', '바다']).`
-            };
+       function getPromptForTopic(topic) {
+    const topicInstructions = {
+        "english": "question은 'chair' 같은 초/중급 영어 명사, correct는 한글 뜻('의자'), incorrect는 헷갈리는 다른 한글 명사 3개.",
+        "proverb": "question은 속담의 뜻풀이, correct는 속담 원문, incorrect는 다른 속담 3개.",
+        "idiom": "question은 사자성어 뜻풀이, correct는 사자성어, incorrect는 다른 사자성어 3개.",
+        "capital": "question은 국가 이름(예: '프랑스'), correct는 수도 이름, incorrect는 다른 도시 이름 3개.",
+        "history": "question은 한국사 문제 설명, correct는 정답 단어, incorrect는 오답 단어 3개.",
+        "easy_words": "question은 쉬운 단어 설명, correct는 정답 단어, incorrect는 다른 단어 3개."
+    };
 
-            let finalTopic = topic;
-            if (topic === "random") {
-                const topics = Object.keys(topicInstructions);
-                finalTopic = topics[Math.floor(Math.random() * topics.length)];
-            }
+    let finalTopic = topic;
+    if (topic === "random") {
+        const topics = Object.keys(topicInstructions);
+        finalTopic = topics[Math.floor(Math.random() * topics.length)];
+    }
 
+    const instruction = topicInstructions[finalTopic];
 
-            const instruction = topicInstructions[finalTopic];
+    // ▼▼▼ [수정됨] JSON 관련 내용 제거 및 파이프(|) 포맷 지시 ▼▼▼
+    const promptHeader = `너는 스피드 퀴즈 출제자입니다.
+다음 규칙에 맞춰 퀴즈 10개를 작성해서 순수한 텍스트로만 답해주세요. (JSON 금지)
 
-            // ▼▼▼ [신규] AI가 매번 다른 문제를 내도록 '랜덤 지시어' 추가 ▼▼▼
-            const diversityInstructions = [
-                "최대한 독창적이고 창의적인 문제들로 구성해주세요.",
-                "사람들이 잘 모르는, 약간 난이도 있는 문제 위주로 구성해주세요.",
-                "아주 유명한 문제와 잘 알려지지 않은 문제를 5:5 비율로 섞어주세요.",
-                "이전에 생성했던 문제와는 완전히 다른, 새로운 문제들로 구성해주세요.",
-                "가장 일반적인 문제들은 제외하고, 흥미로운 문제들 위주로 구성해주세요."
-            ];
-            // 5개 중 1개 랜덤 선택
-            const randomInstruction = diversityInstructions[Math.floor(Math.random() * diversityInstructions.length)];
-            // ▲▲▲ [신규] ▲▲▲
+[출제 규칙]
+1. 주제: ${instruction}
+2. 형식: 각 줄마다 "문제|정답|오답1|오답2|오답3" 형태로 작성하세요. (구분자는 수직선 | 사용)
+3. 오답은 반드시 3개여야 합니다.
+4. 첫 줄부터 바로 문제를 작성하고, 다른 인사말이나 마크다운(\`\`\`)은 절대 넣지 마세요.
 
-            const promptHeader = `너는 "스피드 퀴즈" 게임의 출제자입니다.
-반드시 다음 규칙을 지켜 퀴즈 10개 세트를 JSON 배열 형식으로만 응답해주세요.
-1. [중요] ${randomInstruction}  /* ✨ 랜덤 지시어 삽입 */
-2. 각 퀴즈 객체는 "question"(string), "correct"(string), "incorrect"(string 배열 3개) 키를 가져야 합니다.
-3. 10개 퀴즈 모두 다음 규칙을 따라야 합니다: ${instruction}
-4. [중요] 'incorrect'는 반드시 3개의 문자열이 담긴 배열이어야 합니다.
-5. 응답은 오직 JSON 배열(Array) 형식이어야 합니다. 다른 텍스트나 설명, 마크다운(\`\`\`json)을 절대 포함하지 마세요.
+[작성 예시]
+사과의 색깔은?|빨강|파랑|보라|검정
+바다에 사는 동물은?|고래|사자|호랑이|독수리
 `;
-            return { prompt: promptHeader, topicName: finalTopic };
-        }
-        // ▲▲▲ [수정] ▲▲▲
+    return { prompt: promptHeader, topicName: finalTopic };
+}
 
 
 
