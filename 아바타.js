@@ -43,6 +43,27 @@ window.characters = [
    
 ];
 
+window.chatSkinItems = [
+    { id: 'bubble_default', name: '기본 말풍선', price: 0, cssClass: 'bubble-default', previewColor: '#FFFFFF', borderColor: '#F0EAD2' },
+    { id: 'bubble_pink', name: '러블리 핑크', price: 5000, cssClass: 'bubble-pink', previewColor: '#FFEBEE', borderColor: '#FFCDD2' },
+    { id: 'bubble_sky', name: '구름 스카이', price: 5000, cssClass: 'bubble-sky', previewColor: '#E3F2FD', borderColor: '#BBDEFB' },
+    { id: 'bubble_mint', name: '상쾌한 민트', price: 5000, cssClass: 'bubble-mint', previewColor: '#E0F2F1', borderColor: '#80CBC4' },
+    { id: 'bubble_dark', name: '다크 모드', price: 10000, cssClass: 'bubble-dark', previewColor: '#424242', borderColor: '#212121' },
+    { id: 'bubble_gold', name: '골드 럭셔리', price: 10000, cssClass: 'bubble-gold', previewColor: '#FFF8E1', borderColor: '#FFD54F' },
+    
+    // ▼▼▼ [신규 추가] ▼▼▼
+    { 
+        id: 'bubble_rainbow_premium', 
+        name: '🌈 레인보우 파티클', 
+        price: 20000, 
+        cssClass: 'bubble_rainbow_premium', 
+        previewColor: 'linear-gradient(45deg, #ff0000, #00ff00, #0000ff)', 
+        borderColor: 'transparent' 
+    }
+];
+
+
+
 // [신규] 상점에서 구매 가능한 아바타 목록 (AVATAR_SETS 기반)
 // 대기실.html의 showAvatarSelectModal 에서는 item.id, item.url, item.name 을 사용합니다.
 // AVATAR_SETS에 정의된 아이템들을 기반으로 만듭니다.
@@ -56,6 +77,7 @@ window.avatarShopItems = [
         url: AVATAR_SETS['default_bomber'].front, // 대표 이미지로 front 사용
         price: 0 // 예시 (가격 정보는 실제 상점 로직에서 사용)
     },
+
     { 
         id: 'penguin_parka', 
         name: '펭귄 파카', 
@@ -124,4 +146,7 @@ window.avatarShopItems = [
         price: 2000
     }
     // ▲▲▲ [신규 추가] ▲▲▲
+
+
+    
 ];
