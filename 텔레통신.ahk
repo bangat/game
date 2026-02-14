@@ -21,6 +21,9 @@ global VscodeWinTitle := "Visual Studio Code"
 global ChatFocusHotkey := "^+i"   ; Codex 채팅 입력 포커스 단축키
 global AutoSendEnter := 1         ; 1=붙여넣기 후 Enter까지 전송
 global RequirePrefix := 0         ; 1이면 "입력 " 또는 "붙여넣기 "로 시작할 때만 실행
+global UseClickFocus := 0         ; 1이면 핫키 대신 좌표 클릭으로 포커스
+global FocusClickX := 260         ; VSCode 창 기준 X
+global FocusClickY := 930         ; VSCode 창 기준 Y
 
 LoadConfig()
 StartTeleControl()
@@ -32,6 +35,33 @@ return
 ; [수동 제어]
 ; ------------------------------------------------------------------------------
 F8::Reload
+F7::
+    global VscodeWinTitle, UseClickFocus, FocusClickX, FocusClickY
+    targetId := WinExist(VscodeWinTitle)
+    if (!targetId)
+        targetId := WinExist("ahk_exe Code.exe")
+    if (!targetId) {
+        AddLog("좌표 저장 실패: VSCode 창 없음")
+        return
+    }
+    WinActivate, ahk_id %targetId%
+    WinWaitActive, ahk_id %targetId%, , 2
+    if (ErrorLevel) {
+        AddLog("좌표 저장 실패: VSCode 활성화 실패")
+        return
+    }
+    CoordMode, Mouse, Window
+    MouseGetPos, mx, my
+    FocusClickX := mx
+    FocusClickY := my
+    UseClickFocus := 1
+    cfg := A_ScriptDir . "\tele_config.ini"
+    IniWrite, %UseClickFocus%, %cfg%, VSCode, UseClickFocus
+    IniWrite, %FocusClickX%, %cfg%, VSCode, FocusClickX
+    IniWrite, %FocusClickY%, %cfg%, VSCode, FocusClickY
+    AddLog("포커스 좌표 저장: " . FocusClickX . "," . FocusClickY)
+    SendTele("🎯 포커스 좌표 저장 완료: " . FocusClickX . "," . FocusClickY)
+return
 F9::
     if (UseTele) {
         UseTele := 0
@@ -142,7 +172,7 @@ return
 ; [명령 처리]
 ; ------------------------------------------------------------------------------
 HandleTeleCommand(cleanMsg) {
-    global RequirePrefix, VscodeWinTitle, UseTele, TeleCheckInterval, AutoSendEnter
+    global RequirePrefix, VscodeWinTitle, UseTele, TeleCheckInterval, AutoSendEnter, UseClickFocus
 
     if (cleanMsg = "/help" || cleanMsg = "명령어" || cleanMsg = "도움말") {
         SendTele("📜 텔레통신 명령어`n`n입력 <내용> : VSCode 채팅창에 붙여넣고 Enter`n붙여넣기 <내용> : 붙여넣기만`n상태 : 연결 상태 확인`n중지 / 시작 : 수신 루프 제어`n`n(기본값) 접두어 없이 텍스트 보내도 바로 입력됨")
@@ -169,6 +199,22 @@ HandleTeleCommand(cleanMsg) {
         UseTele := 1
         SetTimer, CheckTeleCommand, %TeleCheckInterval%
         SendTele("▶️ 수신 루프 재개")
+        return
+    }
+
+    if (cleanMsg = "클릭모드 on" || cleanMsg = "/클릭모드 on") {
+        UseClickFocus := 1
+        cfg := A_ScriptDir . "\tele_config.ini"
+        IniWrite, %UseClickFocus%, %cfg%, VSCode, UseClickFocus
+        SendTele("✅ 클릭모드 ON")
+        return
+    }
+
+    if (cleanMsg = "클릭모드 off" || cleanMsg = "/클릭모드 off") {
+        UseClickFocus := 0
+        cfg := A_ScriptDir . "\tele_config.ini"
+        IniWrite, %UseClickFocus%, %cfg%, VSCode, UseClickFocus
+        SendTele("✅ 클릭모드 OFF")
         return
     }
 
@@ -200,7 +246,7 @@ HandleTeleCommand(cleanMsg) {
 ; [실행] VSCode 채팅창 입력
 ; ------------------------------------------------------------------------------
 InputToVSCode(text, sendEnter := 1) {
-    global VscodeWinTitle, ChatFocusHotkey
+    global VscodeWinTitle, ChatFocusHotkey, UseClickFocus, FocusClickX, FocusClickY
     if (text = "")
         return false
 
@@ -215,7 +261,11 @@ InputToVSCode(text, sendEnter := 1) {
     if (ErrorLevel)
         return false
 
-    if (ChatFocusHotkey != "-") {
+    if (UseClickFocus && FocusClickX > 0 && FocusClickY > 0) {
+        CoordMode, Mouse, Window
+        Click, %FocusClickX%, %FocusClickY%
+        Sleep, 120
+    } else if (ChatFocusHotkey != "-") {
         SendInput, %ChatFocusHotkey%
         Sleep, 120
     }
@@ -272,7 +322,7 @@ SendTele(msg) {
 ; ------------------------------------------------------------------------------
 LoadConfig() {
     global Telegram_chatid, Telegram_Token, TeleCheckInterval
-    global VscodeWinTitle, ChatFocusHotkey, AutoSendEnter, RequirePrefix
+    global VscodeWinTitle, ChatFocusHotkey, AutoSendEnter, RequirePrefix, UseClickFocus, FocusClickX, FocusClickY
 
     cfg := A_ScriptDir . "\tele_config.ini"
     if (!FileExist(cfg)) {
@@ -283,6 +333,9 @@ LoadConfig() {
         IniWrite, %ChatFocusHotkey%, %cfg%, VSCode, FocusHotkey
         IniWrite, %AutoSendEnter%, %cfg%, VSCode, AutoSendEnter
         IniWrite, %RequirePrefix%, %cfg%, VSCode, RequirePrefix
+        IniWrite, %UseClickFocus%, %cfg%, VSCode, UseClickFocus
+        IniWrite, %FocusClickX%, %cfg%, VSCode, FocusClickX
+        IniWrite, %FocusClickY%, %cfg%, VSCode, FocusClickY
         AddLog("tele_config.ini 생성 완료")
         return
     }
@@ -294,6 +347,9 @@ LoadConfig() {
     IniRead, val5, %cfg%, VSCode, FocusHotkey, %ChatFocusHotkey%
     IniRead, val6, %cfg%, VSCode, AutoSendEnter, %AutoSendEnter%
     IniRead, val7, %cfg%, VSCode, RequirePrefix, %RequirePrefix%
+    IniRead, val8, %cfg%, VSCode, UseClickFocus, %UseClickFocus%
+    IniRead, val9, %cfg%, VSCode, FocusClickX, %FocusClickX%
+    IniRead, val10, %cfg%, VSCode, FocusClickY, %FocusClickY%
 
     Telegram_chatid := val1
     Telegram_Token := val2
@@ -302,6 +358,9 @@ LoadConfig() {
     ChatFocusHotkey := val5
     AutoSendEnter := val6 + 0
     RequirePrefix := val7 + 0
+    UseClickFocus := val8 + 0
+    FocusClickX := val9 + 0
+    FocusClickY := val10 + 0
 }
 
 ; ------------------------------------------------------------------------------
