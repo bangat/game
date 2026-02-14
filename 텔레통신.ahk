@@ -118,7 +118,7 @@ CheckTeleCommand:
         return
     TeleCmdBusy := 1
 
-    URL := "https://api.telegram.org/bot" . Telegram_Token . "/getUpdates?offset=" . (LastUpdateID + 1) . "&limit=1&timeout=2"
+    URL := "https://api.telegram.org/bot" . Telegram_Token . "/getUpdates?offset=" . (LastUpdateID + 1) . "&limit=3&timeout=1"
     whr := ""
     Response := ""
     rawMsg := ""
@@ -126,9 +126,9 @@ CheckTeleCommand:
 
     try {
         whr := ComObjCreate("WinHttp.WinHttpRequest.5.1")
-        whr.Open("GET", URL, true)
+        whr.SetTimeouts(2000, 2000, 3000, 3000)
+        whr.Open("GET", URL, false)
         whr.Send()
-        whr.WaitForResponse(2)
         Response := whr.ResponseText
     } catch e {
         AddLog("수신 오류: " . e.Message)
