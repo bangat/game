@@ -6,6 +6,7 @@ When code/content work requested by the user is complete:
 
 1. Commit and push to `main`.
 2. Use `push_notify.ps1` so Telegram notification is sent with what was done.
+3. Telegram report text must be written in Korean.
 
 ### Preferred command
 

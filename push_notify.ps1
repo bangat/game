@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string[]]$Files,
     [string]$Message
 )
@@ -10,7 +10,7 @@ function Resolve-GitPath {
     if ($gitCmd) { return $gitCmd.Source }
     $fallback = 'C:\Program Files\Git\cmd\git.exe'
     if (Test-Path $fallback) { return $fallback }
-    throw "git not found. Install Git first."
+    throw "git을 찾을 수 없습니다. 먼저 Git을 설치해 주세요."
 }
 
 function Send-TelegramMessage {
@@ -19,7 +19,7 @@ function Send-TelegramMessage {
     $token = $env:TELEGRAM_BOT_TOKEN
     $chatId = $env:TELEGRAM_CHAT_ID
     if ([string]::IsNullOrWhiteSpace($token) -or [string]::IsNullOrWhiteSpace($chatId)) {
-        Write-Host "Telegram skipped: TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set."
+        Write-Host "텔레그램 건너뜀: TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID 미설정"
         return
     }
 
@@ -32,16 +32,16 @@ function Send-TelegramMessage {
 
     try {
         Invoke-RestMethod -Method Post -Uri $uri -Body $body -ContentType "application/x-www-form-urlencoded" | Out-Null
-        Write-Host "Telegram sent."
+        Write-Host "텔레그램 전송 완료"
     } catch {
-        Write-Warning "Telegram notify failed: $($_.Exception.Message)"
+        Write-Warning "텔레그램 전송 실패: $($_.Exception.Message)"
     }
 }
 
 $git = Resolve-GitPath
 $repoRoot = & $git rev-parse --show-toplevel 2>$null
 if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($repoRoot)) {
-    throw "This folder is not a Git repository."
+    throw "현재 폴더는 Git 저장소가 아닙니다."
 }
 Set-Location $repoRoot
 
@@ -50,12 +50,12 @@ if ($Files -and $Files.Count -gt 0) {
     foreach ($f in $Files) {
         if ([string]::IsNullOrWhiteSpace($f)) { continue }
         if (-not (Test-Path $f)) {
-            throw "File not found: $f"
+            throw "파일을 찾을 수 없습니다: $f"
         }
         $normalizedFiles += $f
     }
     if (-not $normalizedFiles) {
-        throw "No valid files were provided."
+        throw "유효한 파일이 없습니다."
     }
     & $git add -- $normalizedFiles
 } else {
@@ -64,16 +64,16 @@ if ($Files -and $Files.Count -gt 0) {
 
 $changes = & $git status --porcelain
 if (-not $changes) {
-    Write-Host "No changes to commit."
-    Send-TelegramMessage "No changes to push in $(Split-Path $repoRoot -Leaf)."
+    Write-Host "커밋할 변경 사항이 없습니다."
+    Send-TelegramMessage "[$(Split-Path $repoRoot -Leaf)] 푸시할 변경 사항이 없습니다."
     exit 0
 }
 
 if ([string]::IsNullOrWhiteSpace($Message)) {
     if ($Files -and $Files.Count -gt 0) {
-        $Message = "chore: update file(s) $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+        $Message = "chore: 파일 업데이트 $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
     } else {
-        $Message = "chore: update $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+        $Message = "chore: 자동 업데이트 $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
     }
 }
 
@@ -84,20 +84,20 @@ $repoName = Split-Path $repoRoot -Leaf
 $branch = (& $git rev-parse --abbrev-ref HEAD).Trim()
 $commit = (& $git rev-parse --short HEAD).Trim()
 
-$fileText = "all files"
+$fileText = "전체 파일"
 if ($Files -and $Files.Count -gt 0) {
     $fileText = ($Files -join ", ")
 }
 
 $text = @(
-    "[Codex Push Done]"
-    "repo: $repoName"
-    "branch: $branch"
-    "commit: $commit"
-    "files: $fileText"
-    "msg: $Message"
-    "time: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+    "[작업 완료 보고]"
+    "저장소: $repoName"
+    "브랜치: $branch"
+    "커밋: $commit"
+    "파일: $fileText"
+    "메시지: $Message"
+    "시간: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
 ) -join "`n"
 
-Write-Host "Done: commit + push"
+Write-Host "완료: 커밋 + 푸시"
 Send-TelegramMessage $text
