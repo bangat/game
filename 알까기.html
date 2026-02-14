@@ -1,0 +1,1556 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>알까기</title>
+    <link rel="manifest" href="manifest.json">
+    <link href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff" as="font" type="font/woff" crossorigin>
+    <style>
+        @font-face {
+            font-family: 'GmarketSans';
+            src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff') format('woff');
+            font-weight: 500;
+        }
+        @font-face {
+            font-family: 'GmarketSans';
+            src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansBold.woff') format('woff');
+            font-weight: 700;
+        }
+
+        :root {
+            --bg-color: #3d2f2b;
+            --board-color: #e4b476;
+            --border-color: #6a4a3a;
+            --stone-white: #f5f5f5;
+            --stone-black: #333;
+            --shadow-color: rgba(0,0,0,0.2);
+            --primary-color: #8d6e63;
+            --accent-color: #ffab40;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%; height: 100%; overflow: hidden;
+            font-family: 'GmarketSans', sans-serif;
+            background-color: var(--bg-color); color: white;
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            -webkit-user-select: none; user-select: none;
+            touch-action: none;
+        }
+        .view {
+            width: 100%; height: 100%;
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+        }
+        .hidden { display: none !important; }
+
+        .menu-btn {
+            width: 90%; max-width: 320px; padding: 15px;
+            font-size: 1.5em; font-weight: 700;
+            font-family: 'GmarketSans', sans-serif;
+            border-radius: 12px; border: none; cursor: pointer;
+            margin: 10px 0; box-shadow: 0 5px 10px var(--shadow-color);
+            transition: all 0.2s ease-out;
+        }
+        .menu-btn:active { transform: scale(0.97); }
+        .menu-btn.primary { background-color: var(--primary-color); color: white; }
+        .menu-btn.secondary { background-color: #eee; color: #333; }
+        .main-title {
+            font-size: 3.5em; font-weight: 700; color: white;
+            margin-bottom: 30px; text-shadow: 3px 3px 5px var(--shadow-color);
+        }
+
+        #game-wrapper {
+            width: 100%; height: 100%;
+            display: flex; flex-direction: column;
+        }
+        #game-header {
+            flex-shrink: 0; display: flex;
+            justify-content: space-between; align-items: center;
+            padding: 15px 20px; background-color: rgba(0,0,0,0.3);
+            gap: 20px;
+        }
+        .player-info {
+            display: flex; flex-direction: row;
+            align-items: center; gap: 12px; padding: 10px 15px;
+            border-radius: 12px; transition: all 0.3s ease;
+            background-color: rgba(255,255,255,0.1);
+            min-width: 140px;
+        }
+        .player-info.my-turn {
+            background-color: var(--accent-color);
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(255, 171, 64, 0.5);
+        }
+        .player-info.my-turn .nickname { color: black; }
+        .player-info .avatar { font-size: 2em; }
+        .player-info .avatar img {
+            width: 40px; height: 40px;
+            object-fit: contain; border-radius: 50%;
+        }
+        .player-info .nickname {
+            font-weight: 700; font-size: 1em;
+        }
+        .player-info .stone-count {
+            font-size: 0.85em; opacity: 0.9;
+        }
+        .player-info .info-text {
+            display: flex; flex-direction: column; align-items: flex-start;
+        }
+        
+        #game-container {
+            width: 100%; flex-grow: 1;
+            display: flex; justify-content: center; align-items: center;
+            position: relative; overflow: hidden; padding: 20px 10px;
+        }
+        #game-board {
+            position: relative; background-color: var(--board-color);
+            border: 6px solid var(--border-color);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border-radius: 8px;
+            background-image:
+                linear-gradient(rgba(0,0,0,0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0,0,0,0.05) 1px, transparent 1px);
+        }
+
+        .stone {
+            position: absolute; border-radius: 50%;
+            box-shadow: 
+                inset 0 -4px 8px rgba(0,0,0,0.3),
+                inset 0 4px 8px rgba(255,255,255,0.3),
+                0 4px 8px rgba(0,0,0,0.4);
+            display: flex; justify-content: center; align-items: center;
+            font-weight: 700;
+            cursor: grab;
+            /* transform 속성의 변화가 부드럽게 적용되도록 transition 추가 */
+            transition: transform 0.05s linear;
+        }
+        .stone:active { cursor: grabbing; }
+        .stone.white {
+            background: radial-gradient(circle at 30% 30%, #ffffff, #f5f5f5 50%, #e0e0e0);
+        }
+        .stone.black {
+            background: radial-gradient(circle at 30% 30%, #555, #333 50%, #222);
+        }
+        .stone.selected {
+            /* 자바스크립트와 충돌을 막기 위해 transform 속성 제거 */
+            box-shadow: 
+                inset 0 -4px 8px rgba(0,0,0,0.3),
+                inset 0 4px 8px rgba(255,255,255,0.3),
+                0 0 20px rgba(255, 171, 64, 0.8),
+                0 4px 12px rgba(0,0,0,0.5);
+        }
+        .stone.removed {
+            transition: all 0.4s ease;
+            transform: scale(0) !important;
+            opacity: 0;
+        }
+        
+        #power-indicator {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80%;
+            max-width: 300px;
+            height: 30px;
+            background-color: rgba(0,0,0,0.5);
+            border-radius: 15px;
+            overflow: hidden;
+            display: none;
+            border: 2px solid rgba(255,255,255,0.3);
+        }
+        #power-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50, #FFC107, #FF5722);
+            transition: width 0.05s linear;
+            border-radius: 13px;
+        }
+
+        #trajectory-canvas {
+            position: absolute;
+            top: 0; left: 0;
+            pointer-events: none;
+            opacity: 0.85;
+        }
+
+        .overlay {
+            position: fixed; top: 0; left: 0;
+            width: 100%; height: 100%;
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            z-index: 200; text-align: center;
+            background-color: rgba(0,0,0,0.8);
+        }
+        .modal-content {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; padding: 40px;
+            border-radius: 25px;
+            width: 90%; max-width: 380px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        }
+        #game-over-message {
+            font-size: 2.5em; font-weight: bold;
+            margin-bottom: 25px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        .modal-buttons {
+            display: flex; flex-direction: column;
+            gap: 12px; align-items: center; margin-top: 25px;
+        }
+        #countdown-number {
+            font-size: 8em; font-weight: 700;
+            color: var(--accent-color);
+            text-shadow: 0 0 30px rgba(255, 171, 64, 0.8);
+            animation: countdown-pop 1s ease-in-out;
+        }
+        @keyframes countdown-pop {
+            0% { transform: scale(0.5); opacity: 0; }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .spinner { 
+            margin: 20px auto; 
+            border: 4px solid rgba(255, 255, 255, 0.3); 
+            border-radius: 50%; 
+            border-top: 4px solid white; 
+            width: 40px; 
+            height: 40px; 
+            animation: spin 1s linear infinite; 
+        }
+        @keyframes spin { 
+            0% { transform: rotate(0deg); } 
+            100% { transform: rotate(360deg); } 
+        }
+
+        .style-option {
+            border: 3px solid transparent;
+            border-radius: 12px;
+            padding: 15px;
+            background-color: rgba(0,0,0,0.2);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+        }
+        .style-option:hover {
+            border-color: var(--accent-color);
+            background-color: rgba(0,0,0,0.3);
+        }
+        .style-option.selected { 
+            border-color: var(--accent-color);
+            box-shadow: 0 0 15px var(--accent-color);
+        }
+        .style-option h4 {
+            margin-top: 10px;
+            font-size: 1em;
+        }
+        .preview-board {
+            width: 120px;
+            height: 70px;
+            background-color: var(--board-color);
+            border-radius: 6px;
+            position: relative;
+        }
+        .preview-stone {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+        }
+        .preview-stone.white { background-color: var(--stone-white); }
+        .preview-stone.black { background-color: var(--stone-black); }
+
+    </style>
+</head>
+<body>
+
+    <div id="game-wrapper" class="view">
+        <div id="game-header"></div>
+        <div id="game-container">
+            <div id="game-board">
+                <canvas id="trajectory-canvas"></canvas>
+            </div>
+            <div id="power-indicator">
+                <div id="power-fill"></div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="game-over-overlay" class="overlay" style="display: none;"></div>
+    <div id="waiting-overlay" class="overlay" style="display: none;"></div>
+
+    <script src="아바타.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+            function escapeHTML(str) {
+        if (typeof str !== 'string') return '';
+        const map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        };
+        return str.replace(/[&<>"']/g, m => map[m]);
+    }
+            document.addEventListener('contextmenu', event => event.preventDefault());
+ document.addEventListener('keydown', event => {
+    if (event.key === 'F12' ||
+         (event.ctrlKey && event.shiftKey && ['I', 'J', 'C'].includes(event.key.toUpperCase())) ||
+         (event.ctrlKey && event.key.toUpperCase() === 'U')) {
+       event.preventDefault();
+     }
+ });
+ setInterval(() => { try { debugger; } catch (e) {} }, 1000);
+
+ // ✨ [신규] 뒤로가기 모달 관련 변수 및 이벤트
+        const confirmExitModal = document.getElementById('confirm-exit-modal');
+        const exitConfirmBtn = document.getElementById('exit-confirm-btn');
+        const exitCancelBtn = document.getElementById('exit-cancel-btn');
+
+        history.pushState(null, '', location.href);
+        window.addEventListener('popstate', (e) => {
+            history.pushState(null, '', location.href); // 뒤로가기 방지 유지
+            confirmExitModal.style.display = 'flex'; // 모달 표시
+        });
+
+        exitConfirmBtn.addEventListener('click', () => {
+            // cleanupAndExit 함수가 있으면 사용, 없으면 직접 처리
+            if (typeof cleanupAndExit === 'function') {
+                cleanupAndExit();
+            } else {
+                 if (roomRef && isHost) roomRef.remove();
+                 window.location.href = '대기실.html';
+            }
+        });
+
+        exitCancelBtn.addEventListener('click', () => {
+            confirmExitModal.style.display = 'none'; // 모달 닫기
+        });
+        // ✨ [신규] 끝
+    
+        const firebaseConfig = {
+            apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
+            authDomain: "goodluck-7c14b.firebaseapp.com",
+            databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com",
+            projectId: "goodluck-7c14b",
+            storageBucket: "goodluck-7c14b.firebasestorage.app",
+            messagingSenderId: "858281658455",
+            appId: "1:858281658455:web:9131280a459be983933b12"
+        };
+
+ 
+
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+        const auth = firebase.auth();
+        const playersStatsRef = database.ref('users');
+
+        const gameWrapper = document.getElementById('game-wrapper');
+        const gameContainer = document.getElementById('game-container');
+        const gameBoard = document.getElementById('game-board');
+        const trajectoryCanvas = document.getElementById('trajectory-canvas');
+        const trajectoryCtx = trajectoryCanvas.getContext('2d');
+        const powerIndicator = document.getElementById('power-indicator');
+        const powerFill = document.getElementById('power-fill');
+        const gameOverOverlay = document.getElementById('game-over-overlay');
+        const waitingOverlay = document.getElementById('waiting-overlay');
+        
+        let myPlayerId, myNickname, myAvatar;
+        let gameMode = null;
+        let stones = [];
+        let myColor = 'white';
+        let opponentColor = 'black';
+        let currentTurnColor = 'white';
+        let isMyTurn = false;
+        let isDragging = false;
+        let selectedStone = null;
+        let isGameOver = false;
+        let boardWidth = 0, boardHeight = 0;
+        let roomRef = null;
+        let currentRoomData = null;
+        let dragStartPos = null;
+        let isHost = false;
+        let canShoot = true;
+        let hasShotThisTurn = false;
+        let isFirstTurn = true;
+        let movementCheckTimeout = null;
+		let isGameLive = false; // 게임이 활성화되었는지 확인하는 변수
+        let aiDifficulty = 'medium'; // AI 난이도 (easy, medium, hard)
+        let selectedPlacementStyle = null; // 선택한 배치 스타일 저장
+
+        const FRICTION = 0.985;
+        const RESTITUTION = 0.9;
+        const MIN_SPEED = 0.1;
+
+        let player1Info = null;
+        let player2Info = null;
+
+        function playSound(id) {
+            const sound = document.getElementById(id);
+            if (sound) {
+                sound.currentTime = 0;
+                sound.play().catch(e => {});
+            }
+        }
+
+        // 변경 코드
+        function initialize() {
+            myPlayerId = localStorage.getItem('myPlayerId');
+            if (!myPlayerId) {
+                alert("플레이어 정보가 없습니다. 메인 메뉴로 돌아갑니다.");
+                window.location.href = 'index.html';
+                return;
+            }
+            myNickname = localStorage.getItem('userNickname') || 'Player';
+            myAvatar = localStorage.getItem('userAvatar') || '😊';
+
+            const urlParams = new URLSearchParams(window.location.search);
+            const roomId = urlParams.get('roomId');
+            const mode = urlParams.get('mode');
+
+            if (roomId) {
+                // 멀티플레이 또는 AI방으로 진입
+                joinMultiplayerGame(roomId);
+            } else if (mode === 'solo') {
+                // ✨ [수정] '혼자 하기'일 때, 카운트다운 대신 배치 선택창을 먼저 띄웁니다.
+                gameMode = 'single';      // 1. 게임 모드를 'single'로 설정
+                showPlacementModal();     // 2. 배치 선택창 호출
+            } else {
+                // 잘못된 접근 시 대기실로 이동
+                alert("잘못된 접근입니다. 대기실로 이동합니다.");
+                window.location.href = '대기실.html';
+            }
+        }
+
+        function startCountdown(mode) {
+            gameMode = mode;
+            waitingOverlay.innerHTML = `<div id="countdown-number">3</div>`;
+            waitingOverlay.style.display = 'flex';
+            let count = 3;
+            const interval = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    waitingOverlay.innerHTML = `<div id="countdown-number">${count}</div>`;
+                } else {
+                    clearInterval(interval);
+                    playSound('game-start-sound');
+                    waitingOverlay.style.display = 'none';
+
+                    // ✨ 게임 모드에 따라 시작 로직을 분리합니다.
+                    if (gameMode === 'single') {
+                        // '혼자 하기'는 카운트다운이 끝난 후 게임판과 돌을 생성합니다.
+                        setupSinglePlayerGame(selectedPlacementStyle);
+                    } else { // 'multi'
+                        // '같이 하기'는 이미 돌이 배치되어 있으므로 게임 상태만 활성화합니다.
+                        isGameLive = true;
+                        currentTurnColor = 'white';
+                        isMyTurn = (currentTurnColor === myColor);
+                        canShoot = true;
+                        updateHeaderUI();
+                    }
+                    // 두 모드 모두 턴 확인이 필요합니다.
+                    checkTurn();
+                }
+            }, 1000);
+        }
+
+        function showPlacementModal() {
+            const modal = document.getElementById('placement-modal');
+            modal.style.display = 'flex';
+            const waitingText = document.getElementById('placement-waiting-text');
+            waitingText.style.display = 'none'; // 대기 텍스트 초기화
+
+            const options = modal.querySelectorAll('.style-option');
+            options.forEach(opt => {
+                opt.style.pointerEvents = 'auto'; // 선택 가능하도록 초기화
+                const newOpt = opt.cloneNode(true);
+                opt.parentNode.replaceChild(newOpt, opt);
+                
+                newOpt.addEventListener('click', () => {
+                    selectedPlacementStyle = newOpt.dataset.style;
+                    
+                    if (gameMode === 'single') {
+                        modal.style.display = 'none';
+                        showAIDifficultyModal();
+                    } else {
+                        // ✨ 같이하기: 모달을 닫지 않고 대기 상태로 만듭니다.
+                        options.forEach(o => o.classList.remove('selected'));
+                        newOpt.classList.add('selected');
+                        // 모든 버튼을 비활성화하고 대기 텍스트를 표시합니다.
+                        modal.querySelectorAll('.style-option').forEach(o => o.style.pointerEvents = 'none');
+                        waitingText.style.display = 'block';
+                        roomRef.child('placementChoices').child(myPlayerId).set(selectedPlacementStyle);
+                    }
+                });
+            });
+
+            if (gameMode === 'multi') {
+                if (isHost) {
+                    roomRef.child('placementChoices').set(null); 
+                }
+                
+                roomRef.child('placementChoices').on('value', function onBothChosen(snapshot) {
+                    if (!snapshot.exists() || !currentRoomData || !currentRoomData.players) return;
+
+                    const choices = snapshot.val();
+                    const playerCount = Object.keys(currentRoomData.players).filter(id => id !== 'ai_player').length;
+                    
+                    if (Object.keys(choices).length === playerCount) {
+                        roomRef.child('placementChoices').off('value', onBothChosen);
+                        
+                        // ✨ 양쪽 모두 선택했을 때 비로소 모달을 닫습니다.
+                        modal.style.display = 'none';
+                        
+                        const hostChoice = choices[currentRoomData.hostId];
+                        const guestId = Object.keys(currentRoomData.players).find(id => id !== currentRoomData.hostId && id !== 'ai_player');
+                        const guestChoice = choices[guestId];
+                        setupMultiplayerGame(hostChoice, guestChoice);
+                        
+                        startCountdown('multi');
+                    }
+                });
+            }
+        }
+
+        // 새로운 함수: AI 난이도 선택 모달 표시
+        function showAIDifficultyModal() {
+            const modal = document.getElementById('ai-difficulty-modal');
+            modal.style.display = 'flex';
+
+            const difficultyButtons = modal.querySelectorAll('.menu-btn');
+            difficultyButtons.forEach(btn => {
+                btn.onclick = () => {
+                    aiDifficulty = btn.dataset.difficulty;
+                    modal.style.display = 'none';
+                    // 난이도 선택이 끝나면 카운트다운을 시작합니다.
+                    startCountdown('single');
+                };
+            });
+        }
+        
+     function placeStones(whiteStyle, blackStyle) {
+		const stoneSize = boardWidth / 14;
+		stones = [];
+		gameBoard.querySelectorAll('.stone').forEach(el => el.remove());
+
+		// --- 흰색 돌 배치 (5개) ---
+		if (whiteStyle === 'style1') {
+			for (let i = 0; i < 5; i++) {
+				const x = boardWidth * 0.5 + (i - 2) * stoneSize * 2.2; // 2.0에서 2.2로 간격 확대
+				createStone(x, boardHeight * 0.15, stoneSize, 'white', `white${i}`);
+			}
+		} else if (whiteStyle === 'style2') { // 그려주신 3-2 배치
+			for (let i = 0; i < 3; i++) {
+				createStone(boardWidth * 0.5 + (i - 1) * stoneSize * 3.5, boardHeight * 0.1, stoneSize, 'white', `white${i}`); // 2.2에서 3.5로 대폭 확대
+			}
+			for (let i = 0; i < 2; i++) {
+				createStone(boardWidth * 0.5 + (i - 0.5) * stoneSize * 2.0, boardHeight * 0.25, stoneSize, 'white', `white${i + 3}`); // 2.8에서 2.0으로 좁혀 안쪽으로 배치
+			}
+		}
+
+		// --- 검은색 돌 배치 (5개) ---
+		if (blackStyle === 'style1') {
+			for (let i = 0; i < 5; i++) {
+				const x = boardWidth * 0.5 + (i - 2) * stoneSize * 2.2; // 2.0에서 2.2로 간격 확대
+				createStone(x, boardHeight * 0.85, stoneSize, 'black', `black${i}`);
+			}
+		} else if (blackStyle === 'style2') { // 그려주신 3-2 배치
+			for (let i = 0; i < 3; i++) {
+				createStone(boardWidth * 0.5 + (i - 1) * stoneSize * 3.5, boardHeight * 0.9, stoneSize, 'black', `black${i}`); // 2.2에서 3.5로 대폭 확대
+			}
+			for (let i = 0; i < 2; i++) {
+				createStone(boardWidth * 0.5 + (i - 0.5) * stoneSize * 2.0, boardHeight * 0.75, stoneSize, 'black', `black${i + 3}`); // 2.8에서 2.0으로 좁혀 안쪽으로 배치
+			}
+		}
+	}
+
+        function setupGame() {
+            isGameOver = false;
+            canShoot = true;
+            hasShotThisTurn = false;
+            gameWrapper.style.display = 'flex';
+            
+            const containerW = gameContainer.clientWidth;
+            const containerH = gameContainer.clientHeight;
+            boardWidth = Math.min(containerW * 0.92, 400);
+            boardHeight = Math.min(containerH * 0.75, boardWidth * 1.4); 
+            
+            gameBoard.style.width = `${boardWidth}px`;
+            gameBoard.style.height = `${boardHeight}px`;
+            gameBoard.style.backgroundSize = `${boardWidth / 10}px ${boardWidth / 10}px`;
+            
+            trajectoryCanvas.width = boardWidth;
+            trajectoryCanvas.height = boardHeight;
+            
+            gameBoard.innerHTML = '';
+            gameBoard.appendChild(trajectoryCanvas);
+
+            stones = [];
+            
+            if (gameMode === 'multi' && isHost) {
+                setInterval(hostBroadcastGameState, 16);
+            }
+            
+            requestAnimationFrame(gameLoop);
+            
+            setupInputHandlers();
+        }
+        
+        function setupSinglePlayerGame(style) {
+            setupGame();
+            placeStones(style, style);
+            myColor = 'white';
+            opponentColor = 'black';
+            currentTurnColor = 'white';
+            isMyTurn = true;
+            player1Info = { nickname: myNickname, avatar: myAvatar };
+            player2Info = { nickname: 'AI', avatar: '🤖' };
+            updateHeaderUI();
+        }
+
+        function setupMultiplayerGame(whiteStyle, blackStyle) {
+             isGameLive = true; // 게임이 시작되었음을 명시적으로 기록
+            setupGame();
+            placeStones(whiteStyle, blackStyle);
+            currentTurnColor = 'white';
+            isMyTurn = (currentTurnColor === myColor);
+            canShoot = true;
+            updateHeaderUI();
+        }
+
+        function createStone(x, y, diameter, color, id) {
+            const element = document.createElement('div');
+            element.className = `stone ${color}`;
+            element.id = id;
+            element.style.width = `${diameter}px`;
+            element.style.height = `${diameter}px`;
+            element.style.position = 'absolute';
+            element.style.left = '0px';
+            element.style.top = '0px';
+            gameBoard.appendChild(element);
+
+            const stoneRadius = diameter / 2;
+            const stone = {
+                id, element, color, active: true,
+                x: x, y: y,
+                targetX: x, targetY: y, // 목표 위치 추가
+                vx: 0, vy: 0,
+                radius: stoneRadius,
+                mass: 2.5
+            };
+            stones.push(stone);
+        }
+        
+        function updatePhysics() {
+            stones.forEach(stone => {
+                if (!stone.active) return;
+
+                stone.vx *= FRICTION;
+                stone.vy *= FRICTION;
+
+                stone.x += stone.vx;
+                stone.y += stone.vy;
+            });
+            
+            for (let i = 0; i < stones.length; i++) {
+                for (let j = i + 1; j < stones.length; j++) {
+                    const s1 = stones[i];
+                    const s2 = stones[j];
+                    if (!s1.active || !s2.active) continue;
+
+                    const dx = s2.x - s1.x;
+                    const dy = s2.y - s1.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    const totalRadius = s1.radius + s2.radius;
+
+                    if (distance < totalRadius) {
+                        resolveCollision(s1, s2);
+                    }
+                }
+            }
+            if(gameMode === 'multi' && !isHost) return;
+            checkMovementEnd();
+        }
+
+        function resolveCollision(s1, s2) {
+            const dx = s2.x - s1.x;
+            const dy = s2.y - s1.y;
+            const distance = Math.max(0.01, Math.sqrt(dx * dx + dy * dy));
+            
+            const overlap = s1.radius + s2.radius - distance;
+            if(overlap > 0) {
+                const overlapX = (overlap * dx) / distance;
+                const overlapY = (overlap * dy) / distance;
+
+                s1.x -= overlapX / 2;
+                s1.y -= overlapY / 2;
+                s2.x += overlapX / 2;
+                s2.y += overlapY / 2;
+            }
+            
+            const nx = dx / distance;
+            const ny = dy / distance;
+            
+            const kx = s1.vx - s2.vx;
+            const ky = s1.vy - s2.vy;
+            const p = 2 * (nx * kx + ny * ky) / (s1.mass + s2.mass);
+            
+            s1.vx -= p * s2.mass * nx * RESTITUTION;
+            s1.vy -= p * s2.mass * ny * RESTITUTION;
+            s2.vx += p * s1.mass * nx * RESTITUTION;
+            s2.vy += p * s1.mass * ny * RESTITUTION;
+        }
+        
+       function gameLoop() {
+			if (isGameOver) return;
+
+			if (gameMode === 'single' || (gameMode === 'multi' && isHost)) {
+				// 방장은 물리엔진을 직접 실행
+				updatePhysics();
+			} else if (gameMode === 'multi' && !isHost) {
+				// 게스트는 방장의 목표 위치를 향해 부드럽게 이동(보간)
+				stones.forEach(stone => {
+					if (stone.active) {
+						const smoothingFactor = 0.2; // 클수록 빠르게 따라잡음 (0.1 ~ 0.5 추천)
+						stone.x += (stone.targetX - stone.x) * smoothingFactor;
+						stone.y += (stone.targetY - stone.y) * smoothingFactor;
+					}
+				});
+			}
+
+			stones.forEach(stone => {
+				if (stone.active) {
+					const x = stone.x - stone.radius;
+					const y = stone.y - stone.radius;
+					let transformValue = `translate(${x}px, ${y}px)`;
+
+					if (selectedStone && stone.id === selectedStone.id) {
+						transformValue += ' scale(1.15)';
+					}
+					stone.element.style.transform = transformValue;
+
+					// 탈락 판정은 방장만 하도록 수정했었음
+					if (gameMode === 'single' || isHost) {
+						if (isOutOfBoard(stone)) {
+							removeStone(stone);
+						}
+					}
+				}
+			});
+
+			requestAnimationFrame(gameLoop);
+		}
+
+        function isOutOfBoard(stone) {
+            return stone.x < 0 || stone.x > boardWidth || 
+                   stone.y < 0 || stone.y > boardHeight;
+        }
+
+        function removeStone(stone) {
+            if (!stone.active) return;
+            stone.active = false;
+            stone.element.classList.add('removed');
+
+            if (stone.color !== currentTurnColor) {
+                playSound('success-sound');
+            }
+            
+            if (gameMode === 'multi' && roomRef && isHost) {
+                roomRef.child('removedStones').child(stone.id).set(true);
+            }
+            
+            setTimeout(() => {
+                if (stone.element.parentNode) {
+              
+                }
+                updateHeaderUI();
+                checkWinCondition();
+            }, 400);
+        }
+        
+        function checkWinCondition() {
+            if (stones.length === 0) return; // 돌이 아직 생성되지 않았으면 종료
+            const whiteStonesLeft = stones.filter(s => s.color === 'white' && s.active).length;
+            const blackStonesLeft = stones.filter(s => s.color === 'black' && s.active).length;
+
+            if (whiteStonesLeft === 0 && blackStonesLeft > 0) {
+                showGameOver('black');
+            } else if (blackStonesLeft === 0 && whiteStonesLeft > 0) {
+                showGameOver('white');
+            }
+        }
+        
+       function aiMove() {
+            if (isGameOver || !canShoot) return;
+            
+            const aiStones = stones.filter(s => s.color === opponentColor && s.active);
+            const targetStones = stones.filter(s => s.color === myColor && s.active);
+            
+            if (aiStones.length === 0 || targetStones.length === 0) return;
+
+            canShoot = false;
+            
+            setTimeout(() => {
+                if (isGameOver) return;
+                
+                let shooter, target;
+                let randomOffset, aiPower;
+
+                // --- AI 난이도별 로직 분기 ---
+                if (aiDifficulty === 'hard') {
+                    // [고수 AI]: 가장자리에 가장 가까운 상대 돌을 최우선으로 노립니다.
+                    let bestTarget = null;
+                    let minDistanceToEdge = Infinity;
+
+                    targetStones.forEach(t => {
+                        const distLeft = t.x;
+                        const distRight = boardWidth - t.x;
+                        const distTop = t.y;
+                        const distBottom = boardHeight - t.y;
+                        const currentMin = Math.min(distLeft, distRight, distTop, distBottom);
+                        
+                        if (currentMin < minDistanceToEdge) {
+                            minDistanceToEdge = currentMin;
+                            bestTarget = t;
+                        }
+                    });
+                    target = bestTarget || targetStones[0]; // 만약 계산 실패 시 첫 번째 돌을 타겟으로
+
+                    // 타겟을 치기 가장 좋은 내 돌을 선택합니다 (가장 가까운 돌).
+                    let bestShooter = null;
+                    let minDistanceToTarget = Infinity;
+                    aiStones.forEach(s => {
+                        const dx = target.x - s.x;
+                        const dy = target.y - s.y;
+                        const dist = Math.sqrt(dx*dx + dy*dy);
+                        if (dist < minDistanceToTarget) {
+                            minDistanceToTarget = dist;
+                            bestShooter = s;
+                        }
+                    });
+                    shooter = bestShooter || aiStones[0];
+
+                    // 정확도와 파워를 대폭 상향합니다.
+                    randomOffset = (Math.random() - 0.5) * 0.04; // 거의 완벽한 조준
+                    aiPower = 10 + Math.random() * 8;         // 파워 10 ~ 18 (사람의 강한 샷과 유사)
+
+                } else {
+                    // [초보 & 중수 AI]: 기존처럼 랜덤으로 돌을 선택합니다.
+                    shooter = aiStones[Math.floor(Math.random() * aiStones.length)];
+                    target = targetStones[Math.floor(Math.random() * targetStones.length)];
+
+                    if (aiDifficulty === 'easy') {
+                        // [초보]: 부정확하지만 가끔 강한 샷
+                        randomOffset = (Math.random() - 0.5) * 0.7; 
+                        aiPower = 4 + Math.random() * 5;         // 파워 4 ~ 9
+                    } else { // medium
+                        // [중수]: 좀 더 정확하고 강한 샷
+                        randomOffset = (Math.random() - 0.5) * 0.25; 
+                        aiPower = 7 + Math.random() * 5;          // 파워 7 ~ 12
+                    }
+                }
+                
+                const dx = target.x - shooter.x;
+                const dy = target.y - shooter.y;
+                const angle = Math.atan2(dy, dx);
+                
+                const finalAngle = angle + randomOffset;
+                
+                const force = {
+                    x: Math.cos(finalAngle) * aiPower,
+                    y: Math.sin(finalAngle) * aiPower
+                };
+
+                shooter.vx += force.x / shooter.mass;
+                shooter.vy += force.y / shooter.mass;
+                hasShotThisTurn = true;
+            }, 500); // AI가 생각하는 시간
+        }
+
+        function checkTurn() {
+            isMyTurn = (currentTurnColor === myColor);
+            updateHeaderUI();
+            
+            if (gameMode === 'single' && !isMyTurn && !isGameOver) {
+                setTimeout(aiMove, 500);
+            }
+        }
+        
+        function checkMovementEnd() {
+            if (!hasShotThisTurn || isDragging || isGameOver) return;
+            if (gameMode === 'multi' && !isHost) return;
+
+            clearTimeout(movementCheckTimeout);
+
+            const isMoving = stones.some(s => {
+                if (!s.active) return false;
+                const speed = Math.sqrt(s.vx * s.vx + s.vy * s.vy);
+                return speed > MIN_SPEED;
+            });
+
+            if (isMoving) return;
+
+            movementCheckTimeout = setTimeout(() => {
+                endTurn();
+            }, 300);
+
+            hasShotThisTurn = false;
+        }
+
+        function hostBroadcastGameState() {
+            if (!isHost || isGameOver || !roomRef) return;
+
+            const gameState = stones
+                .filter(s => s.active)
+                .map(s => ({
+                    id: s.id,
+                    x_norm: s.x / boardWidth,
+                    y_norm: s.y / boardHeight,
+                    vx: s.vx, 
+                    vy: s.vy
+                }));
+
+            roomRef.child('gameStateSync').set(gameState);
+        }
+
+        function endTurn() {
+            currentTurnColor = (currentTurnColor === 'white') ? 'black' : 'white';
+            hasShotThisTurn = false;
+            canShoot = true; 
+
+            if (gameMode === 'single') {
+                checkTurn();
+            } else if (gameMode === 'multi' && roomRef && isHost) {
+                const finalStoneState = stones
+                    .filter(s => s.active)
+                    .map(s => ({
+                        id: s.id, x: s.x, y: s.y, vx: s.vx, vy: s.vy
+                    }));
+                roomRef.update({ 
+                    currentTurn: currentTurnColor,
+                    stoneState: finalStoneState 
+                });
+            }
+        }
+        
+        function setupInputHandlers() {
+            const handleStart = (e) => {
+                if (isGameOver || !canShoot || !isMyTurn) {
+                    e.preventDefault();
+                    return;
+                }
+
+                if (!isFirstTurn) {
+                    const isMoving = stones.some(s => {
+                        if (!s.active) return false;
+                        return Math.sqrt(s.vx * s.vx + s.vy * s.vy) > MIN_SPEED;
+                    });
+                    if (isMoving) {
+                        e.preventDefault();
+                        return;
+                    }
+                }
+                
+                const pos = getEventPosition(e);
+                const clickedStone = stones.find(s => {
+                    if (!s.active || s.color !== myColor) return false;
+                    const dx = s.x - pos.x;
+                    const dy = s.y - pos.y;
+                    return Math.sqrt(dx * dx + dy * dy) < s.radius;
+                });
+                
+                if (clickedStone) {
+                    e.preventDefault();
+                    isDragging = true;
+                    selectedStone = clickedStone;
+                    dragStartPos = pos;
+                    selectedStone.element.classList.add('selected');
+                    powerIndicator.style.display = 'block';
+                    selectedStone.vx = 0;
+                    selectedStone.vy = 0;
+                }
+            };
+
+            const handleMove = (e) => {
+                if (!isDragging || !selectedStone) return;
+                e.preventDefault();
+                
+                const pos = getEventPosition(e);
+                const stonePos = { x: selectedStone.x, y: selectedStone.y };
+                const dx = stonePos.x - pos.x;
+                const dy = stonePos.y - pos.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                const maxDistance = boardWidth * 0.35;
+                const clampedDistance = Math.min(distance, maxDistance);
+                
+                const power = clampedDistance / maxDistance;
+                powerFill.style.width = `${power * 100}%`;
+                
+                trajectoryCtx.clearRect(0, 0, boardWidth, boardHeight);
+                
+                const angle = Math.atan2(dy, dx);
+                const lineLength = clampedDistance * 2;
+                const endX = stonePos.x + Math.cos(angle) * lineLength;
+                const endY = stonePos.y + Math.sin(angle) * lineLength;
+                
+                trajectoryCtx.strokeStyle = 'rgba(255, 50, 50, 0.9)';
+                trajectoryCtx.fillStyle = 'rgba(255, 50, 50, 0.9)';
+                trajectoryCtx.lineWidth = 5;
+                trajectoryCtx.lineCap = 'round';
+                
+                trajectoryCtx.beginPath();
+                trajectoryCtx.moveTo(stonePos.x, stonePos.y);
+                trajectoryCtx.lineTo(endX, endY);
+                trajectoryCtx.stroke();
+                
+                const arrowSize = 15;
+                trajectoryCtx.beginPath();
+                trajectoryCtx.moveTo(endX, endY);
+                trajectoryCtx.lineTo(
+                    endX - arrowSize * Math.cos(angle - Math.PI / 6),
+                    endY - arrowSize * Math.sin(angle - Math.PI / 6)
+                );
+                trajectoryCtx.lineTo(
+                    endX - arrowSize * Math.cos(angle + Math.PI / 6),
+                    endY - arrowSize * Math.sin(angle + Math.PI / 6)
+                );
+                trajectoryCtx.closePath();
+                trajectoryCtx.fill();
+            };
+
+            const handleEnd = (e) => {
+                if (!isDragging || !selectedStone) return;
+                e.preventDefault();
+                
+                const rect = gameBoard.getBoundingClientRect();
+                const clientX = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
+                const clientY = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
+                const pos = { x: clientX - rect.left, y: clientY - rect.top };
+
+                const stonePos = { x: selectedStone.x, y: selectedStone.y };
+                const dx = stonePos.x - pos.x;
+                const dy = stonePos.y - pos.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance > 5) {
+                    const maxDistance = boardWidth * 0.5;
+                    const clampedDistance = Math.min(distance, maxDistance);
+                    const normalizedPower = clampedDistance / maxDistance;
+                    
+                    const basePower = 20;
+                    const forceMagnitude = basePower * Math.pow(normalizedPower, 0.8);
+                    
+                    const angle = Math.atan2(dy, dx);
+                    const force = {
+                        x: Math.cos(angle) * forceMagnitude,
+                        y: Math.sin(angle) * forceMagnitude
+                    };
+                    
+                    selectedStone.vx += force.x / selectedStone.mass;
+                    selectedStone.vy += force.y / selectedStone.mass;
+                    
+                    playSound('shoot-sound');
+                    hasShotThisTurn = true;
+                    canShoot = false;
+                    isFirstTurn = false;
+                    
+                    if (gameMode === 'multi' && roomRef) { 
+                        roomRef.child('lastMove').set({
+                            stoneId: selectedStone.id,
+                            forceX: force.x,
+                            forceY: force.y,
+                            playerId: myPlayerId,
+                            timestamp: Date.now()
+                        });
+                    }
+                }
+                cleanup();
+            };
+
+            const cleanup = () => {
+                isDragging = false;
+                if (selectedStone) {
+                    selectedStone.element.classList.remove('selected');
+                }
+                selectedStone = null;
+                powerIndicator.style.display = 'none';
+                powerFill.style.width = '0%';
+                trajectoryCtx.clearRect(0, 0, boardWidth, boardHeight);
+            };
+
+            gameBoard.addEventListener('mousedown', handleStart);
+            gameBoard.addEventListener('touchstart', handleStart, { passive: false });
+            document.addEventListener('mousemove', handleMove);
+            document.addEventListener('touchmove', handleMove, { passive: false });
+            document.addEventListener('mouseup', handleEnd);
+            document.addEventListener('touchend', handleEnd);
+            document.addEventListener('touchcancel', handleEnd);
+        }
+
+        function getEventPosition(e) {
+            const rect = gameBoard.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            return {
+                x: clientX - rect.left,
+                y: clientY - rect.top
+            };
+        }
+
+      function joinMultiplayerGame(roomId) {
+            waitingOverlay.innerHTML = `<div class="modal-content"><div class="modal-body"><p style="margin-bottom: 20px; font-size: 1.3em;">게임에 참가하는 중...</p><div class="spinner"></div></div></div>`;
+            waitingOverlay.style.display = 'flex';
+
+            roomRef = database.ref('rooms').child(roomId);
+            
+            roomRef.once('value', snapshot => {
+                if (!snapshot.exists()) {
+                    alert('게임 방을 찾을 수 없습니다.');
+                    window.location.href = '대기실.html';
+                    return;
+                }
+
+                currentRoomData = snapshot.val();
+                
+                if (!currentRoomData.players || !currentRoomData.players[myPlayerId]) {
+                    alert('참가자 명단에 없습니다. 대기실로 이동합니다.');
+                    window.location.href = '대기실.html';
+                    return;
+                }
+
+                // --- 로직 간소화 ---
+                const playerIds = Object.keys(currentRoomData.players);
+                const hasAI = playerIds.includes('ai_player');
+                
+                gameMode = hasAI ? 'single' : 'multi';
+                isHost = currentRoomData.hostId === myPlayerId;
+                myColor = isHost ? 'white' : 'black';
+                opponentColor = isHost ? 'black' : 'white';
+
+                // 플레이어 정보 설정
+                const hostData = currentRoomData.players[currentRoomData.hostId];
+                const guestId = playerIds.find(id => id !== currentRoomData.hostId && id !== 'ai_player');
+                const guestData = guestId ? currentRoomData.players[guestId] : (hasAI ? currentRoomData.players['ai_player'] : null);
+                
+                player1Info = { nickname: hostData.nickname, avatar: hostData.avatar };
+                player2Info = guestData ? { nickname: guestData.nickname, avatar: guestData.avatar } : { nickname: '상대방', avatar: '❓' };
+                
+                // onDisconnect 설정
+                if(isHost) {
+                    roomRef.onDisconnect().remove();
+                } else {
+                    roomRef.child('players/' + myPlayerId).onDisconnect().remove();
+                }
+
+                listenToMultiplayerEvents();
+                waitingOverlay.style.display = 'none';
+                showPlacementModal();
+            });
+        }
+
+        function listenToMultiplayerEvents() {
+            roomRef.on('value', snapshot => {
+                currentRoomData = snapshot.val();
+            });
+
+            roomRef.child('gameStateSync').on('value', snapshot => {
+				if (isHost || !snapshot.exists() || !stones.length) return;
+				const serverState = snapshot.val();
+				serverState.forEach(s_data => {
+					const stone = stones.find(s => s.id === s_data.id);
+					if (stone && stone.active) {
+						// 위치를 직접 바꾸는 대신, 목표 위치(target)를 갱신합니다.
+						stone.targetX = s_data.x_norm * boardWidth;
+						stone.targetY = s_data.y_norm * boardHeight;
+						// 속도는 여전히 직접 동기화합니다.
+						stone.vx = s_data.vx;
+						stone.vy = s_data.vy;
+					}
+				});
+			});
+            /*
+            roomRef.child('stoneState').on('value', snapshot => {
+                if (!snapshot.exists() || isHost || !stones.length) return;
+                const stateData = snapshot.val();
+                stateData.forEach(s_data => {
+                    const stone = stones.find(s => s.id === s_data.id);
+                    if (stone && stone.active) {
+                        stone.x = s_data.x;
+                        stone.y = s_data.y;
+                        stone.vx = s_data.vx;
+                        stone.vy = s_data.vy;
+                    }
+                });
+            });
+            */
+
+            roomRef.child('currentTurn').on('value', snapshot => {
+                if (!snapshot.exists()) return;
+                const newTurnColor = snapshot.val();
+                currentTurnColor = newTurnColor;
+                isMyTurn = (currentTurnColor === myColor);
+                canShoot = isMyTurn;
+                updateHeaderUI();
+            });
+
+            roomRef.child('lastMove').on('value', snapshot => {
+                if (!snapshot.exists() || !isHost) return;
+                const move = snapshot.val();
+                if (move && move.playerId && move.playerId !== myPlayerId) {
+                    const stone = stones.find(s => s.id === move.stoneId);
+                    if (stone && stone.active) {
+                        const force = { x: move.forceX, y: move.forceY };
+                        stone.vx += force.x / stone.mass;
+                        stone.vy += force.y / stone.mass;
+                        hasShotThisTurn = true;
+                        canShoot = false;
+                    }
+                }
+            });
+
+            roomRef.child('removedStones').on('child_added', snapshot => {
+                if (isHost) return;
+                const stoneId = snapshot.key;
+                const stone = stones.find(s => s.id === stoneId);
+                if (stone && stone.active) {
+                    removeStone(stone);
+                }
+            });
+
+            roomRef.child('gameOver').on('value', snapshot => {
+                if (!snapshot.exists()) return;
+                const result = snapshot.val();
+                if (result && result.winner) {
+                    showGameOver(result.winner);
+                }
+            });
+
+            // players 리스너를 함수 외부에서 정의하여 명확하게 참조할 수 있도록 합니다.
+			const onPlayerChange = function(snapshot) {
+				if (!snapshot.exists()) {
+					return;
+				}
+				const playerCount = Object.keys(snapshot.val()).length;
+
+				if (playerCount < 2) {
+					// 이 리스너의 목적은 상대방이 나간 것을 감지하는 것이므로, isGameOver 상태를 여기서 확인하지 않습니다.
+					// isGameLive 상태에 따라 다른 처리를 합니다.
+					if (isGameLive) {
+						// Case 1: 게임이 진행 중이었을 때 -> 승리 처리
+						if (isGameOver) return; // 이미 다른 이유로 게임이 끝났으면 무시
+						isGameOver = true;
+						roomRef.child('players').off('value', onPlayerChange); // 이름으로 리스너 제거
+						alert('상대방이 나가서 승리했습니다! 확인을 누르면 대기실로 이동합니다.');
+						window.location.href = '대기실.html';
+					} else {
+						// Case 2: 게임 시작 전(준비 단계)이었을 때 -> 게임 무효 처리
+						roomRef.child('players').off('value', onPlayerChange); // 이름으로 리스너 제거
+						alert('상대방이 방을 나갔습니다. 대기실로 이동합니다.');
+						window.location.href = '대기실.html';
+					}
+				}
+			};
+
+			// listenToMultiplayerEvents 함수 안에서는 이 함수를 등록만 합니다.
+			roomRef.child('players').on('value', onPlayerChange);
+
+            // [수정] '다시하기' 요청 리스너
+			roomRef.child('rematchRequests').on('value', snapshot => {
+                // [버그 수정] 게임오버 모달이 닫혀있으면(게임 시작 전) 실행 안 함
+				if (!snapshot.exists() || !currentRoomData || !currentRoomData.players || !gameOverOverlay.style.display) return;
+
+				const requests = snapshot.val();
+				const requestCount = Object.keys(requests).length;
+				const playerCount = Object.keys(currentRoomData.players).length;
+
+				if (requestCount === playerCount) {
+					if (isHost) {
+						roomRef.update({
+							gameState: 'restarting',
+							rematchRequests: null,
+							gameOver: null,
+							lastMove: null,
+							removedStones: null,
+							stoneState: null,
+							currentTurn: 'white',
+							placementChoices: null
+						});
+					}
+				}
+			});
+
+            // [수정] 'restarting' 신호 감지 (새로고침 제거)
+		    roomRef.child('gameState').on('value', snapshot => {
+			    if (snapshot.val() === 'restarting') {
+                    // [버그 수정] location.reload() 대신 상태 초기화 함수 호출
+                    handleGameRestart();
+			    }
+		    });
+
+
+        }
+        
+        function updateHeaderUI() {
+            const header = document.getElementById('game-header');
+            if (!header || !player1Info || !player2Info) return;
+            
+            const p1Active = (currentTurnColor === 'white');
+            const p2Active = (currentTurnColor === 'black');
+            
+            const p1Count = stones.filter(s => s.color === 'white' && s.active).length;
+            const p2Count = stones.filter(s => s.color === 'black' && s.active).length;
+
+            // ✨ [수정] 4방향 아바타 세트(ID), 이미지, 이모지 순으로 확인 (P1)
+            const avatarSet1 = AVATAR_SETS[player1Info.avatar];
+            let p1Avatar = '';
+            if (avatarSet1) {
+                p1Avatar = `<img src="${avatarSet1.front}" alt="avatar">`;
+            } else if (player1Info.avatar && (player1Info.avatar.startsWith('http') || /\.(png|jpg|jpeg|gif|webp)$/i.test(player1Info.avatar))) {
+                p1Avatar = `<img src="${player1Info.avatar}" alt="avatar">`;
+            } else {
+                p1Avatar = escapeHTML(player1Info.avatar); // 이모지
+            }
+            
+            // ✨ [수정] 4방향 아바타 세트(ID), 이미지, 이모지 순으로 확인 (P2)
+            const avatarSet2 = AVATAR_SETS[player2Info.avatar];
+            let p2Avatar = '';
+            if (avatarSet2) {
+                p2Avatar = `<img src="${avatarSet2.front}" alt="avatar">`;
+            } else if (player2Info.avatar && (player2Info.avatar.startsWith('http') || /\.(png|jpg|jpeg|gif|webp)$/i.test(player2Info.avatar))) {
+                p2Avatar = `<img src="${player2Info.avatar}" alt="avatar">`;
+            } else {
+                p2Avatar = escapeHTML(player2Info.avatar); // 이모지
+            }
+
+            header.innerHTML = `
+                <div class="player-info ${p1Active ? 'my-turn' : ''}">
+                    <div class="avatar">${p1Avatar}</div>
+                    <div class="info-text">
+                        <div class="nickname">${player1Info.nickname}</div>
+                        <div class="stone-count">⚪ ${p1Count}개</div>
+                    </div>
+                </div>
+                <div class="player-info ${p2Active ? 'my-turn' : ''}">
+                    <div class="avatar">${p2Avatar}</div>
+                    <div class="info-text">
+                        <div class="nickname">${player2Info.nickname}</div>
+                        <div class="stone-count">⚫ ${p2Count}개</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function showGameOver(winner) {
+            if (isGameOver) return;
+            isGameOver = true;
+
+            const iWon = (winner === myColor);
+            const resultText = iWon ? '🎉 승리!' : '😢 패배...';
+            playSound(iWon ? 'win-sound' : 'loss-sound');
+
+            if (gameMode === 'multi' && roomRef && isHost) {
+                roomRef.update({ gameOver: { winner: winner, timestamp: Date.now() } });
+            }
+
+            if (gameMode === 'single' || (gameMode === 'multi' && !myPlayerId.startsWith('guest_'))) {
+                updatePlayerStats(iWon);
+            }
+
+            gameOverOverlay.innerHTML = `
+                <div class="modal-content">
+                    <div id="game-over-message">${resultText}</div>
+                    <div class="modal-buttons">
+                        <button id="rematch-btn" class="menu-btn primary">다시 하기</button>
+                        <button id="to-lobby-btn" class="menu-btn secondary">대기실로</button>
+                    </div>
+                </div>
+            `;
+            gameOverOverlay.style.display = 'flex';
+
+            const rematchBtn = document.getElementById('rematch-btn');
+			rematchBtn.addEventListener('click', () => {
+                // [버그 수정] 싱글/멀티 모두 'rematchRequests'를 사용하도록 통일
+                // (location.reload()는 방을 터트림)
+                
+			    rematchBtn.disabled = true;
+			    rematchBtn.textContent = '상대방 기다리는 중...';
+                
+                if (gameMode === 'multi' && roomRef) {
+				    // 멀티플레이: Firebase에 재시작 요청
+				    roomRef.child('rematchRequests/' + myPlayerId).set(true);
+                } else if (gameMode === 'single') {
+                    // 싱글플레이: 0.5초 후 스스로 재시작 (AI는 항상 동의)
+                    setTimeout(() => {
+                        // 'restarting' 신호를 스스로 감지하도록 로직을 단순화
+                        handleGameRestart();
+                    }, 500);
+                }
+			});
+            document.getElementById('to-lobby-btn').addEventListener('click', cleanupAndExit);
+            document.getElementById('to-main-btn').addEventListener('click', () => {
+                sessionStorage.setItem('returnFromGame', 'true');
+                window.location.href = 'index.html';
+            });
+        }
+
+        function updatePlayerStats(won) {
+            if (!myPlayerId || myPlayerId.startsWith('guest_')) return;
+
+            const userRef = playersStatsRef.child(myPlayerId);
+
+            userRef.transaction(userData => {
+                if (userData) {
+                    // --- ✨ 안정성 강화: 필수 데이터가 없으면 기본값으로 채워줍니다 ---
+                    if (!userData.profile) { userData.profile = {}; }
+                    const profile = userData.profile;
+                    profile.level = profile.level || 1;
+                    profile.createdAt = profile.createdAt || firebase.database.ServerValue.TIMESTAMP;
+                    profile.exp = profile.exp || 0;
+                    profile.points = profile.points || 0;
+                    
+                    let expGained = 0;
+                    let pointsGained = 0;
+
+                    if (gameMode === 'single') {
+                        expGained = won ? 60 : 10;
+                        pointsGained = won ? 100 : 20;
+                    } else { // 'multi'
+                        expGained = won ? 120 : 30;
+                        pointsGained = won ? 200 : 100;
+                    }
+
+                    profile.exp += expGained;
+                    profile.points += pointsGained;
+
+                    // --- gameStats 경로 처리 ---
+                    if (!userData.gameStats) { userData.gameStats = {}; }
+                    if (!userData.gameStats.alkkagi) {
+                        userData.gameStats.alkkagi = { wins: 0, losses: 0, plays: 0 };
+                    }
+                    
+                    const alkkagiStats = userData.gameStats.alkkagi;
+                    if (won) {
+                        alkkagiStats.wins = (alkkagiStats.wins || 0) + 1;
+                    } else {
+                        alkkagiStats.losses = (alkkagiStats.losses || 0) + 1;
+                    }
+                    alkkagiStats.plays = (alkkagiStats.plays || 0) + 1;
+                }
+                return userData;
+            });
+        }
+// [신규] '다시하기' (새로고침 대체) 함수
+        function handleGameRestart() {
+            console.log("게임 재시작 중...");
+            
+            // 1. 게임 상태 초기화
+            isGameOver = false;
+            isGameLive = false;
+            canShoot = true;
+            hasShotThisTurn = false;
+            isFirstTurn = true;
+            currentTurnColor = 'white'; // [수정] 흑돌(black) -> 백돌(white) 선공
+            
+            // 2. 오버레이 닫기
+            gameOverOverlay.style.display = 'none';
+            gameOverOverlay.innerHTML = ''; // 모달 내용 비우기
+            
+            // 3. (멀티) 방장이면 restarting 상태를 null로 되돌림
+            if (gameMode === 'multi' && isHost && roomRef) {
+                roomRef.child('gameState').set(null);
+            }
+
+            // 4. 배치 선택 모달부터 다시 시작
+            showPlacementModal();
+        }
+        
+        function cleanupAndExit() {
+            if (roomRef) {
+                // 방장일 경우에만 방을 삭제합니다 (AI 모드에서는 항상 방장임).
+                if (isHost) {
+                    roomRef.remove();
+                }
+                roomRef.off(); // 모든 리스너 정리
+            }
+            window.location.href = '대기실.html';
+        }
+
+        initialize();
+    });
+    </script>
+
+    <audio id="game-start-sound" src="https://blog.kakaocdn.net/dna/vs7DN/dJMb9WFpvRs/AAAAAAAAAAAAAAAAAAAAAHJf1oqbiChuQiMUS_vcbEl2K6eaA6zzuosqQWk6d5E5/%EA%B2%8C%EC%9E%84%EC%8B%9C%EC%9E%91.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=EaapSJcpcP5OlE4ibx8C9NOU%2FkI%3D&attach=1&knm=tfile.mp3" preload="auto"></audio>
+<audio id="shoot-sound" src="https://blog.kakaocdn.net/dna/u8HMx/dJMb9OAFJEJ/AAAAAAAAAAAAAAAAAAAAAIqs8CjD3Mo8q0lPZ4p1BuoAVpWIP8fBfafJry8rMXni/%EC%99%8C%EA%B5%B4%EB%A6%AC%EB%8A%94%EC%86%8C%EB%A6%AC.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=NnUO7jp%2B7JkU35w00W9cS%2FB266M%3D&attach=1&knm=tfile.mp3" preload="auto"></audio>
+<audio id="success-sound" src="https://blog.kakaocdn.net/dna/crLSSK/dJMb8Y4jJZ6/AAAAAAAAAAAAAAAAAAAAAHSoWfFNw21Plu9ufn_jnmod1cp9rUDWubdEaHmSdsC0/%EC%95%8C%EA%B9%8C%EA%B8%B0%EC%84%B1%EA%B3%B5.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=mkf47bHt8yFioqWm6JBr8yiLKr0%3D&attach=1&knm=tfile.mp3" preload="auto"></audio>
+<audio id="win-sound" src="https://blog.kakaocdn.net/dna/kC4is/dJMb8WZJowA/AAAAAAAAAAAAAAAAAAAAAIQeZhVDJf0ZGAWyyMr_hsc6TMe3BFUVXd0FNTl5VDcY/%EA%B2%8C%EC%9E%84%EC%8A%B9%EB%A6%AC.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=qZKwGj5NQeAFNrOvCPAMXc6aX9I%3D&attach=1&knm=tfile.mp3" preload="auto"></audio>
+<audio id="loss-sound" src="https://blog.kakaocdn.net/dna/Zqr4u/dJMb9V0NWlD/AAAAAAAAAAAAAAAAAAAAANQFEr99iVFS25T5ZW3Q2dixeZXsbUzh7OWB40uYQMu9/%EC%95%8C%EA%B9%8C%EA%B8%B0%ED%8C%A8%EB%B0%B0.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=2xNnbSadPzs2ZZi1BssfyCye8jI%3D&attach=1&knm=tfile.mp3" preload="auto"></audio>
+
+<div id="ai-difficulty-modal" class="overlay" style="display: none;">
+    <div class="modal-content" style="background: #4a5a6a; max-width: 380px;">
+        <div style="padding: 25px;">
+            <h2 style="font-size: 1.8em; margin-bottom: 25px;">AI 난이도선택</h2>
+            <div class="modal-buttons">
+                <button class="menu-btn primary" data-difficulty="easy" style="background-color: #4CAF50;">초보</button>
+                <button class="menu-btn primary" data-difficulty="medium" style="background-color: #FFC107; color: #333;">중수</button>
+                <button class="menu-btn primary" data-difficulty="hard" style="background-color: #F44336;">고수</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="confirm-exit-modal" class="overlay" style="display: none;">
+    <div class="modal-content" style="background: #4a5a6a; max-width: 350px;">
+        <div style="padding: 30px 20px 20px; text-align: center;">
+            <h3 style="font-size: 1.4em; margin-bottom: 15px;">정말 게임에서 나가시겠습니까?</h3>
+            <p style="font-size: 0.9em; color: #ccc;">게임은 패배처리 됩니다.</p>
+        </div>
+        <div style="display: flex; gap: 10px; padding: 15px; background-color: #3d4a5a; border-top: 1px solid #667a99;">
+            <button id="exit-cancel-btn" class="menu-btn secondary" style="background-color: #78909c;">취소</button>
+            <button id="exit-confirm-btn" class="menu-btn primary" style="background-color: var(--danger-color, #e53935);">확인</button>
+        </div>
+    </div>
+</div>
+
+<div id="placement-modal" class="overlay" style="display: none;">
+    <div class="modal-content" style="background: #5a4a42; max-width: 420px;">
+        <div style="padding: 25px;">
+            <h2 style="font-size: 1.8em; margin-bottom: 25px;">배치 스타일선택</h2>
+            <div id="style-options-container" style="display: flex; gap: 20px; justify-content: center;">
+    <div class="style-option" data-style="style1">
+        <div class="preview-board">
+            <div class="preview-stone white" style="top: 20%; left: 10%;"></div>
+            <div class="preview-stone white" style="top: 20%; left: 30%;"></div>
+            <div class="preview-stone white" style="top: 20%; left: 50%;"></div>
+            <div class="preview-stone white" style="top: 20%; left: 70%;"></div>
+            <div class="preview-stone white" style="top: 20%; left: 90%;"></div>
+        </div>
+        <h4>기본 배치</h4>
+    </div>
+
+    <div class="style-option" data-style="style2">
+        <div class="preview-board">
+            <div class="preview-stone white" style="top: 15%; left: 15%;"></div>
+            <div class="preview-stone white" style="top: 15%; left: 50%;"></div>
+            <div class="preview-stone white" style="top: 15%; left: 85%;"></div>
+            <div class="preview-stone white" style="top: 35%; left: 35%;"></div>
+            <div class="preview-stone white" style="top: 35%; left: 65%;"></div>
+        </div>
+        <h4>수비형 배치</h4>
+    </div>
+</div>
+            <p id="placement-waiting-text" style="margin-top: 20px; font-size: 1.em; color: var(--accent-color); display: none;">상대방이 배치 스타일을 선택 중입니다...</p>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>메모리게임</title>
+    <link rel="manifest" href="manifest.json">
+    <link href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff" as="font" type="font/woff" crossorigin>
+    <style>
+        @font-face {
+            font-family: 'GmarketSans';
+            src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff') format('woff');
+            font-weight: 500;
+            font-style: normal;
+        }
+        @font-face {
+            font-family: 'GmarketSans';
+            src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansBold.woff') format('woff');
+            font-weight: 700;
+            font-style: normal;
+        }
+
+        :root {
+            --bg-color: #F3F7FD; --primary-color: #4A8DFF; --accent-color: #FFC84A;
+            --card-back-color: #6DA4FF; --card-front-color: #ffffff;
+            --text-color-dark: #333D4B; --text-color-light: #ffffff;
+            --danger-color: #F76363; --success-color: #30D394;
+            --panel-bg: #ffffff; --panel-border: #E5E8EB;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%; height: 100%; overflow: hidden; font-family: 'GmarketSans', sans-serif;
+            background-color: var(--bg-color); display: flex; flex-direction: column;
+            justify-content: center; align-items: center; -webkit-user-select: none; user-select: none; touch-action: manipulation;
+        }
+        .view { width: 100%; height: 100%; display: flex; flex-direction: column; }
+        .hidden { display: none !important; }
+
+        #game-wrapper { display: flex; flex-direction: column; height: 100%; align-items: center; }
+        #game-header { flex-shrink: 0; padding: 10px; padding-top: 15px; display: flex; justify-content: center; align-items: center; width: 100%; flex-wrap: wrap; gap: 5px 10px; background: var(--bg-color); z-index: 10; }
+        .status-box { background-color: rgba(255,255,255,0.9); color: var(--text-color-dark); padding: 8px 15px; border-radius: 20px; font-size: 1em; font-weight: 500; box-shadow: 0 2px 4px rgba(0,0,0,0.05); transition: all 0.3s ease; border: 2px solid transparent; display: flex; align-items: center; gap: 8px; }
+        .status-avatar-emoji { font-size: 1.2em; }
+        .status-avatar-img { width: 24px; height: 24px; object-fit: contain; vertical-align: middle; }
+        .status-box .nickname { font-weight: 700; }
+        .status-box.my-turn { background-color: var(--accent-color); color: var(--text-color-dark); transform: scale(1.05); border-color: #fff; font-weight: 700; animation: pulse-turn 1.5s infinite; }
+        @keyframes pulse-turn { 0% { box-shadow: 0 4px 12px rgba(255, 200, 74, 0.7); } 50% { box-shadow: 0 4px 20px rgba(255, 200, 74, 1); } 100% { box-shadow: 0 4px 12px rgba(255, 200, 74, 0.7); } }
+        
+        #game-container { width: 100%; flex-grow: 1; display: flex; justify-content: center; align-items: center; padding: 10px; min-height: 0; overflow-y: auto; }
+        #card-grid { display: grid; gap: 8px; width: 100%; max-width: 450px; aspect-ratio: 4 / 5.5; }
+        #card-grid.p2, #card-grid.single { grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(5, 1fr); }
+        #card-grid.p3 { grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(6, 1fr); }
+        #card-grid.p4 { grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(10, 1fr); }
+        .card { perspective: 1000px; cursor: pointer; }
+        .card-inner { position: relative; width: 100%; height: 100%; transition: transform 0.6s; transform-style: preserve-3d; border-radius: 10px; }
+        .card.flipped .card-inner { transform: rotateY(180deg); }
+        .card.matched { cursor: default; }
+        .card.matched .card-inner { transform: scale(0.9); opacity: 0.4; transition: all 0.5s ease; }
+        .card.matched .card-front { box-shadow: 0 0 0 4px var(--success-color) inset; }
+        .card.matched .card-front::after { content: '✓'; position: absolute; font-size: 1.2em; font-weight: 700; color: var(--success-color); background-color: rgba(255, 255, 255, 0.85); border-radius: 50%; padding: 2px 5px; line-height: 1; bottom: 5px; right: 5px; }
+        .card-face { position: absolute; width: 100%; height: 100%; -webkit-backface-visibility: hidden; backface-visibility: hidden; display: flex; justify-content: center; align-items: center; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); font-size: clamp(1.5em, 5vw, 2.5em); }
+        .card-back { background: var(--card-back-color); }
+        .card-front { background-color: var(--card-front-color); transform: rotateY(180deg); }
+        
+        .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px; z-index: 200; text-align: center; background-color: rgba(0,0,0,0.6); }
+        .modal-content { background: var(--panel-bg); border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); width: 90%; max-width: 400px; overflow: hidden; }
+        .modal-header { background-color: var(--primary-color); padding: 15px; }
+        .modal-header h2 { color: var(--text-color-light); font-size: 1.8em; font-weight: 700; letter-spacing: 2px; }
+        .modal-body { padding: 25px; }
+        .modal-body p { font-size: 1.1em; margin-bottom: 20px; color: #555; font-weight: 500; line-height: 1.5; }
+
+        .menu-btn { width: 100%; max-width: 320px; padding: 15px; font-size: 1.2em; font-weight: 700; letter-spacing: 1px; font-family: 'GmarketSans', sans-serif; border-radius: 12px; border: none; cursor: pointer; margin-bottom: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: all 0.15s ease-out; }
+        .menu-btn:active { transform: scale(0.97); box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .menu-btn.primary { background-color: var(--primary-color); color: var(--text-color-light); }
+        .menu-btn.secondary { background-color: #E9EEF2; color: var(--text-color-dark); }
+        
+        #start-menu { justify-content: center; align-items: center; }
+        #start-menu-buttons { width: 100%; max-width: 320px; }
+        .main-title { font-size: 2.8em; font-weight: 700; color: var(--text-color-dark); margin-bottom: 30px; text-align: center; }
+
+        #game-over-message { font-size: 2em; font-weight: 700; }
+        #score-board { margin-top: 20px; width: 100%; }
+        .score-row { padding: 10px; border-radius: 8px; font-size: 1.2em; font-weight: 700; margin: 5px auto; max-width: 280px; }
+        .score-row.winner { background-color: var(--accent-color); color: var(--text-color-dark); transform: scale(1.05); }
+        .score-row.loser { background-color: #F3F7FD; color: var(--text-color-dark); }
+        
+        #countdown-container { color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); text-align: center; }
+        #countdown-container h2 { font-size: 1.8em; font-weight: 700; }
+        #countdown-number { font-size: 6em; font-weight: 700; margin-top: 10px; animation: countdown-pop 1s infinite; }
+        @keyframes countdown-pop { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.2); } }
+
+        .modal-buttons { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 25px; width: 100%; max-width: 300px; }
+    </style>
+</head>
+<body>
+    <div id="start-menu" class="view hidden">
+        <div>
+            <h1 class="main-title">메모리 게임</h1>
+            <div id="start-menu-buttons">
+                <button id="single-player-btn" class="menu-btn secondary">혼자 하기</button>
+                <button id="multiplayer-btn" class="menu-btn primary">같이 하기</button>
+                <button id="back-to-index-btn" class="menu-btn secondary">메인으로</button> 
+            </div>
+        </div>
+    </div>
+
+    <div id="game-wrapper" class="view hidden">
+        <div id="game-header"></div>
+        <div id="game-container"><div id="card-grid"></div></div>
+    </div>
+    
+    <div id="game-over-overlay" class="overlay" style="display: none;"></div>
+    <div id="waiting-overlay" class="overlay" style="display: none;"></div>
+    
+    <div id="info-overlay" class="overlay" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header"><h2 id="info-title">알림</h2></div>
+            <div class="modal-body">
+                <p id="info-message" style="margin-bottom: 25px;"></p>
+                <button id="info-confirm-btn" class="menu-btn primary" style="margin: 0; max-width: 200px;">확인</button>
+            </div>
+        </div>
+   </div>
+    
+    <div id="confirm-exit-modal" class="overlay" style="display: none;">
+        <div style="background: white; border-radius: 16px; width: 90%; max-width: 350px; overflow: hidden; box-shadow: 0 5px 15px rgba(0,0,0,0.2);">
+            <div style="padding: 30px 20px 20px; text-align: center;">
+                <h3 style="font-size: 1.4em; margin-bottom: 15px;">게임에서 나가시겠습니까?</h3>
+                <p style="font-size: 0.9em; color: #666;" id="exit-modal-subtext">게임이 종료됩니다.</p>
+            </div>
+            <div style="display: flex; gap: 10px; padding: 15px; background-color: #f8f9fa; border-top: 1px solid #eee;">
+                <button id="exit-cancel-btn" class="menu-btn secondary">취소</button>
+                <button id="exit-confirm-btn" class="menu-btn primary" style="background-color: var(--danger-color);">확인</button>
+            </div>
+        </div>
+    </div>
+    
+    <audio id="flip-sound" src="https://blog.kakaocdn.net/dna/pcEQl/dJMb9LDWoy9/AAAAAAAAAAAAAAAAAAAAAPVGU4wkmgnOb3PqlOYeqvyLhYszCxnHFVpLXXwERBCq/cardsound32562-37691.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=RqFQGsIaZLVnhgC7ca5CNdmTQXc%3D&attach=1&knm=tfile.mp3" preload="auto"></audio>
+    
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script>
+document.addEventListener('DOMContentLoaded', () => {
+
+    function escapeHTML(str) {
+        if (typeof str !== 'string') return '';
+        const map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        };
+        return str.replace(/[&<>"']/g, m => map[m]);
+    }
+
+    // ✨ [신규] 뒤로가기 모달 관련 (아래 코드 추가)
+    const confirmExitModal = document.getElementById('confirm-exit-modal');
+    const exitModalSubtext = document.getElementById('exit-modal-subtext');
+    const exitConfirmBtn = document.getElementById('exit-confirm-btn');
+    const exitCancelBtn = document.getElementById('exit-cancel-btn');
+
+    history.pushState(null, '', location.href);
+    window.addEventListener('popstate', (e) => {
+        history.pushState(null, '', location.href); // 뒤로가기 방지 유지
+        
+        // 멀티플레이 중인지, 싱글플레이 중인지 확인
+        if (roomRef) { // roomRef가 있으면 멀티플레이
+            exitModalSubtext.textContent = isHost ? "방장이 나가면 방이 해체됩니다." : "게임을 포기하고 나가게 됩니다.";
+        } else { // 싱글플레이
+            exitModalSubtext.textContent = "게임을 종료하고 메인으로 나갑니다.";
+        }
+        confirmExitModal.style.display = 'flex'; // 모달 표시
+    });
+
+    exitConfirmBtn.addEventListener('click', () => {
+        // 나가기 버튼 로직
+        confirmExitModal.style.display = 'none';
+        if (roomRef) {
+            // 멀티플레이어 나가기 로직 (cleanup)
+            isGameInProgress = false; // ✨ 게임 진행 중 플래그 끄기
+            cleanupOldRoomState(); // 리스너 끄기
+            
+            // 방장이면 방 폭파, 게스트면 내 정보만 삭제
+            const promise = isHost ? roomRef.remove() : roomRef.child('players/' + myPlayerId).remove();
+            promise.finally(() => {
+                window.location.href = '대기실.html';
+            });
+        } else {
+            // 싱글플레이 나가기 로직
+            sessionStorage.setItem('returnFromGame', 'true'); 
+            window.location.href = 'index.html';
+        }
+    });
+
+    exitCancelBtn.addEventListener('click', () => {
+        confirmExitModal.style.display = 'none'; // 모달 닫기
+    });
+    // ✨ [신규] 끝
+
+     (function() {
+                    document.addEventListener('contextmenu', e => e.preventDefault());
+            function blockKeys(e) {
+                if (
+                    e.keyCode === 123 ||
+                    (e.ctrlKey && e.shiftKey && (e.keyCode === 'I'.charCodeAt(0) || e.keyCode === 'J'.charCodeAt(0) || e.keyCode === 'C'.charCodeAt(0))) ||
+                    (e.ctrlKey && e.keyCode === 'U'.charCodeAt(0))
+                ) {
+                    e.preventDefault();
+                }
+            }
+            window.addEventListener('keydown', blockKeys);
+
+            setInterval(function () {
+                const before = new Date().getTime();
+                debugger; 
+                const after = new Date().getTime();
+                if (after - before > 100) { 
+                              document.body.innerHTML = 'Developer tools are not allowed.';
+                }
+            }, 1000);
+        })();
+    const firebaseConfig = {
+        apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw", authDomain: "goodluck-7c14b.firebaseapp.com",
+        databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com", projectId: "goodluck-7c14b",
+        storageBucket: "goodluck-7c14b.firebasestorage.app", messagingSenderId: "858281658455",
+        appId: "1:858281658455:web:9131280a459be983933b12"
+    };
+    if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+    }
+const database = firebase.database();
+const auth = firebase.auth();
+const gameRoomsRef = database.ref('rooms'); // ✨ [수정] 'memoryGameRooms' -> 'rooms'
+    const playersRef = database.ref('users');
+    
+    const startMenu = document.getElementById('start-menu'),
+          singlePlayerBtn = document.getElementById('single-player-btn'),
+          multiplayerBtn = document.getElementById('multiplayer-btn'),
+          backToIndexBtn = document.getElementById('back-to-index-btn'),
+          gameWrapper = document.getElementById('game-wrapper'),
+          cardGrid = document.getElementById('card-grid'),
+          gameHeader = document.getElementById('game-header'),
+          waitingOverlay = document.getElementById('waiting-overlay'),
+          gameOverOverlay = document.getElementById('game-over-overlay'),
+          flipSound = document.getElementById('flip-sound'),
+          infoOverlay = document.getElementById('info-overlay'),
+          infoTitle = document.getElementById('info-title'),
+          infoMessage = document.getElementById('info-message'),
+          infoConfirmBtn = document.getElementById('info-confirm-btn');
+
+    const emojiThemes = {
+        animals: ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🐔','🐧','🐦','🐤','🦆'],
+        monsters: ['💀','👻','👽','👾','🤖','🎃','👹','👺','👿','🧛','🧟','🧞','🤡','☠️','🧠','🦇','🕷️','🦉','🐺','☄️'],
+        foods: ['🍔','🍕','🍟','🌭','🍿','🥨','🥯','🥞','🧇','🧀','🍗','🍖','🥩','🥓','🥐','🍞','🥖','🍩','🍪','🥤']
+    };
+    
+    // ✨ [신규] 4방향 아바타 세트 정의
+    const AVATAR_SETS = {
+        'default_bomber': {
+            front: './아바타폴더/기본캐정면.png'
+        },
+        'penguin_parka': { // Firebase profile/avatar에 저장될 고유 ID
+            front: './아바타폴더/펭귄정면.png'
+        },
+        'puppy_set': { 
+            front: './아바타폴더/강아지정면.png'
+        }
+    };
+    
+    let myPlayerId, myNickname, myAvatar, roomRef, currentRoomData, isHost = false, isGameInProgress = false;
+
+function getPlayerId() {
+        const urlParams = new URLSearchParams(window.location.search);
+        // ★★★ URL에서 myPlayerId를 먼저 읽고, 없으면 localStorage에서 찾도록 수정 ★★★
+        const id = urlParams.get('myPlayerId') || localStorage.getItem('myPlayerId');
+        if (!id) {
+            alert("플레이어 정보가 없습니다. 메인 메뉴로 돌아갑니다.");
+            window.location.href = 'index.html';
+            return null;
+        }
+        myNickname = localStorage.getItem('userNickname');
+        myAvatar = localStorage.getItem('userAvatar');
+        return id;
+    }
+
+    function showView(viewToShow) {
+        document.querySelectorAll('.view').forEach(view => view.classList.add('hidden'));
+        viewToShow.classList.remove('hidden');
+    }
+
+    function showInfoModal(title, message, onConfirm) {
+        infoTitle.textContent = title;
+        infoMessage.textContent = message;
+        infoConfirmBtn.onclick = () => {
+            infoOverlay.style.display = 'none';
+            if (onConfirm) onConfirm();
+        };
+        infoOverlay.style.display = 'flex';
+    }
+
+    function cleanupOldRoomState() {
+        if (roomRef) { roomRef.off(); roomRef.onDisconnect().cancel(); }
+        roomRef = null; currentRoomData = null; isGameInProgress = false; isHost = false;
+    }
+
+    function playFlipSound() { flipSound.currentTime = 0; flipSound.play().catch(e => {}); }
+    
+    function generateCards(pairCount) {
+        const themeNames = Object.keys(emojiThemes);
+        const randomThemeName = themeNames[Math.floor(Math.random() * themeNames.length)];
+        const selectedEmojis = [...emojiThemes[randomThemeName]];
+        selectedEmojis.sort(() => Math.random() - 0.5);
+        const d=[...selectedEmojis.slice(0,pairCount),...selectedEmojis.slice(0,pairCount)];
+        d.sort(()=>Math.random()-0.5); 
+        return d.map(e=>({emoji:e,matched:false}));
+    }
+    
+    function initializeFirstGame() {
+        if (!isHost || !currentRoomData) return;
+        const playerCount = Object.keys(currentRoomData.players).length;
+        let pairCount;
+        if (playerCount <= 2) pairCount = 10;
+        else if (playerCount === 3) pairCount = 15;
+        else pairCount = 20;
+        const newCards = generateCards(pairCount);
+        const playerOrder = Object.keys(currentRoomData.players).sort(() => Math.random() - 0.5);
+        const players = currentRoomData.players;
+        Object.keys(players).forEach(pid => { players[pid].score = 0; players[pid].wantsRematch = null; });
+
+        roomRef.update({
+            gameState: 'ready',
+            cards: newCards,
+            turn: playerOrder[0],
+            playerOrder: playerOrder,
+            players: players,
+            flippedCards: []
+        });
+    }
+
+    function joinMultiplayerGame(roomId) {
+        cleanupOldRoomState();
+        roomRef = gameRoomsRef.child(roomId);
+        
+        // ★ [추가] 리스너를 등록하기 전에 먼저 게임 뷰와 로딩창을 띄웁니다.
+        showView(gameWrapper);
+        waitingOverlay.innerHTML = `<div>게임 방에 연결하는 중...</div>`;
+        waitingOverlay.style.display = 'flex';
+        
+        listenToRoomChanges();
+    }
+
+    function listenToRoomChanges() {
+        isGameInProgress = true;
+        // showView(gameWrapper); // ★ [삭제] 이 줄을 삭제합니다. (joinMultiplayerGame으로 이동)
+
+        roomRef.on('value', snapshot => {
+            if (!isGameInProgress) return; // 게임 진행 중 아니면 무시
+
+            if (!snapshot.exists()) { // 방이 사라졌으면
+                showInfoModal("방이 해체되었습니다", "방장이 게임을 떠나 대기실로 이동합니다.", () => {
+                    cleanupOldRoomState();
+                    window.location.href = '대기실.html';
+                });
+                return;
+            }
+
+            currentRoomData = snapshot.val(); // 최신 데이터 저장
+
+            // 내 정보가 없으면 (강퇴 등)
+            if (!currentRoomData.players || !currentRoomData.players[myPlayerId]) {
+                 showInfoModal("방에서 퇴장되었습니다", "대기실로 이동합니다.", () => {
+                    cleanupOldRoomState();
+                    window.location.href = '대기실.html';
+                });
+                return;
+            }
+
+            isHost = currentRoomData.hostId === myPlayerId; // 방장 여부 업데이트
+            console.log('[MemoryGame] Firebase Update Received. gameState:', currentRoomData.gameState, 'isHost:', isHost); // 로그 추가
+
+            // 1. 방장이고 게임 상태가 아직 설정되지 않았거나 초기 상태라면 게임 초기화 시작
+            // [수정] 조건 추가: (!currentRoomData.gameState) 즉, N/A 상태일 때도 초기화 실행
+            if (isHost && (!currentRoomData.gameState || currentRoomData.gameState === 'launching' || currentRoomData.gameState === 'waiting')) {
+                console.log('[MemoryGame] Host initiating game setup. Current State:', currentRoomData.gameState);
+                initializeFirstGame(); // 카드 생성 및 'ready' 상태로 업데이트 요청
+                return; // ★★★ 중요: Host는 여기서 return하여 자신이 방금 요청한 'ready' 상태 업데이트를 기다림
+            }
+
+            // 2. 헤더 UI 업데이트 (항상)
+            if (currentRoomData.players) {
+                updateStatusUI();
+            } else {
+                console.warn('[MemoryGame] Player data missing for header update.');
+            }
+
+            // 3. 게임 상태별 처리
+            switch (currentRoomData.gameState) {
+                case 'ready': // 게임 시작 준비 완료 (카드 생성됨)
+                    console.log('[MemoryGame] Ready state detected. Checking cards:', currentRoomData.cards ? currentRoomData.cards.length : 'No cards');
+                    // 카드 데이터가 확실히 존재할 때만 카운트다운 시작
+                    if (currentRoomData.cards && currentRoomData.cards.length > 0) {
+                        console.log('[MemoryGame] Cards found, starting countdown.');
+                        startCountdown(); // 3, 2, 1 시작
+                    } else {
+                        console.warn('[MemoryGame] Ready state but no cards data found yet. Waiting...');
+                        // 카드 데이터 로딩 중 표시 (선택 사항)
+                        waitingOverlay.innerHTML = `<div>카드 정보 로딩 중...</div>`;
+                        waitingOverlay.style.display = 'flex';
+                    }
+                    break;
+
+                case 'playing': // 게임 진행 중
+                    console.log('[MemoryGame] Playing state detected. Checking cards:', currentRoomData.cards ? currentRoomData.cards.length : 'No cards');
+                    // 카드 데이터가 확실히 존재할 때만 카드 그리기
+                    if (currentRoomData.cards && currentRoomData.cards.length > 0) {
+                        waitingOverlay.style.display = 'none'; // 카운트다운/로딩 오버레이 숨김
+                        console.log('[MemoryGame] Cards found, drawing board.');
+                        drawMultiplayerCards(); // 카드 화면에 그리기
+                    } else {
+                        // 비정상 상태: playing인데 카드가 없음
+                        console.error('[MemoryGame] CRITICAL: Playing state but no cards data found!');
+                        waitingOverlay.innerHTML = `<div>오류: 카드 데이터를 받지 못했습니다.</div>`;
+                        waitingOverlay.style.display = 'flex';
+                    }
+                    break;
+
+                case 'gameOver': // 게임 종료
+                    console.log('[MemoryGame] GameOver state detected.');
+                    waitingOverlay.style.display = 'none'; // 카운트다운/로딩 오버레이 숨김
+                    showGameOverScreen(); // 게임 결과 화면 표시
+                    break;
+
+                case 'launching': // 게임 시작 중 (게스트가 이 상태를 볼 수 있음)
+                    console.log('[MemoryGame] Launching state detected (Guest). Showing waiting overlay.');
+                    waitingOverlay.innerHTML = `<div>게임 초기화 중...</div>`; // 로딩 중 표시
+                    waitingOverlay.style.display = 'flex';
+                    break;
+
+                default: // 알 수 없거나 초기 상태
+                    console.log('[MemoryGame] Unknown or initial gameState:', currentRoomData.gameState);
+                    waitingOverlay.innerHTML = `<div>게임 상태 기다리는 중... (${currentRoomData.gameState || 'N/A'})</div>`;
+                    waitingOverlay.style.display = 'flex';
+            }
+        });
+    }
+    
+    function startCountdown() {
+        // 이미 카운트다운 UI가 있는지 확인하여 중복 실행 방지
+        if (document.getElementById('countdown-number')) {
+            console.log('[MemoryGame] Countdown already in progress. Skipping.');
+            return;
+        }
+        console.log('[MemoryGame] Starting countdown sequence.');
+
+        // 카운트다운 UI 생성 및 표시
+        waitingOverlay.innerHTML = `<div id="countdown-container"><h2>게임 시작!</h2><p id="countdown-number">3</p></div>`; // 시작 숫자 3 표시
+        waitingOverlay.style.display = 'flex';
+        let count = 3;
+        const countdownEl = document.getElementById('countdown-number'); // 숫자 표시 엘리먼트
+
+        // 1초마다 카운트 감소
+        const interval = setInterval(() => {
+            count--;
+            console.log('[MemoryGame] Countdown:', count);
+
+            if (count > 0) { // 2, 1 표시
+                if (countdownEl) countdownEl.textContent = count;
+            } else { // 카운트다운 종료
+                clearInterval(interval); // 타이머 중지
+                console.log('[MemoryGame] Countdown finished.');
+                waitingOverlay.style.display = 'none'; // 카운트다운 오버레이 숨김
+
+                // ★★★ 중요: 방장(isHost)만 gameState를 'playing'으로 변경
+                if (isHost) {
+                     console.log('[MemoryGame] Host setting gameState to playing.');
+                     roomRef.child('gameState').set('playing'); // Firebase 업데이트 요청
+                }
+                // 모든 클라이언트(방장 포함)는 이 업데이트를 받고 'playing' 상태 로직(drawMultiplayerCards)을 실행하게 됨
+            }
+        }, 1000);
+    }
+    
+    function updateStatusUI() {
+        if (!currentRoomData || !currentRoomData.players) { gameHeader.innerHTML = ''; return; }
+        gameHeader.innerHTML = '';
+        let playerIds = [...(currentRoomData.playerOrder || Object.keys(currentRoomData.players).sort())];
+        const myIndex = playerIds.indexOf(myPlayerId);
+        if (myIndex > -1) {
+            const me = playerIds.splice(myIndex, 1)[0];
+            playerIds.unshift(me);
+        }
+        playerIds.forEach(pid => {
+            const player = currentRoomData.players[pid];
+            if (!player) return;
+            const statusBox = document.createElement('div');
+            const isMyTurn = currentRoomData.turn === pid;
+            statusBox.classList.add('status-box');
+            if (isMyTurn) statusBox.classList.add('my-turn');
+
+            // ✨ [수정] 4방향 아바타 세트(ID), 이미지, 이모지 순으로 확인
+            const avatarSet = AVATAR_SETS[player.avatar];
+            let avatarHTML = '';
+            if (avatarSet) {
+                avatarHTML = `<img src="${avatarSet.front}" class="status-avatar-img">`;
+            } else if (player.avatar.startsWith('http') || /\.(png|jpg|jpeg|gif|webp)$/i.test(player.avatar)) {
+                avatarHTML = `<img src="${player.avatar}" class="status-avatar-img">`;
+            } else {
+                avatarHTML = `<span class="status-avatar-emoji">${escapeHTML(player.avatar)}</span>`; // 이모지
+            }
+            
+            let statusText = `${avatarHTML} <span class="nickname">${escapeHTML(player.nickname)}</span> ${player.score}`;
+            if (isMyTurn && pid === myPlayerId) statusText += ' (내 차례)';
+            statusBox.innerHTML = statusText;
+            gameHeader.appendChild(statusBox);
+        });
+    }
+
+    function drawMultiplayerCards() {
+        if(!currentRoomData.cards) return;
+        cardGrid.innerHTML = currentRoomData.cards.map((card, index) => {
+            let cardStateClass = '';
+            if(card.matched) cardStateClass = 'matched';
+            if(currentRoomData.flippedCards?.includes(index)) cardStateClass += ' flipped';
+            return `<div class="card ${cardStateClass}" data-index="${index}"><div class="card-inner"><div class="card-face card-back"></div><div class="card-face card-front">${card.emoji}</div></div></div>`;
+        }).join('');
+        cardGrid.className = `p${Object.keys(currentRoomData.players).length}`;
+        document.querySelectorAll('.card:not(.matched)').forEach(c => c.addEventListener('click', () => handleMultiplayerCardClick(parseInt(c.dataset.index))));
+    }
+
+    function handleMultiplayerCardClick(index) {
+        if (currentRoomData.turn !== myPlayerId || currentRoomData.cards[index].matched || currentRoomData.flippedCards?.length >= 2 || currentRoomData.flippedCards?.includes(index)) return;
+        playFlipSound();
+        const flippedCards = [...(currentRoomData.flippedCards || []), index];
+        const updates = { flippedCards };
+
+        if (flippedCards.length < 2) {
+            roomRef.update(updates);
+            return;
+        }
+
+        const [card1, card2] = [currentRoomData.cards[flippedCards[0]], currentRoomData.cards[flippedCards[1]]];
+        if (card1.emoji === card2.emoji) {
+            updates.flippedCards = [];
+            updates[`cards/${flippedCards[0]}/matched`] = true;
+            updates[`cards/${flippedCards[1]}/matched`] = true;
+            updates[`players/${myPlayerId}/score`] = currentRoomData.players[myPlayerId].score + 1;
+            const allMatched = currentRoomData.cards.every((c, i) => c.matched || flippedCards.includes(i));
+            if (allMatched) {
+                updates.gameState = 'gameOver';
+            }
+            roomRef.update(updates); // 매치 성공 시 즉시 업데이트
+        } else {
+            // 매치 실패 시: 1초 지연 후 턴 넘기기와 카드 뒤집기를 함께 처리
+            roomRef.update(updates); // 우선 두 번째 카드가 뒤집힌 것을 보여주기 위해 업데이트
+            setTimeout(() => {
+                const pOrder = currentRoomData.playerOrder;
+                const nextTurn = pOrder[(pOrder.indexOf(myPlayerId) + 1) % pOrder.length];
+                roomRef.update({
+                    flippedCards: [], // 카드 다시 뒤집기
+                    turn: nextTurn     // 턴 넘기기
+                });
+            }, 1000);
+        }
+    }
+    
+    async function showGameOverScreen() {
+        isGameInProgress = false; // 게임 종료 플래그
+        const playersArray = Object.entries(currentRoomData.players).map(([id, data]) => ({ id, ...data }));
+        const maxScore = Math.max(...playersArray.map(p => p.score));
+        const winners = playersArray.filter(p => p.score === maxScore && p.score > 0);
+        
+        if (isHost) {
+            const updates = {};
+            for(const p of playersArray){
+                const isWinner = winners.some(w => w.id === p.id) && winners.length === 1;
+                updates[p.id] = { isWinner };
+            }
+            await Promise.all(Object.entries(updates).map(([pid, res]) => updatePlayerStats(pid, res.isWinner)));
+        }
+
+        const amIWinner = winners.some(w => w.id === myPlayerId);
+        let message = amIWinner && winners.length === 1 ? "승 리 !" : (winners.length > 1 ? "무승부!" : "패 배 !");
+        
+        playersArray.sort((a, b) => b.score - a.score);
+        
+        // [수정] 아바타 이미지/이모지 판별 로직 추가
+        const finalScoresHTML = playersArray.map(p => {
+            const avatarSet = AVATAR_SETS[p.avatar];
+            let avatarHTML = '';
+            
+            if (avatarSet) {
+                // 1. 아바타 세트(ID)인 경우
+                avatarHTML = `<img src="${avatarSet.front}" style="width:30px; height:30px; vertical-align:middle; margin-right:5px; border-radius:50%;">`;
+            } else if (p.avatar && (p.avatar.startsWith('http') || /\.(png|jpg|jpeg|gif|webp)$/i.test(p.avatar) || p.avatar.startsWith('.'))) {
+                // 2. 직접 이미지 URL인 경우
+                avatarHTML = `<img src="${p.avatar}" style="width:30px; height:30px; vertical-align:middle; margin-right:5px; border-radius:50%;">`;
+            } else {
+                // 3. 이모지인 경우
+                avatarHTML = `<span style="margin-right:5px; font-size:1.2em;">${p.avatar || '❓'}</span>`;
+            }
+
+            return `<div class="score-row ${winners.some(w=>w.id===p.id) && winners.length === 1 ? 'winner' : 'loser'}">
+                        ${avatarHTML} ${p.nickname} : ${p.score}점
+                    </div>`;
+        }).join('');
+
+        gameOverOverlay.innerHTML = `<div class="modal-content"><div class="modal-header"><h2 id="game-over-message">${message}</h2></div><div class="modal-body"><div id="score-board">${finalScoresHTML}</div><div class="modal-buttons"><button id="rematch-btn" class="menu-btn primary">다시 하기</button><button id="lobby-btn" class="menu-btn secondary">나가기</button></div></div></div>`;
+        gameOverOverlay.style.display = 'flex';
+        
+        document.getElementById('rematch-btn').addEventListener('click', () => {
+            const btn = document.getElementById('rematch-btn');
+            btn.textContent = '대기중...'; btn.disabled = true;
+            roomRef.child(`players/${myPlayerId}/wantsRematch`).set(true);
+        });
+        document.getElementById('lobby-btn').addEventListener('click', () => { window.location.href = '대기실.html'; });
+        
+        const rematchListenerRef = roomRef.child('players');
+        rematchListenerRef.on('value', snapshot => {
+            if (!snapshot.exists() || currentRoomData?.gameState !== 'gameOver') { rematchListenerRef.off(); return; }
+            const currentPlayers = snapshot.val();
+            if (Object.values(currentPlayers).every(p => p.wantsRematch)) {
+                rematchListenerRef.off(); gameOverOverlay.style.display = 'none';
+                if (isHost) startRematch();
+            }
+        });
+    }
+    
+    function startRematch() {
+        if (!isHost || !currentRoomData) return;
+        isGameInProgress = true; // 게임 재시작 플래그
+        const playerCount = Object.keys(currentRoomData.players).length;
+        let pairCount;
+        if (playerCount <= 2) pairCount = 10; else if (playerCount === 3) pairCount = 15; else pairCount = 20;
+        const newCards = generateCards(pairCount);
+        const playerOrder = Object.keys(currentRoomData.players).sort(() => Math.random() - 0.5);
+        const players = currentRoomData.players;
+        Object.keys(players).forEach(pid => { players[pid].score = 0; players[pid].wantsRematch = null; });
+        roomRef.update({ gameState: 'ready', cards: newCards, turn: playerOrder[0], playerOrder, players, flippedCards: [] });
+    }
+
+    async function updatePlayerStats(playerId, isWinner) {
+        if (playerId.startsWith('guest_')) return; // 게스트는 전적 업데이트 안함
+        const playerStatRef = playersRef.child(playerId);
+        try {
+            await playerStatRef.transaction(currentData => {
+                if (currentData) {
+                    // ★ [수정] 'stats' -> 'gameStats'로 변경 (DB 규칙과 일치시킴)
+                    if (!currentData.gameStats) currentData.gameStats = {};
+                    if (!currentData.gameStats.memoryGame) currentData.gameStats.memoryGame = { wins: 0, losses: 0, plays: 0 };
+                    
+                    // ★ [추가] 플레이 횟수 1 증가 (랭킹 집계용)
+                    currentData.gameStats.memoryGame.plays = (currentData.gameStats.memoryGame.plays || 0) + 1;
+
+                    // ★ [수정] 'profile' 객체 내부의 'exp', 'level'을 참조하도록 변경
+                    if (!currentData.profile) currentData.profile = {}; // (안전장치)
+
+                    if (isWinner) {
+                        currentData.gameStats.memoryGame.wins = (currentData.gameStats.memoryGame.wins || 0) + 1;
+                        currentData.profile.exp = (currentData.profile.exp || 0) + 50; // profile.exp
+                    } else {
+                        currentData.gameStats.memoryGame.losses = (currentData.gameStats.memoryGame.losses || 0) + 1;
+                        currentData.profile.exp = (currentData.profile.exp || 0) + 10; // profile.exp
+                    }
+                    
+                    let level = currentData.profile.level || 1;
+                    let exp = currentData.profile.exp || 0;
+                    let expForNextLevel = level * 100;
+                    
+                    while (exp >= expForNextLevel) { // 'exp' 변수 사용
+                        level++;
+                        exp -= expForNextLevel; // 'exp' 변수에서 차감
+                        expForNextLevel = level * 100;
+                    }
+                    currentData.profile.level = level; // profile.level
+                    currentData.profile.exp = exp; // ★ [수정] 남은 경험치도 profile.exp에 다시 저장
+
+                } return currentData;
+            });
+        } catch (error) { console.error("전적 업데이트 실패:", error); }
+    }
+    
+    let singlePlayerFlipped = [], singlePlayerMatched = 0;
+    
+    function startSinglePlayerCountdown() {
+        showView(gameWrapper);
+        gameWrapper.classList.add('hidden');
+        waitingOverlay.innerHTML = `<div id="countdown-container"><h2>게임 시작!</h2><p id="countdown-number"></p></div>`;
+        waitingOverlay.style.display = 'flex';
+        let count = 3;
+        const countdownEl = document.getElementById('countdown-number');
+        const updateCount = () => { countdownEl.textContent = count; };
+        updateCount();
+        const interval = setInterval(() => {
+            count--;
+            if (count > 0) updateCount();
+            else {
+                clearInterval(interval);
+                waitingOverlay.style.display = 'none';
+                startSinglePlayerGame();
+            }
+        }, 1000);
+    }
+
+    function startSinglePlayerGame() {
+        cleanupOldRoomState();
+        showView(gameWrapper);
+        gameWrapper.classList.remove('hidden');
+        singlePlayerFlipped = []; singlePlayerMatched = 0;
+        const cards = generateCards(10);
+        cardGrid.className = 'single';
+        gameHeader.innerHTML = `<div class="status-box">정답: <span id="matched-counter">0</span> / 10</div>`;
+        cardGrid.innerHTML = cards.map((card, index) => `<div class="card" data-index="${index}"><div class="card-inner"><div class="card-face card-back"></div><div class="card-face card-front">${card.emoji}</div></div></div>`).join('');
+        document.querySelectorAll('#card-grid .card').forEach(cardEl => cardEl.addEventListener('click', () => handleSinglePlayerCardClick(cardEl, cards)));
+    }
+
+    function handleSinglePlayerCardClick(cardEl, cards) {
+        if (cardEl.classList.contains('flipped') || singlePlayerFlipped.length >= 2) return;
+        playFlipSound();
+        cardEl.classList.add('flipped');
+        singlePlayerFlipped.push(cardEl);
+        if (singlePlayerFlipped.length === 2) {
+            const [el1, el2] = singlePlayerFlipped;
+            const [idx1, idx2] = [parseInt(el1.dataset.index), parseInt(el2.dataset.index)];
+            if (cards[idx1].emoji === cards[idx2].emoji) {
+                singlePlayerMatched++;
+                document.getElementById('matched-counter').textContent = singlePlayerMatched;
+                el1.classList.add('matched'); el2.classList.add('matched');
+                singlePlayerFlipped = [];
+                if (singlePlayerMatched === 10) {
+                    gameOverOverlay.innerHTML = `<div class="modal-content"><div class="modal-header"><h2>🎉 성공! 🎉</h2></div><div class="modal-body"><p>모든 카드를 맞췄습니다!</p><div class="modal-buttons"><button id="single-retry-btn" class="menu-btn primary">다시 하기</button><button id="single-main-menu-btn" class="menu-btn secondary">메인으로</button></div></div></div>`;
+                    gameOverOverlay.style.display = 'flex';
+                    document.getElementById('single-retry-btn').addEventListener('click', () => { gameOverOverlay.style.display = 'none'; startSinglePlayerGame(); });
+                    document.getElementById('single-main-menu-btn').addEventListener('click', () => { sessionStorage.setItem('returnFromGame', 'true'); window.location.href = 'index.html'; });
+                }
+            } else { setTimeout(() => { el1.classList.remove('flipped'); el2.classList.remove('flipped'); singlePlayerFlipped = []; }, 1000); }
+        }
+    }
+
+    auth.onAuthStateChanged(user => {
+        if (user) {
+            // getPlayerId()를 호출하여 myPlayerId, myNickname, myAvatar를 설정합니다.
+            myPlayerId = getPlayerId(); 
+            
+            // getPlayerId가 성공적으로 ID를 가져왔고, 그 ID가 현재 로그인된 user.uid와 일치하는지 확인
+            if (myPlayerId && myPlayerId === user.uid) {
+                const urlParams = new URLSearchParams(window.location.search);
+                const roomId = urlParams.get('roomId');
+    
+                if (roomId) {
+                    joinMultiplayerGame(roomId);
+                } else {
+                    // roomId가 없는 경우 (예: 싱글 플레이)
+                    showView(startMenu);
+                    singlePlayerBtn.addEventListener('click', startSinglePlayerCountdown);
+                    multiplayerBtn.addEventListener('click', () => { window.location.href = '대기실.html'; });
+                    backToIndexBtn.addEventListener('click', () => { window.location.href = 'index.html'; });
+                }
+            } else if (myPlayerId && myPlayerId !== user.uid) {
+                // 인증 ID와 localStorage/URL ID 불일치
+                alert('플레이어 정보가 올바르지 않습니다. 다시 로그인해주세요.');
+                window.location.href = 'index.html';
+            }
+            // getPlayerId()가 null을 반환하면 (정보가 없음) 이미 alert를 띄우고 index.html로 리다이렉트합니다.
+
+        } else {
+            // 비로그인 상태
+            alert('로그인이 필요합니다.');
+            window.location.href = 'index.html';
+        }
+    });
+
+});
+</script>
+</body>
+</html>

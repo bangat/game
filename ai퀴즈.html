@@ -1,0 +1,1640 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>AI 스피드퀴즈</title>
+    <link href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff" as="font" type="font/woff" crossorigin>
+    <style>
+        @font-face {
+            font-family: 'GmarketSans';
+            src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff') format('woff');
+            font-weight: 500;
+        }
+        @font-face {
+            font-family: 'GmarketSans';
+            src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansBold.woff') format('woff');
+            font-weight: 700;
+        }
+
+        :root {
+            --bg-color: #2c3e50;
+            --board-bg: #34495e;
+            --border-color: #2c3e50;
+            --primary-color: #4a8dff;
+            --accent-color: #ffc84a;
+            --correct-color: #2ecc71;
+            --incorrect-color: #e74c3c;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%; height: 100%; overflow: hidden;
+            font-family: 'GmarketSans', sans-serif;
+            background-color: var(--bg-color); color: white;
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            -webkit-user-select: none; user-select: none;
+            touch-action: manipulation;
+        }
+
+        #game-wrapper {
+            width: 100%; height: 100%;
+            display: flex; flex-direction: column;
+        }
+        #game-header {
+            flex-shrink: 0; display: grid;
+            grid-template-columns: 1fr 1fr;
+            padding: 10px; background-color: rgba(0,0,0,0.3);
+            gap: 8px;
+        }
+        
+        .player-info {
+            display: flex; align-items: center; gap: 8px;
+            background-color: rgba(255,255,255,0.1);
+            padding: 8px; border-radius: 10px;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+        .player-info.my-turn {
+            border-color: var(--accent-color);
+            box-shadow: 0 0 15px var(--accent-color);
+        }
+        .player-info .avatar { 
+            font-size: 1.5em; 
+            width: 32px; height: 32px;
+            display: flex; justify-content: center; align-items: center;
+            flex-shrink: 0;
+        }
+        .player-info .avatar img {
+            width: 100%; height: 100%;
+            object-fit: contain; border-radius: 50%;
+        }
+        .player-info .details {
+            display: flex; flex-direction: column;
+            min-width: 0;
+        }
+        .player-info .nickname {
+            font-weight: 700; font-size: 0.9em;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .player-info .score {
+            font-weight: 700; font-size: 1em;
+            color: var(--accent-color);
+        }
+
+        #game-container {
+            width: 100%; flex-grow: 1;
+            display: flex; flex-direction: column; 
+            justify-content: center; align-items: center;
+            position: relative; overflow: hidden; padding: 20px;
+            background-image: url('https://www.transparenttextures.com/patterns/wood-pattern.png');
+        }
+
+        #quiz-area {
+            width: 100%;
+            background-color: var(--board-bg);
+            border: 8px solid var(--border-color);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border-radius: 20px;
+            padding: 25px;
+            display: flex; flex-direction: column;
+            gap: 20px;
+            max-width: 500px;
+        }
+
+        #round-info {
+            text-align: center;
+            font-size: 1.2em;
+            font-weight: 700;
+            color: var(--accent-color);
+        }
+
+        #question-text {
+            font-size: 1.5em;
+            font-weight: 700;
+            text-align: center;
+            /* min-height: 100px; */ /* 높이를 아래 desc로 이동 */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding-top: 10px; /* 상단 여백 */
+        }
+
+        /* ▼▼▼ [신규] 문제 뜻풀이 스타일 ▼▼▼ */
+        #question-desc {
+            font-size: 0.9em; /* 더 작은 폰트 */
+            font-weight: 500;
+            color: var(--accent-color); /* 노란색 */
+            text-align: center;
+            padding: 0 15px;
+            min-height: 60px; /* 최소 높이 확보 */
+            display: none; /* 평소엔 숨김 */
+            justify-content: center;
+            align-items: center;
+        }
+        /* ▲▲▲ [신규] ▲▲▲ */
+
+        #round-timer-bar {
+            width: 100%;
+            height: 10px;
+            background-color: rgba(0,0,0,0.3);
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        #round-timer-fill {
+            width: 100%;
+            height: 100%;
+            background-color: var(--accent-color);
+            transition: width 0.1s linear;
+        }
+        
+        #options-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 15px;
+        }
+        
+        .option-btn {
+            width: 100%;
+            padding: 20px;
+            font-size: 1.1em;
+            font-weight: 700;
+            font-family: 'GmarketSans', sans-serif;
+            border-radius: 12px;
+            border: none;
+            cursor: pointer;
+            background-color: #ecf0f1;
+            color: #34495e;
+            transition: all 0.2s ease;
+        }
+        .option-btn:not(:disabled):hover {
+            transform: scale(1.03);
+        }
+        .option-btn:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+        .option-btn.selected {
+            background-color: var(--primary-color);
+            color: white;
+        }
+        .option-btn.correct {
+            background-color: var(--correct-color);
+            color: white;
+            animation: pulse-correct 0.5s;
+        }
+        .option-btn.incorrect {
+            background-color: var(--incorrect-color);
+            color: white;
+            opacity: 0.5;
+        }
+        @keyframes pulse-correct {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        /* 오버레이 및 모달 (리버시.html에서 가져옴) */
+        .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 200; text-align: center; background-color: rgba(0,0,0,0.7); }
+        .spinner { border: 4px solid rgba(255, 255, 255, 0.3); border-radius: 50%; border-top: 4px solid white; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        .modal-content { background: #2c3e50; color: white; padding: 0; border-radius: 20px; width: 90%; max-width: 400px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); overflow: hidden; }
+        .modal-header { background-color: #34495e; padding: 15px; }
+        .modal-header h2 { font-size: 1.8em; }
+        .modal-body { padding: 25px; }
+        .modal-buttons { display: flex; flex-direction: column; gap: 12px; align-items: center; margin-top: 25px; }
+        .menu-btn { width: 100%; padding: 15px; font-size: 1.2em; font-weight: bold; border-radius: 12px; border: none; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.1s; margin: 8px 0; }
+        .menu-btn.primary { background-color: var(--primary-color); color: white; }
+        .menu-btn.secondary { background-color: #e9eff8; color: #333; }
+        .menu-btn:active { transform: scale(0.98); }
+        .menu-btn:disabled { background-color: #ccc; color: #888; cursor: not-allowed; }
+        
+        #countdown-number { font-size: 8em; font-weight: 700; color: white; text-shadow: 0 0 30px rgba(255,255,255,0.8); animation: countdown-pop 1s; }
+        @keyframes countdown-pop { from { transform: scale(0.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+        #score-board { margin: 20px 0; }
+        .score-row { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-radius: 8px; font-size: 1.2em; font-weight: 700; margin: 8px auto; max-width: 300px; }
+        .score-row.winner { background-color: var(--accent-color); color: #111; transform: scale(1.05); }
+        .score-row.loser { background-color: #f0f3f4; color: #333; }
+        
+        .score-avatar { display: inline-flex; align-items: center; gap: 8px; }
+        .score-avatar img { width: 28px; height: 28px; object-fit: contain; border-radius: 50%; }
+
+        /* 주제 선택 모달용 버튼 */
+        .topic-btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        
+        /* ▼▼▼ [신규] 프로그레스 바 스타일 ▼▼▼ */
+        #progress-bar-container {
+            display: none; /* 평소엔 숨김 */
+            width: 70%;    /* 너비 조정 */
+            max-width: 300px; /* 최대 너비 */
+            height: 12px;   /* 높이 조정 */
+            background-color: rgba(0, 0, 0, 0.4); /* 배경색 약간 어둡게 */
+            border-radius: 6px; /* 둥근 모서리 */
+            overflow: hidden;
+            margin-top: 20px; /* 위쪽 텍스트와의 간격 */
+            margin-left: auto;  /* ▼▼▼ [추가] 가운데 정렬 ▼▼▼ */
+            margin-right: auto; /* ▲▲▲ [추가] 가운데 정렬 ▲▲▲ */
+        }
+        #progress-bar-fill {
+            width: 0%;
+            height: 100%;
+            background-color: var(--accent-color); /* 채워지는 색 */
+            border-radius: 6px;
+            transition: width 0.3s ease-out; /* 부드러운 전환 */
+        }
+        /* ▲▲▲ [신규] ▲▲▲ */
+    </style>
+</head>
+<body>
+    <div id="game-wrapper">
+        <div id="game-header"></div>
+        <div id="game-container">
+            <div id="quiz-area" style="display: none;">
+                <div id="round-info">Round 1 / 30</div>
+                <div id="round-timer-bar"><div id="round-timer-fill"></div></div>
+                <div id="question-text">문제를 불러오는 중입니다...</div>
+                <div id="question-desc"></div>
+                                               <div id="options-grid">
+                    <button class="option-btn" data-index="0"></button>
+                    <button class="option-btn" data-index="1"></button>
+                    <button class="option-btn" data-index="2"></button>
+                    <button class="option-btn" data-index="3"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="game-over-overlay" class="overlay" style="display: none;"></div>
+    
+    <div id="info-overlay" class="overlay">
+        <div class="modal-content" style="background: transparent; box-shadow: none;">
+             <p id="info-text" style="color: white; font-size: 1.3em; margin-bottom: 20px;">게임에 참가하는 중...</p>
+            <div id="info-spinner" class="spinner"></div>
+<div id="progress-bar-container">
+                <div id="progress-bar-fill"></div>
+            </div>
+            <button id="host-retry-btn" class="menu-btn secondary" style="display: none;">API 호출 재시도</button>
+        </div>
+    </div>
+    
+    <div id="topic-modal" class="overlay" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header"><h2 id="topic-modal-title">게임 주제 선택</h2></div>
+            <div class="modal-body">
+                <p id="topic-modal-desc">방장이 첫 10라운드의 주제를 선택합니다.</p>
+                <div class="topic-btn-grid modal-buttons">
+                    <button class="menu-btn primary" data-topic="english">🔠영어 단어</button>
+                    <button class="menu-btn primary" data-topic="proverb">📜속담</button>
+                    <button class="menu-btn primary" data-topic="idiom">📖사자성어</button>
+                    <button class="menu-btn primary" data-topic="capital">🌍수도</button>
+                    <button class="menu-btn primary" data-topic="history">👑한국사</button>
+                    <button class="menu-btn primary" data-topic="easy_words">📚낱말 퀴즈</button>
+                    <button class="menu-btn primary" data-topic="random">🎲랜덤</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+   <audio id="click-sound" src="https://blog.kakaocdn.net/dna/dC0WAE/dJMb84DsZw6/AAAAAAAAAAAAAAAAAAAAAC8XpuPuNVEsdp6Ia-d35XR-m3FCZxObUR5uFI1tk2iv/%EB%B2%84%ED%8A%BC%EC%82%AC%EC%9A%B4%EB%93%9C.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=RdbjxdP75HLHSpBIhymVkYpUOA0%3D&attach=1&knm=tfile.mp3" preload="auto"></audio>
+    <audio id="correct-sound" src="sound/퀴즈정답.mp3" preload="auto"></audio>
+    <audio id="win-sound" src="sound/게임승리.mp3" preload="auto"></audio>
+    <audio id="loss-sound" src="sound/게임패배.mp3" preload="auto"></audio>
+    <audio id="incorrect-sound" src="sound/퀴즈오답.mp3" preload="auto"></audio>
+
+    <script src="아바타.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    
+    <script>
+        // --- Gemini API 설정 ---
+        const API_KEYS = [
+            "AIzaSyD55Qjfm4u8vhmki6-6JE3qshThouFYFBQ", // 1번 키
+            "AIzaSyDKWwTVn6nl0YfoW7Anwx51plicNqWOhQw"  // 2번 키
+        ];
+
+        // ▼▼▼ TTS 관련 변수 및 초기화 ▼▼▼
+        let synth = window.speechSynthesis;
+        let voices = [];
+
+        function populateVoiceList() {
+            voices = synth.getVoices().sort(function (a, b) {
+                const aname = a.name.toUpperCase();
+                const bname = b.name.toUpperCase();
+                if (aname < bname) return -1;
+                else if (aname == bname) return 0;
+                else return +1;
+            });
+            // console.log("Available voices:", voices); // 사용 가능한 음성 목록 확인용
+        }
+
+        populateVoiceList();
+        if (speechSynthesis.onvoiceschanged !== undefined) {
+            speechSynthesis.onvoiceschanged = populateVoiceList;
+        }
+
+
+        let currentKeyIndex = 0;
+        const currentModel = "gemini-2.5-flash-lite"; // 속도가 빠른 Flash 모델 사용
+
+        // ▼▼▼ [신규] 사용자에게 보여줄 주제명 (UX 개선용) ▼▼▼
+        const topicMapForDisplay = {
+            "english": "🔠영어단어",
+            "proverb": "📜속담",
+            "idiom": "📖사자성어",
+            "capital": "🌍수도",
+            "history": "👑역사",
+            "easy_words": "📚낱말퀴즈"
+        };
+        // ▲▲▲ [신규] ▲▲▲
+
+        // API 키 순환 함수
+        function rotateKey() {
+            currentKeyIndex = (currentKeyIndex + 1) % API_KEYS.length;
+            console.warn(`API 키 429 오류. 다음 키로 교체합니다: (index ${currentKeyIndex})`);
+            return API_KEYS[currentKeyIndex];
+        }
+
+        // Gemini API 호출 함수 (429 재시도 로직 포함)
+        // Gemini API 호출 함수 (JSON 파싱 강화)
+        async function callGeminiAPI(prompt) {
+    let key = API_KEYS[currentKeyIndex];
+    let url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${key}`;
+
+    const requestBody = {
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+            temperature: 0.9,
+            topK: 40,
+            topP: 1,
+            maxOutputTokens: 8192,
+            // ▼▼▼ [중요] JSON 모드 해제 (이 줄을 삭제하거나 text/plain으로 변경) ▼▼▼
+            responseMimeType: "text/plain" 
+        },
+        safetySettings: [
+            { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+        ]
+    };
+
+    try {
+        let response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody)
+        });
+
+        if (response.status === 429) {
+            key = rotateKey();
+            url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${key}`;
+            response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody)
+            });
+        }
+
+        if (!response.ok) {
+            throw new Error(`API Error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        
+        if (!data.candidates || !data.candidates[0].content) {
+            throw new Error("AI가 응답하지 않았습니다.");
+        }
+
+        let rawText = data.candidates[0].content.parts[0].text;
+        
+        // ▼▼▼ [수정됨] 텍스트 파싱 로직 (JSON.parse 대신 split 사용) ▼▼▼
+        // 마크다운 제거
+        rawText = rawText.replace(/```/g, "").trim();
+
+        const quizList = [];
+        const lines = rawText.split('\n'); // 줄바꿈으로 문제 나누기
+
+        lines.forEach(line => {
+            if (line.trim() === "") return; // 빈 줄 무시
+            
+            // 파이프(|)로 데이터 쪼개기
+            const parts = line.split('|').map(p => p.trim());
+            
+            // 데이터가 5개(문제, 정답, 오답3개) 다 있는지 확인
+            if (parts.length >= 5) {
+                quizList.push({
+                    question: parts[0],
+                    correct: parts[1],
+                    incorrect: [parts[2], parts[3], parts[4]]
+                });
+            }
+        });
+
+        if (quizList.length === 0) {
+            throw new Error("파싱된 퀴즈가 없습니다. 형식이 잘못되었습니다.");
+        }
+
+        return quizList; 
+        // ▲▲▲ [수정 완료] ▲▲▲
+
+    } catch (error) {
+        console.error("Gemini API 호출 중 오류:", error);
+        throw error; 
+    }
+}
+
+                                       // ▼▼▼ [수정] 퀴즈 생성 프롬프트 (영어 퀴즈: 영단어 -> 한글 뜻 방식으로 복구) ▼▼▼
+       function getPromptForTopic(topic) {
+    const topicInstructions = {
+        "english": "question은 'chair' 같은 초/중급 영어 명사, correct는 한글 뜻('의자'), incorrect는 헷갈리는 다른 한글 명사 3개.",
+        "proverb": "question은 속담의 뜻풀이, correct는 속담 원문, incorrect는 다른 속담 3개.",
+        "idiom": "question은 사자성어 뜻풀이, correct는 사자성어, incorrect는 다른 사자성어 3개.",
+        "capital": "question은 국가 이름(예: '프랑스'), correct는 수도 이름, incorrect는 다른 도시 이름 3개.",
+        "history": "question은 한국사 문제 설명, correct는 정답 단어, incorrect는 오답 단어 3개.",
+        "easy_words": "question은 쉬운 단어 설명, correct는 정답 단어, incorrect는 다른 단어 3개."
+    };
+
+    let finalTopic = topic;
+    if (topic === "random") {
+        const topics = Object.keys(topicInstructions);
+        finalTopic = topics[Math.floor(Math.random() * topics.length)];
+    }
+
+    const instruction = topicInstructions[finalTopic];
+
+    // ▼▼▼ [수정됨] JSON 관련 내용 제거 및 파이프(|) 포맷 지시 ▼▼▼
+    const promptHeader = `너는 스피드 퀴즈 출제자입니다.
+다음 규칙에 맞춰 퀴즈 10개를 작성해서 순수한 텍스트로만 답해주세요. (JSON 금지)
+
+[출제 규칙]
+1. 주제: ${instruction}
+2. 형식: 각 줄마다 "문제|정답|오답1|오답2|오답3" 형태로 작성하세요. (구분자는 수직선 | 사용)
+3. 오답은 반드시 3개여야 합니다.
+4. 첫 줄부터 바로 문제를 작성하고, 다른 인사말이나 마크다운(\`\`\`)은 절대 넣지 마세요.
+
+[작성 예시]
+사과의 색깔은?|빨강|파랑|보라|검정
+바다에 사는 동물은?|고래|사자|호랑이|독수리
+`;
+    return { prompt: promptHeader, topicName: finalTopic };
+}
+
+
+
+
+            
+
+        // --- Firebase 설정 ---
+        // (대기실.html 등에서 가져온 설정)
+        const firebaseConfig = {
+            apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
+            authDomain: "goodluck-7c14b.firebaseapp.com",
+            databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com",
+            projectId: "goodluck-7c14b",
+            storageBucket: "goodluck-7c14b.appspot.com",
+            messagingSenderId: "858281658455",
+            appId: "1:858281658455:web:9131280a459be983933b12"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+        const auth = firebase.auth();
+        const roomsRef = db.ref('rooms');
+        const usersRef = db.ref('users');
+
+        // --- HTML 요소 ---
+        const gameHeader = document.getElementById('game-header');
+        const quizArea = document.getElementById('quiz-area');
+        const roundInfo = document.getElementById('round-info');
+        const timerFill = document.getElementById('round-timer-fill');
+        const questionText = document.getElementById('question-text');
+        const optionsGrid = document.getElementById('options-grid');
+        const optionBtns = optionsGrid.querySelectorAll('.option-btn');
+        const questionDesc = document.getElementById('question-desc'); // ▼▼▼ [신규] 뜻풀이 div
+        
+        const infoOverlay = document.getElementById('info-overlay');
+        const infoText = document.getElementById('info-text');
+        const infoSpinner = document.getElementById('info-spinner');
+        const hostRetryBtn = document.getElementById('host-retry-btn');
+        const gameOverOverlay = document.getElementById('game-over-overlay');
+        const topicModal = document.getElementById('topic-modal');
+
+        // --- 게임 상태 변수 ---
+        let myPlayerId, myNickname, myAvatar;
+        let roomRef, currentRoomData, isHost;
+        let isExiting = false, isGameLive = false, gameOverFlag = false;
+        let isSoloMode = false; // ✨ 혼자 하기 모드 플래그
+        
+        const TOTAL_ROUNDS = 30;
+        const ROUND_TIME_MS = 10000; // 7
+        let roundEndTimeout;
+        let currentRoundTimer;
+
+        let progressInterval;
+        let loadingDotsInterval; // 로딩 점 애니메이션용
+        const progressBarContainer = document.getElementById('progress-bar-container');
+        const progressBarFill = document.getElementById('progress-bar-fill');
+        
+        // --- 유틸리티 함수 ---
+        function escapeHTML(str) {
+            if (typeof str !== 'string') return '';
+            const map = {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#03G;'};
+            return str.replace(/[&<>"']/g, m => map[m]);
+        }
+        function playSound(id) {
+            const sound = document.getElementById(id);
+            if (sound) { sound.currentTime = 0; sound.play().catch(e => {}); }
+        }
+
+
+       // --- 초기화 ---
+        document.addEventListener('DOMContentLoaded', () => {
+            // (보안 코드)
+            document.addEventListener('contextmenu', event => event.preventDefault());
+            document.addEventListener('keydown', event => {
+                if (event.key === 'F12' ||
+                    (event.ctrlKey && event.shiftKey && ['I', 'J', 'C'].includes(event.key.toUpperCase())) ||
+                    (event.ctrlKey && event.key.toUpperCase() === 'U')) {
+                    event.preventDefault();
+                }
+            });
+            // setInterval(() => { try { debugger; } catch (e) {} }, 1000);
+
+            // ▼▼▼ [수정] Firebase Auth로 플레이어 ID를 가져오도록 수정 (멀티플레이 버그) ▼▼▼
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    myPlayerId = user.uid; // ✨ 핵심: localStorage 대신 auth.uid 사용
+
+                    // DB에서 최신 닉네임/아바타 가져오기 (localStorage는 오래됐을 수 있음)
+                    usersRef.child(myPlayerId).child('profile').once('value', snapshot => {
+                        if (snapshot.exists()) {
+                            myNickname = snapshot.val().nickname || 'Player';
+                            myAvatar = snapshot.val().avatar || '😊';
+                        } else {
+                            // DB에 프로필이 없는 비정상적 상황
+                            myNickname = 'Player';
+                            myAvatar = '😊';
+                        }
+
+                        // URL 파라미터 확인 및 방 입장
+                        const urlParams = new URLSearchParams(window.location.search);
+                        const roomId = urlParams.get('roomId');
+                        if (!roomId) {
+                            alert("잘못된 접근입니다.");
+                            window.location.replace('대기실.html');
+                            return;
+                        }
+                        joinRoom(roomId);
+
+                    });
+
+                } else {
+                    // 로그인되지 않은 사용자
+                    alert("로그인이 필요합니다.");
+                    window.location.replace('index.html');
+                }
+            });
+            // ▲▲▲ [수정] ▲▲▲
+        });
+        
+        function joinRoom(roomId) {
+            const urlParams = new URLSearchParams(window.location.search);
+            isSoloMode = urlParams.get('mode') === 'solo'; // ✨ '혼자 하기' 모드 확인
+
+            if (isSoloMode) {
+                // ✨ 혼자 하기 모드 초기화 (DB 필요 없음)
+                isHost = true; // 혼자 하기는 항상 호스트처럼 동작
+                currentRoomData = {
+                    roomName: '혼자 하기',
+                    players: { [myPlayerId]: { nickname: myNickname, avatar: myAvatar, isHost: true } },
+                    scores: { [myPlayerId]: 0 },
+                    currentRound: 0,
+                    status: 'preparing',
+                    quizSet: null
+                };
+                
+                // ▼▼▼ [수정] 솔로 모드도 'processRoomState'를 사용해 UI 렌더링
+                processRoomState({});
+                return;
+            }
+
+            // ✨ 멀티 플레이 모드 (기존 로직)
+            roomRef = roomsRef.child(roomId);
+            roomRef.once('value', snapshot => {
+                if (!snapshot.exists()) {
+                    alert("방을 찾을 수 없습니다.");
+                    window.location.replace('대기실.html');
+                    return;
+                }
+                currentRoomData = snapshot.val();
+                isHost = currentRoomData.hostId === myPlayerId;
+
+                // 접속 종료 시 처리
+                if (isHost) {
+                    roomRef.onDisconnect().remove();
+                } else {
+                    roomRef.child('players/' + myPlayerId).onDisconnect().remove();
+                }
+                
+                listenToRoomChanges(); // 1. 리스너 부착
+
+                // 2. [핵심] 게스트가 현재 방 상태를 즉시 처리하도록 호출
+                processRoomState({}); 
+
+                // 3. 호스트는 게임을 준비시킴
+                if (isHost && currentRoomData.status !== 'preparing') { // (중복 방지)
+                    // ▼▼▼ [수정] players가 null일 경우를 대비한 방어 코드 ▼▼▼
+                    const players = currentRoomData.players || {}; // players가 없으면 빈 객체로
+                    const initialScores = {};
+                    Object.keys(players).forEach(pid => { // 'players' 변수 사용
+                        initialScores[pid] = 0;
+                    });
+                    
+                    roomRef.update({
+                        status: 'preparing', // '준비 중' 상태
+                        scores: initialScores,
+                        currentRound: 0
+                    });
+                    // ▲▲▲ [수정] ▲▲▲
+                }
+            });
+        }
+        
+        // --- Gemini API 호출 (Host Only) ---
+        async function fetchQuizSet(topic) {
+            // ▼▼▼ [수정] Fix 1 & 2: 프롬프트 가져오기 및 게스트 로딩 상태 전파 ▼▼▼
+            // 1. 위에서 수정한 getPromptForTopic 함수에서 프롬프트와 실제 주제명(topicName)을 받아옴
+            const { prompt, topicName } = getPromptForTopic(topic);
+            const topicDisplayName = topicMapForDisplay[topicName] || "랜덤";
+            
+            if (!isSoloMode && isHost) {
+                // 2. (멀티플레이) API 호출 전에, 게스트에게 "생성 중" 상태를 먼저 알림
+                roomRef.update({ 
+                    status: 'generating_quiz',
+                    currentTopicName: topicDisplayName // ✨ 게스트에게 보여줄 주제명
+                });
+            }
+            // ▲▲▲ [수정] Fix 1 & 2 ▲▲▲
+
+  
+            infoText.innerHTML = `${topicDisplayName} 문제를 생성중...<br>잠시만 기다려주세요.`; // 따옴표 제거, 줄바꿈 추가
+            infoSpinner.style.display = 'none'; // 스피너 숨기기
+            startProgressBarSimulation(); // 프로그레스 바 시작
+            startLoadingDotsAnimation(); // 로딩 점 애니메이션 시작
+            hostRetryBtn.style.display = 'none';
+            infoOverlay.style.display = 'flex';
+  
+
+            try {
+                // 4. API 호출
+                const quizSet = await callGeminiAPI(prompt);
+
+                if (!quizSet || quizSet.length < 10) {
+                    throw new Error("API가 10문제 세트를 반환하지 않았습니다.");
+                }
+
+                // 5. API 호출 성공!
+                topicModal.style.display = 'none'; // 주제 선택 모달 닫기
+                // infoOverlay.style.display = 'none'; // <-- 숨기는 로직을 stopProgressBarSimulation으로 이동
+
+                // ▼▼▼ [수정] 프로그레스 바 완료 후 다음 단계 실행 ▼▼▼
+                const nextStepCallback = () => {
+                    if (isSoloMode) {
+                        // ✨ 솔로 모드: 내부 변수 업데이트 후 카운트다운 시작
+                        currentRoomData.quizSet = quizSet;
+                        currentRoomData.currentTopic = topicName;
+                        currentRoomData.currentRound = currentRoomData.currentRound || 0;
+                        currentRoomData.status = 'starting';
+                        // 콜백 내부에서 카운트다운 시작
+                        startRoundCountdown(3);
+                    } else {
+                        // ✨ 멀티 모드: 퀴즈 세트를 DB에 저장 -> 리스너가 'starting' 감지 후 카운트다운 시작
+                        const baseRound = currentRoomData.currentRound || 0;
+                        roomRef.update({
+                            quizSet: quizSet,
+                            currentTopic: topicName,
+                            currentRound: baseRound,
+                            status: 'starting'
+                        });
+                        // 멀티 모드는 DB 업데이트 후 리스너가 처리하므로 여기서 카운트다운 X
+                    }
+                };
+
+                // 프로그레스 바를 100%로 채우고 콜백 실행
+                stopProgressBarSimulation(true, nextStepCallback);
+                // ▲▲▲ [수정] ▲▲▲
+                
+            } catch (error) {
+                // 6. API 호출 실패!
+                console.error("fetchQuizSet 오류:", error);
+                infoText.textContent = "퀴즈 생성 실패! (API 오류)";
+                infoSpinner.style.display = 'none';
+                hostRetryBtn.style.display = 'block';
+                // 재시도 버튼에 현재 토픽 정보를 저장 (e.g., 'random')
+                hostRetryBtn.dataset.topic = topic;
+
+                // ▼▼▼ [신규] Fix 2: 생성 실패 시 멀티플레이 상태 되돌리기 ▼▼▼
+                if (!isSoloMode && isHost) {
+                    roomRef.update({ status: 'preparing' }); // 호스트가 다시 주제를 선택하도록
+                }
+                // ▲▲▲ [신규] Fix 2 ▲▲▲
+            }
+        }
+        
+        // 재시도 버튼 이벤트 (호스트에게만 보임)
+        hostRetryBtn.addEventListener('click', () => {
+            const topic = hostRetryBtn.dataset.topic;
+            if (topic) {
+                fetchQuizSet(topic);
+            }
+        });
+
+        // --- 실시간 게임 로직 (State Machine) ---
+        function listenToRoomChanges() {
+            roomRef.on('value', snapshot => {
+                if (isExiting || !snapshot.exists()) {
+                    if (isGameLive && !gameOverFlag) alert("방장이 나가 방이 사라졌습니다.");
+                    cleanupAndExit();
+                    return;
+                }
+                
+                const oldRoomData = currentRoomData || {};
+                currentRoomData = snapshot.val();
+                
+                if (!currentRoomData.players || !currentRoomData.players[myPlayerId]) {
+                    if (isGameLive && !gameOverFlag) alert("방에서 퇴장되었습니다.");
+                    cleanupAndExit();
+                    return;
+                }
+                
+                // ✨ [핵심] 상태 처리 함수 호출
+                processRoomState(oldRoomData);
+            });
+        }
+
+        // ▼▼▼ [신규] (All) 방 상태에 따른 UI/로직 처리 함수 ▼▼▼
+        function processRoomState(oldRoomData = {}) {
+            if (!currentRoomData) return; // 데이터가 없으면 중단
+
+            isGameLive = true; 
+            updateHeaderUI(); // 점수판 항상 업데이트
+
+            const oldStatus = oldRoomData.status;
+            const newStatus = currentRoomData.status;
+
+            // --- 상태(status)에 따라 UI 변경 ---
+
+            // ▼▼▼ [신규] 'playing' 상태 (첫 진입) 처리 ▼▼▼
+            if (newStatus === 'playing') {
+                if (isHost) {
+                    infoText.textContent = "게임을 초기화 중입니다...";
+                } else {
+                    infoText.textContent = "게임에 참가하는 중... 잠시만 기다려주세요...";
+                }
+                infoSpinner.style.display = 'block';
+                hostRetryBtn.style.display = 'none';
+                infoOverlay.style.display = 'flex';
+            }
+            // ▲▲▲ [신규] ▲▲▲
+            
+            // 1. 게임 준비
+            if (newStatus === 'preparing') {
+                if (isHost) {
+                    if (oldStatus !== 'preparing') { 
+                        infoOverlay.style.display = 'none'; 
+                        showTopicModal("첫 10라운드의 주제를 선택하세요.", false);
+                    }
+                } else {
+                    // (Guest) 게스트(non-host)는 대기 메시지 표시
+                    infoText.textContent = "방장이 게임 주제를 선택 중입니다...";
+                    infoSpinner.style.display = 'block';
+                    hostRetryBtn.style.display = 'none';
+                    infoOverlay.style.display = 'flex';
+                }
+            }
+            
+            // 2. 퀴즈 생성 중
+            if (newStatus === 'generating_quiz') {
+                const topicName = currentRoomData.currentTopicName || '게임';
+                infoText.innerHTML = `${topicName} 문제를 생성중...<br>잠시만 기다려주세요.`; // 따옴표 제거, 줄바꿈 추가
+                infoSpinner.style.display = 'none'; // 스피너 숨기기
+                if (oldStatus !== 'generating_quiz') { // 상태가 처음 변경되었을 때만 시뮬레이션 시작
+                   startProgressBarSimulation();
+                   startLoadingDotsAnimation(); // 로딩 점 애니메이션 시작
+                }
+                hostRetryBtn.style.display = 'none';
+                infoOverlay.style.display = 'flex';
+                topicModal.style.display = 'none';
+                // ▲▲▲ [수정] ▲▲▲
+            } else {
+                 stopProgressBarSimulation(false); // 즉시 숨김
+                 stopLoadingDotsAnimation(); // 로딩 점 애니메이션 중지
+            }
+            
+            // 3. 게임 시작 중: 카운트다운
+            if (newStatus === 'starting' && oldStatus !== 'starting') {
+                startRoundCountdown(3); 
+            }
+            
+            // 4. 문제 표시
+            if (newStatus === 'showing_question') {
+                if (oldStatus !== 'showing_question') {
+                    displayQuiz();
+                }
+            }
+
+            // ▼▼▼ [신규] 4.5. (멀티) 첫 정답자 감지 시 즉시 라운드 종료 ▼▼▼
+            if (!isSoloMode && newStatus === 'showing_question' && 
+                currentRoomData.roundFirstCorrect && 
+                oldRoomData.roundFirstCorrect !== currentRoomData.roundFirstCorrect) 
+            {
+                if (isHost) {
+                    // 호스트는 즉시 라운드를 종료시킴
+                    console.log("첫 정답자 감지! 라운드 즉시 종료.");
+                    clearTimeout(roundEndTimeout); // 기존 타이머 취소
+                    setTimeout(triggerResult, 100); // 0.1초 후 즉시 결과 집계
+                }
+            }
+            // ▲▲▲ [신규] ▲▲▲
+            
+            // 5. 결과 표시
+            if (newStatus === 'showing_result') {
+                if (oldStatus !== 'showing_result') {
+                    displayResult();
+                }
+            }
+
+// ▼▼▼ [수정] (Host Only) 게스트의 주제 선택 감지 (상태 무관하게 최우선 처리) ▼▼▼
+            // preparing(최초) 또는 changing_topic(게임중) 상태에서 게스트가 주제를 고르면 감지
+            if (isHost && currentRoomData.selectedNextTopic) {
+                // 이미 생성 중('generating_quiz')이면 무시
+                if (newStatus !== 'generating_quiz') {
+                    console.log("게스트의 주제 선택 감지:", currentRoomData.selectedNextTopic);
+                    const topicToFetch = currentRoomData.selectedNextTopic; 
+                    
+                    // DB에서 요청을 지우고 즉시 생성 시작
+                    roomRef.child('selectedNextTopic').remove().then(() => {
+                        // 상태 변경 및 생성 (showTopicModal의 호스트 로직과 동일)
+                        const topicDisplayName = topicMapForDisplay[topicToFetch] || topicToFetch;
+                        roomRef.update({ 
+                            status: 'generating_quiz',
+                            currentTopicName: topicDisplayName
+                        }).then(() => {
+                            fetchQuizSet(topicToFetch);
+                        });
+                    });
+                    return; // 생성 시작했으니 리턴
+                }
+            }
+            // ▲▲▲ [수정] ▲▲▲
+
+            // 6. 주제 변경 (UI 처리)
+            if (newStatus === 'changing_topic') {
+                const topicChangerId = currentRoomData.topicChanger;
+                
+                // (All) 꼴찌가 선택 중
+                if (oldStatus !== 'changing_topic' || infoOverlay.style.display === 'none') { 
+                    if (topicChangerId === myPlayerId) {
+                        // 내가 꼴찌!
+                        infoOverlay.style.display = 'none'; 
+                        showTopicModal("역전의 시간! 다음 주제를 선택하세요.", true);
+                    } else {
+                        // 다른 사람이 꼴찌
+                        const changerNickname = currentRoomData.players[topicChangerId]?.nickname || '플레이어';
+                        infoText.textContent = `현재 꼴찌(${changerNickname})가 다음 주제를 선택 중입니다...`;
+                        infoSpinner.style.display = 'block';
+                        hostRetryBtn.style.display = 'none'; 
+                        infoOverlay.style.display = 'flex';
+                    }
+                }
+            }
+            
+            // 7. 게임 종료
+            if (newStatus === 'gameOver' && !gameOverFlag) {
+                gameOverFlag = true;
+                showGameOverScreen();
+            }
+        }
+        // ▲▲▲ [신규] ▲▲▲
+        
+        // --- 호스트 전용: 게임 흐름 제어 ---
+        
+        // (Host) 3초 카운트다운 후 라운드 시작
+        function startRoundCountdown(seconds) {
+            infoOverlay.style.display = 'flex';
+            infoSpinner.style.display = 'none';
+            hostRetryBtn.style.display = 'none';
+            stopLoadingDotsAnimation(); // 로딩 점 애니메이션 중지
+  
+            
+            let count = seconds;
+            infoText.innerHTML = `<div id="countdown-number">${count}</div>`;
+            
+            const interval = setInterval(() => {
+                count--;
+                const el = document.getElementById('countdown-number');
+                if (count > 0) {
+                    if(el) {
+                        el.style.animation = 'none';
+                        el.offsetHeight; 
+                        el.style.animation = 'countdown-pop 1s';
+                        el.textContent = count;
+                    }
+                } else {
+                    clearInterval(interval);
+                    infoOverlay.style.display = 'none';
+                    if (isHost) {
+                        triggerQuestion(); // 호스트가 실제 라운드 시작
+                    }
+                }
+            }, 1000);
+        }
+
+// (Solo Only) 상태 변경 처리
+        function handleSoloModeState() {
+            if (!isSoloMode) return;
+            updateHeaderUI();
+            
+            const status = currentRoomData.status;
+            
+            if (status === 'starting') {
+                startRoundCountdown(3);
+            } else if (status === 'showing_question') {
+                displayQuiz();
+            } else if (status === 'showing_result') {
+                displayResult();
+            } else if (status === 'changing_topic') {
+                // 솔로 모드는 꼴찌 유저 없음 -> 바로 모달 표시
+                showTopicModal("다음 10라운드의 주제를 선택하세요.", true);
+            } else if (status === 'gameOver') {
+                showGameOverScreen();
+            }
+        }
+
+        // (Host) 문제 출제 신호 보내기
+        // (Host) 문제 출제 신호 보내기
+        function triggerQuestion() {
+            if (!isHost) return;
+            
+            const roundIndex = (currentRoomData.currentRound || 0);
+            
+            if (roundIndex >= TOTAL_ROUNDS) {
+                triggerGameOver();
+                return;
+            }
+            
+            // 10라운드가 끝났으면 주제 변경
+            if (roundIndex > 0 && roundIndex % 10 === 0 && !currentRoomData.topicChanged) {
+                triggerTopicChange();
+                return;
+            }
+            
+           if (isSoloMode) {
+                // ▼▼▼ [수정] 솔로 모드: (버그 수정) 덮어쓰기 대신 데이터 병합 ▼▼▼
+                const newRoundData = { // 새 로컬 변수 사용
+                    status: 'showing_question',
+                    currentRound: roundIndex + 1,
+                    roundAnswers: null,
+                    roundFirstCorrect: null,
+                    roundStartTime: Date.now(),
+                    topicChanged: false
+                };
+                Object.assign(currentRoomData, newRoundData); // 기존 currentRoomData에 새 정보 병합
+                handleSoloModeState();
+            } else {
+                // ✨ 멀티 모드: DB 업데이트 (기존 로직)
+                roomRef.update({
+                    status: 'showing_question',
+                    currentRound: roundIndex + 1,
+                    roundAnswers: null, // 라운드 답변 초기화
+                    roundFirstCorrect: null, // '첫 정답자' 초기화
+                    roundStartTime: firebase.database.ServerValue.TIMESTAMP,
+                    topicChanged: false // 주제 변경 플래그 리셋
+                });
+            }
+        }
+        
+
+        // (Host) 10초 후 결과 집계
+        // ▼▼▼ [수정] (Host) 결과 집계 (setTimeout 래퍼 제거) ▼▼▼
+        function triggerResult() {
+            clearTimeout(roundEndTimeout); // [신규] 타이머 중복 실행 방지
+            
+            // [수정] 호스트가 아니거나, 상태가 'showing_question'이 아니면 즉시 중단
+            if (!isHost || currentRoomData.status !== 'showing_question') return; 
+
+            // (기존 setTimeout 안에 있던 로직을 밖으로 꺼냄)
+            const answers = currentRoomData.roundAnswers || {};
+            const scores = { ...currentRoomData.scores };
+            const firstCorrectId = currentRoomData.roundFirstCorrect;
+            
+            const quizSetIndex = (currentRoomData.currentRound - 1) % 10;
+            const correct = currentRoomData.quizSet[quizSetIndex].correct;
+            
+            // 점수 계산
+            Object.keys(answers).forEach(pid => {
+                if (answers[pid].answer === correct) {
+                    if (pid === firstCorrectId) {
+                        scores[pid] += 100; // 첫 정답자
+                    } else {
+                        scores[pid] += 20; // 일반 정답자
+                    }
+                }
+            });
+
+            if (isSoloMode) {
+                // ✨ 솔로 모드: 내부 변수 업데이트 후 UI 처리
+                currentRoomData.status = 'showing_result';
+                currentRoomData.scores = scores;
+                handleSoloModeState();
+            } else {
+                // ✨ 멀티 모드: DB 업데이트 (기존 로직)
+                roomRef.update({
+                    status: 'showing_result',
+                    scores: scores
+                });
+            }
+        }
+        // ▲▲▲ [수정] ▲▲▲
+        
+   
+        // ▼▼▼ [수정] 10/20 라운드 주제 변경 (솔로 모드 버그 수정) ▼▼▼
+        function triggerTopicChange() {
+            if (!isHost) return;
+
+            if (isSoloMode) {
+                // ✨ 솔로 모드: 즉시 'changing_topic' 상태로 변경
+                currentRoomData.status = 'changing_topic';
+                currentRoomData.topicChanged = true; // (중요)
+                handleSoloModeState();
+
+            } else {
+                // ✨ 멀티 모드: 꼴찌(topicChanger)를 찾아 DB 업데이트
+                let loserId = null;
+                let minScore = Infinity;
+                const scores = currentRoomData.scores || {};
+                
+                // 꼴찌 찾기 (참가자 목록 기준)
+                Object.keys(currentRoomData.players).forEach(pid => {
+                    const score = scores[pid] || 0;
+                    if (score < minScore) {
+                        minScore = score;
+                        loserId = pid;
+                    }
+                });
+
+                roomRef.update({
+                    status: 'changing_topic',
+                    topicChanger: loserId,
+                    topicChanged: true // (중요) 무한 루프 방지
+                });
+            }
+        }
+        // ▲▲▲ [수정] 10/20 라운드 주제 변경 ▲▲▲
+        // ▼▼▼ [신규] 게임 종료 (솔로 모드 처리) ▼▼▼
+        function triggerGameOver() {
+            if (!isHost) return;
+            
+            if (isSoloMode) {
+                // ✨ 솔로 모드: 내부 변수 업데이트 후 UI 처리
+                currentRoomData.status = 'gameOver';
+                updatePlayerStats();
+                handleSoloModeState();
+            } else {
+                // ✨ 멀티 모드: DB 업데이트 (기존 로직)
+                roomRef.update({ status: 'gameOver' });
+                updatePlayerStats(); // 호스트가 승패 기록
+            }
+        }
+        // ▲▲▲ [신규] 게임 종료 ▲▲▲
+        
+        // --- 클라이언트 UI 렌더링 ---
+        
+        // (All) 주제 선택 모달 표시
+        function showTopicModal(desc, isTopicChange) {
+            document.getElementById('topic-modal-title').textContent = isTopicChange ? "주제 변경!" : "게임 주제 선택";
+            document.getElementById('topic-modal-desc').textContent = desc;
+            
+            topicModal.querySelectorAll('.topic-btn-grid button').forEach(btn => {
+               btn.onclick = () => {
+                    playSound('click-sound');
+                    const topic = btn.dataset.topic;
+                    const topicDisplayName = topicMapForDisplay[topic] || topic;
+
+                    // 1. 모달 닫기
+                    topicModal.style.display = 'none'; 
+                    
+                    // 2. 로딩 화면 즉시 표시
+                    infoText.innerHTML = `${topicDisplayName} 문제를 생성중...<br>잠시만 기다려주세요.`;
+                    infoSpinner.style.display = 'none'; 
+                    startProgressBarSimulation(); // 바 시작
+                    startLoadingDotsAnimation(); // 점 애니메이션 시작
+                    infoOverlay.style.display = 'flex';
+                    
+                    // 3. 실행 로직
+                    if (isSoloMode) {
+                        // 솔로: 바로 생성
+                        fetchQuizSet(topic);
+                    } else if (isHost) {
+                        // 호스트: 'generating_quiz' 상태로 먼저 변경 후 생성 (게스트에게 알림)
+                        roomRef.update({ 
+                            status: 'generating_quiz',
+                            currentTopicName: topicDisplayName
+                        }).then(() => {
+                            fetchQuizSet(topic);
+                        });
+                    } else {
+                        // 게스트: DB에 요청만 보냄 (호스트가 감지해야 함)
+                        roomRef.update({ selectedNextTopic: topic });
+                    }
+                }
+            });
+            
+            topicModal.style.display = 'flex';
+        }
+
+        // ▼▼▼ [신규] (All) 시드 기반 배열 셔플 (모든 클라이언트 동일 순서) ▼▼▼
+        function seededShuffle(array, seed) {
+            let m = array.length, t, i;
+            const pseudoRandom = () => {
+                // 간단한 LCG (선형 합동 생성기)
+                seed = (seed * 9301 + 49297) % 233280;
+                return seed / 233280;
+            };
+
+            while (m) {
+                i = Math.floor(pseudoRandom() * m--);
+                t = array[m];
+                array[m] = array[i];
+                array[i] = t;
+            }
+            return array;
+        }
+        // ▲▲▲ [신규] ▲▲▲
+        
+
+                        // (All) 퀴즈 UI 표시
+        function displayQuiz() {
+            infoOverlay.style.display = 'none';
+            quizArea.style.display = 'flex';
+
+            const round = currentRoomData.currentRound;
+            const topic = currentRoomData.currentTopic; // 현재 주제 가져오기
+            const quizSetIndex = (round - 1) % 10;
+            const quiz = currentRoomData.quizSet[quizSetIndex];
+
+            // AI 데이터 오류 방어 (오답 개수 포함)
+            if (!quiz || !quiz.correct || !quiz.incorrect || quiz.incorrect.length < 3) {
+                // ▼▼▼ 영어 퀴즈일 경우 TTS 호출 ▼▼▼
+            if (topic === 'english' && quiz.question) {
+                speakWord(quiz.question);
+            }
+            // ▲▲▲ [신규] ▲▲▲
+                console.error("퀴즈 데이터를 불러올 수 없습니다 (오답 부족 포함).", round, quizSetIndex, quiz);
+                questionText.textContent = "퀴즈 데이터 오류 발생!";
+                optionBtns.forEach(btn => { btn.style.display = 'none'; }); // 모든 버튼 숨김
+                if (isHost) { setTimeout(triggerQuestion, 3000); } // 호스트는 강제 진행
+                return;
+            }
+
+            roundInfo.textContent = `Round ${round} / ${TOTAL_ROUNDS}`;
+
+            // 문제/설명 분리 (이제 모든 주제 동일하게 적용 가능)
+            const fullQuestion = quiz.question;
+            const splitIndex = fullQuestion.indexOf('. ');
+            if (topic !== 'spelling' && splitIndex > -1 && fullQuestion.length > splitIndex + 2) { // 맞춤법 제외
+                questionText.textContent = fullQuestion.substring(0, splitIndex + 1);
+                questionDesc.textContent = fullQuestion.substring(splitIndex + 2);
+                questionDesc.style.display = 'flex';
+            } else {
+                questionText.textContent = fullQuestion; // 맞춤법 또는 설명 없는 문제
+                questionDesc.textContent = '';
+                questionDesc.style.display = 'none';
+            }
+
+            // ▼▼▼ [핵심 수정] 모든 주제에 대해 4개 버튼 로직 사용 ▼▼▼
+            const correctOption = quiz.correct;
+            const incorrectOptions = quiz.incorrect; // 이제 항상 3개일 것으로 기대
+            const seed = currentRoomData.currentRound; // 시드는 라운드 번호
+
+            let options = [...incorrectOptions, correctOption]; // 오답 3개 + 정답 1개
+            options = seededShuffle(options, seed); // 4개 셔플
+
+            optionBtns.forEach((btn, i) => {
+                // AI가 혹시 4개 미만 옵션을 주더라도 오류 방지
+                if (options[i]) {
+                    btn.textContent = options[i];
+                    btn.style.display = 'block'; // 버튼 보이기
+                    btn.disabled = false;
+                    btn.className = 'option-btn';
+                    btn.onclick = () => handleAnswerClick(options[i], correctOption);
+                } else {
+                    btn.style.display = 'none'; // 옵션 없으면 숨기기
+                }
+            });
+            // ▲▲▲ [핵심 수정] ▲▲▲
+
+            // 타이머 설정 (기존과 동일)
+            let currentRoundTime = ROUND_TIME_MS; // 10초
+            if (topic === 'proverb' || topic === 'idiom') {
+                currentRoundTime = 12000; // 속담/사자성어는 12초
+            }
+            timerFill.style.transition = 'none';
+            timerFill.style.width = '100%';
+            setTimeout(() => {
+                timerFill.style.transition = `width ${currentRoundTime}ms linear`;
+                timerFill.style.width = '0%';
+            }, 100);
+
+            if (isHost) {
+                clearTimeout(roundEndTimeout);
+                roundEndTimeout = setTimeout(triggerResult, currentRoundTime + 500);
+            }
+        }
+
+// ▼▼▼ [신규] TTS 실행 함수 ▼▼▼
+        // ▼▼▼ [수정] TTS 실행 함수 (음성 로딩 지연 처리 강화) ▼▼▼
+        function speakWord(word) {
+            // [추가] 음성 목록이 비어 있으면 다시 로드 시도
+            if (voices.length === 0) {
+                console.log("음성 목록 로딩 중... 재시도.");
+                populateVoiceList(); 
+                // 잠시 후 다시 시도 (비동기 로드를 위한 약간의 지연)
+                setTimeout(() => speakWord(word), 200); 
+                return;
+            }
+
+            if (synth.speaking) {
+                // 이미 말하고 있으면 취소하고 새로 시작 (옵션)
+                 synth.cancel(); 
+                 // console.log('Previous speech cancelled.');
+                 // 잠시 후 다시 시도
+                 setTimeout(() => speakWord(word), 50); 
+                 return;
+                // 아니면 그냥 무시:
+                // console.warn('Synth is already speaking.'); return; 
+            }
+            
+            if (word && typeof word === 'string' && word.trim() !== '') {
+                const utterThis = new SpeechSynthesisUtterance(word.trim());
+                
+                utterThis.onend = function (event) {
+                    // console.log('Speech finished.');
+                }
+                utterThis.onerror = function (event) {
+                    console.error('SpeechSynthesisUtterance error:', event);
+                }
+                
+                // 영어 음성 찾기 (더 다양한 경우 고려)
+                let selectedVoice = voices.find(voice => voice.lang === 'en-US' && voice.localService); // 로컬 미국 영어 우선
+                if (!selectedVoice) selectedVoice = voices.find(voice => voice.lang === 'en-US'); // 원격 미국 영어
+                if (!selectedVoice) selectedVoice = voices.find(voice => voice.lang.startsWith('en-') && voice.localService); // 로컬 영어
+                if (!selectedVoice) selectedVoice = voices.find(voice => voice.lang.startsWith('en-')); // 원격 영어
+
+                if (selectedVoice) {
+                    utterThis.voice = selectedVoice;
+                     console.log("Using voice:", selectedVoice.name, selectedVoice.lang); // 어떤 음성이 선택되었는지 확인
+                } else {
+                    console.warn("English voice not found. Using default voice.");
+                    // 기본 음성(대개 시스템 언어)으로라도 시도
+                }
+                
+                // utterThis.pitch = 1; 
+                // utterThis.rate = 1; 
+
+                // [추가] 읽기 시작 전 로그
+                 console.log(`Attempting to speak: "${word}"`);
+                synth.speak(utterThis);
+            } else {
+                console.warn("SpeakWord: Invalid word provided -", word);
+            }
+        }
+        // ▲▲▲ [수정] ▲▲▲
+        
+        // (All) 답변 클릭 처리
+        function handleAnswerClick(selectedAnswer, correctAnswer) {
+            playSound('click-sound');
+            // 모든 버튼 비활성화
+            optionBtns.forEach(btn => {
+                btn.disabled = true;
+                if (btn.textContent === selectedAnswer) {
+                    btn.classList.add('selected'); // 내가 선택한 것
+                }
+            });
+            
+            const isCorrect = (selectedAnswer === correctAnswer);
+            
+                       if (isSoloMode) {
+                // ▼▼▼ [수정] 솔로 모드: 정답/오답 관계없이 즉시 결과 처리 (오답 사운드 추가) ▼▼▼
+                currentRoomData.roundAnswers = { [myPlayerId]: { answer: selectedAnswer, time: Date.now() } };
+                
+                if (isCorrect) {
+                    currentRoomData.roundFirstCorrect = myPlayerId;
+                    console.log("솔로 모드에서 정답!");
+                    playSound('correct-sound');
+                } else {
+                    playSound('incorrect-sound'); // [신규] 오답 사운드
+                }
+                
+                // [이동] 정답/오답 모두 타이머를 취소하고 즉시 결과 집계
+                clearTimeout(roundEndTimeout); 
+                setTimeout(triggerResult, 100); 
+                // ▲▲▲ [수정] ▲▲▲
+            } else {
+
+                // ✨ 멀티 모드: DB 기록 및 트랜잭션 (기존 로직)
+                
+                // 1. 내 답변을 DB에 기록
+                roomRef.child('roundAnswers/' + myPlayerId).set({
+                    answer: selectedAnswer,
+                    time: firebase.database.ServerValue.TIMESTAMP
+                });
+                
+                // 2. (Transaction) 내가 '첫 번째 정답자'인지 확인
+                if (isCorrect) {
+                    roomRef.child('roundFirstCorrect').transaction(currentVal => {
+                        if (currentVal === null) {
+                            return myPlayerId; // 내가 첫 정답자!
+                        }
+                        return; // 이미 누가 선점함 (undefined 반환 = 트랜잭션 취소)
+                    }).then(result => {
+                        if (result.committed && result.snapshot.val() === myPlayerId) {
+                            console.log("내가 첫 번째 정답자!");
+                            playSound('correct-sound');
+                        }
+                    });
+                } else { // ▼▼▼ [신규] 오답일 경우 ▼▼▼
+                    playSound('incorrect-sound'); 
+                } // ▲▲▲ [신규] ▲▲▲
+            }
+        }
+        
+        // (All) 결과 화면 표시
+        function displayResult() {
+            if (currentRoomData.status !== 'showing_result') return;
+            questionDesc.style.display = 'none'; 
+            clearTimeout(roundEndTimeout); // ▼▼▼ [수정] 기존 타이머 확실히 제거
+            clearInterval(currentRoundTimer); // (이 코드는 사실상 작동 안하지만 유지)
+            // ▼▼▼ [신규] CSS 타이머 바 즉시 정지 (문제 4 수정) ▼▼▼
+            const currentWidth = timerFill.offsetWidth;
+            timerFill.style.transition = 'none'; // 애니메이션 즉시 중지
+            // 부모 대비 현재 너비(%)로 고정
+            timerFill.style.width = (currentWidth / timerFill.parentElement.offsetWidth) * 100 + '%';
+            // ▲▲▲ [신규] ▲▲▲
+            quizArea.style.display = 'flex';
+
+            const quizSetIndex = (currentRoomData.currentRound - 1) % 10;
+            const correct = currentRoomData.quizSet[quizSetIndex].correct;
+            const firstCorrectId = currentRoomData.roundFirstCorrect;
+            const myAnswer = currentRoomData.roundAnswers?.[myPlayerId]?.answer;
+            
+            optionBtns.forEach(btn => {
+                btn.disabled = true;
+                const btnText = btn.textContent;
+                
+                if (btnText === correct) {
+                    btn.classList.add('correct');
+                } else if (btnText === myAnswer && myAnswer !== correct) {
+                    btn.classList.add('incorrect');
+                }
+            });
+            
+            if (firstCorrectId) {
+                const winnerNick = currentRoomData.players[firstCorrectId]?.nickname || '정답자';
+                questionText.textContent = `${winnerNick}님이 첫 정답! (+100점)`;
+            } else {
+                questionText.textContent = "정답: " + correct;
+            }
+            
+            // (Host) 3초 뒤 다음 라운드 시작
+            if (isHost) {
+                setTimeout(() => {
+                    triggerQuestion(); // 다음 문제 출제
+                }, 3000);
+            }
+        }
+        
+        // (All) 헤더 UI 업데이트 (점수판)
+        function updateHeaderUI() {
+            if (!currentRoomData || !currentRoomData.players) return;
+            gameHeader.innerHTML = '';
+            
+            const scores = currentRoomData.scores || {};
+            
+            Object.keys(currentRoomData.players).forEach(pid => {
+                const player = currentRoomData.players[pid];
+                if (!player) return; // AI 플레이어 등 예외처리
+                
+                // ✨ [수정] 4방향 아바타 세트(ID), 이미지, 이모지 순으로 확인
+                const avatarSet = AVATAR_SETS[player.avatar];
+                let avatarHTML = '';
+                if (avatarSet) {
+                    avatarHTML = `<img src="${avatarSet.front}" alt="avatar">`;
+                } else if (player.avatar && (player.avatar.startsWith('http') || /\.(png|jpg|jpeg|gif|webp)$/i.test(player.avatar))) {
+                    avatarHTML = `<img src="${player.avatar}" alt="avatar">`;
+                } else {
+                    avatarHTML = escapeHTML(player.avatar); // 이모지
+                }
+                const avatar = avatarHTML; // 기존 변수명(avatar)에 할당
+                
+                const infoEl = document.createElement('div');
+                infoEl.className = 'player-info';
+                
+                infoEl.innerHTML = `
+                    <div class="avatar">${avatar}</div>
+                    <div class="details">
+                        <div class="nickname">${escapeHTML(player.nickname)}</div>
+                        <div class="score">${scores[pid] || 0} 점</div>
+                    </div>`;
+                gameHeader.appendChild(infoEl);
+            });
+        }
+        
+        // (All) 게임 종료 화면
+        function showGameOverScreen() {
+            const scores = currentRoomData.scores;
+            const players = currentRoomData.players;
+            
+            let winnerId = null;
+            let maxScore = -Infinity;
+            
+            Object.keys(scores).forEach(pid => {
+                if (scores[pid] > maxScore) {
+                    maxScore = scores[pid];
+                    winnerId = pid;
+                }
+            });
+            
+            const iWon = (winnerId === myPlayerId);
+            const message = iWon ? "🎉 승리!" : "😢 패배...";
+            playSound(iWon ? 'win-sound' : 'loss-sound');
+
+            const scoresHTML = Object.keys(players).map(pid => {
+                const player = players[pid];
+
+                // ✨ [수정] 4방향 아바타 세트(ID), 이미지, 이모지 순으로 확인
+                const avatarSet = AVATAR_SETS[player.avatar];
+                let avatarHTML = '';
+                if (avatarSet) {
+                    avatarHTML = `<img src="${avatarSet.front}" alt="avatar">`;
+                } else if (player.avatar && (player.avatar.startsWith('http') || /\.(png|jpg|jpeg|gif|webp)$/i.test(player.avatar))) {
+                    avatarHTML = `<img src="${player.avatar}" alt="avatar">`;
+                } else {
+                    avatarHTML = escapeHTML(player.avatar); // 이모지
+                }
+                const avatar = avatarHTML; // 기존 변수명(avatar)에 할당
+
+                return `<div class="score-row ${pid === winnerId ? 'winner' : 'loser'}">
+                            <span class="score-avatar">${avatar} ${escapeHTML(player.nickname)}</span>
+                            <span>${scores[pid] || 0} 점</span>
+                        </div>`;
+            }).sort((a,b) => b.includes('winner') ? 1 : -1).join(''); // 승자가 위로 오게
+
+            gameOverOverlay.innerHTML = `
+                <div class="modal-content" style="background: #2c3e50;">
+                    <div class="modal-header"><h2>${message}</h2></div>
+                    <div class="modal-body" style="color:white;">
+                        <div id="score-board">${scoresHTML}</div>
+                        <button id="lobby-btn" class="menu-btn secondary">대기실로</button>
+                    </div>
+                </div>`;
+            gameOverOverlay.style.display = 'flex';
+            document.getElementById('lobby-btn').addEventListener('click', cleanupAndExit);
+            // (참고) 리매치 기능은 이 퀴즈 게임에서는 제외했습니다.
+        }
+
+        // (Host) 게임 통계 업데이트
+        function updatePlayerStats() {
+            if (!isHost) return; // 호스트만 통계 처리
+            
+            const scores = currentRoomData.scores;
+            let winnerId = null;
+            let maxScore = -Infinity;
+            Object.keys(scores).forEach(pid => {
+                if (scores[pid] > maxScore) {
+                    maxScore = scores[pid];
+                    winnerId = pid;
+                }
+            });
+            
+            // 모든 플레이어의 승/패 기록
+            Object.keys(currentRoomData.players).forEach(pid => {
+                if (pid.startsWith('guest_') || pid === 'ai_player') return;
+                
+                const userRef = usersRef.child(pid);
+                const won = (pid === winnerId);
+                
+                userRef.transaction(userData => {
+                    if (userData) {
+                        if (!userData.profile) userData.profile = {};
+                        const profile = userData.profile;
+                        profile.exp = (profile.exp || 0) + (won ? 120 : 30);
+                        profile.points = (profile.points || 0) + (won ? 200 : 100);
+
+                        if (!userData.gameStats) userData.gameStats = {};
+                        // ▼▼▼ [수정] quiz stats에 highscore 필드 추가 ▼▼▼
+                        if (!userData.gameStats.quiz) userData.gameStats.quiz = { wins: 0, losses: 0, plays: 0, highscore: 0 };
+                        
+                        const stats = userData.gameStats.quiz;
+                        if (won) stats.wins = (stats.wins || 0) + 1;
+                        else stats.losses = (stats.losses || 0) + 1;
+                        stats.plays = (stats.plays || 0) + 1;
+                        
+                        // [신규] 최고 점수 업데이트 로직
+                        const finalScore = scores[pid] || 0;
+                        if (finalScore > (stats.highscore || 0)) {
+                            stats.highscore = finalScore;
+                        }
+                        // ▲▲▲ [수정] ▲▲▲
+                    }
+                    return userData;
+                });
+            });
+        }
+        
+        // (All) 방 나가기
+        function cleanupAndExit() {
+            isExiting = true;
+            if (!isSoloMode && roomRef) { // ✨ 멀티 모드에서만 DB 정리
+                if (isHost) {
+                    roomRef.remove();
+                } else {
+                    roomRef.child('players/' + myPlayerId).remove();
+                }
+                roomRef.off();
+            }
+            window.location.replace('대기실.html'); // 뒤로가기 방지
+        }
+        
+        // ▼▼▼ [신규] 프로그레스 바 시뮬레이션 함수 ▼▼▼
+        function startProgressBarSimulation() {
+            clearInterval(progressInterval); // 이전 인터벌 클리어
+            progressBarFill.style.transition = 'width 0.3s ease-out'; // 부드러운 전환 효과
+            progressBarFill.style.width = '0%'; // 0%에서 시작
+            progressBarContainer.style.display = 'block';
+
+            let progress = 0;
+            progressInterval = setInterval(() => {
+                progress += 5; // 5%씩 증가 (속도 조절 가능)
+                if (progress <= 95) { // 95%까지만 자동으로 증가
+                    progressBarFill.style.width = progress + '%';
+                } else {
+                    clearInterval(progressInterval); // 95% 도달 시 자동 증가 멈춤
+                }
+            }, 200); // 0.2초마다 증가 (속도 조절 가능)
+        }
+
+        function stopProgressBarSimulation(complete = true, callback = null) { // 콜백 파라미터 추가
+            clearInterval(progressInterval);
+            stopLoadingDotsAnimation(); // 로딩 점 애니메이션도 여기서 확실히 중지
+
+            if (complete) {
+                // 완료 시 100% 채우고 잠시 후 숨기고 콜백 실행
+                progressBarFill.style.transition = 'width 0.1s ease-out'; // 빠르게 100%
+                progressBarFill.style.width = '100%';
+                setTimeout(() => {
+                    progressBarContainer.style.display = 'none';
+                    progressBarFill.style.width = '0%'; // 다음을 위해 리셋
+                    
+                    // ▼▼▼ [추가] 콜백 함수 실행 ▼▼▼
+                    if (callback) {
+                        callback();
+                    } else {
+                        // 콜백 없으면 infoOverlay 숨기기 (호출 실패 등)
+                         infoOverlay.style.display = 'none';
+                    }
+                    // ▲▲▲ [추가] ▲▲▲
+                }, 300); // 0.3초 후 숨김 및 콜백 실행
+            } else {
+                // 중단/실패 시 즉시 숨김
+                progressBarContainer.style.display = 'none';
+                progressBarFill.style.width = '0%'; // 리셋
+                infoOverlay.style.display = 'none'; // 실패 시 오버레이도 숨김
+            }
+        }
+
+        // ▼▼▼ [신규] 로딩 점 애니메이션 함수 ▼▼▼
+        function startLoadingDotsAnimation() {
+            stopLoadingDotsAnimation(); // 이전 애니메이션 중지
+            let dotCount = 1;
+            loadingDotsInterval = setInterval(() => {
+                let dots = '.'.repeat(dotCount);
+                // 현재 infoText 내용을 유지하면서 점만 업데이트
+                const baseText = infoText.innerHTML.split('<br>')[0]; // 첫 줄만 가져옴
+                infoText.innerHTML = `${baseText}<br>잠시만 기다려주세요${dots}`;
+                dotCount = (dotCount % 3) + 1; // 1 -> 2 -> 3 -> 1 반복
+            }, 500); // 0.5초마다 점 변경
+        }
+
+        function stopLoadingDotsAnimation() {
+            clearInterval(loadingDotsInterval);
+        }
+        // ▲▲▲ [신규] ▲▲▲
+    </script>
+</body>
+</html>

@@ -1,0 +1,3352 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>크레이지 봄버</title>
+
+    <link rel="manifest" href="manifest.json">
+    <link href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff" as="font" type="font/woff" crossorigin>
+    <style>
+        :root {
+            --bg-color: #2c3e50;
+            --accent-color: #FFC84A; /* ✨ [FIX] 기본 강조색 (노랑) */
+             /* 이미지 URL 변수 */
+            /* --board-bg-url 은 JS에서 직접 설정 */
+            /* ✨ --wall-image-url: url('./봄버맨이미지/파괴불가.png');  <-- 이 줄을 삭제합니다. */
+
+            --crate-color: #a0522d; /* 나무상자 색상 */
+            --path-color: transparent; /* 길은 투명 (배경 보이도록) */
+            --wall-color: #7f8c8d; /* 이미지 로딩 실패 시 보일 색상 */
+
+            --player1-color: #3498db;
+            --player2-color: #e74c3c;
+            --explosion-color: rgba(255, 165, 0, 0.85); /* ✨ 주황색, 좀 더 불투명하게 */
+            --item-bomb-color: #9b59b6;
+            --item-range-color: #f1c40f;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%; height: 100%; overflow: hidden;
+            font-family: 'GmarketSans', sans-serif;
+            background-color: var(--bg-color); color: white;
+            display: flex; flex-direction: column;
+            justify-content: flex-start;
+            align-items: center;
+            -webkit-user-select: none; user-select: none;
+            touch-action: none;
+        }
+
+        #game-wrapper {
+            width: 100%; height: 100%;
+            display: flex; flex-direction: column;
+        }
+
+        #game-header {
+            flex-shrink: 0; display: flex;
+            justify-content: space-around; align-items: center;
+            padding: 10px; background-color: rgba(0,0,0,0.2);
+            width: 100%;
+        }
+        .player-info { display: flex; align-items: center; gap: 8px; }
+        .player-avatar { font-size: 1.5em; }
+        .player-avatar img { width: 32px; height: 32px; border-radius: 50%; }
+        .player-stats { 
+            font-size: 0.8em; 
+            display: flex; 
+            gap: 8px; /* ✨ 간격 살짝 조정 */
+            margin-left: 5px;
+            align-items: center; /* ✨ [신규] 아이콘/텍스트 세로 중앙 정렬 */
+        }
+
+        #game-container {
+            width: 100%;
+            flex-grow: 1; /* 남은 세로 공간 모두 차지 */
+            display: flex; justify-content: center; align-items: center; /* 가운데 정렬 */
+            position: relative; overflow: hidden;
+            padding: 0; /* ✨ 10px -> 0으로 변경 (또는 이 라인 삭제) */
+        }
+
+        #game-board {
+            position: relative;
+            /* background-image 는 JS에서 설정 */
+            /* ✨ 맵 배경 이미지 관련 CSS 모두 삭제 (JS가 backgroundColor로 제어) */
+            background-size: cover; /* 삭제 */
+            background-repeat: no-repeat; /* 삭제 */
+            background-position: center; /* 중앙 정렬 */
+            aspect-ratio: 11 / 15; /* 게임 보드 비율 */
+            
+            /* ✨ [수정] 너비를 100%, 높이를 auto로 변경하여 비율 강제 */
+            width: 100%;  /* 너비를 폰 너비에 꽉 채움 */
+            height: auto; /* 높이는 aspect-ratio에 따라 자동 계산됨 */
+
+            max-height: calc(100vh - 70px); /* 헤더 높이 제외 최대 높이 */
+            max-width: 100%; /* 컨테이너 너비 제한 */
+            overflow: hidden;
+            background-color: #333; /* 이미지 로딩 전 배경색 */
+        }
+
+        .grid-cell {
+            position: absolute;
+            width: calc(100% / 11);
+            height: calc(100% / 15);
+            /* 배경 관련 속도는 각 타일 클래스에서 설정 */
+            transition: opacity 0.3s ease-out, transform 0.3s ease-out;
+            will-change: opacity, transform;
+            top: 0; left: 0;
+        }
+        .wall { /* 파괴 불가 벽 */
+            /* ✨ 이미지 관련 속성 모두 삭제 */
+            background-color: var(--wall-color); /* #7f8c8d */
+            border: 1px solid rgba(0,0,0,0.4);
+            box-shadow: inset 2px 2px 5px rgba(255,255,255,0.2), inset -2px -2px 5px rgba(0,0,0,0.2);
+            z-index: 2;
+        }
+        .path { /* 이동 가능 길 */
+             background-color: var(--path-color); /* 투명 */
+             z-index: 1;
+        }
+        .crate { /* 파괴 가능 나무상자 */
+            background-color: var(--crate-color); /* 갈색 */
+            border: 1px solid rgba(0,0,0,0.3);
+            box-shadow: inset 2px 2px 5px rgba(255,255,255,0.2), inset -2px -2px 5px rgba(0,0,0,0.2);
+            z-index: 2;
+            transition: opacity 0.3s ease-out, transform 0.3s ease-out;
+        }
+        .crate.destroyed {
+            opacity: 0;
+            transform: scale(0.5);
+        }
+
+        .explosion { /* 폭발 효과 */
+            position: absolute;
+            top: 0; left: 0;
+            background-color: var(--explosion-color);
+            z-index: 20; /* 가장 위에 보이도록 */
+            animation: fade-out-explosion 0.4s forwards;
+            pointer-events: none;
+            border-radius: 50%;
+            border: 2px solid rgba(255, 215, 0, 0.7); /* ✨ 금색 느낌의 테두리 추가 */
+        }
+
+
+        @keyframes fade-out-explosion {
+            0% { opacity: 1; transform: scale(1.2); } /* ✨ 시작 시 더 크게 */
+            70% { opacity: 0.8; transform: scale(0.9); } /* ✨ 중간 단계 추가 */
+            100% { opacity: 0; transform: scale(0.6); }
+        }
+
+.bomb { /* 설치된 폭탄 */
+            position: absolute;
+            top: 0; left: 0;
+            width: calc((100% / 11) * 1.2); /* ✨ [수정] 1.2배 */
+            height: calc((100% / 15) * 1.2); /* ✨ [수정] 1.2배 */
+            z-index: 5; /* 길(1) < 폭탄(5) < 아이템(6) */
+
+            display: block; /* ✨ 이미지가 보이도록 display 속성 추가 */
+
+            /* ✨ [수정] 이미지를 배경으로 설정 (원복) */
+            background-image: url('./봄버맨사운드/물풍선.png'); /* This is just a default, JS overrides it */
+            background-size: 100% 100%; /* ✨ [FIX] Changed cover to 100% 100% for fixed size */
+            background-repeat: no-repeat;
+            background-position: center;
+
+            /* ✨ [삭제] CSS 물방울 스타일 제거 */
+
+            transition: left 0.1s linear, top 0.1s linear;
+            will-change: left, top;
+            animation: pulse-bomb 1s infinite;
+            pointer-events: none;
+        }
+
+        @keyframes pulse-bomb {
+            0% { transform: scale(1.0); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1.0); }
+        }
+
+
+        .item { /* 아이템 */
+            position: absolute;
+            top: 0; left: 0;
+            width: calc(100% / 11);
+            height: calc(100% / 15);
+            z-index: 6; /* 폭탄(5) < 아이템(6) < 플레이어(10) */
+            /* ✨ [삭제] display: flex; justify-content: center; align-items: center; */
+            /* ✨ [삭제] font-size: calc(100vh / 28); */
+            border-radius: 50%;
+            opacity: 0; /* 기본 숨김 */
+            transition: opacity 0.3s ease-in;
+            pointer-events: none;
+        }
+        .item.visible {
+            opacity: 0.9;
+        }
+        /* ✨ [수정] 아래 두 줄의 background-color를 삭제(주석 처리)합니다 */
+        /* .item-bomb { background-color: var(--item-bomb-color); } */
+        /* .item-range { background-color: var(--item-range-color); } */
+        .item-balloon {
+             animation: float 2s ease-in-out infinite;
+        }
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-5px); }
+            100% { transform: translateY(0px); }
+        }
+
+        .player { /* 플레이어 캐릭터 */
+            position: absolute;
+            top: 0; left: 0;
+            width: calc(100% / 11);
+            height: calc(100% / 15);
+            /* border-radius: 50%; */ /* ✨ [삭제] 원형 배경 제거 */
+            z-index: 10; /* 아이템(6) < 플레이어(10) < 화살표(11) */
+            font-size: 0.8em;
+            transition: left 0.2s linear, top 0.2s linear, opacity 0.3s ease; 
+            will-change: left, top, opacity;
+        }
+        .player-avatar-img {
+            width: 120%; height: 120%;
+            object-fit: contain; border-radius: 50%;
+        }
+        .player.dead { /* 사망 시 효과 */
+        /* opacity: 0.5; */ /* ✨ 기존 opacity 대신 애니메이션 사용 */
+        animation: fade-out-dead 0.5s forwards ease-in-out;
+        pointer-events: none; /* 조작 불가 */
+        z-index: 9; /* ✨ [신규] 다른 플레이어보다 아래로 (선택 사항) */
+    }
+
+        .player-indicator { /* 내 캐릭터 위 화살표 */
+            position: absolute;
+            top: 0; left: 0;
+            width: calc(100% / 11);
+            z-index: 11; /* 플레이어(10)보다 위 */
+            text-align: center;
+            font-size: 1.2em;
+            color: yellow;
+            text-shadow: 0 0 3px black;
+            pointer-events: none;
+            transition: left 0.1s linear, top 0.1s linear;
+            will-change: left, top;
+            animation: bounce 1s infinite ease-in-out;
+        }
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+        }
+
+         /* --- 컨트롤러, 모달 CSS (변경 없음) --- */
+        /* --- 컨트롤러, 모달 CSS --- */
+        #controls-container {
+            position: fixed;
+            /* ✨ [수정] 45px + 아이폰 하단 안전 영역(홈 바) 만큼 더 올림 */
+            bottom: calc(45px + env(safe-area-inset-bottom)); 
+            left: 30px;
+            z-index: 100;
+        }
+         #d-pad {
+            position: relative;
+            width: 140px; /* ✨ 120px -> 140px (전체 크기 증가) */
+            height: 140px; /* ✨ 120px -> 140px */
+         }
+         .d-pad-btn {
+            position: absolute;
+            width: 46px; /* ✨ 40px -> 46px (버튼 크기 살짝 증가) */
+            height: 46px; /* ✨ 40px -> 46px */
+            background-color: rgba(255, 255, 255, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            border-radius: 12px; /* ✨ 더 둥글게 */
+            display: flex; justify-content: center; align-items: center;
+            font-size: 1.8em; /* ✨ 아이콘 크기 증가 */
+            color: white;
+            cursor: pointer;
+            /* ▼▼▼ [추가] 아이폰 확대(돋보기) 및 탭 효과 방지 ▼▼▼ */
+            -webkit-touch-callout: none; /* 돋보기/메뉴 방지 */
+            -webkit-tap-highlight-color: transparent; /* 탭 시 회색 음영 방지 */
+            touch-action: none; /* 브라우저 제스처(확대/이동) 방지 */
+            /* ▲▲▲ [추가] ▲▲▲ */
+         }
+         .d-pad-btn.active { background-color: rgba(255, 255, 255, 0.6); }
+         /* ✨ 버튼 위치 조정 (넓어진 간격 반영) */
+         #btn-up { top: 0; left: 47px; } /* (140-46)/2 = 47 */
+         #btn-left { top: 47px; left: 0; }
+         #btn-right { top: 47px; left: 94px; } /* 47 + 46 + 1(gap?) approx */
+         #btn-down { top: 94px; left: 47px; }
+         /* ✨ [신규] 오른쪽 컨트롤러 컨테이너 */
+         #action-controls-container {
+            position: fixed;
+            bottom: 40px;
+            right: 40px;
+            z-index: 100;
+            display: flex;
+            flex-direction: column; /* 아이템 버튼이 위로 쌓이도록 */
+            align-items: center; /* 가운데 정렬 */
+         }
+
+         /* ✨ [신규] 아이템 버튼 슬롯 */
+         #item-slots {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 15px; /* 폭탄 버튼과의 간격 */
+         }
+
+/* ✨ 폭탄/아이템 UI 전체 래퍼 */
+#action-ui-wrapper {
+            position: fixed;
+            /* ✨ [수정] 40px + 아이폰 하단 안전 영역(홈 바) 만큼 더 올림 */
+            bottom: calc(40px + env(safe-area-inset-bottom));
+            right: 10px;
+            width: 140px; /* ✨ [수정] 200px -> 140px (새 레이아웃에 맞게 축소) */
+            height: 180px; /* ✨ [수정] 200px -> 180px (새 레이아웃에 맞게 축소) */
+            z-index: 100;
+            pointer-events: none;
+        }
+
+         #bomb-btn { 
+            position: absolute; /* ✨ [수정] fixed -> absolute */
+            bottom: 0; /* ✨ [수정] 래퍼 기준 0 */
+            right: 0; /* ✨ [수정] 래퍼 기준 0 */
+            width: 70px; /* ✨ [수정] 80px -> 70px (크기 축소) */
+            height: 70px; /* ✨ [수정] 80px -> 70px (크기 축소) */
+            
+            background-color: rgba(20, 150, 255, 0.7); 
+            border: 3px solid rgba(255, 255, 255, 0.5); 
+            border-radius: 50%; 
+            z-index: 102; /* ✨ [수정] 100 -> 102 (아이템보다 위) */
+            cursor: pointer; 
+            
+            /* ✨ [수정] 물풍선.png 이미지로 원복 */
+            background-image: url('./봄버맨사운드/물풍선.png');
+            background-size: 80% 80%; 
+            background-repeat: no-repeat;
+            background-position: center;
+
+             /* ✨ [신규] 유리알 질감 효과 */
+            box-shadow: inset 0 3px 5px rgba(255,255,255,0.5), 0 4px 6px rgba(0,0,0,0.3);
+            pointer-events: auto; /* ✨ [신규] 클릭 활성화 */
+            /* ▼▼▼ [추가] 아이폰 확대(돋보기) 및 탭 효과 방지 ▼▼▼ */
+            -webkit-touch-callout: none;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: none;
+            /* ▲▲▲ [추가] ▲▲▲ */
+         }
+         #bomb-btn:active { 
+            background-color: rgba(50, 170, 255, 0.9); /* ✨ 눌렀을 때 파란색 */
+            transform: scale(0.95); 
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.3); /* ✨ 누르면 안으로 그림자 */
+         }
+         .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: none; flex-direction: column; justify-content: center; align-items: center; background-color: rgba(0,0,0,0.7); z-index: 1000; }
+         .overlay.active { display: flex; }
+         .modal-content { 
+            background: var(--bg-color); /* ✨ [FIX] #2c3e50 (어두운 배경) */
+            color: white; /* ✨ [FIX] 흰색 텍스트 */
+            padding: 30px 25px; /* ✨ [FIX] 내부 패딩 설정 */
+            border-radius: 20px; 
+            text-align: center; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.4); 
+            width: 90%; /* ✨ [신규] 너비 추가 */
+            max-width: 350px; /* ✨ [신규] 최대 너비 추가 */
+         }
+         .modal-content h2 { font-size: 2em; margin-bottom: 20px; color: var(--primary-color); }
+         .modal-btn { 
+            padding: 15px; /* ✨ [FIX] 12px 25px -> 15px */
+            font-size: 1.2em; /* ✨ [FIX] 1.1em -> 1.2em */
+            font-weight: 700; 
+            border-radius: 12px; /* ✨ [FIX] 10px -> 12px */
+            border: none; 
+            cursor: pointer; 
+            margin: 0; /* ✨ [FIX] 10px -> 0 (innerHTML에서 gap으로 제어) */
+            width: 100%; /* ✨ [신규] 너비 100% */
+         }
+        /* 약 324행 */
+         .modal-btn.primary { 
+            background-color: var(--accent-color); /* ✨ [FIX] #FFC84A (노란색) */
+            color: #333D4B; /* ✨ [FIX] 어두운 텍스트 */
+         }
+          .modal-btn.secondary { 
+            background-color: var(--wall-color); /* ✨ [FIX] #7f8c8d (중간 회색) */
+            color: white; /* ✨ [FIX] 흰색 텍스트 */
+          }
+
+/* --- 3분 타이머 스타일 --- */
+        #game-timer {
+            position: absolute; /* header 바로 아래 중앙에 */
+            top: 60px; /* 헤더 높이(52px) + 여백 */
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.5);
+            color: white;
+            font-size: 1.5em;
+            font-weight: 700;
+            padding: 5px 15px;
+            border-radius: 10px;
+            z-index: 50;
+            width: 100px;
+            text-align: center;
+        }
+
+        /* --- 3, 2, 1 카운트다운 오버레이 --- */
+        #countdown-overlay {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: rgba(0, 0, 0, 0.7);
+            z-index: 2000; /* 최상위 */
+            color: white;
+            font-weight: 700;
+            font-size: 15vw; /* 화면 크기에 비례 */
+            display: none; /* JS로 제어 */
+        }
+        #countdown-overlay .number {
+            animation: countdown-zoom 1s forwards;
+        }
+        @keyframes countdown-zoom {
+            0% { transform: scale(0.5); opacity: 0; }
+            50% { transform: scale(1.2); opacity: 1; }
+            90% { transform: scale(0.9); opacity: 1; }
+            100% { transform: scale(1); opacity: 0; } /* 1초 뒤 사라짐 */
+        }
+
+        .player-bubble {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 140%; /* 플레이어보다 크게 */
+            height: 140%;
+            z-index: 1; /* 플레이어 아바타(z-index: 2)보다 뒤에 */
+            display: none; /* 기본 숨김 */
+            opacity: 0.9;
+
+            /* --- ✨ [신규] CSS 물방울 스타일 (from .bomb) --- */
+            background-color: rgba(52, 152, 219, 0.7);
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            box-shadow: inset 0 0 10px rgba(255, 255, 255, 0.4), 
+                        inset 0 -5px 10px rgba(0, 0, 0, 0.3), 
+                        0 2px 5px rgba(0, 0, 0, 0.2);
+            position: relative; 
+            overflow: hidden; 
+            /* --- ✨ [삭제] 이미지 속성 제거 --- */
+            /* background-image: url('./봄버맨사운드/물풍선.png'); */
+        }
+
+        /* ✨ [신규] .bomb와 .player-bubble의 공통 광택 효과 */
+       
+        /* ✨ [신규] 쉴드 활성화 시각 효과 */
+        .player-shield-effect {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 150%; /* 플레이어보다 크게 */
+            height: 150%;
+            z-index: 1; /* 플레이어 아바타(2)보다 뒤 */
+            display: none; /* 기본 숨김 */
+            opacity: 0;
+            border-radius: 50%;
+            
+            /* 쉴드예시.png 참고한 물방울/보호막 스타일 */
+            border: 3px solid rgba(120, 200, 255, 0.7);
+            background-color: rgba(100, 180, 255, 0.2);
+            box-shadow: 0 0 15px rgba(100, 200, 255, 0.8), 
+                        inset 0 0 10px rgba(150, 220, 255, 0.5);
+
+            animation: shield-pulse 1.5s infinite ease-in-out, shield-fade-in 0.3s forwards;
+        }
+
+        /* 쉴드 활성화/비활성화 애니메이션 */
+        @keyframes shield-fade-in {
+            from { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+            to { opacity: 0.8; transform: translate(-50%, -50%) scale(1); }
+        }
+        
+        /* 쉴드 펄스 애니메이션 */
+        @keyframes shield-pulse {
+            0% { box-shadow: 0 0 15px rgba(100, 200, 255, 0.8), inset 0 0 10px rgba(150, 220, 255, 0.5); }
+            50% { box-shadow: 0 0 25px rgba(150, 220, 255, 1), inset 0 0 15px rgba(150, 220, 255, 0.7); }
+            100% { box-shadow: 0 0 15px rgba(100, 200, 255, 0.8), inset 0 0 10px rgba(150, 220, 255, 0.5); }
+        }
+        
+        /* ✨ [신규] 다트 발사체 스타일 */
+        .dart-projectile {
+            position: absolute;
+            z-index: 15; /* 플레이어(10)보다 위 */
+            background-image: url('./봄버맨사운드/다트.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            transition: left 0.3s linear, top 0.3s linear;
+            pointer-events: none;
+        }
+
+        /* ✨ [신규] 갇혔을 때 둥둥 떠다니는 애니메이션 (기존 .item-balloon의 @keyframes float 사용) */
+        .player.trapped {
+             animation: float 2s ease-in-out infinite;
+        }
+
+       #item-slots-container {
+            position: absolute; /* ✨ [수정] fixed -> absolute */
+            bottom: 0; /* ✨ [수정] 래퍼 기준 0 */
+            right: 0; /* ✨ [수정] 래퍼 기준 0 */
+            width: 100%; /* 래퍼 크기 100% */
+            height: 100%; /* 래퍼 크기 100% */
+            z-index: 101; /* ✨ [수정] 100 -> 101 */
+            pointer-events: none; /* ✨ [신규] 컨테이너는 클릭x, 버튼만 클릭o */
+        
+        }
+        .item-slot-btn {
+            width: 50px; /* ✨ [수정] 60px -> 50px (크기 축소) */
+            height: 50px; /* ✨ [수정] 60px -> 50px (크기 축소) */
+            border-radius: 50%;
+            background-color: rgba(255, 255, 255, 0.3); /* ✨ [수정] 반투명 흰색 */
+            border: 3px solid rgba(255, 255, 255, 0.5); /* ✨ [수정] 반투명 테두리 */
+            cursor: pointer;
+            padding: 5px; /* 내부 여백 */
+            display: flex;
+            flex-direction: column; /* 아이콘과 개수를 세로로 */
+            justify-content: center;
+            align-items: center;
+            color: white;
+            position: absolute; /* ✨ [수정] relative -> absolute */
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            transition: transform 0.2s ease-out, background-color 0.1s ease;
+            pointer-events: auto; /* ✨ [신규] 클릭 활성화 */
+            /* ▼▼▼ [추가] 아이폰 확대(돋보기) 및 탭 효과 방지 ▼▼▼ */
+            -webkit-touch-callout: none;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: none;
+            /* ▲▲▲ [추가] ▲▲▲ */
+        }
+        .item-slot-btn:active {
+            transform: scale(0.95);
+            background-color: rgba(255, 255, 255, 0.5); /* ✨ [수정] 클릭 시 더 진한 반투명 */
+        }
+        /* ✨ [신규] PC 단축키 숫자 표시 스타일 */
+        .item-key-hint {
+            position: absolute;
+            top: 2px; /* 버튼 상단에서 2px 아래 */
+            left: 50%;
+            transform: translateX(-50%);
+            width: 16px;
+            height: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: rgba(0, 0, 0, 0.5);
+            color: white;
+            border-radius: 50%;
+            font-size: 0.8em; /* 12px */
+            font-weight: 700;
+            line-height: 1;
+            z-index: 10;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+        }
+
+
+        #item-slot-1 { /* 바늘 (Key 3, 좌측 상단) */
+            right: 80px; /* ✨ [수정] (폭탄 70px + 갭 10px) */
+            bottom: 120px; /* ✨ [수정] (슬롯2 60px + 슬롯3 60px) */
+        }
+        #item-slot-2 { /* 쉴드 (Key 2, 좌측 중간) */
+            right: 80px; /* ✨ [수정] (폭탄 70px + 갭 10px) */
+            bottom: 60px; /* ✨ [수정] (슬롯3 50px + 갭 10px) */
+        }
+      #item-slot-3 { /* 다트 (Key 1, 좌측 하단) */
+            right: 80px; /* ✨ [수정] (폭탄 70px + 갭 10px) */
+            bottom: 0px; /* ✨ [수정] (폭탄 버튼과 하단 정렬) */
+        }
+
+ 
+        #item-slot-2 { /* slot 2 (Shield) */
+
+        }
+        #item-slot-3 { /* slot 3 (Dart) */
+
+        }
+        .item-slot-btn .item-icon {
+            /* font-size: 2em; */ /* ✨ 삭제 (이미지 크기는 100%로 제어) */
+            line-height: 1;
+            width: 60%; /* ✨ [신규] 아이콘 영역 크기 (버튼의 60%) */
+            height: 60%; /* ✨ [신규] 아이콘 영역 크기 */
+            display: flex; /* ✨ [신규] 내부 img 정렬용 */
+            align-items: center; /* ✨ [신규] */
+            justify-content: center; /* ✨ [신규] */
+        }
+        .item-slot-btn .item-count {
+            position: absolute;
+            bottom: 5px;
+            right: 8px;
+            font-size: 0.9em;
+            font-weight: 700;
+            background-color: rgba(255, 0, 0, 0.8); /* 빨간 배경 */
+            border-radius: 50%;
+            padding: 2px 6px;
+            line-height: 1;
+            min-width: 18px; /* 최소 너비 */
+            text-align: center;
+        }
+        /* 개수가 0이면 숨김 */
+        .item-slot-btn .item-count[data-count="0"] {
+            display: none;
+        }
+
+.modal-content .modal-btn:disabled {
+            background-color: var(--wall-color) !important; /* secondary와 동일한 배경 */
+            color: #333D4B !important; /* 어두운 텍스트색 */
+            opacity: 0.6 !important; /* 연하게 처리 */
+            cursor: not-allowed;
+        }
+
+        /* ✨ [신규] PC 키보드 입력 시각적 피드백 */
+        .item-slot-btn.active-key {
+            transform: scale(0.92);
+            background-color: rgba(255, 255, 255, 0.5);
+        }
+
+        /* ✨ [신규] 사망 애니메이션 */
+    @keyframes fade-out-dead {
+        0% {
+            opacity: 1;
+            transform: rotate(0deg) scale(1);
+        }
+        100% {
+            opacity: 0;
+            transform: rotate(720deg) scale(0.1);
+        }
+    }
+    </style>
+</head>
+<body>
+    <audio id="sound-background" src="./봄버맨사운드/배경음악1.mp3" loop></audio>
+    <audio id="sound-place-bomb" src="./봄버맨사운드/폭탄놓는소리.mp3"></audio>
+    <audio id="sound-explosion" src="./봄버맨사운드/물풍선터지는소리.mp3"></audio>
+    <audio id="sound-item-get" src="./봄버맨사운드/드랍.mp3"></audio>
+    <audio id="sound-win" src="./봄버맨사운드/win.mp3"></audio>
+    <audio id="sound-lose" src="./봄버맨사운드/패배.mp3"></audio>
+    
+    <audio id="sound-trapped" src="./봄버맨사운드/죽음효과음.mp3"></audio>
+    <audio id="sound-dart" src="./다트효과음.mp3"></audio>
+    <audio id="sound-needle" src="./바늘효과음.mp3"></audio>
+
+    <div id="game-wrapper">
+        <div id="game-header"></div>
+        <div id="game-timer">05:00</div>
+        <div id="game-container">
+            <div id="game-board"></div>
+        </div>
+    </div>
+
+    <div id="controls-container">
+        <div id="d-pad">
+            <button class="d-pad-btn" id="btn-up">↑</button>
+            <button class="d-pad-btn" id="btn-left">←</button>
+            <button class="d-pad-btn" id="btn-right">→</button>
+            <button class="d-pad-btn" id="btn-down">↓</button>
+        </div>
+    </div>
+
+</div> 
+    <div id="action-ui-wrapper">
+        <div id="item-slots-container">
+            <button id="item-slot-1" class="item-slot-btn" data-item-type="needle">
+                <span class="item-key-hint">3</span> <span class="item-icon"></span> <span class="item-count" data-count="0">0</span> </button>
+            <button id="item-slot-2" class="item-slot-btn" data-item-type="shield">
+                <span class="item-key-hint">2</span> <span class="item-icon"></span> <span class="item-count" data-count="0">0</span> </button>
+            <button id="item-slot-3" class="item-slot-btn" data-item-type="dart">
+                <span class="item-key-hint">1</span> <span class="item-icon"></span> <span class="item-count" data-count="0">0</span> </button>
+        </div>
+
+        <button id="bomb-btn"></button>
+    </div>
+
+    <div id="game-over-modal" class="overlay">
+        <div class="modal-content">
+            <h2 id="game-over-message"></h2>
+            <button id="lobby-btn" class="modal-btn secondary">대기실로</button>
+        </div>
+    </div>
+
+    <div id="countdown-overlay">
+        <span id="countdown-number" class="number">3</span>
+    </div>
+
+    <script src="아바타.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+
+    <script>
+        // 개발자 도구 F12 방지 (엄격하지 않음)
+        document.addEventListener('contextmenu', event => event.preventDefault());
+        /*
+        document.addEventListener('keydown', event => {
+             if (event.key === 'F12' || (event.ctrlKey && event.shiftKey && ['I', 'J', 'C'].includes(event.key.toUpperCase())) || (event.ctrlKey && event.key.toUpperCase() === 'U')) {
+               event.preventDefault();
+             }
+        });
+        // setInterval(() => { try { debugger; } catch (e) {} }, 1000); // 디버거 방지 (개발 중에는 주석 처리)
+        */
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // Firebase 앱 초기화
+            const firebaseConfig = {
+                apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
+                authDomain: "goodluck-7c14b.firebaseapp.com",
+                databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com",
+                projectId: "goodluck-7c14b",
+                storageBucket: "goodluck-7c14b.appspot.com",
+                messagingSenderId: "858281658455",
+                appId: "1:858281658455:web:9131280a459be983933b12"
+            };
+            firebase.initializeApp(firebaseConfig);
+            const db = firebase.database(); // Firebase Realtime Database 인스턴스
+            const auth = firebase.auth(); // Firebase Authentication 인스턴스
+            const roomsRef = db.ref('rooms'); // 'rooms' 경로 참조
+            const usersRef = db.ref('users'); // 'users' 경로 참조
+
+            // HTML 요소 가져오기
+            const gameBoard = document.getElementById('game-board');
+            const gameHeader = document.getElementById('game-header');
+            const gameOverModal = document.getElementById('game-over-modal');
+            const gameOverMessage = document.getElementById('game-over-message');
+            // 로비 버튼은 게임오버 모달 내부에 있으므로 showGameOver에서 처리
+
+            // 게임 상태 변수
+            let myPlayerId, myNickname, myAvatar, roomRef, isHost;
+            let currentRoomData = {}; // 현재 방 데이터 (Firebase에서 받아옴)
+            let playerElements = {}; // 플레이어 DOM 요소 저장 객체 {'playerId': element}
+            let myIndicatorElement = null; // 내 플레이어 위 화살표 DOM 요소
+            let bombElements = {}; // 폭탄 DOM 요소 저장 객체 {'bombId': element}
+            let itemElements = {}; // 아이템 DOM 요소 저장 객체 {'itemId': element}
+            let mapGrid = []; // 로컬 맵 데이터 (0: 길, 1: 벽, 2: 상자)
+            let mapElements = []; // 맵 타일 DOM 요소 저장 배열 [[cell, cell], ...]
+            let headerPlayerElements = {}; // ✨ [신규] 헤더 DOM 요소 추적기
+           let TILE_WIDTH = 0; // 타일 가로 크기
+            let TILE_HEIGHT = 0; // 타일 세로 크기
+
+            // ✨ [신규] 게임 타이머 및 카운트다운 요소
+            const countdownOverlayEl = document.getElementById('countdown-overlay');
+            const countdownNumberEl = document.getElementById('countdown-number');
+            const gameTimerEl = document.getElementById('game-timer');
+            const GAME_TIME_LIMIT = 300; // 5분
+            let gameTimerInterval = null; // 게임 타이머 setInterval ID
+            let countdownStarted = false; // ✨ [신규] 카운트다운 중복 실행 방지
+            let ghostSpawned = false; // 유령 스폰 여부 (미래 기능용)
+            // ✨ [신규] 사운드 스로틀링
+            let lastExplosionSoundTime = 0;
+
+            const GRID_COLS = 11; // 맵 가로 칸 수
+            const GRID_ROWS = 15; // 맵 세로 칸 수
+
+            let moveDirection = { x: 0, y: 0, current: null }; // 현재 이동 방향 정보
+            let lastMoveDirection = { dr: -1, dc: 0 }; // ✨ [신규] 마지막 이동 방향 (기본: 위)
+            let moveInterval = null; // 연속 이동 인터벌 ID
+            const BASE_MOVE_SPEED = 210;
+// ✨ [신규] 속도 레벨 (기본, +1, +2)
+            const speedLevels = [BASE_MOVE_SPEED, 180, 150]; 
+
+            let serverTimeOffset = 0; // 클라이언트-서버 시간 차이
+            let bombTimerInterval = null; // 폭탄 타이머 체크 인터벌 ID
+            let explodingBombs = new Set(); // 현재 폭발 중인 폭탄 ID 저장 Set
+
+          const ITEM_TYPES = { BOMB_COUNT: 'bomb', BOMB_RANGE: 'range', SPEED: 'speed', NEEDLE: 'needle', SHIELD: 'shield', DART: 'dart' }; // ✨ 쉴드, 다트 추가
+
+const ITEM_ICONS = {
+                 [ITEM_TYPES.BOMB_COUNT]: './봄버맨사운드/물풍선아이템.png',
+                 [ITEM_TYPES.BOMB_RANGE]: './봄버맨사운드/물줄기강화.png',
+                 [ITEM_TYPES.SPEED]: './봄버맨사운드/속도업.png',
+                 [ITEM_TYPES.NEEDLE]: './봄버맨사운드/바늘.png',
+                 [ITEM_TYPES.SHIELD]: './봄버맨사운드/쉴드.png',
+                 [ITEM_TYPES.DART]: './봄버맨사운드/다트.png', 
+             };
+
+
+             // ✨ [신규] 사운드 재생 함수 (오류 방지 포함)
+             function playSound(id) {
+                try {
+                    const sound = document.getElementById(id);
+                    if (sound) {
+                        sound.currentTime = 0; // 처음부터 재생
+                        sound.play();
+                    }
+                } catch (e) {
+                    console.warn(`사운드(${id}) 재생 오류:`, e);
+                }
+             }
+             
+             // ✨ 맵 배경색 목록 (초원, 설원, 사막, 석재)
+             const mapBackgroundColors = [
+                 '#a7d38c', // 초원
+                 '#f0f8ff', // 설원 (AliceBlue)
+                 '#e6c891', // 사막
+                 '#bdc3c7'  // 석재
+             ];
+             let selectedMapBackground = ''; // 현재 게임에서 사용할 배경 이미지 URL
+
+            // 초기화 함수: 서버 시간 오프셋 가져오고, 사용자 인증 상태 확인
+            function initialize() {
+                // 서버 시간과의 차이를 가져와 동기화에 사용
+                const offsetRef = db.ref(".info/serverTimeOffset");
+                offsetRef.on("value", (snap) => {
+                    serverTimeOffset = snap.val();
+                });
+
+                // 사용자 로그인 상태 변경 감지
+                auth.onAuthStateChanged(user => {
+                    if (user) { // 로그인 되어 있으면
+                        myPlayerId = user.uid; // 내 ID 저장
+                        myNickname = localStorage.getItem('userNickname'); // 로컬 저장소에서 닉네임 가져오기
+                        myAvatar = localStorage.getItem('userAvatar'); // 로컬 저장소에서 아바타 가져오기
+
+                        // URL에서 방 ID 가져오기
+                        const urlParams = new URLSearchParams(window.location.search);
+                        const roomId = urlParams.get('roomId');
+
+                        // 방 ID나 닉네임 없으면 잘못된 접근 처리
+                        if (!roomId || !myNickname) {
+                            alert("잘못된 접근입니다.");
+                            window.location.href = '대기실.html';
+                            return;
+                        }
+                        joinRoom(roomId); // 방 참가 함수 호출
+                    } else { // 로그인 안 되어 있으면
+                        window.location.href = 'index.html'; // 로그인 페이지로 이동
+                    }
+                });
+            }
+
+            // 방 참가 함수: 방 정보 가져오고, 방장/게스트 설정, 리스너 시작
+            function joinRoom(roomId) {
+                roomRef = roomsRef.child(roomId); // 해당 방 경로 참조
+
+                // ✨ [수정] roomRef.once()를 제거하고 listenToRoomChanges가
+                // 첫 로딩을 포함한 모든 데이터 처리를 하도록 변경합니다. (카운트다운 버그 수정)
+                listenToRoomChanges(); // Firebase 데이터 변경 감지 시작
+                setupControls(); // 조작 버튼 설정
+            }
+
+            // 게임 레이아웃 설정 함수: 타일 크기 계산, 맵 생성 또는 렌더링
+            // 게임 레이아웃 설정 함수: 타일 크기 계산, 맵 생성 또는 렌더링
+            function setupGameLayout() {
+                // 브라우저가 화면을 그릴 준비가 되면 실행 (정확한 크기 계산 위함)
+                requestAnimationFrame(() => {
+                     // 게임 보드 요소가 없으면 중단 (예: 페이지 이동 중)
+                    if (!document.body.contains(gameBoard)) {
+                        console.log("게임 보드 없음, 레이아웃 설정 중단");
+                        return;
+                    }
+
+            
+
+                    // 타일 크기 계산
+                    TILE_WIDTH = gameBoard.clientWidth / GRID_COLS;
+                    TILE_HEIGHT = gameBoard.clientHeight / GRID_ROWS;
+
+                    // 타일 크기가 유효하지 않으면 재시도
+                    if (isNaN(TILE_WIDTH) || TILE_WIDTH <= 0 || isNaN(TILE_HEIGHT) || TILE_HEIGHT <= 0) {
+                        console.warn("타일 크기 계산 오류, 재시도...");
+                        setTimeout(setupGameLayout, 100); // 0.1초 후 재시도
+                        return;
+                    }
+
+                    console.log(`[레이아웃 설정] 타일 크기: W=${TILE_WIDTH.toFixed(1)}, H=${TILE_HEIGHT.toFixed(1)}`);
+
+                    // 호스트이고 아직 맵 데이터가 없으면 맵 생성
+                    if (isHost && !currentRoomData.map) {
+                        console.log("[레이아웃 설정] 호스트가 맵 생성 중...");
+                        generateMap(); // 맵 데이터 생성 및 Firebase 업데이트
+                        // 맵 렌더링은 listenToRoomChanges가 Firebase 업데이트 감지 후 처리
+                    }
+                    // 맵 데이터가 있으면 (게스트 또는 호스트가 재접속/화면크기변경 등) 맵/요소 렌더링
+                    else if (currentRoomData.map) {
+                         console.log("[레이아웃 설정] 기존 맵 및 요소 렌더링 중...");
+                         // 로컬 맵 데이터 없으면 Firebase 데이터로 채움
+                         if(mapGrid.length === 0) mapGrid = currentRoomData.map;
+                         renderMap(); // 맵 타일 렌더링
+                         renderGameElements(); // 플레이어, 폭탄, 아이템 렌더링
+                    } else {
+                         console.log("[레이아웃 설정] 맵 데이터 기다리는 중...");
+                         // 아직 맵 데이터 못 받음, listenToRoomChanges가 처리할 때까지 대기
+                    }
+                });
+            }
+
+
+            // 맵 생성 함수 (방장 전용): 맵 구조, 플레이어 위치, 아이템 등 생성 후 Firebase 업데이트
+            // 맵 생성 함수 (방장 전용): 맵 구조, 플레이어 위치, 아이템 등 생성 후 Firebase 업데이트
+            // 맵 생성 함수 (방장 전용): 맵 구조, 플레이어 위치, 아이템 등 생성 후 Firebase 업데이트
+            function generateMap() {
+                // --- 1. 플레이어 수 및 순서 결정 ---
+                const playerIds = Object.keys(currentRoomData.players);
+                const playerCount = playerIds.length;
+                const hostId = currentRoomData.hostId;
+                // 호스트를 제외한 게스트들을 UID 기준으로 정렬 (순서 고정)
+                const guestIds = playerIds.filter(id => id !== hostId).sort();
+                // 최종 플레이어 순서 (P1=호스트, P2=게스트1, P3=게스트2, ...)
+                const orderedPlayerIds = [hostId, ...guestIds];
+
+                // --- 2. 맵 배경색 랜덤 선택 ---
+                const mapIndex = Math.floor(Math.random() * mapBackgroundColors.length);
+                const newColor = mapBackgroundColors[mapIndex];
+                gameBoard.style.backgroundColor = newColor; // 호스트 화면 즉시 적용
+
+                // --- 3. 맵 데이터 초기화 및 규칙적인 벽(1) 배치 ---
+                mapGrid = Array(GRID_ROWS).fill(null).map(() => Array(GRID_COLS).fill(0));
+                
+                console.log(`[맵 생성] ${playerCount}인용 맵 생성 시작...`);
+
+                for (let r = 0; r < GRID_ROWS; r++) {
+                    for (let c = 0; c < GRID_COLS; c++) {
+                        // (홀수, 홀수) 좌표에 파괴 불가 벽(1) 배치 (예: 1,1 / 1,3 / 3,1 ...)
+                        if (r % 2 !== 0 && c % 2 !== 0) {
+                            mapGrid[r][c] = 1; // Wall
+                        } else {
+                            mapGrid[r][c] = 0; // Path
+                        }
+                    }
+                }
+
+                // --- 4. 플레이어 수에 따른 시작 위치 정의 ---
+                let playerPositions = []; // 플레이어 시작 위치 배열
+                const midC = Math.floor(GRID_COLS / 2);
+                const midR = Math.floor(GRID_ROWS / 2);
+
+                if (playerCount <= 2) { // 2인 (기존 요청대로)
+                    playerPositions.push({ r: 1, c: midC }); // 위 중앙
+                    playerPositions.push({ r: GRID_ROWS - 2, c: midC }); // 아래 중앙
+                } else if (playerCount === 3) { // 3인 (요청 기반)
+                    playerPositions.push({ r: 1, c: 1 }); // 10시 (좌상단)
+                    playerPositions.push({ r: midR, c: GRID_COLS - 2 }); // 3시 (우중단)
+                    playerPositions.push({ r: GRID_ROWS - 2, c: 1 }); // 8시 (좌하단)
+                } else { // 4인 (요청 기반)
+                    playerPositions.push({ r: 1, c: 1 }); // 11시 (좌상단)
+                    playerPositions.push({ r: 1, c: GRID_COLS - 2 }); // 1시 (우상단)
+                    playerPositions.push({ r: GRID_ROWS - 2, c: GRID_COLS - 2 }); // 5시 (우하단)
+                    playerPositions.push({ r: GRID_ROWS - 2, c: 1 }); // 7시 (좌하단)
+                }
+                
+                // --- 5. 시작 지점 주변 안전지대(길) 확보 ---
+                const safeZones = new Set();
+                playerPositions.forEach(pos => {
+                    // (r, c) 좌표를 "r,c" 문자열 키로 사용
+                    safeZones.add(`${pos.r},${pos.c}`); // 시작 위치
+                    // 맵 범위 체크하며 상하좌우 1칸 추가
+                    if (pos.r > 0) safeZones.add(`${pos.r - 1},${pos.c}`);
+                    if (pos.r < GRID_ROWS - 1) safeZones.add(`${pos.r + 1},${pos.c}`);
+                    if (pos.c > 0) safeZones.add(`${pos.r},${pos.c - 1}`);
+                    if (pos.c < GRID_COLS - 1) safeZones.add(`${pos.r},${pos.c + 1}`);
+                });
+
+                // --- 6. 파괴 가능 나무상자(2) 랜덤 배치 ---
+                for (let r = 0; r < GRID_ROWS; r++) {
+                     for (let c = 0; c < GRID_COLS; c++) {
+                         // 파괴불가 벽(1)이 아니고, 안전지대가 아니면
+                        if (mapGrid[r][c] === 0 && !safeZones.has(`${r},${c}`)) {
+                             if (Math.random() < 0.7) { // 70% 확률로 나무상자(2) 배치
+                                mapGrid[r][c] = 2; 
+                             }
+                        }
+                     }
+                }
+                
+                // --- 7. 안전지대 강제로 길(0) 만들기 (혹시 모를 상자 덮어쓰기) ---
+                safeZones.forEach(key => {
+                    const [r, c] = key.split(',').map(Number);
+                    // 맵 범위 안인지 확인 후 길(0)로 변경
+                    if (r >= 0 && r < GRID_ROWS && c >= 0 && c < GRID_COLS) {
+                        mapGrid[r][c] = 0;
+                    }
+                });
+
+
+                // --- 8. 시작 아이템 풍선 위치 선정 ---
+                let initialItems = {};
+                // 4인 기준 아이템 풀 (순서대로 배정됨)
+                const itemTypes = [ITEM_TYPES.BOMB_COUNT, ITEM_TYPES.BOMB_RANGE, ITEM_TYPES.SHIELD, ITEM_TYPES.SPEED]; // ✨ P3 쉴드, P4 스피드로 변경
+                // 주변 나무상자 찾는 함수 (기존 함수 재사용)
+                const findCrateSpot = (startPos) => {
+                    const candidates = [
+                        {r: startPos.r, c: startPos.c - 1}, {r: startPos.r, c: startPos.c + 1}, 
+                        {r: startPos.r - 1, c: startPos.c}, {r: startPos.r + 1, c: startPos.c}
+                    ];
+                    candidates.sort(() => Math.random() - 0.5);
+                    for (let p of candidates) {
+                        if (p.r >= 0 && p.r < GRID_ROWS && p.c >= 0 && p.c < GRID_COLS && mapGrid[p.r]?.[p.c] === 2) {
+                            return p;
+                        }
+                    }
+                     // 1칸 주변에 없으면 2칸 범위에서 다시 찾기
+                     for (let dr = -2; dr <= 2; dr++){
+                        for (let dc = -2; dc <= 2; dc++){
+                            if(Math.abs(dr) + Math.abs(dc) > 2 || (dr === 0 && dc === 0) || (Math.abs(dr) <= 1 && Math.abs(dc) <= 1)) continue; // 1칸 반경 제외
+                            const r = startPos.r + dr;
+                            const c = startPos.c + dc;
+                             if (r >= 0 && r < GRID_ROWS && c >= 0 && c < GRID_COLS && mapGrid[r]?.[c] === 2) {
+                                return {r, c};
+                             }
+                        }
+                    }
+                    return null; 
+                };
+
+                // 모든 플레이어에게 아이템 배정
+                playerPositions.forEach((pos, index) => {
+                    const itemPos = findCrateSpot(pos);
+                    if (itemPos) {
+                         const itemKey = roomRef.child('items').push().key; 
+                         initialItems[itemKey] = {
+                            r: itemPos.r, c: itemPos.c, 
+                            type: itemTypes[index % itemTypes.length], // 아이템 풀에서 순환 선택
+                            isVisible: false, isBalloon: true 
+                        };
+                         mapGrid[itemPos.r][itemPos.c] = 2; // 확실히 상자로 덮기
+                         console.log(`P${index+1} 시작 아이템 위치: ${itemPos.r}, ${itemPos.c}`);
+                    } else {
+                         console.warn(`P${index+1} 시작 아이템 놓을 상자 못 찾음`);
+                    }
+                });
+
+                // --- 9. Firebase에 업데이트할 데이터 준비 ---
+                const updates = {};
+                updates['mapIndex'] = mapIndex;
+                updates['map'] = mapGrid;
+                updates['items'] = initialItems;
+
+                // 모든 플레이어 위치 및 초기 스탯 설정
+                orderedPlayerIds.forEach((playerId, index) => {
+                    // 정의된 시작 위치가 있는 플레이어만 (최대 4명)
+                    if (index < playerPositions.length) {
+                        const pos = playerPositions[index];
+                        updates[`players/${playerId}/r`] = pos.r;
+                        updates[`players/${playerId}/c`] = pos.c;
+                        updates[`players/${playerId}/stats`] = { maxBombs: 1, bombRange: 1, speed: 1, isAlive: true, needles: 0, shields: 0, darts: 0, shieldActiveUntil: null }; // ✨ 쉴드, 다트 스탯 + 쉴드 활성 시간
+                    }
+                });
+                
+                // --- 10. Firebase에 모든 데이터 일괄 업데이트 ---
+                console.log("[맵 생성] Firebase 업데이트 실행...");
+                roomRef.update(updates);
+            }
+
+
+
+            function listenToRoomChanges() {
+                // 방 데이터 변경될 때마다 실행
+                roomRef.on('value', snapshot => {
+                    // 방이 삭제되었는지 확인
+                    if (!snapshot.exists()) {
+                         // 게임 오버 모달이 안 떠있으면 (정상 종료 아니면)
+                         if (!gameOverModal.classList.contains('active')) {
+                            alert("방장이 나갔습니다.");
+                            clearInterval(bombTimerInterval); // 타이머 정리
+                            bombTimerInterval = null;
+                            window.location.href = '대기실.html'; // 대기실로 이동
+                        }
+                        return; // 함수 종료
+                    }
+
+                    
+                  // ✨ [신규] 첫 로드인지 확인 (카운트다운 버그 수정)
+                    const isFirstLoad = Object.keys(currentRoomData).length === 0;
+
+                    const oldStatus = currentRoomData.status; // 이전 게임 상태 저장
+                    const oldMapDataString = JSON.stringify(currentRoomData.map); // 이전 맵 데이터 문자열로 저장
+                   currentRoomData = snapshot.val(); // 최신 방 데이터 저장
+
+                    // ✨ [FIX] '다시하기' 무한 루프 버그 수정
+                    // on('value')가 실행되는 즉시 방장이 플래그를 제거해야 합니다.
+                    if (isHost && currentRoomData.status === 'playing' && currentRoomData.gameState === 'restarting') {
+                        roomRef.child('gameState').set(null); // 플래그 즉시 제거
+                        currentRoomData.gameState = null; // 로컬 데이터도 즉시 반영
+                    }
+                    
+
+                    // ✨ [신규] 첫 로드일 때만 실행 (기존 roomRef.once 로직)
+                    if (isFirstLoad) {
+                        isHost = currentRoomData.hostId === myPlayerId;
+                        if (isHost) { // 방장이면
+                            roomRef.onDisconnect().remove(); // 연결 끊기면 방 자동 삭제 설정
+                            // 방장만 폭탄 타이머 시작
+                            if (!bombTimerInterval) {
+                                bombTimerInterval = setInterval(checkBombTimers, 100); // 0.1초마다 타이머 체크
+                            }
+                        } else { // 게스트면
+                            // 연결 끊기면 내 플레이어 정보만 삭제 설정
+                            roomRef.child('players/' + myPlayerId).onDisconnect().remove();
+                        }
+                        // ✨ [신규] 다트 요청 리스너 (방장 전용)
+                       // ✨ [신규] 다트 요청 리스너 (방장 전용)
+                        if (isHost) {
+                            roomRef.child('dartRequests').on('child_added', snapshot => {
+                                const request = snapshot.val();
+                                if (!request) return;
+                                
+                                // ✨ [수정] 요청 데이터 가져오기
+                                const { playerId, startR, startC, dirDr, dirDc } = request; 
+                                
+                                // DB에서 최신 데이터 다시 확인 (중요)
+                                const player = currentRoomData.players?.[playerId];
+                                
+                                // 1. 유효성 검사 (플레이어, 다트 개수)
+                                if (player && (player.stats?.darts || 0) > 0) {
+                                    // 2. 다트 1개 소모
+                                    roomRef.child(`players/${playerId}/stats/darts`).set(player.stats.darts - 1);
+
+                                    // 3. ✨ [신규] 다트 경로 계산
+                                    let currR = startR;
+                                    let currC = startC;
+                                    let endR = startR; // 시각 효과 끝 지점
+                                    let endC = startC;
+                                    let hitBombId = null; // 맞은 폭탄 ID
+                                    
+                                    const maxRange = Math.max(GRID_ROWS, GRID_COLS); // 맵 최대 길이
+                                    const bombs = currentRoomData.bombs || {};
+                                    const map = currentRoomData.map || [];
+
+                                    for (let i = 1; i <= maxRange; i++) {
+                                        currR += dirDr;
+                                        currC += dirDc;
+
+                                        // 3a. 맵 밖
+                                        if (currR < 0 || currR >= GRID_ROWS || currC < 0 || currC >= GRID_COLS) {
+                                            endR = currR - dirDr; // 맵 안의 마지막 타일
+                                            endC = currC - dirDc;
+                                            break; 
+                                        }
+
+                                        // 3b. 폭탄 확인
+                                        for (const bombId in bombs) {
+                                            const bomb = bombs[bombId];
+                                            if (bomb.r === currR && bomb.c === currC && !explodingBombs.has(bombId)) {
+                                                hitBombId = bombId;
+                                                endR = currR;
+                                                endC = currC;
+                                                break; 
+                                            }
+                                        }
+                                        if (hitBombId) break; // 폭탄 맞으면 루프 중단
+
+                                        // 3c. 벽/상자 확인
+                                        const tileType = map[currR]?.[currC];
+                                        if (tileType === 1 || tileType === 2) { 
+                                            endR = currR; // 벽/상자에서 멈춤
+                                            endC = currC;
+                                            break; 
+                                        }
+                                        
+                                        // 3d. 아무것도 안 맞음 (계속 전진)
+                                        endR = currR;
+                                        endC = currC;
+                                    }
+
+                                    // 4. 시각 효과 요청 생성 (시작점 -> 끝점)
+                                    const visualKey = roomRef.child('dartVisuals').push().key;
+                                    roomRef.child('dartVisuals/' + visualKey).set({
+                                        startR: startR,
+                                        startC: startC,
+                                        endR: endR,
+                                        endC: endC
+                                    });
+                                    
+                                    // 5. 폭탄 즉시 폭발 (맞았을 경우)
+                                    if (hitBombId) {
+                                        const bomb = currentRoomData.bombs[hitBombId];
+                                        if (bomb && !explodingBombs.has(hitBombId)) {
+                                            console.log(`[방장] ${playerId}의 다트 -> ${hitBombId} 폭발`);
+                                            explodeBomb(hitBombId, bomb);
+                                        }
+                                    } else {
+                                        console.log(`[방장] ${playerId}의 다트 -> (허공)`);
+                                    }
+                                }
+                                
+                                // 6. 요청 삭제
+                                snapshot.ref.remove();
+                            });
+                        }
+                        
+                      // ✨ [신규] 다트 시각 효과 리스너 (모든 클라이언트)
+                        roomRef.child('dartVisuals').on('child_added', snapshot => {
+                            const data = snapshot.val();
+                            if (data) {
+                                playSound('sound-dart'); // ✨ [수정] 다트 효과음 재생
+                                spawnDartVisual(data.startR, data.startC, data.endR, data.endC);
+                            }
+                            // 호스트만 시각 효과 데이터를 삭제
+                            if (isHost) {
+                                snapshot.ref.remove();
+                            }
+                        });
+                        
+                        // ✨ [신규] 플레이어 팝(pop)으로 인한 승리 조건 확인 요청 리스너 (방장 전용)
+                        // (isFirstLoad 블록 안에, isHost가 정의된 후에 추가)
+                        if (isHost) {
+                            roomRef.child('checkWinRequest').on('value', snapshot => {
+                                // 데이터가 존재하고 (null/false 아님), 게임이 'playing' 상태일 때만
+                                if (snapshot.val() && currentRoomData?.status === 'playing') {
+                                    console.log("[방장] 승리 조건 확인 요청(checkWinRequest) 수신.");
+                                    checkWinCondition(); // 승리 조건 확인
+                                    snapshot.ref.remove(); // 요청 삭제
+                                }
+                            });
+                        }
+
+
+                        // ✨ [신규] 폭발 시각 효과 리스너 (모든 클라이언트)
+                        roomRef.child('explosionVisuals').on('child_added', snapshot => {
+                            const data = snapshot.val();
+                            if (data && typeof data.r === 'number' && typeof data.c === 'number') {
+                                // ✨ 여기서 모든 클라이언트가 시각 효과 함수를 호출합니다.
+                                showExplosionEffect(data.r, data.c);
+                                
+                                // ✨ 방장만 0.5초 뒤에 해당 시각 효과 데이터를 DB에서 삭제합니다.
+                                // (애니메이션 시간 0.4초보다 약간 길게)
+                                if (isHost) {
+                                    setTimeout(() => {
+                                        snapshot.ref.remove();
+                                    }, 500); 
+                                }
+                            } else if (isHost) {
+                                // 잘못된 데이터가 들어오면 방장이 즉시 삭제
+                                snapshot.ref.remove();
+                            }
+                        });
+                        
+                    }
+
+
+
+                    // ✨ [신규] 게임 시작 감지 (카운트다운 시작)
+                    // (oldStatus가 undefined일 때도 정상 작동)
+                    if (currentRoomData.status === 'playing' && oldStatus !== 'playing') {
+                        // ✨ [수정] 호스트는 gameStartTime이 없으면 설정하고,
+                        // 모든 클라이언트는 gameStartTime이 설정될 때까지 대기
+                        if (isHost && !currentRoomData.gameStartTime) {
+                            roomRef.child('gameStartTime').set(firebase.database.ServerValue.TIMESTAMP);
+                            return; // gameStartTime이 설정되면 on('value')가 다시 호출됨
+                        }
+                        
+                        // gameStartTime이 설정되었다면 카운트다운 시작
+                        // ✨ [수정] countdownStarted 플래그를 확인하고 설정
+                        if (currentRoomData.gameStartTime && !countdownStarted) {
+                            countdownStarted = true; // ✨ [신규] 플래그 설정
+                            startCountdown(); // 카운트다운 시작
+                        }
+                        return; // 맵 렌더링 등은 카운트다운 완료 후
+                    }
+
+                    // ✨ [신규] 이미 게임 중일 때 (재접속 등)
+                    if (currentRoomData.status === 'playing' && oldStatus === 'playing') {
+                        // ✨ [수정] 카운트다운 없이, 그리고 타이머가 아직 안 돌고 있을 때만
+                        // ✨ [FIX] 2번째 틱(isFirstLoad=false)일 때 카운트다운을 시작하도록 수정
+                        // ✨ [수정] countdownStarted 플래그를 확인
+                        if (!gameTimerInterval && !countdownStarted) {
+                            countdownStarted = true; // ✨ [신규] 플래그 설정
+                            // startGameTimer(); // [버그] 이 코드가 즉시 게임을 시작시킴
+                            startCountdown(); // [수정] 카운트다운을 시작
+                            return; // [수정] 카운트다운 완료 후 맵이 렌더링되도록 즉시 return
+                        }
+                    }
+                    const newMapDataString = JSON.stringify(currentRoomData.map); // 새 맵 데이터 문자열로 저장
+
+                     // ✨ 맵 배경색 설정 (데이터에 있고, 유효한 인덱스면)
+                     if (currentRoomData.mapIndex !== undefined && mapBackgroundColors[currentRoomData.mapIndex]) {
+                         const newColor = mapBackgroundColors[currentRoomData.mapIndex];
+                         // ✨ 현재 배경색과 다를 경우에만 변경
+                         if (gameBoard.style.backgroundColor !== newColor) { 
+                             gameBoard.style.backgroundColor = newColor;
+                             console.log("맵 배경색 설정:", newColor);
+                         }
+                     }
+
+                    // 타일 크기 계산 및 맵/요소 렌더링 순서 관리
+                    if (TILE_WIDTH <= 0 || TILE_HEIGHT <= 0) { // 타일 크기 계산 안됐으면
+                        console.log("[데이터 수신] 타일 크기 미계산, 레이아웃 재설정 예약");
+                        setTimeout(setupGameLayout, 50); // 잠시 후 재계산 및 렌더링 시도
+                    } else { // 타일 크기 계산 됐으면
+                        // ▼▼▼ [수정] 맵 렌더링 로직 변경 ▼▼▼
+                        
+                        // 1. 맵이 아예 없었으면 (초기 로딩)
+                        if (currentRoomData.map && mapElements.length === 0) {
+                             console.log("[데이터 수신] 초기 로드, 맵 및 요소 렌더링");
+                             mapGrid = currentRoomData.map;
+                             renderMap(); // 맵 타일 생성
+                             renderGameElements(); // 요소 렌더링
+                        } 
+                        // 2. 맵 데이터가 변경되었으면 (예: 상자 파괴)
+                        else if (currentRoomData.map && oldMapDataString !== newMapDataString) {
+                             console.log("[데이터 수신] 맵 변경, 맵 시각 효과 업데이트 및 요소 렌더링");
+                             updateMapVisuals(currentRoomData.map); // ✨ 맵 타일 시각 효과만 업데이트
+                             renderGameElements(); // ✨ 요소는 따로 렌더링 (플레이어, 아이템 등)
+                        } 
+                        // 3. 맵 변경 없으면 (플레이어 이동 등)
+                        else {
+                             // console.log("[데이터 수신] 동적 요소만 렌더링");
+                             renderGameElements();
+                        }
+                        // ▲▲▲ [수정] ▲▲▲
+                    }
+
+                    // 헤더 업데이트 (플레이어 정보 표시)
+                    if (currentRoomData.players) {
+                        updateHeader(currentRoomData.players);
+                    }
+
+                    // 게임 상태가 'gameOver'로 변경되었으면 종료 처리
+                    if (currentRoomData.status === 'gameOver' && oldStatus !== 'gameOver') {
+                        clearInterval(bombTimerInterval); // 타이머 정리
+                        bombTimerInterval = null;
+                        showGameOver(currentRoomData.winner); // 게임 오버 화면 표시
+                        
+                        // ✨ [FIX] 전적 갱신 로직 호출
+                        updateMyGameStats(currentRoomData.winner, currentRoomData.players);
+                    }
+                });
+               roomRef.child('rematchRequests').on('value', snapshot => {
+                    if (!snapshot.exists() || !currentRoomData || !currentRoomData.players) return;
+
+                    const requests = snapshot.val();
+                    const requestCount = Object.keys(requests).length;
+                    const playerCount = Object.keys(currentRoomData.players).length;
+
+                    // 모든 플레이어가 재시작을 요청했다면
+                  if (requestCount === playerCount) {
+                        // 방장(Host)만 게임 재시작을 처리합니다.
+                        if (isHost) {
+                            
+                            // ✨ [신규] 방 삭제 방지: 재시작 전 onDisconnect 핸들러를 취소합니다.
+                            roomRef.onDisconnect().cancel(); 
+
+                            // 게임 상태를 초기화하고 재시작 신호를 보냅니다.
+                            roomRef.update({
+                                gameState: 'restarting', // 재시작 트리거
+                                rematchRequests: null,   // 요청 기록 삭제
+                                winner: null,            // 게임오버 상태 삭제
+                                status: 'playing',       // ✨ [수정] 'waiting' -> 'playing'
+                                map: null,               // 맵 삭제
+                                items: null,             // 아이템 삭제
+                                bombs: null,             // 폭탄 삭제
+                                gameStartTime: firebase.database.ServerValue.TIMESTAMP,     // ✨ [수정] gameStartTime 설정
+                                players: currentRoomData.players // ✨ 플레이어 정보는 유지
+                            });
+                        }
+                    }
+                });
+
+            // ✨ [신규] '재시작' 신호 감지 리스너 (알까기.html 참조)
+                roomRef.child('gameState').on('value', snapshot => {
+                    if (snapshot.val() === 'restarting') {
+                        
+                        // ✨ [FIX] 새로고침 전 onDisconnect 핸들러를 취소합니다. (방 폭파/이탈 방지)
+                        if (isHost) {
+                            roomRef.onDisconnect().cancel(); // (호스트는 이미 했지만 확인차)
+                        } else {
+                            roomRef.child('players/' + myPlayerId).onDisconnect().cancel();
+                        }
+
+                        // 재시작 신호를 받으면 0.5초 후 새로고침하여 게임을 다시 시작합니다.
+                        setTimeout(() => {
+                            location.reload();
+                        }, 500);
+                    }
+                });
+  
+            }
+
+            
+
+
+            // 게임 요소들 렌더링 함수 (플레이어, 아이템, 폭탄 순서 중요)
+            function renderGameElements() {
+                 // 타일 크기 계산 안됐으면 중단
+                 if (TILE_WIDTH <= 0 || TILE_HEIGHT <= 0) return;
+                 // 렌더링 순서: 아이템 -> 폭탄 -> 플레이어 (z-index 순서 고려)
+                 renderItems(currentRoomData.items);
+                 renderBombs(currentRoomData.bombs);
+                 renderPlayers(currentRoomData.players);
+            }
+
+
+            // 맵 타일 렌더링 함수
+            function renderMap() {
+                 // 타일 크기 계산 안됐으면 중단
+                 if (TILE_WIDTH <= 0 || TILE_HEIGHT <= 0) {
+                      console.warn("[맵 렌더링] 타일 크기 미계산, 렌더링 중단");
+                      return;
+                 }
+
+                gameBoard.innerHTML = ''; // 기존 맵 요소 모두 제거
+                playerElements = {};
+                 bombElements = {};
+                 itemElements = {};
+                 myIndicatorElement = null; // 화살표도 재생성해야 함
+                 // 내 화살표 요소 먼저 생성 및 추가
+                 if (!myIndicatorElement && myPlayerId) {
+                    myIndicatorElement = document.createElement('div');
+                    myIndicatorElement.className = 'player-indicator';
+                    myIndicatorElement.textContent = '🔽';
+                    gameBoard.appendChild(myIndicatorElement);
+                }
+
+                mapElements = []; // 맵 요소 배열 초기화
+                // 맵 데이터 기반으로 타일 요소 생성
+                (currentRoomData.map || []).forEach((row, r) => { // currentRoomData.map 사용 보장
+                    const rowElements = [];
+                    row.forEach((tileType, c) => {
+                        const cell = document.createElement('div');
+                        cell.className = 'grid-cell'; // 기본 클래스
+                        cell.dataset.r = r; // 행 좌표 저장
+                        cell.dataset.c = c; // 열 좌표 저장
+
+                        // 타일 타입에 맞는 클래스 추가
+                        if (tileType === 1) cell.classList.add('wall');
+                        else if (tileType === 2) cell.classList.add('crate');
+                        else cell.classList.add('path');
+
+                        // top, left로 위치 설정
+                        cell.style.left = `${c * TILE_WIDTH}px`;
+                        cell.style.top = `${r * TILE_HEIGHT}px`;
+
+                        gameBoard.appendChild(cell); // 게임 보드에 추가
+                        rowElements.push(cell); // 행 배열에 추가
+                    });
+                    mapElements.push(rowElements); // 전체 맵 요소 배열에 행 추가
+                });
+                 // 로컬 mapGrid도 업데이트
+                 mapGrid = currentRoomData.map || [];
+            }
+
+
+            // 맵 시각 효과 업데이트 함수 (예: 상자 파괴 시)
+            function updateMapVisuals(newMapData) {
+                // 맵 요소 배열 없거나 타일 크기 계산 안됐으면 중단
+                if (!mapElements.length || TILE_WIDTH <= 0 || TILE_HEIGHT <= 0) return;
+
+                // 모든 칸 순회
+                for (let r = 0; r < GRID_ROWS; r++) {
+                    for (let c = 0; c < GRID_COLS; c++) {
+                        // 해당 위치 요소 없으면 건너뜀
+                        if (!mapElements[r] || !mapElements[r][c]) continue;
+                        const cellEl = mapElements[r][c]; // 현재 칸 DOM 요소
+                        const oldType = mapGrid[r]?.[c]; // 이전 로컬 맵 데이터
+                        const newType = newMapData[r]?.[c]; // 새 Firebase 맵 데이터
+
+                        // 타입이 변경되었을 때만 처리
+                        if (oldType !== newType) {
+                            // 나무상자(2) -> 길(0) 변경 시
+                            if (oldType === 2 && newType === 0) {
+                                cellEl.classList.add('destroyed'); // 파괴 애니메이션 클래스 추가
+                                 // 애니메이션 시간(0.3초) 후 실제 스타일 변경
+                                 setTimeout(() => {
+                                    // 요소가 아직 존재하고, 데이터가 다시 바뀌지 않았는지 확인
+                                    // currentRoomData.map 직접 비교
+                                    if (mapElements[r]?.[c] === cellEl && currentRoomData?.map?.[r]?.[c] === 0) {
+                                        cellEl.classList.remove('crate', 'destroyed'); // 상자 클래스 제거
+                                        cellEl.classList.add('path'); // 길 클래스 추가
+                                        cellEl.style.backgroundImage = 'none'; // 이미지 제거
+                                        cellEl.style.backgroundColor = 'var(--path-color)'; // 투명 배경
+                                        cellEl.style.border = 'none'; // 테두리 제거
+                                        cellEl.style.boxShadow = 'none'; // 그림자 제거
+                                    }
+                                 }, 300);
+                            } else { // 그 외 타입 변경 시 (즉시 변경)
+                                cellEl.classList.remove('wall', 'crate', 'path', 'destroyed'); // 모든 타입 클래스 제거
+                                // 새 타입에 맞는 클래스 추가
+                                if (newType === 1) cellEl.classList.add('wall');
+                                else if (newType === 2) cellEl.classList.add('crate');
+                                else cellEl.classList.add('path');
+
+                                // 새 타입에 맞는 스타일 적용
+                                if (newType === 1) { // 벽
+                                     // ✨ 클래스(.wall)가 스타일을 적용하므로 
+                                     // ✨ 인라인 스타일은 모두 제거 (상자 스타일만 복사)
+                                     cellEl.style.backgroundImage = 'none';
+                                     cellEl.style.backgroundColor = 'var(--wall-color)';
+                                     cellEl.style.border = '1px solid rgba(0,0,0,0.4)';
+                                     cellEl.style.boxShadow = 'inset 2px 2px 5px rgba(255,255,255,0.2), inset -2px -2px 5px rgba(0,0,0,0.2)';
+                                } else if (newType === 2) { // 상자
+                                     cellEl.style.backgroundImage = 'none'; // 이미지 대신 색상 사용
+                                     cellEl.style.backgroundColor = 'var(--crate-color)';
+                                     cellEl.style.border = '1px solid rgba(0,0,0,0.3)';
+                                     cellEl.style.boxShadow = 'inset 2px 2px 5px rgba(255,255,255,0.2), inset -2px -2px 5px rgba(0,0,0,0.2)';
+                                } else { // 길
+                                    cellEl.style.backgroundImage = 'none';
+                                    cellEl.style.backgroundColor = 'var(--path-color)'; // 투명
+                                    cellEl.style.border = 'none';
+                                    cellEl.style.boxShadow = 'none';
+                                }
+                            }
+                        }
+                    }
+                }
+                mapGrid = newMapData; // 로컬 맵 데이터 업데이트
+            }
+
+
+          function renderPlayers(players) {
+                // 플레이어 데이터 없으면 중단
+                if (!players) {
+                    // console.log("[renderPlayers] players 데이터 없음, 중단"); // 너무 자주 찍히므로 주석 처리
+                    return;
+                }
+                // 타일 크기 계산 안됐으면 중단
+                if (TILE_WIDTH <= 0 || TILE_HEIGHT <= 0) {
+                    // console.log("[renderPlayers] 타일 크기 미계산, 중단"); // 너무 자주 찍히므로 주석 처리
+                    return;
+                }
+
+                // 내 화살표 요소 생성 (아직 없으면)
+                if (!myIndicatorElement && myPlayerId && document.body.contains(gameBoard)) {
+                    myIndicatorElement = document.createElement('div');
+                    myIndicatorElement.className = 'player-indicator';
+                    myIndicatorElement.textContent = '🔽';
+                    gameBoard.appendChild(myIndicatorElement);
+                }
+
+                const playerIdsFromData = Object.keys(players || {}); // Firebase에서 받은 최신 ID 목록
+if (playerIdsFromData.length === 0 && currentRoomData?.status === 'playing') {
+                    console.warn("[renderPlayers] 'playing' 상태에서 0명의 player 데이터 수신. 렌더링 중단.");
+                    return;
+                }
+                // --- 1단계: 최신 데이터 기준으로 요소 생성 및 업데이트 ---
+                playerIdsFromData.forEach(playerId => {
+                    const pData = players[playerId];
+
+                    // 데이터 유효성 검사
+                    if (!pData || pData.r === undefined || pData.c === undefined || !pData.stats) {
+                        console.warn(`[renderPlayers] 플레이어 ${playerId} 데이터 누락, 렌더링 건너뜀`);
+                        return;
+                    }
+
+                    let playerEl = playerElements[playerId]; // 로컬 추적 객체에서 요소 가져오기
+
+                    // --- 요소 생성 ---
+                    if (!playerEl && document.body.contains(gameBoard)) {
+                        playerEl = document.createElement('div');
+                        playerEl.className = 'player';
+                        playerEl.id = `player-${playerId}`;
+                        const initialX = (pData.c ?? 0) * TILE_WIDTH;
+                        const initialY = (pData.r ?? 0) * TILE_HEIGHT;
+                        playerEl.style.left = `${initialX}px`;
+                        playerEl.style.top = `${initialY}px`;
+
+                        // ✨ [수정] 아바타/이모지/4방향 이미지용 컨테이너 생성
+                        const avatarContainer = document.createElement('div');
+                        avatarContainer.className = 'player-avatar-container';
+                        // (기존 .player-avatar-img의 스타일과 유사하게 설정)
+                        Object.assign(avatarContainer.style, { 
+                            display: 'block', 
+                            position: 'absolute', 
+                            top: '50%', 
+                            left: '50%', 
+                            transform: 'translate(-50%, -50%)', 
+                            zIndex: '2', 
+                            width: '130%', // ✨ [수정] 120% -> 140% (크기 키움)
+                            height: 'auto', // ✨ [수정] 높이 자동
+                            aspectRatio: '1/1' // ✨ [신규] 1:1 정사각형 비율 강제
+                        });
+                        
+                        // 1. 단일 이미지용 (기존)
+                        const avatarImg = document.createElement('img'); 
+                        avatarImg.className = 'player-avatar-img'; 
+                        Object.assign(avatarImg.style, { display: 'none', width: '100%', height: '100%', objectFit: 'contain', borderRadius: '50%' });
+                        
+                        // 2. 이모지용 (기존)
+                        const avatarEmoji = document.createElement('span'); 
+                        avatarEmoji.className = 'player-avatar-emoji'; 
+                        Object.assign(avatarEmoji.style, { display: 'none' }); // (font-size 등은 업데이트 로직에서)
+                        
+                        // 3. 4방향 이미지용 (신규)
+                        const avatarDirFront = document.createElement('img'); avatarDirFront.className = 'player-avatar-dir front';
+                        const avatarDirBack = document.createElement('img'); avatarDirBack.className = 'player-avatar-dir back';
+                        const avatarDirLeft = document.createElement('img'); avatarDirLeft.className = 'player-avatar-dir left';
+                        const avatarDirRight = document.createElement('img'); avatarDirRight.className = 'player-avatar-dir right';
+                        
+                        // 4방향 이미지 공통 스타일 적용 및 컨테이너에 추가
+                        [avatarDirFront, avatarDirBack, avatarDirLeft, avatarDirRight].forEach(img => {
+                            Object.assign(img.style, { 
+                                display: 'none', 
+                                width: '100%', 
+                                height: '100%', 
+                                objectFit: 'contain', // ✨ [FIX] 'contain' -> 'cover' (이미지 크기 고정)
+                                position: 'absolute', // 겹치도록
+                                top: '0', 
+                                left: '0' 
+                            });
+                            avatarContainer.appendChild(img); // 컨테이너에 추가
+                        });
+
+                        // 버블, 쉴드 (기존)
+                        const bubbleEl = document.createElement('div'); bubbleEl.className = 'player-bubble';
+                        const shieldEl = document.createElement('div'); shieldEl.className = 'player-shield-effect';
+                        
+                        // 컨테이너 및 부모에 추가
+                        avatarContainer.appendChild(avatarImg); // 단일 이미지
+                        avatarContainer.appendChild(avatarEmoji); // 이모지
+                        playerEl.appendChild(avatarContainer); // ✨ 아바타 컨테이너를 playerEl에 추가
+                        playerEl.appendChild(bubbleEl);
+                        playerEl.appendChild(shieldEl);
+
+                        gameBoard.appendChild(playerEl);
+                        
+                        // ✨ [신규] 생성 시점에 자식 요소들을 찾아 '캐시(cache)'합니다.
+                        playerEl.domCache = {
+                            avatarContainer: playerEl.querySelector('.player-avatar-container'),
+                            avatarImg: playerEl.querySelector('.player-avatar-img'),
+                            avatarEmoji: playerEl.querySelector('.player-avatar-emoji'),
+                            bubble: playerEl.querySelector('.player-bubble'),
+                            shield: playerEl.querySelector('.player-shield-effect'),
+                            dirFront: playerEl.querySelector('.player-avatar-dir.front'),
+                            dirBack: playerEl.querySelector('.player-avatar-dir.back'),
+                            dirLeft: playerEl.querySelector('.player-avatar-dir.left'),
+                            dirRight: playerEl.querySelector('.player-avatar-dir.right')
+                        };
+                        
+                        playerElements[playerId] = playerEl; // 추적 객체에 저장
+                        console.log(`[renderPlayers] 플레이어 ${playerId} 요소 생성 및 DOM 캐시 완료.`);
+                    } else if (!playerEl) {
+                        // 게임 보드가 아직 준비 안됐을 수 있으므로 다음 기회에
+                        return;
+                    }
+                    // --- 요소 생성 끝 ---
+
+                    // --- 자식 요소 가져오기 (✨ [수정] 캐시된 DOM 사용) ---
+                    const cache = playerEl.domCache;
+                    if (!cache || !cache.avatarImg || !cache.avatarEmoji || !cache.bubble || !cache.shield) {
+                         console.warn(`[renderPlayers] 플레이어 ${playerId} DOM 캐시 누락`);
+                         return; // 캐시가 없으면 렌더링 불가
+                    }
+                    
+                    // ✨ [삭제] 기존 querySelector 4줄 삭제
+                    // const avatarImgEl = playerEl.querySelector('.player-avatar-img');
+                    // const avatarEmojiEl = playerEl.querySelector('.player-avatar-emoji');
+                    // const bubbleEl = playerEl.querySelector('.player-bubble');
+                    // const shieldEl = playerEl.querySelector('.player-shield-effect');
+                    
+
+                   // ✨ [수정] 4방향 아바타 세트(ID), 이미지, 이모지 순으로 확인
+                    // ✨ [FIX] 4방향 세트(펭귄, 강아지 등)가 있으면 그것을 사용, 없으면(이모지 등) 'default_bomber'로 강제
+                    const avatarSet = AVATAR_SETS[pData.avatar] || AVATAR_SETS['default_bomber'];
+                    const isImage = !avatarSet && pData.avatar && (pData.avatar.startsWith('http') || /\.(png|jpg|jpeg|gif|webp)$/i.test(pData.avatar));
+                    
+                    const avatarContainer = cache.avatarContainer; // ✨ [수정] 캐시 사용
+                    
+                    if (avatarContainer) { // 컨테이너가 있어야 실행
+                        // 자식 요소들 가져오기 (✨ [수정] 캐시 사용)
+                        const avatarImgEl = cache.avatarImg;
+                        const avatarEmojiEl = cache.avatarEmoji;
+                        const dirImgs = {
+                            front: cache.dirFront,
+                            back: cache.dirBack,
+                            left: cache.dirLeft,
+                            right: cache.dirRight
+                        };
+
+                        // 1. 4방향 세트 아바타 (펭귄)
+                        if (avatarSet) {
+                            // 단일/이모지 숨김 (✨ [수정] 상태가 다를 때만 변경)
+                            if (avatarImgEl && avatarImgEl.style.display !== 'none') avatarImgEl.style.display = 'none';
+                            if (avatarEmojiEl && avatarEmojiEl.style.display !== 'none') avatarEmojiEl.style.display = 'none';
+                            
+                            // 4방향 이미지 소스 설정 (이미지 경로가 다를 때만 업데이트)
+                            if (dirImgs.front && dirImgs.front.src !== avatarSet.front) dirImgs.front.src = avatarSet.front;
+                            if (dirImgs.back && dirImgs.back.src !== avatarSet.back) dirImgs.back.src = avatarSet.back;
+                            if (dirImgs.left && dirImgs.left.src !== avatarSet.left) dirImgs.left.src = avatarSet.left;
+                            if (dirImgs.right && dirImgs.right.src !== avatarSet.right) dirImgs.right.src = avatarSet.right;
+
+                            // ✨ Firebase에 저장된 pData.direction 값에 따라 이미지 표시
+                            const currentDir = pData.direction || 'down'; // 기본값 'down' (정면)
+                            
+                            // ✨ [수정] 상태가 다를 때만 display 속성 변경 (렉 핵심 수정)
+                            const showFront = (currentDir === 'down');
+                            const showBack = (currentDir === 'up');
+                            const showLeft = (currentDir === 'left');
+                            const showRight = (currentDir === 'right');
+
+                            if (dirImgs.front && (dirImgs.front.style.display === 'block') !== showFront) dirImgs.front.style.display = showFront ? 'block' : 'none';
+                            if (dirImgs.back && (dirImgs.back.style.display === 'block') !== showBack) dirImgs.back.style.display = showBack ? 'block' : 'none';
+                            if (dirImgs.left && (dirImgs.left.style.display === 'block') !== showLeft) dirImgs.left.style.display = showLeft ? 'block' : 'none';
+                            if (dirImgs.right && (dirImgs.right.style.display === 'block') !== showRight) dirImgs.right.style.display = showRight ? 'block' : 'none';
+
+                        // 2. 단일 이미지 아바타 (기존 로직)
+                        } else if (isImage) {
+                            if (avatarImgEl && avatarImgEl.src !== pData.avatar) avatarImgEl.src = pData.avatar;
+                            if (avatarImgEl && avatarImgEl.style.display !== 'block') avatarImgEl.style.display = 'block'; // ✨ 상태 체크
+                            if (avatarEmojiEl && avatarEmojiEl.style.display !== 'none') avatarEmojiEl.style.display = 'none'; // ✨ 상태 체크
+                            // 4방향 숨김
+                            Object.values(dirImgs).forEach(img => { if(img && img.style.display !== 'none') img.style.display = 'none'; }); // ✨ 상태 체크
+
+                        // 3. 이모지 아바타 (기존 로직)
+                        } else if (pData.avatar) {
+                            if (avatarEmojiEl) { 
+                                if (avatarEmojiEl.textContent !== pData.avatar) avatarEmojiEl.textContent = pData.avatar; // ✨ 텍스트 체크
+                                avatarEmojiEl.style.fontSize = `${TILE_HEIGHT * 0.7}px`; 
+                                if (avatarEmojiEl.style.display !== 'block') avatarEmojiEl.style.display = 'block'; // ✨ 상태 체크
+                            }
+                            if (avatarImgEl && avatarImgEl.style.display !== 'none') avatarImgEl.style.display = 'none'; // ✨ 상태 체크
+                            // 4방향 숨김
+                            Object.values(dirImgs).forEach(img => { if(img && img.style.display !== 'none') img.style.display = 'none'; }); // ✨ 상태 체크
+                        }
+                    }
+                    playerEl.style.backgroundColor = 'transparent';
+
+                    // --- 위치 업데이트 (다른 플레이어만 - 예측 이동 고려) ---
+                    if (playerId !== myPlayerId) {
+                        const x = pData.c * TILE_WIDTH;
+                        const y = pData.r * TILE_HEIGHT;
+                        if (playerEl.style.left !== `${x}px` || playerEl.style.top !== `${y}px`) {
+                            playerEl.style.left = `${x}px`;
+                            playerEl.style.top = `${y}px`;
+                        }
+                    }
+
+                   // --- 상태 업데이트 ---
+                    const isAlive = pData.stats.isAlive;
+                    const isTrapped = pData.stats.isTrapped === true;
+                    const now = Date.now() + serverTimeOffset;
+                    const isShieldActive = pData.stats.shieldActiveUntil && pData.stats.shieldActiveUntil > now;
+                    const wasAlreadyTrapped = playerEl.classList.contains('trapped');
+                    const isNowTrapped = isTrapped && isAlive;
+
+                    playerEl.classList.toggle('dead', !isAlive);
+                    playerEl.classList.toggle('trapped', isNowTrapped);
+                    
+                    // ✨ [수정] bubbleEl, shieldEl 캐시 사용
+                    const bubbleEl = cache.bubble; 
+                    const shieldEl = cache.shield;
+
+                    if (bubbleEl) {
+                        const shouldShowBubble = isNowTrapped;
+                        if ((bubbleEl.style.display === 'block') !== shouldShowBubble) {
+                            bubbleEl.style.display = shouldShowBubble ? 'block' : 'none';
+                        }
+                    }
+                    if (shieldEl) {
+                        const shouldShowShield = isShieldActive && isAlive;
+                         if ((shieldEl.style.display === 'block') !== shouldShowShield) {
+                            shieldEl.style.display = shouldShowShield ? 'block' : 'none';
+                         }
+                    }
+
+                    if (isNowTrapped && !wasAlreadyTrapped) {
+                        playSound('sound-trapped');
+                    }
+
+                   // --- 내 플레이어 표시기 위치 업데이트 ---
+                    if (playerId === myPlayerId && myIndicatorElement) {
+                         
+                         // ✨ [신규] '최초' 위치 설정 로직
+                         // style.left가 비어있으면(초기 로드), 서버 데이터로 위치를 한 번 설정합니다.
+                         // 이후에는 tryMove가 위치를 전담합니다. (렉 방지)
+                         if (myIndicatorElement.style.left === '') {
+                             const x = pData.c * TILE_WIDTH;
+                             const y = pData.r * TILE_HEIGHT;
+                             const indicatorY = y - TILE_HEIGHT * 0.6;
+                             myIndicatorElement.style.left = `${x}px`;
+                             myIndicatorElement.style.top = `${indicatorY}px`;
+                         }
+                         
+                         // ✨ [수정] 위치 업데이트는 tryMove가 전담. 여기서는 '표시/숨김' 상태만 업데이트
+                         const shouldShowIndicator = isAlive && !isTrapped;
+                         if ((myIndicatorElement.style.display === 'block') !== shouldShowIndicator) {
+                            myIndicatorElement.style.display = shouldShowIndicator ? 'block' : 'none';
+                         }
+                    }
+
+                    // --- 내 아이템 슬롯 업데이트 ---
+                    if (playerId === myPlayerId) {
+                        const myStats = pData.stats || {};
+                        const needleCount = myStats.needles || 0;
+                        const shieldCount = myStats.shields || 0;
+                        const dartCount = myStats.darts || 0;
+
+                        // ***** 여기부터가 이전에 생략되었던 부분입니다 *****
+                        // 헬퍼 함수: 슬롯 UI 업데이트
+                        const updateSlot = (slotId, itemType, count) => {
+                            const slotEl = document.getElementById(slotId);
+                            if (!slotEl) return;
+                            slotEl.style.display = 'flex'; // 항상 보이도록
+
+                            const countEl = slotEl.querySelector('.item-count');
+                            const iconEl = slotEl.querySelector('.item-icon');
+                            const iconUrl = ITEM_ICONS[itemType];
+
+                            // 아이콘 (0개면 숨김)
+                            if (iconEl && iconUrl) {
+                                iconEl.innerHTML = (count > 0) ? `<img src="${iconUrl}" alt="${itemType}" style="width: 100%; height: 100%; object-fit: contain;">` : '';
+                            }
+                            // 개수 (CSS가 0일때 숨김)
+                            if (countEl) {
+                                countEl.textContent = count;
+                                countEl.dataset.count = count;
+                            }
+                            // 버튼 활성화/비활성화
+                            if (itemType === ITEM_TYPES.NEEDLE) slotEl.disabled = !(isTrapped && count > 0);
+                            else if (itemType === ITEM_TYPES.DART) slotEl.disabled = !(isAlive && !isTrapped && count > 0);
+                            else if (itemType === ITEM_TYPES.SHIELD) slotEl.disabled = !(isAlive && !isTrapped && count > 0 && !isShieldActive);
+                        };
+                        // 3개 슬롯 모두 업데이트
+                        updateSlot('item-slot-1', ITEM_TYPES.NEEDLE, needleCount);
+                        updateSlot('item-slot-2', ITEM_TYPES.SHIELD, shieldCount);
+                        updateSlot('item-slot-3', ITEM_TYPES.DART, dartCount);
+                        // ***** 여기까지가 이전에 생략되었던 부분입니다 *****
+                    }
+                }); // <-- playerIdsFromData.forEach 끝
+
+                // --- 2단계: 로컬 추적 객체(playerElements)를 순회하며 Firebase 데이터에 없는 요소 제거 ---
+                // console.log('[renderPlayers] 제거 로직 시작. Firebase IDs:', JSON.stringify(playerIdsFromData), 'Local IDs:', JSON.stringify(Object.keys(playerElements)));
+                const playerIdsSet = new Set(playerIdsFromData);
+
+                for (const pid in playerElements) {
+                    // console.log(`[renderPlayers] 제거 검사: ${pid}. Firebase Set에 존재? ${playerIdsSet.has(pid)}. playerElements[pid] 존재? ${!!playerElements[pid]}`); // 너무 자주 찍힘
+                    if (!playerIdsSet.has(pid) && pid !== myPlayerId) { // ✨ [FIX] 내 ID(myPlayerId)는 절대 삭제하지 않도록 수정
+                        console.warn(`[renderPlayers] 제거 결정됨! ID: ${pid}. Firebase ID Set:`, playerIdsSet);
+                        // console.warn('[renderPlayers] 제거 시점의 currentRoomData.players:', currentRoomData?.players); // 너무 길어서 주석 처리
+                        if (playerElements[pid]) {
+                            playerElements[pid].remove();
+                            console.log(`[renderPlayers] 플레이어 ${pid} 요소 제거 완료`);
+                        } else {
+                            console.warn(`[renderPlayers] 제거 시도했으나 playerElements[${pid}] DOM 요소 없음`);
+                        }
+                        delete playerElements[pid];
+                        if (pid === myPlayerId && myIndicatorElement) {
+                            myIndicatorElement.remove();
+                            myIndicatorElement = null;
+                        }
+                    }
+                }
+                // console.log('[renderPlayers] 제거 로직 끝.'); // 너무 자주 찍힘
+                // --- 제거 로직 끝 ---
+            }
+
+
+            // 아이템 렌더링 함수
+            function renderItems(itemsData) {
+                // 데이터 없거나 타일 크기 계산 안됐으면 중단
+                if (!itemsData) itemsData = {};
+                if (TILE_WIDTH <= 0) return;
+
+                const itemsOnScreen = {}; // 현재 화면 아이템 추적용
+                // 모든 아이템 데이터 순회
+                for (const itemId in itemsData) {
+                    const iData = itemsData[itemId];
+                    // 데이터 유효성 검사
+                    if(!iData || iData.r === undefined || iData.c === undefined || iData.isVisible === undefined || !iData.type) continue;
+
+                    itemsOnScreen[itemId] = true; // 화면에 있다고 표시
+
+                    let itemEl = itemElements[itemId]; // 기존 DOM 요소 가져오기
+                    // DOM 요소 없으면 새로 생성 (보드 존재 확인 추가)
+                    if (!itemEl && document.body.contains(gameBoard)) {
+                        itemEl = document.createElement('div');
+                        itemEl.id = itemId;
+                        itemEl.className = 'item'; // 기본 클래스
+
+                        // ✨ [수정] 아이템 아이콘 설정
+                        if (iData.type === ITEM_TYPES.BOMB_COUNT) {
+                            itemEl.style.backgroundImage = "url('./봄버맨사운드/물풍선아이템.png')";
+                            itemEl.style.backgroundColor = 'transparent';
+                            itemEl.textContent = '';
+                            itemEl.style.backgroundSize = '100% 100%';
+                            itemEl.style.backgroundPosition = 'center';
+                            itemEl.style.backgroundRepeat = 'no-repeat';
+                            
+                            // ✨ [수정] 이미지 아이템 스타일
+                            itemEl.style.display = 'block'; 
+                            itemEl.style.fontSize = '0'; 
+                            
+                        } else if (iData.type === ITEM_TYPES.BOMB_RANGE) {
+                            // ✨ [수정] 물줄기강화.png 이미지로 변경
+                            itemEl.style.backgroundImage = "url('./봄버맨사운드/물줄기강화.png')";
+                            itemEl.style.backgroundColor = 'transparent';
+                            itemEl.textContent = '';
+                            itemEl.style.backgroundSize = '100% 100%';
+                            itemEl.style.backgroundPosition = 'center';
+                            itemEl.style.backgroundRepeat = 'no-repeat';
+                            
+                           itemEl.style.display = 'block'; 
+                            itemEl.style.fontSize = '0'; 
+                        
+                        // ✨ [신규] 속도업 아이템 렌더링
+                        } else if (iData.type === ITEM_TYPES.SPEED) {
+                            itemEl.style.backgroundImage = "url('./봄버맨사운드/속도업.png')";
+                            itemEl.style.backgroundColor = 'transparent';
+                            itemEl.textContent = '';
+                            itemEl.style.backgroundSize = '100% 100%';
+                            itemEl.style.backgroundPosition = 'center';
+                            itemEl.style.backgroundRepeat = 'no-repeat';
+                            itemEl.style.display = 'block'; 
+                            itemEl.style.fontSize = '0'; 
+                        
+                        // ✨ [신규] 바늘 아이템 렌더링 로직 추가
+
+                        // ✨ [신규] 쉴드 아이템 렌더링
+                        } else if (iData.type === ITEM_TYPES.SHIELD) {
+                            itemEl.style.backgroundImage = `url('${ITEM_ICONS[ITEM_TYPES.SHIELD]}')`; 
+                            itemEl.style.backgroundColor = 'transparent';
+                            itemEl.textContent = '';
+                            itemEl.style.backgroundSize = '100% 100%'; 
+                            itemEl.style.backgroundPosition = 'center';
+                            itemEl.style.backgroundRepeat = 'no-repeat';
+                            itemEl.style.display = 'block'; 
+                            itemEl.style.fontSize = '0'; 
+
+                        // ✨ [신규] 다트 아이템 렌더링
+                        } else if (iData.type === ITEM_TYPES.DART) {
+                            itemEl.style.backgroundImage = `url('${ITEM_ICONS[ITEM_TYPES.DART]}')`; 
+                            itemEl.style.backgroundColor = 'transparent';
+                            itemEl.textContent = '';
+                            itemEl.style.backgroundSize = '100% 100%'; 
+                            itemEl.style.backgroundPosition = 'center';
+                            itemEl.style.backgroundRepeat = 'no-repeat';
+                            itemEl.style.display = 'block'; 
+                            itemEl.style.fontSize = '0';
+
+                        } else if (iData.type === ITEM_TYPES.NEEDLE) {
+                            itemEl.style.backgroundImage = `url('${ITEM_ICONS[ITEM_TYPES.NEEDLE]}')`; // 정의된 아이콘 사용
+                            itemEl.style.backgroundColor = 'transparent';
+                            itemEl.textContent = '';
+                            itemEl.style.backgroundSize = '100% 100%'; // 크기 맞춤
+                            itemEl.style.backgroundPosition = 'center';
+                            itemEl.style.backgroundRepeat = 'no-repeat';
+                            itemEl.style.display = 'block'; 
+                            itemEl.style.fontSize = '0'; 
+
+                        } else {
+                            itemEl.textContent = '?'; // 알 수 없는 아이템
+                        }
+                        
+                        itemEl.classList.add(`item-${iData.type}`); // 타입별 클래스 추가
+                        if (iData.isBalloon) itemEl.classList.add('item-balloon'); // 풍선 클래스 추가
+                        gameBoard.appendChild(itemEl); // 게임 보드에 추가
+                        itemElements[itemId] = itemEl; // 추적 객체에 저장
+                    } else if (!itemEl) {
+                        continue; // 보드 없으면 생성 불가
+                    }
+
+
+                    // isVisible 상태에 따라 'visible' 클래스 토글
+                    itemEl.classList.toggle('visible', iData.isVisible);
+
+                    // 위치 계산 및 적용 (top, left)
+                    // ✨ [수정] 변수명 수정 (bData -> iData, bombX/Y -> itemX/Y, bombEl -> itemEl)
+                    // ✨ [수정] 아이템은 크기 보정이 필요 없으므로 중앙 정렬 오프셋 제거
+                    const itemX = iData.c * TILE_WIDTH;
+                    const itemY = iData.r * TILE_HEIGHT;
+                    itemEl.style.left = `${itemX}px`;
+                    itemEl.style.top = `${itemY}px`;
+                }
+                // Firebase 데이터에는 없는데 화면에 남아있는 아이템 요소 제거
+                for (const itemId in itemElements) {
+                    if (!itemsOnScreen[itemId]) {
+                         if (itemElements[itemId]) { // 요소 존재 확인 후 제거
+                            itemElements[itemId].remove();
+                            delete itemElements[itemId]; // 추적 객체에서 제거
+                         }
+                    }
+                }
+            }
+
+
+            // 폭탄 렌더링 함수
+            function renderBombs(bombsData) {
+                // 타일 크기 계산 안됐으면 중단
+                if (TILE_WIDTH <= 0 || TILE_HEIGHT <= 0) return;
+                if (!bombsData) bombsData = {}; // 데이터 없으면 빈 객체로
+
+                const bombsOnScreen = {}; // 현재 화면 폭탄 추적용
+                // 모든 폭탄 데이터 순회
+                for (const bombId in bombsData) {
+                    const bData = bombsData[bombId];
+                    // 데이터 유효성 검사
+                    if (!bData || typeof bData.r !== 'number' || typeof bData.c !== 'number' || typeof bData.placedAt !== 'number') continue;
+                    bombsOnScreen[bombId] = true; // 화면에 있다고 표시
+
+                    let bombEl = bombElements[bombId]; // 기존 DOM 요소 가져오기
+                    // DOM 요소 없으면 새로 생성 (보드 존재 확인 추가)
+if (!bombEl && document.body.contains(gameBoard)) {
+                        bombEl = document.createElement('div');
+                        bombEl.id = bombId;
+                        bombEl.className = 'bomb'; // 기본 클래스
+                        
+                        /* ✨ [수정] 아래 2줄을 반드시 삭제해야 합니다 */
+                        // bombEl.textContent = '💧';
+                        // bombEl.style.fontSize = `${TILE_HEIGHT * 0.8}px`; 
+
+                        gameBoard.appendChild(bombEl); // 게임 보드에 추가
+                        bombElements[bombId] = bombEl; // 추적 객체에 저장
+                    } else if (!bombEl) {
+                         continue; // 보드 없으면 생성 불가
+                    }
+                    
+                    // ✨ [신규] 폭탄 데이터에서 스킨 URL 읽어오기
+                    const skinUrl = bData.skinUrl || './봄버맨사운드/물풍선.png'; // 기본값
+                    // ✨ [신규] 현재 스킨과 다를 때만 DOM 업데이트
+                    if (bombEl.style.backgroundImage !== `url("${skinUrl}")`) {
+                        bombEl.style.backgroundImage = `url("${skinUrl}")`;
+                    }
+
+
+                    // 위치 계산 및 적용 (top, left)
+                    // ✨ [수정] 1.2배 커진 것을 보정하기 위해 0.1배만큼( (1.2-1)/2 ) 빼서 중앙 정렬
+                    const bombX = (bData.c * TILE_WIDTH) - (TILE_WIDTH * 0.1); 
+                    const bombY = (bData.r * TILE_HEIGHT) - (TILE_HEIGHT * 0.1);
+                    bombEl.style.left = `${bombX}px`;
+                    bombEl.style.top = `${bombY}px`;
+                }
+
+                // Firebase 데이터에는 없는데 화면에 남아있는 폭탄 요소 제거
+                for (const bombId in bombElements) {
+                    if (!bombsOnScreen[bombId]) { // 데이터에 없는 ID면
+                        if (bombElements[bombId]) { // 요소 존재 확인 후 제거
+                            bombElements[bombId].remove();
+                            delete bombElements[bombId]; // 추적 객체에서 제거
+                        }
+                    }
+                }
+            }
+
+function checkBombTimers() {
+                // 방장이 아니거나 맵/플레이어 데이터 없으면 중단
+                if (!isHost || !currentRoomData?.map || !currentRoomData?.players) return;
+                
+                const now = Date.now() + serverTimeOffset; // 현재 서버 시간
+                const bombs = currentRoomData.bombs || {};
+                const players = currentRoomData.players;
+                const updates = {}; // Firebase 일괄 업데이트용 객체
+
+                // --- 1. 폭탄 타이머 체크 ---
+                for (const bombId in bombs) {
+                    // 이미 터지는 중이면 건너뜀
+                    if (explodingBombs.has(bombId)) continue;
+                    const bData = bombs[bombId];
+                    // 데이터 유효성 검사 (설치 시간 있는지)
+                    if (bData && typeof bData.placedAt === 'number') {
+                        // 설치 시간 + 3초 < 현재 시간이면 폭발
+                        if (bData.placedAt + 3000 < now) {
+                            explodeBomb(bombId, bData); // 폭발 함수 호출 (이 함수는 비동기 아님)
+                        }
+                    }
+                }
+
+                // --- 2. ✨ [수정] 물풍선 갇힘 타이머 / 쉴드 만료 체크 ---
+                let didPlayerDie = false; // ✨ [신규] 플레이어가 죽었는지 확인하는 플래그
+                for (const playerId in players) {
+                    const pData = players[playerId];
+                    
+                    // 2-1. 갇힘 타이머 체크
+                    if (pData?.stats?.isAlive === true && pData?.stats?.isTrapped === true && typeof pData.stats.trapTime === 'number') {
+                        // 2. 3초가 지났는지 확인
+                        if (pData.stats.trapTime + 3000 < now) {
+                            // 3. 3초 지났으면 사망 처리
+                            updates[`players/${playerId}/stats/isAlive`] = false;
+                            updates[`players/${playerId}/stats/isTrapped`] = false; // 갇힘 상태도 해제
+                            didPlayerDie = true; // ✨ [신규] 플래그 설정
+                        }
+                    }
+
+                    // ✨ [신규] 2-2. 쉴드 만료 타이머 체크
+                    if (pData?.stats?.shieldActiveUntil && pData.stats.shieldActiveUntil < now) {
+                        updates[`players/${playerId}/stats/shieldActiveUntil`] = null; // 쉴드 버프 시간 만료
+                    }
+                }
+
+                // --- 3. ✨ [수정] 일괄 업데이트 실행 및 승리 조건 확인 ---
+                if (Object.keys(updates).length > 0) {
+                    roomRef.update(updates)
+                        .then(() => {
+                            // ✨ [신규] 플레이어가 방금 물풍선으로 죽었다면,
+                            // 즉시 승리 조건을 확인합니다.
+                            if (didPlayerDie) {
+                                checkWinCondition(); 
+                            }
+                        })
+                        .catch(error => {
+                            console.error("물풍선 타이머 업데이트 오류:", error);
+                        });
+                }
+            }
+
+
+            // 폭탄 설치 함수 (클라이언트 요청)
+            function placeBomb() {
+                // 내 플레이어 데이터, 스탯 없으면 중단
+                if (!currentRoomData?.players?.[myPlayerId]?.stats) return;
+                const myStats = currentRoomData.players[myPlayerId].stats;
+                const myPos = currentRoomData.players[myPlayerId];
+                // 위치 없거나 죽었으면 중단
+                // ✨ [수정] 살아있어도 '갇혔으면(isTrapped)' 설치 불가
+                if (myPos.r === undefined || myPos.c === undefined || !myStats.isAlive || myStats.isTrapped) return;
+                // 현재 설치된 내 폭탄 개수 세기
+                const myBombs = Object.values(currentRoomData.bombs || {}).filter(b => b.owner === myPlayerId).length;
+                // 최대 설치 개수 넘으면 중단
+                if (myBombs >= myStats.maxBombs) return;
+                
+                // ✨ [신규] 이미 해당 위치에 폭탄이 있는지 확인
+                const bombs = currentRoomData.bombs || {};
+                for (const bombId in bombs) {
+                    if (bombs[bombId].r === myPos.r && bombs[bombId].c === myPos.c) {
+                        return; // 이미 폭탄이 있으므로 설치 불가
+                    }
+                }
+                
+                // 새 폭탄 ID 생성
+                const bombId = roomRef.child('bombs').push().key;
+                // 폭탄 데이터 생성 (위치, 설치 시간)
+                const bombData = {
+                    owner: myPlayerId,
+                    r: myPos.r,
+                    c: myPos.c,
+                    skinUrl: myPos.bombSkin || './봄버맨사운드/물풍선.png', // ✨ [신규] 플레이어의 스킨 URL 저장
+                    placedAt: firebase.database.ServerValue.TIMESTAMP // 서버 시간 기록
+                };
+                // Firebase에 폭탄 데이터 저장 요청
+                roomRef.child('bombs/' + bombId).set(bombData);
+                playSound('sound-place-bomb');
+            }
+
+
+            // 폭발 처리 함수 (방장 전용)
+            function explodeBomb(bombId, bData) {
+                 // 방장 아니거나, 이미 터지는 중이거나, 데이터 없거나, 맵 없으면 중단
+                if (!isHost || explodingBombs.has(bombId) || !bData || !currentRoomData?.map) return;
+                
+                // ✨ 1. 이 폭발로 인해 터질 모든 폭탄과 타일을 재귀적으로 찾는다.
+                // "r,c" => {r, c}, 최종 폭발 범위 (중복 없음)
+                const allAffectedTiles = new Map(); 
+                // bombId, 연쇄 폭발에 포함된 모든 폭탄 ID (중복 없음)
+                const allBombsInChain = new Set(); 
+                
+                // 재귀 함수: 연쇄 폭발 탐색
+                function findExplosionChain(currentBombId, currentBombData) {
+                    // 이미 처리했거나(무한 루프 방지), 데이터 없으면 중단
+                    if (allBombsInChain.has(currentBombId) || !currentBombData) return;
+                    
+                    allBombsInChain.add(currentBombId); // 이 폭탄을 체인에 추가
+                    // ✨ 다른 타이머가 중복 실행 않도록 전역 set에도 즉시 추가
+                    explodingBombs.add(currentBombId); 
+
+                    const ownerStats = currentRoomData.players?.[currentBombData.owner]?.stats;
+                    const range = ownerStats ? Math.min(4, ownerStats.bombRange) : 1; // ✨ [수정] 최대 4개로 변경
+                    // ✨ [0,0] 센터 타일 포함
+                    // ✨ [0,0] 센터 타일 포함
+                    const directions = [[0, 0], [-1, 0], [1, 0], [0, -1], [0, 1]]; 
+                    
+                    const currentBombTiles = []; // 이 폭탄 *하나*의 범위 (다른 폭탄 찾기용)
+
+                    directions.forEach(([dr, dc]) => {
+                        const isCenter = dr === 0 && dc === 0;
+                        // isCenter가 참이면 0~0 (1번), 거짓이면 1~range
+                        for (let i = (isCenter ? 0 : 1); i <= (isCenter ? 0 : range); i++) {
+                            const r = currentBombData.r + dr * i;
+                            const c = currentBombData.c + dc * i;
+
+                            // 맵 밖 체크
+                            if (r < 0 || r >= GRID_ROWS || c < 0 || c >= GRID_COLS) break;
+                            
+                            const tileType = currentRoomData.map?.[r]?.[c];
+                            if (tileType === undefined) break; // 맵 데이터 오류
+
+                            // ✨ [FIX] 파괴불가 벽(1)이면 즉시 중단 (폭발 범위에 미포함)
+                            if (tileType === 1) break;
+
+                            // 1. 최종 폭발 범위(allAffectedTiles)에 추가 (길, 상자)
+                            const tileKey = `${r},${c}`;
+                            if (!allAffectedTiles.has(tileKey)) { // 중복 타일은 추가 안함
+                                allAffectedTiles.set(tileKey, { r, c });
+                            }
+                            // 2. 이 폭탄의 개별 범위(currentBombTiles)에도 추가
+                            currentBombTiles.push({r, c}); 
+
+                            // ✨ [FIX] 파괴가능 상자(2)면 중단 (폭발 범위에 포함)
+                            if (tileType === 2) break;
+                        }
+                    });
+
+                    // ✨ 3. 이 폭탄의 범위(currentBombTiles)에 걸친 '다른' 폭탄을 찾는다.
+                    for (const tile of currentBombTiles) {
+                        for (const otherBombId in currentRoomData.bombs) {
+                            // 이미 체인에 포함된 폭탄은 다시 체크 안 함
+                            if (allBombsInChain.has(otherBombId)) continue; 
+                            
+                            const otherBombData = currentRoomData.bombs[otherBombId];
+                            // 다른 폭탄이 해당 타일에 존재하면
+                            if (otherBombData && otherBombData.r === tile.r && otherBombData.c === tile.c) {
+                                // ✨ 연쇄 폭발! 재귀 호출
+                                findExplosionChain(otherBombId, otherBombData);
+                            }
+                        }
+                    }
+                } // --- 재귀 함수 끝 ---
+
+                // ✨ 2. 재귀 탐색 시작 (최초 폭탄 A로 시작)
+                findExplosionChain(bombId, bData);
+
+                // ✨ 3. 모든 체인이 탐색 완료됨.
+                // allAffectedTiles에 모든 고유 타일이 모임.
+                const updates = {}; // Firebase 업데이트 내용 객체
+
+                // ✨ [수정] 폭발 시각 효과를 위한 좌표만 먼저 수집
+                const visualCoords = [];
+                allAffectedTiles.forEach(tile => {
+                    visualCoords.push({ r: tile.r, c: tile.c }); // 좌표 저장
+
+                    // --- 이하 방장만 처리 (원래 로직과 동일) ---
+                    // if (isHost) { // <-- 이 if문은 제거합니다.
+                        const currentTileType = currentRoomData.map?.[tile.r]?.[tile.c];
+                        // 나무상자(2)면 파괴 처리
+                        if (currentTileType === 2) {
+                            updates[`map/${tile.r}/${tile.c}`] = 0; // 맵 데이터 길(0)로 변경
+
+                            // 아이템 드롭/공개 처리
+                            let revealedItem = false; 
+                            for(const itemId in currentRoomData.items) {
+                                const item = currentRoomData.items[itemId];
+                                if (item?.isBalloon && !item.isVisible && item.r === tile.r && item.c === tile.c) {
+                                    updates[`items/${itemId}/isVisible`] = true;
+                                    revealedItem = true;
+                                    break; 
+                                }
+                            }
+                            if (!revealedItem && Math.random() < 0.3) { // 30% 확률로 아이템 드랍
+                                // ✨ [수정] 아이템 드랍 확률 변경 (속도 > 다트)
+                            const itemDropPool = [
+                                // 1. 물풍선/화염 (각 5)
+                                ITEM_TYPES.BOMB_COUNT, ITEM_TYPES.BOMB_COUNT, ITEM_TYPES.BOMB_COUNT, ITEM_TYPES.BOMB_COUNT, ITEM_TYPES.BOMB_COUNT, // 5
+                                ITEM_TYPES.BOMB_RANGE, ITEM_TYPES.BOMB_RANGE, ITEM_TYPES.BOMB_RANGE, ITEM_TYPES.BOMB_RANGE, ITEM_TYPES.BOMB_RANGE, // 5
+                                
+                                // 2. 속도 (4)
+                                ITEM_TYPES.SPEED, ITEM_TYPES.SPEED, ITEM_TYPES.SPEED, ITEM_TYPES.SPEED, // 4
+                                
+                                // 3. 다트 (3)
+                                ITEM_TYPES.DART, ITEM_TYPES.DART, ITEM_TYPES.DART, // 3
+                                
+                                // 4. 쉴드 (2)
+                                ITEM_TYPES.SHIELD, ITEM_TYPES.SHIELD, // 2
+                                
+                                // 5. 바늘 (1)
+                                ITEM_TYPES.NEEDLE // 1
+                            ]; // 총 20개 항목
+                            
+                            const randomType = itemDropPool[Math.floor(Math.random() * itemDropPool.length)];
+
+                                const newItemKey = roomRef.child('items').push().key;
+                                updates[`items/${newItemKey}`] = {
+                                    r: tile.r, c: tile.c,
+                                    type: randomType, // ✨ 랜덤 타입 적용
+                                    isVisible: true, isBalloon: true
+                                };
+                            }
+                        }
+
+                        // 플레이어 피격 처리
+                        const nowForExplosion = Date.now() + serverTimeOffset; // ✨ [신규] 폭발 시점의 현재 시간
+                        for (const playerId in currentRoomData.players) {
+                            const pData = currentRoomData.players[playerId];
+                            // ✨ [수정] 살아있고, 아직 안 갇힌 플레이어가 맞았을 때
+                            if (pData?.stats?.isAlive === true && pData?.stats?.isTrapped !== true && pData.r === tile.r && pData.c === tile.c) {
+
+                                // ✨ [수정] 활성화된 쉴드(shieldActiveUntil)가 있는지 체크
+                                if (pData.stats.shieldActiveUntil && pData.stats.shieldActiveUntil > nowForExplosion) {
+                                    // 쉴드가 활성화되어 있으면 1회 방어하고 버프 즉시 제거
+                                    updates[`players/${playerId}/stats/shieldActiveUntil`] = null;
+                                    // (TODO: 쉴드 파괴 사운드/효과)
+                                    // playSound('sound-shield-break');
+                                } else {
+                                    // 쉴드가 없으면 갇힘 상태로 변경
+                                    updates[`players/${playerId}/stats/isTrapped`] = true;
+                                    updates[`players/${playerId}/stats/trapTime`] = firebase.database.ServerValue.TIMESTAMP;
+                                }
+                            }
+                        }
+
+                        // ✨ [신규] 아이템 파괴 처리
+                        for (const itemId in currentRoomData.items) {
+                            const item = currentRoomData.items[itemId];
+                            // 보이는 아이템(풍선 아님)이 폭발 범위에 있으면
+                            if (item && item.isVisible && !item.isBalloon && item.r === tile.r && item.c === tile.c) {
+                                updates[`items/${itemId}`] = null; // 아이템 삭제
+                            }
+                        }
+
+                    // } // --- 방장 처리 끝 --- // <-- 제거된 if문의 닫는 괄호
+                }); // --- 최종 폭발 범위 순회 끝 ---
+
+                // ✨ 5. [신규] 폭발 시각 효과 좌표를 Firebase에 전송 (방장만)
+                if (isHost && visualCoords.length > 0) {
+                    const visualUpdates = {};
+                    visualCoords.forEach(coord => {
+                        const key = roomRef.child('explosionVisuals').push().key;
+                        visualUpdates[key] = coord;
+                    });
+                    roomRef.child('explosionVisuals').update(visualUpdates); // 한 번에 업데이트
+                    
+                    // ✨ 폭발 사운드도 여기서 한 번만 재생 (기존 로직 이동)
+                    const now = Date.now();
+                    if (now - lastExplosionSoundTime > 100) { 
+                        playSound('sound-explosion');
+                        lastExplosionSoundTime = now;
+                    }
+                }
+
+                // ✨ 6. Firebase 업데이트 및 승리 조건 확인 (방장만) - (기존 5번 로직)
+                if (isHost) {
+                    // 체인에 포함된 모든 폭탄 삭제
+                    allBombsInChain.forEach(id => {
+                        updates[`bombs/${id}`] = null; // null로 설정하여 삭제
+                    });
+
+                    const performUpdatesAndCheckWin = () => {
+                        checkWinCondition(); // 승리 조건 확인
+                        
+                        // 전역 Set에서 폭탄 ID들 제거 (0.2초 후)
+                        // (폭발 애니메이션 시간(0.4초)보다 짧게)
+                        setTimeout(() => {
+                            allBombsInChain.forEach(id => explodingBombs.delete(id));
+                        }, 200); 
+                    };
+
+                    // 업데이트할 내용이 있으면 Firebase에 한 번에 전송
+                    if (Object.keys(updates).length > 0) {
+                        roomRef.update(updates).then(performUpdatesAndCheckWin).catch(error => {
+                            console.error("Firebase 업데이트 실패:", error);
+                            performUpdatesAndCheckWin(); // 실패해도 체크는 시도
+                        });
+                    } else {
+                        performUpdatesAndCheckWin(); // 업데이트 없어도 체크
+                    }
+                }
+            }
+
+
+          // 폭발 시각 효과 함수
+            function showExplosionEffect(r, c) {
+                 // ✨ [신규] 폭발 사운드 (스로틀링)
+                 const now = Date.now();
+                 if (now - lastExplosionSoundTime > 100) { // 0.1초 이내 중복 재생 방지
+                    playSound('sound-explosion');
+                    lastExplosionSoundTime = now;
+                 }
+                 // 타일 크기 계산 안됐으면 중단
+                 if (TILE_WIDTH <= 0 || TILE_HEIGHT <= 0 || !document.body.contains(gameBoard)) return;
+
+                // 고유 ID를 (r, c) 좌표 기반으로 고정
+                const effectId = `exp-${r}-${c}`;
+                
+                let explosionEl = document.getElementById(effectId); // 기존 효과 요소 찾기
+
+                if (explosionEl) {
+                    // ✨ 1. 이미 효과가 존재하면? -> 제거 타이머만 초기화
+                    if (explosionEl.removeTimer) {
+                        clearTimeout(explosionEl.removeTimer);
+                    }
+                    // ✨ 2. [핵심] CSS 애니메이션 강제 재시작 (깜빡임 해결)
+                    explosionEl.style.animation = 'none'; // 애니메이션 끄기
+                    explosionEl.offsetHeight; // 브라우저가 DOM 변경을 감지하도록 함 (reflow)
+                    explosionEl.style.animation = ''; // 애니메이션 다시 켜기 (CSS 기본값으로)
+
+                } else {
+                    // ✨ 3. 효과가 없으면? -> 새로 생성
+                    explosionEl = document.createElement('div');
+                    explosionEl.id = effectId;
+                    explosionEl.className = 'explosion'; // CSS 클래스 적용
+                    explosionEl.style.width = `${TILE_WIDTH}px`; // 타일 크기 적용
+                    explosionEl.style.height = `${TILE_HEIGHT}px`;
+                    explosionEl.style.left = `${c * TILE_WIDTH}px`; // 위치 적용 (left)
+                    explosionEl.style.top = `${r * TILE_HEIGHT}px`; // 위치 적용 (top)
+                    gameBoard.appendChild(explosionEl); // 게임 보드에 추가
+                }
+
+                // ✨ 4. 0.4초 후 제거 타이머 설정 (요소에 타이머 ID 저장)
+                explosionEl.removeTimer = setTimeout(() => {
+                    // setTimeout 시점에 요소가 아직 존재하는지 한 번 더 확인
+                    const elToRemove = document.getElementById(effectId);
+                    if (elToRemove) {
+                        elToRemove.remove();
+                    }
+                }, 400); // CSS 애니메이션 시간과 일치
+            }
+
+
+// ✨ [신규] 다트 발사 시각 효과 함수 (모든 클라이언트)
+            function spawnDartVisual(startR, startC, endR, endC) {
+                if (TILE_WIDTH <= 0 || TILE_HEIGHT <= 0 || !document.body.contains(gameBoard)) return;
+
+                const startX = startC * TILE_WIDTH + (TILE_WIDTH / 2); // 중앙
+                const startY = startR * TILE_HEIGHT + (TILE_HEIGHT / 2); // 중앙
+                const endX = endC * TILE_WIDTH + (TILE_WIDTH / 2);
+                const endY = endR * TILE_HEIGHT + (TILE_HEIGHT / 2);
+                
+                // 1. 각도 계산
+                const deltaX = endX - startX;
+                const deltaY = endY - startY;
+                const angleDeg = Math.atan2(deltaY, deltaX) * 180 / Math.PI; // 각도 (도)
+
+                // 2. 다트 요소 생성
+                const dartEl = document.createElement('div');
+                dartEl.className = 'dart-projectile';
+                
+                // 크기 설정 (예: 타일의 60%)
+                const dartSizeW = TILE_WIDTH * 0.6;
+                const dartSizeH = TILE_HEIGHT * 0.6;
+                dartEl.style.width = `${dartSizeW}px`;
+                dartEl.style.height = `${dartSizeH}px`;
+                
+                // 3. 시작 위치 설정 (중앙에서 시작하도록 보정)
+                dartEl.style.left = `${startX - dartSizeW / 2}px`;
+                dartEl.style.top = `${startY - dartSizeH / 2}px`;
+                dartEl.style.transform = `rotate(${angleDeg}deg)`; // 방향 회전
+
+                gameBoard.appendChild(dartEl);
+
+                // 4. 1프레임 뒤, 목표 위치로 transition 시작
+                requestAnimationFrame(() => {
+                    dartEl.style.left = `${endX - dartSizeW / 2}px`;
+                    dartEl.style.top = `${endY - dartSizeH / 2}px`;
+                });
+
+                // 5. CSS transition 시간(0.3s) 후 요소 제거
+                setTimeout(() => {
+                    if (dartEl) dartEl.remove();
+                }, 300); 
+            }
+
+     
+            // 승리 조건 확인 함수 (방장 전용)
+            function checkWinCondition(isTimeUp = false) { 
+                // 방장 아니거나 플레이어 데이터 없으면 중단
+                if (!isHost || !currentRoomData?.players) return;
+
+                let winnerId = null;
+
+                // --- 1. 시간 종료로 인한 판정 (isTimeUp = true) ---
+                if (isTimeUp && currentRoomData.status === 'playing') {
+                    console.log("시간 종료! 스탯으로 승패 판정.");
+                    
+                    const playerIds = Object.keys(currentRoomData.players);
+                    const alivePlayerIds = playerIds.filter(id => currentRoomData.players[id]?.stats?.isAlive === true);
+
+                    // 1-1. 살아남은 플레이어가 1명 초과일 때 (스탯 비교)
+                    if (alivePlayerIds.length > 1) {
+                        let bestScore = -1;
+                        let winners = []; // 최고 스탯 플레이어 목록 (동점자 처리)
+
+                        alivePlayerIds.forEach(id => {
+                            const stats = currentRoomData.players[id].stats;
+                            // 스탯 합산 (폭탄 + 사거리 + 속도)
+                            const score = (stats?.maxBombs || 1) + (stats?.bombRange || 1) + (stats?.speed || 1);
+                            
+                            if (score > bestScore) {
+                                bestScore = score;
+                                winners = [id]; // 새 최고 점수자
+                            } else if (score === bestScore) {
+                                winners.push(id); // 동점자 추가
+                            }
+                        });
+
+                        // 최고 스탯 보유자가 1명이면 그 사람이 승자, 동점이면 무승부
+                        winnerId = (winners.length === 1) ? winners[0] : null;
+
+                    // 1-2. 살아남은 플레이어가 1명일 때
+                    } else if (alivePlayerIds.length === 1) {
+                        winnerId = alivePlayerIds[0]; // 그 1명이 승자
+
+                    // 1-3. 살아남은 플레이어가 0명일 때
+                    } else {
+                        winnerId = null; // 무승부
+                    }
+
+                    // Firebase에 게임 상태 및 승자 업데이트
+                    roomRef.update({ status: 'gameOver', winner: winnerId });
+                    return; // 시간 종료 판정 끝
+                }
+
+                // --- 2. 일반 사망으로 인한 판정 (isTimeUp = false) ---
+                const alivePlayers = Object.entries(currentRoomData.players)
+                                         .filter(([id, pData]) => pData?.stats?.isAlive === true);
+                
+                // 살아있는 플레이어가 1명 이하이고, 아직 게임 종료 상태가 아니면
+                if (alivePlayers.length <= 1 && currentRoomData.status === 'playing') {
+                    // 승자 ID 결정 (1명이면 그 ID, 0명이면 null(무승부))
+                    winnerId = alivePlayers.length === 1 ? alivePlayers[0][0] : null;
+                    console.log(`게임 종료! 승자: ${winnerId || '무승부'}`);
+                    // Firebase에 게임 상태 및 승자 업데이트
+                    roomRef.update({ status: 'gameOver', winner: winnerId });
+                }
+            }
+
+            function updateMyGameStats(winnerId, players) {
+                // 1. usersRef가 없거나(비정상), 내 플레이어 데이터가 없으면 중단
+                if (!usersRef || !players || !players[myPlayerId]) {
+                    console.log("[Stats] 내 플레이어 데이터가 없어 전적을 기록하지 않습니다.");
+                    return;
+                }
+
+                // 2. 내 결과 판정 ('win', 'loss', 'draw')
+                let myResult;
+                if (winnerId === null) {
+                    myResult = 'draw';
+                } else if (winnerId === myPlayerId) {
+                    myResult = 'win';
+                } else {
+                    myResult = 'loss';
+                }
+                
+                console.log(`[Stats] 내 결과: ${myResult} (승자: ${winnerId})`);
+
+                // 3. 내 전적 DB 경로 참조
+                const myStatsRef = usersRef.child(myPlayerId).child('gameStats/bomber');
+
+                // 4. 트랜잭션으로 안전하게 전적 업데이트
+                myStatsRef.transaction(currentStats => {
+                    if (currentStats === null) {
+                        // 기존 전적이 없으면 새로 생성
+                        currentStats = { wins: 0, losses: 0, plays: 0 };
+                    }
+
+                    // 전적 카운트
+                    currentStats.plays = (currentStats.plays || 0) + 1;
+                    if (myResult === 'win') {
+                        currentStats.wins = (currentStats.wins || 0) + 1;
+                    } else if (myResult === 'loss') {
+                        currentStats.losses = (currentStats.losses || 0) + 1;
+                    }
+                    // 무승부(draw)는 'plays'만 1 증가시킵니다.
+                    
+                    return currentStats; // 새 전적 데이터 반환
+                }, (error, committed, snapshot) => {
+                    if (error) {
+                        console.error("[Stats] 전적 업데이트 트랜잭션 실패:", error);
+                    } else if (committed) {
+                        console.log("[Stats] 전적 업데이트 성공:", snapshot.val());
+                        
+                        // 5. [보너스] 경험치 및 포인트 지급 (사용자 요청 로직)
+                        let expGained, pointsGained;
+
+                        if (myResult === 'win') {
+                            // 승리
+                            expGained = 120;
+                            pointsGained = 200;
+                        } else {
+                            // 패배 또는 무승부 (무승부도 패배와 동일한 기본 보상 적용)
+                            expGained = 30;
+                            pointsGained = 100;
+                        }
+
+                        // 5-1. 경험치(exp) 업데이트
+                        const expRef = usersRef.child(myPlayerId).child('profile/exp');
+                        expRef.transaction(currentExp => {
+                            return (currentExp || 0) + expGained;
+                        });
+
+                        // 5-2. 포인트(points) 업데이트
+                        const pointsRef = usersRef.child(myPlayerId).child('profile/points');
+                        pointsRef.transaction(currentPoints => {
+                            return (currentPoints || 0) + pointsGained;
+                        });
+                    }
+                });
+            }
+
+            // 약 1052행 'startCountdown' 함수 (전체 교체)
+            // 약 1052행 'startCountdown' 함수 (전체 교체)
+            function startCountdown() {
+                if (!countdownOverlayEl || !countdownNumberEl) return;
+                
+                countdownOverlayEl.style.display = 'flex';
+                let count = 3;
+                
+                function runCount() {
+                    countdownNumberEl.textContent = count;
+                    countdownNumberEl.style.animation = 'none';
+                    countdownNumberEl.offsetHeight; // Reflow
+                    countdownNumberEl.style.animation = 'countdown-zoom 1s forwards';
+                    
+                    // ✨ [수정] 3, 2, 1 까지만 표시하도록 count > 1 로 변경
+                    if (count > 1) { 
+                        count--;
+                        setTimeout(runCount, 1000); // 1초마다 반복
+                    } else {
+                        // "1"이 표시된 후 1초 뒤에 게임 시작
+                        setTimeout(() => {
+                            countdownOverlayEl.style.display = 'none';
+                            playSound('sound-background'); // 배경음악 시작
+                            setupGameLayout(); // 맵/요소 렌더링 시작
+                            startGameTimer(); // 게임 타이머 시작
+                        }, 1000); // "1"이 사라지는 시간
+                    }
+                }
+                
+                // ✨ [FIX] 오버레이가 켜질 시간(1프레임)을 번 후 카운트 시작
+                setTimeout(runCount, 50); // 50ms 지연
+            }
+
+            // ✨ [신규] 게임 타이머 시작 함수 (모든 클라이언트)
+            function startGameTimer() {
+                // ✨ [수정] 타이머가 이미 실행 중이면 중복 실행 방지
+                if (gameTimerInterval) return;
+
+                // ✨ [수정] gameStartTime이 없으면(드문 경우), 시작 불가.
+                // listenToRoomChanges가 설정할 때까지 기다려야 함.
+                if (!currentRoomData.gameStartTime) {
+                    console.warn("gameStartTime 없이 타이머 시작 시도. 대기...");
+                    return; 
+                }
+
+                const startTime = currentRoomData.gameStartTime; // 이제 null이 아님
+
+                gameTimerInterval = setInterval(() => {
+                    const now = Date.now() + serverTimeOffset;
+                    const elapsed = Math.floor((now - startTime) / 1000);
+                    const remaining = Math.max(0, GAME_TIME_LIMIT - elapsed);
+                    
+                    updateTimerDisplay(remaining);
+
+                    // --- 유령 AI 스폰 로직 (미래 기능) ---
+                    if (remaining <= 90 && !ghostSpawned) { 
+                        // spawnGhost(); // TODO: 유령 AI 스폰 함수 호출
+                        console.log("유령 스폰 시간!");
+                        ghostSpawned = true; // 중복 스폰 방지
+                    }
+
+                    // --- 시간 종료 처리 (방장만) ---
+                    if (remaining <= 0 && isHost) {
+                        stopGameTimer();
+                        checkWinCondition(true); // '시간 종료'로 승패 판정
+                    }
+                }, 1000);
+            }
+
+            // ✨ [신규] 게임 타이머 중지 함수
+            function stopGameTimer() {
+                if (gameTimerInterval) {
+                    clearInterval(gameTimerInterval);
+                    gameTimerInterval = null;
+                }
+            }
+
+            // ✨ [신규] 타이머 UI 업데이트 함수
+            function updateTimerDisplay(totalSeconds) {
+                const minutes = Math.floor(totalSeconds / 60);
+                const seconds = totalSeconds % 60;
+                if(gameTimerEl) {
+                    gameTimerEl.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                }
+            }
+
+            // 게임 오버 화면 표시 함수
+            function showGameOver(winnerId) {
+                // ✨ [신규] 타이머, 배경음악 정지
+                stopGameTimer(); 
+                try { document.getElementById('sound-background').pause(); } catch(e) {}
+
+                let message = "무승부!"; // 기본 메시지
+                if (winnerId) { // 승자가 있으면
+                    const winnerData = currentRoomData?.players?.[winnerId]; // 승자 데이터 가져오기
+                    // 승자 이름 결정 (데이터 없으면 기본값 사용)
+                    const winnerName = winnerData?.nickname || (winnerId === myPlayerId ? myNickname : '상대방');
+                    message = `🎉 ${winnerName} 승리! 🎉`; // 승리 메시지
+
+                    // ✨ [신규] 승/패 사운드 재생
+                    playSound(winnerId === myPlayerId ? 'sound-win' : 'sound-lose');
+                } else {
+                    // ✨ [신규] 무승부 사운드 (패배 사운드 재활용)
+                    playSound('sound-lose');
+                }
+                // gameOverMessage.textContent = message; // modalContent.innerHTML에서 직접 설정하므로 이 줄은 삭제 가능
+
+                // ✨ [신규] '다시 하기' 버튼 HTML 추가 (알까기.html 참조)
+                const modalContent = gameOverModal.querySelector('.modal-content');
+                
+                modalContent.innerHTML = `
+                    <h2 style="font-size: 1.8em; margin-bottom: 10px; font-weight: 700;">게임 종료!</h2>
+                    <p id="game-over-message" style="font-size: 1.2em; margin-bottom: 30px; color: white;">${message}</p>
+                    
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                        <button id="rematch-btn" class="modal-btn primary">다시 하기</button>
+                        <button id="lobby-btn" class="modal-btn secondary">대기실로</button> 
+                    </div>
+                `;
+                gameOverModal.classList.add('active'); // 모달 보이게
+
+                // ✨ [수정] 로비 버튼 이벤트 리스너: 게임방.html로 이동하도록 변경
+                const lobbyBtnGameOver = modalContent.querySelector('#lobby-btn');
+                if(lobbyBtnGameOver) {
+                    lobbyBtnGameOver.onclick = () => { 
+                        // 현재 방 ID를 URL 파라미터로 넘겨 게임방으로 이동
+                        if (roomRef) { // roomRef가 유효한지 확인
+                            const roomId = roomRef.key; // 현재 방의 고유 키(ID) 가져오기
+                            window.location.href = `게임방.html?roomId=${roomId}`; // ✅ 게임방.html로 이동
+                        } else {
+                            // 혹시 모를 오류 발생 시 대기실로 이동
+                            console.error("roomRef가 없어 게임방으로 돌아갈 수 없습니다.");
+                            window.location.href = '대기실.html'; 
+                        }
+                    }; 
+                }
+
+                // ✨ [신규] '다시 하기' 버튼 이벤트 리스너 (알까기.html 참조)
+                const rematchBtn = modalContent.querySelector('#rematch-btn');
+                if (rematchBtn) {
+                    rematchBtn.addEventListener('click', () => {
+                        if (roomRef) {
+                            rematchBtn.disabled = true;
+                            rematchBtn.textContent = '상대방 기다리는 중...';
+                            // Firebase에 재시작 요청
+                            roomRef.child('rematchRequests').child(myPlayerId).set(true);
+                        }
+                    });
+                }
+            }
+
+
+            // 헤더 업데이트 함수 (플레이어 정보 표시)
+            // ✨ [수정] 깜빡임 해결을 위해 innerHTML 대신 DOM 요소 업데이트
+            function updateHeader(players) {
+                if (!players) players = {}; // 방어 코드
+                const playerIdsFromData = Object.keys(players);
+                const playerIdsSet = new Set(playerIdsFromData);
+
+                // --- 1단계: 기존 요소 업데이트 / 신규 요소 생성 ---
+                playerIdsFromData.forEach(playerId => {
+                    const pData = players[playerId];
+                    if (!pData || !pData.avatar) return; // 유효성 검사
+
+                    let pInfoEl = headerPlayerElements[playerId]; // 트래커에서 DOM 요소 찾기
+                    let avatarEl, statsEl;
+
+                    if (!pInfoEl) { 
+                        // --- 요소가 없으면 새로 생성 ---
+                        pInfoEl = document.createElement('div');
+                        pInfoEl.className = 'player-info';
+                        pInfoEl.id = `header-player-${playerId}`; // 고유 ID 부여
+
+                        avatarEl = document.createElement('div');
+                        avatarEl.className = 'player-avatar'; // 찾기용 클래스
+
+                        statsEl = document.createElement('div');
+                        statsEl.className = 'player-stats'; // 찾기용 클래스
+
+                        pInfoEl.appendChild(avatarEl);
+                        pInfoEl.appendChild(statsEl);
+                        gameHeader.appendChild(pInfoEl); // 헤더에 추가
+                        headerPlayerElements[playerId] = pInfoEl; // 트래커에 저장
+
+                        // 아바타는 게임 중 안 바뀌므로 한 번만 설정
+                        const avatarSet = AVATAR_SETS[pData.avatar] || AVATAR_SETS['default_bomber'];
+                        if (avatarSet) {
+                            avatarEl.innerHTML = `<img src="${avatarSet.front}" alt="av">`;
+                        } else if (pData.avatar.startsWith('http') || /\.(png|jpg|jpeg|gif|webp)$/i.test(pData.avatar)) {
+                            avatarEl.innerHTML = `<img src="${pData.avatar}" alt="av">`;
+                        } else {
+                            avatarEl.textContent = pData.avatar;
+                        }
+
+                    } else { 
+                        // --- 요소가 이미 있으면, 자식(스탯) 요소 찾기 ---
+                        statsEl = pInfoEl.querySelector('.player-stats');
+                    }
+
+                    // --- 2단계: 스탯(innerHTML) 업데이트 ---
+                    // (이 부분은 스탯이 변경될 수 있으므로 매번 실행)
+                    if (pData.stats && statsEl) {
+                        const newStatsHTML = `
+                            <span style="display: flex; align-items: center; gap: 3px;">
+                                <img src="./봄버맨사운드/물풍선아이템.png" alt="bomb" style="width: 1.2em; height: 1.2em; object-fit: contain;">
+                                ${pData.stats.maxBombs ?? 1}
+                            </span>
+                           <span style="display: flex; align-items: center; gap: 3px;">
+                                <img src="./봄버맨사운드/물줄기강화.png" alt="range" style="width: 1.1em; height: 1.1em; object-fit: contain;">
+                                ${pData.stats.bombRange ?? 1}
+                            </span>
+                            <span style="display: flex; align-items: center; gap: 3px;">
+                                <img src="./봄버맨사운드/속도업.png" alt="speed" style="width: 1.1em; height: 1.1em; object-fit: contain;">
+                                ${pData.stats.speed ?? 1}
+                            </span>
+                        `;
+                        
+                        // ✨ [핵심] DOM의 내용과 새 내용이 다를 때만 업데이트 (성능 향상)
+                        if (statsEl.innerHTML !== newStatsHTML) {
+                            statsEl.innerHTML = newStatsHTML;
+                        }
+                    }
+                });
+
+                // --- 3단계: 나간 플레이어 요소 제거 ---
+                for (const playerId in headerPlayerElements) {
+                    if (!playerIdsSet.has(playerId)) {
+                        headerPlayerElements[playerId].remove(); // DOM에서 제거
+                        delete headerPlayerElements[playerId]; // 트래커에서 제거
+                    }
+                }
+            }
+
+function useNeedle() {
+                // 내 플레이어 데이터, 스탯 없으면 중단
+                const myStats = currentRoomData?.players?.[myPlayerId]?.stats;
+                if (!myStats) return;
+
+                // 살아있고, 갇혀있고, 바늘이 1개 이상 있을 때만 사용 가능
+                if (myStats.isAlive === true && myStats.isTrapped === true && (myStats.needles || 0) > 0) {
+                    const updates = {};
+                    updates[`players/${myPlayerId}/stats/isTrapped`] = false; // 갇힘 상태 해제
+                    updates[`players/${myPlayerId}/stats/trapTime`] = null; // 갇힌 시간 제거
+                    updates[`players/${myPlayerId}/stats/needles`] = (myStats.needles || 0) - 1; // 바늘 개수 감소
+
+                    // Firebase 업데이트 요청
+                    roomRef.update(updates).catch(error => console.error("바늘 사용 오류:", error));
+                    
+                    playSound('sound-needle'); // ✨ [수정] 바늘 효과음 재생
+                }
+            }
+
+            function useShield() {
+                // 내 플레이어 데이터, 스탯 없으면 중단
+                const myStats = currentRoomData?.players?.[myPlayerId]?.stats;
+                if (!myStats) return;
+
+                // 현재 시간
+                const now = Date.now() + serverTimeOffset;
+                const isShieldActive = myStats.shieldActiveUntil && myStats.shieldActiveUntil > now;
+
+                // 살아있고, 안 갇혔고, 쉴드 아이템이 1개 이상이고, 쉴드가 비활성화 상태일 때
+                if (myStats.isAlive === true && myStats.isTrapped !== true && (myStats.shields || 0) > 0 && !isShieldActive) {
+                    
+                    // playSound('sound-shield-activate'); // (TODO: 쉴드 활성화 사운드)
+
+                    // Firebase 업데이트 요청
+                    roomRef.update({
+                        [`players/${myPlayerId}/stats/shields`]: (myStats.shields || 0) - 1, // 쉴드 1개 소모
+                        [`players/${myPlayerId}/stats/shieldActiveUntil`]: (Date.now() + serverTimeOffset) + 3000 // ✨ 3초 뒤 만료 시간 설정
+                    }).catch(error => console.error("쉴드 사용 오류:", error));
+                }
+            }
+
+            function useDart() {
+                // 내 플레이어 데이터, 스탯 없으면 중단
+                const myStats = currentRoomData?.players?.[myPlayerId]?.stats;
+                const myPos = currentRoomData?.players?.[myPlayerId]; // ✨ [신규] 내 위치
+                if (!myStats || !myPos) return; // ✨ [수정] 위치 정보도 확인
+
+                // 살아있고, 안 갇혔고, 다트가 1개 이상 있을 때
+                if (myStats.isAlive === true && myStats.isTrapped !== true && (myStats.darts || 0) > 0) {
+                    
+                    // ✨ [삭제] 1. 폭탄 찾기 로직 모두 삭제
+
+                    // 2. (사운드)
+                    // playSound('sound-dart-throw'); // (사운드는 이미 dartVisuals에서 재생됨)
+                    
+                    // 3. ✨ [수정] Firebase에 "방향" 데이터로 요청 생성
+                    const reqId = roomRef.child('dartRequests').push().key;
+                    roomRef.child('dartRequests/' + reqId).set({
+                        playerId: myPlayerId,
+                        startR: myPos.r, // ✨ [신규] 시작 행
+                        startC: myPos.c, // ✨ [신규] 시작 열
+                        dirDr: lastMoveDirection.dr, // ✨ [신규] 방향 (행)
+                        dirDc: lastMoveDirection.dc  // ✨ [신규] 방향 (열)
+                    });
+
+                    // 4. (선택적) 로컬에서 즉시 다트 개수 1개 차감 (UI 반응속도)
+                    const dartSlot = document.getElementById('item-slot-3');
+                    if (dartSlot) {
+                         dartSlot.disabled = true; // 중복 클릭 방지
+                         const countEl = dartSlot.querySelector('.item-count');
+                         if(countEl) {
+                             const currentCount = parseInt(countEl.textContent || 0, 10);
+                             if (currentCount > 0) {
+                                countEl.textContent = currentCount - 1;
+                             }
+                         }
+                    }
+                }
+            }
+
+           // 조작 버튼/키 설정 함수
+            function setupControls() {
+                // D-Pad 버튼 정보 객체
+                const dPadButtons = {
+                    'btn-up': { dir: 'up', x: 0, y: -1, el: document.getElementById('btn-up') },
+                    'btn-down': { dir: 'down', x: 0, y: 1, el: document.getElementById('btn-down') },
+                    'btn-left': { dir: 'left', x: -1, y: 0, el: document.getElementById('btn-left') },
+                    'btn-right': { dir: 'right', x: 1, y: 0, el: document.getElementById('btn-right') },
+                };
+
+                // 각 D-Pad 버튼에 이벤트 리스너 추가
+                Object.values(dPadButtons).forEach(btn => {
+                     // 버튼 요소 없으면 중단
+                     if(!btn.el) return;
+                     // 터치 시작 또는 마우스 누르기 시작 이벤트
+                    const start = (e) => {
+                        e.preventDefault(); // 기본 동작 방지 (스크롤 등)
+                        
+                        // ✨ [수정] 죽었거나 '갇혔으면' 조작 불가
+                        const myStats = currentRoomData?.players?.[myPlayerId]?.stats;
+                        if (myStats?.isAlive === false || myStats?.isTrapped === true) return;
+                        // 모든 버튼 비활성 스타일 제거
+                        Object.values(dPadButtons).forEach(b => { if(b.el) b.el.classList.remove('active'); });
+                        btn.el.classList.add('active'); // 현재 버튼 활성 스타일 추가
+                        startContinuousMove(btn.dir, btn.x, btn.y); // 연속 이동 시작
+                    };
+                    // 터치 종료 또는 마우스 떼기 이벤트
+                    const end = (e) => {
+                        e.preventDefault();
+                         if(btn.el) btn.el.classList.remove('active'); // 활성 스타일 제거
+                        // 현재 이동 방향과 같으면 이동 중지
+                        if (moveDirection.current === btn.dir) {
+                            stopContinuousMove();
+                        }
+                    };
+                    // 이벤트 리스너 등록
+                    btn.el.addEventListener('mousedown', start);
+                    btn.el.addEventListener('touchstart', start, { passive: false });
+                    btn.el.addEventListener('mouseup', end);
+                    btn.el.addEventListener('touchend', end);
+                    btn.el.addEventListener('mouseleave', end); // 버튼 영역 벗어나도 중지
+                    
+                    // ✨ [신규] 멀티터치 버그 수정을 위해 touchcancel 이벤트 추가
+                    btn.el.addEventListener('touchcancel', end); 
+                });
+
+                 // 폭탄 버튼 설정
+                 const bombButton = document.getElementById('bomb-btn');
+                 if (bombButton) { // 버튼 존재하면
+                    // ✨ [수정] 'click' 대신 'touchstart'를 사용 (즉시 반응 및 멀티터치 개선)
+                    bombButton.addEventListener('touchstart', (e) => {
+                        e.preventDefault(); // 'click' 이벤트 및 화면 확대/이동 방지
+                        placeBomb();
+                    }, { passive: false });
+                 }
+
+                 const needleSlotButton = document.getElementById('item-slot-1');
+                 if (needleSlotButton) {
+                     // 터치 시작 이벤트 (클릭 대신 사용)
+                     needleSlotButton.addEventListener('touchstart', (e) => {
+                         e.preventDefault(); // 기본 동작 방지
+                         // 버튼이 활성화 상태일 때만 사용
+                         if (!needleSlotButton.disabled) {
+                             useNeedle();
+                         }
+                     }, { passive: false });
+
+                     // 마우스 클릭 이벤트 (PC용)
+                     needleSlotButton.addEventListener('click', (e) => {
+                         if (!needleSlotButton.disabled) {
+                             useNeedle();
+                         }
+                     });
+                 }
+                 
+                 // ✨ [신규] 쉴드 버튼 설정
+                 const shieldSlotButton = document.getElementById('item-slot-2');
+                 if (shieldSlotButton) {
+                     // 터치 시작 이벤트
+                     shieldSlotButton.addEventListener('touchstart', (e) => {
+                         e.preventDefault(); 
+                         if (!shieldSlotButton.disabled) {
+                             useShield();
+                         }
+                     }, { passive: false });
+
+                     // 마우스 클릭 이벤트
+                     shieldSlotButton.addEventListener('click', (e) => {
+                         if (!shieldSlotButton.disabled) {
+                             useShield();
+                         }
+                     });
+                 }
+
+                 // ✨ [삭제] 실수로 추가된 닫는 괄호 } 제거
+                 // } 
+
+                 // ✨ [신규] 다트 버튼 설정
+                 const dartSlotButton = document.getElementById('item-slot-3');
+                 if (dartSlotButton) {
+                     // 터치 시작 이벤트
+                     dartSlotButton.addEventListener('touchstart', (e) => {
+                         e.preventDefault(); 
+                         if (!dartSlotButton.disabled) {
+                             useDart();
+                         }
+                     }, { passive: false });
+
+                     // 마우스 클릭 이벤트
+                     dartSlotButton.addEventListener('click', (e) => {
+                         if (!dartSlotButton.disabled) {
+                             useDart();
+                         }
+                     });
+                 } // ✨ [수정] 괄호 위치 수정 (if dartSlotButton)
+
+                // PC 키보드 누르기 이벤트
+                document.addEventListener('keydown', (e) => {
+                    
+                    const myStats = currentRoomData?.players?.[myPlayerId]?.stats;
+                    // ✨ [수정] 죽거나 갇힌 상태인지 확인 (이동/폭탄 설치 제어용)
+                    const isTrappedOrDead = myStats?.isAlive === false || myStats?.isTrapped === true;
+
+                    // ✨ [수정] e.key 대신 e.code를 사용하여 숫자패드와 상단 숫자키를 모두 지원
+                    switch(e.code) {
+                        // --- 이동 키 (죽거나 갇히면 안됨) ---
+                        case 'ArrowUp':
+                        case 'ArrowDown':
+                        case 'ArrowLeft':
+                        case 'ArrowRight':
+                            if (isTrappedOrDead) return;
+                            e.preventDefault();
+                            if (e.code === 'ArrowUp') startContinuousMove('up', 0, -1);
+                            else if (e.code === 'ArrowDown') startContinuousMove('down', 0, 1);
+                            else if (e.code === 'ArrowLeft') startContinuousMove('left', -1, 0);
+                            else if (e.code === 'ArrowRight') startContinuousMove('right', 1, 0);
+                            break;
+                        
+                        // --- 폭탄 키 (죽거나 갇히면 안됨) ---
+                        case 'Space':
+                            if (isTrappedOrDead) return;
+                            e.preventDefault();
+                            placeBomb();
+                            break; 
+                        
+                        // --- ✨ [신규] 아이템 단축키 (버튼의 disabled 상태를 따름) ---
+                        
+                        // 키 1 (다트 - slot 3)
+                        case 'Digit1':
+                        case 'Numpad1': { // { }는 const 변수 스코프를 위해 추가
+                            e.preventDefault();
+                            const dartSlot = document.getElementById('item-slot-3');
+                            if (dartSlot && !dartSlot.disabled) {
+                                useDart();
+                                // ✨ [신규] 시각적 피드백
+                                dartSlot.classList.add('active-key');
+                                setTimeout(() => dartSlot.classList.remove('active-key'), 100);
+                            }
+                            break;
+                        }
+                            
+                        // 키 2 (쉴드 - slot 2)
+                        case 'Digit2':
+                        case 'Numpad2': {
+                            e.preventDefault();
+                            const shieldSlot = document.getElementById('item-slot-2');
+                            if (shieldSlot && !shieldSlot.disabled) {
+                                useShield();
+                                // ✨ [신규] 시각적 피드백
+                                shieldSlot.classList.add('active-key');
+                                setTimeout(() => shieldSlot.classList.remove('active-key'), 100);
+                            }
+                            break;
+                        }
+                            
+                       // 키 3 (바늘 - slot 1)
+                        case 'Digit3':
+                        case 'Numpad3': {
+                            e.preventDefault();
+                            const needleSlot = document.getElementById('item-slot-1');
+                            if (needleSlot && !needleSlot.disabled) {
+                                useNeedle();
+                                // ✨ [신규] 시각적 피드백
+                                needleSlot.classList.add('active-key');
+                                setTimeout(() => needleSlot.classList.remove('active-key'), 100);
+                            }
+                            break;
+                        }
+                    }
+                });
+
+                // ✨ [신규] PC 키보드 떼기 이벤트 (버그 수정)
+                document.addEventListener('keyup', (e) => {
+                    const currentDir = moveDirection.current;
+                    if (!currentDir) return; // 이동 중이 아니면 무시
+
+                    // 떼어진 키가 현재 이동 방향과 일치할 때만 중지
+                    if ( (e.code === 'ArrowUp' && currentDir === 'up') ||
+                         (e.code === 'ArrowDown' && currentDir === 'down') ||
+                         (e.code === 'ArrowLeft' && currentDir === 'left') ||
+                         (e.code === 'ArrowRight' && currentDir === 'right') )
+                    {
+                        e.preventDefault();
+                        stopContinuousMove();
+                    }
+                });
+            }
+
+
+            function startContinuousMove(dir, x, y) {
+              // 이미 해당 방향으로 이동 중이면 중단
+                if (moveDirection.current === dir) return;
+                stopContinuousMove(); // 기존 이동 중지
+                moveDirection = { x, y, current: dir }; // 새 이동 방향 설정
+                lastMoveDirection = { dr: y, dc: x }; // ✨ [신규] 마지막 방향 저장
+
+                // ✨ 재귀적으로 움직임을 처리할 함수
+                const moveLoop = () => {
+                    // 1. 이동이 중지되었는지 확인
+                    if (moveDirection.current !== dir) return; 
+
+                    // 2. 생존 상태 확인
+                    if (currentRoomData?.players?.[myPlayerId]?.stats?.isAlive === false) {
+                        stopContinuousMove();
+                        return;
+                    }
+                    
+                    // 3. 이동 시도
+                    tryMove(moveDirection.x, moveDirection.y);
+
+                    // 4. ✨ 다음 이동 속도를 '최신' 데이터로 다시 계산
+                    const myStats = currentRoomData?.players?.[myPlayerId]?.stats || { speed: 1 };
+                    const speedLevel = Math.max(0, (myStats.speed || 1) - 1);
+                    const currentInterval = speedLevels[Math.min(speedLevel, speedLevels.length - 1)];
+
+                    // 5. 다음 이동 예약 (setInterval 대신 setTimeout 사용)
+                    moveInterval = setTimeout(moveLoop, currentInterval);
+                };
+                
+                // ✨ 최초 1회 즉시 실행 (즉시 이동 시도)
+                // tryMove(x, y)를 호출하는 대신 moveLoop()를 바로 호출하여 
+                // 이동 -> 속도계산 -> 다음 이동 예약을 한 사이클로 묶습니다.
+                moveLoop();
+            }
+
+
+           function stopContinuousMove() {
+                clearTimeout(moveInterval); // ✨ clearInterval -> clearTimeout
+                moveInterval = null; // ID 초기화
+                moveDirection.current = null; // 현재 방향 초기화
+                 // D-Pad 버튼 시각 효과 초기화
+                 const dPadButtons = {
+                    'btn-up': { el: document.getElementById('btn-up') },
+                    'btn-down': { el: document.getElementById('btn-down') },
+                    'btn-left': { el: document.getElementById('btn-left') },
+                    'btn-right': { el: document.getElementById('btn-right') },
+                };
+                 Object.values(dPadButtons).forEach(btn => {
+                      if(btn?.el) btn.el.classList.remove('active');
+                 });
+            }
+
+
+            // 이동 시도 함수 (아이템 획득 및 플레이어 충돌 처리)
+            function tryMove(dc, dr) {
+                // 내 플레이어 데이터, 스탯 없거나 죽었으면 중단
+                if (!currentRoomData?.players?.[myPlayerId]?.stats?.isAlive) return;
+                const myPos = currentRoomData.players[myPlayerId];
+                // 위치 정보 없으면 중단
+                if (myPos.r === undefined || myPos.c === undefined) return;
+                
+                // 새 위치 계산
+                const newR = myPos.r + dr;
+                const newC = myPos.c + dc;
+
+                // 1. 이동 가능 여부 (벽, 상자, 폭탄)
+                if (!isWalkable(newR, newC)) {
+                    return; // 이동 불가
+                }
+
+                // 2. 이동할 위치의 객체 확인 (아이템, 갇힌 플레이어)
+                const updates = {}; // 내(mover) 업데이트
+                const items = currentRoomData.items || {};
+                const players = currentRoomData.players || {};
+                let collectedItemId = null;
+                let collectedItemType = null;
+                let collidedTrappedPlayerId = null; // ✨ [수정] 충돌한 '갇힌' 플레이어의 ID
+
+                // 2a. 갇힌 플레이어 확인
+                for (const playerId in players) {
+                    if (playerId === myPlayerId) continue; // 자기 자신 제외
+                    const pData = players[playerId];
+                    // 살아있고, 갇힌 플레이어가 새 위치에 있으면
+                    if (pData && pData.r === newR && pData.c === newC && pData.stats?.isAlive === true && pData.stats?.isTrapped === true) {
+                        collidedTrappedPlayerId = playerId; // ✨ [수정] ID 저장
+                        break;
+                    }
+                }
+
+                // 2b. 아이템 확인 (갇힌 플레이어와 충돌 안했을 때만)
+                if (!collidedTrappedPlayerId) {
+                    for (const itemId in items) {
+                        const itemData = items[itemId];
+                        if (itemData && itemData.isVisible && itemData.r === newR && itemData.c === newC) {
+                            collectedItemId = itemId;
+                            collectedItemType = itemData.type;
+                            break; // 하나만 획득
+                        }
+                    }
+                }
+                
+                // 3. 충돌/이동/아이템 획득 처리
+                // 현재 내 스탯 (없으면 기본값)
+                const myStats = { ...(myPos.stats || { maxBombs: 1, bombRange: 1, speed: 1, isAlive: true, needles: 0, shields: 0, darts: 0, shieldActiveUntil: null }) };
+                
+                // 3a. ✨ [수정] 갇힌 플레이어와 충돌 (내가 터트림)
+                // 3a. ✨ [수정] 갇힌 플레이어와 충돌 (내가 터트림)
+                if (collidedTrappedPlayerId) {
+                    // (사운드는 사망 시 checkWinCondition -> showGameOver에서 처리)
+                    // playSound('sound-trapped'); // (터트리는 소리가 있다면 여기서 재생)
+
+                    // 내(mover) 업데이트: 이동
+                    updates.r = newR;
+                    updates.c = newC;
+                    updates.direction = moveDirection.current;
+
+                    // 상대방(trapped) 업데이트: 사망
+                    const trappedUpdates = {
+                        'stats/isAlive': false,
+                        'stats/isTrapped': false,
+                        'stats/trapTime': null
+                    };
+                    
+                    // --- 클라이언트 예측 이동 (충돌) ---
+                    currentRoomData.players[myPlayerId].r = newR; // 내 위치 변경
+                    currentRoomData.players[myPlayerId].c = newC;
+                    currentRoomData.players[collidedTrappedPlayerId].stats.isAlive = false; // 상대방 사망
+                    currentRoomData.players[collidedTrappedPlayerId].stats.isTrapped = false;
+                    
+                    const myPlayerEl = playerElements[myPlayerId];
+                    if (myPlayerEl && TILE_WIDTH > 0 && TILE_HEIGHT > 0) {
+                        const x = newC * TILE_WIDTH; const y = newR * TILE_HEIGHT;
+                        myPlayerEl.style.left = `${x}px`; myPlayerEl.style.top = `${y}px`;
+                        if (myIndicatorElement) {
+                            const indicatorY = y - TILE_HEIGHT * 0.6;
+                            myIndicatorElement.style.left = `${x}px`; myIndicatorElement.style.top = `${indicatorY}px`;
+                        }
+                    }
+                    // --- 예측 이동 끝 ---
+                    
+                    // Firebase에 '내 업데이트'와 '상대 업데이트'를 모두 전송
+                    roomRef.child('players/' + myPlayerId).update(updates)
+                        .catch(error => console.error("플레이어 이동(충돌) 업데이트 오류:", error));
+                    roomRef.child('players/' + collidedTrappedPlayerId).update(trappedUpdates)
+                        .catch(error => console.error("플레이어 사망(충돌) 업데이트 오류:", error));
+                    
+                    // ✨ [수정] 방장이 아니더라도, 방장에게 승리 확인 요청을 보냄
+                    // (기존 if (isHost) { ... } 블록 삭제)
+                    roomRef.child('checkWinRequest').set(firebase.database.ServerValue.TIMESTAMP);
+
+
+                // 3b. 아이템 획득
+                } else if (collectedItemId && collectedItemType) {
+                    playSound('sound-item-get');
+                    // 스탯 업데이트
+                    // 스탯 업데이트
+                    if (collectedItemType === ITEM_TYPES.BOMB_COUNT) myStats.maxBombs = Math.min(6, (myStats.maxBombs || 1) + 1);
+                    else if (collectedItemType === ITEM_TYPES.BOMB_RANGE) myStats.bombRange = Math.min(4, (myStats.bombRange || 1) + 1);
+                    else if (collectedItemType === ITEM_TYPES.SPEED) myStats.speed = Math.min(3, (myStats.speed || 1) + 1);
+                    else if (collectedItemType === ITEM_TYPES.SHIELD) myStats.shields = Math.min(3, (myStats.shields || 0) + 1);
+                    else if (collectedItemType === ITEM_TYPES.DART) myStats.darts = Math.min(3, (myStats.darts || 0) + 1);
+                    else if (collectedItemType === ITEM_TYPES.NEEDLE) myStats.needles = Math.min(3, (myStats.needles || 0) + 1);
+                    
+                    updates.stats = myStats;
+                    updates.r = newR; // 새 위치
+                    updates.c = newC;
+                    updates.direction = moveDirection.current;
+
+                    // 아이템 삭제 요청
+                    roomRef.child('items/' + collectedItemId).remove()
+                        .catch(error => console.error("아이템 제거 오류:", error));
+
+                    // --- 클라이언트 예측 이동 (아이템 획득) ---
+                    currentRoomData.players[myPlayerId].r = newR;
+                    currentRoomData.players[myPlayerId].c = newC;
+                    currentRoomData.players[myPlayerId].stats = myStats;
+                    updateHeader(currentRoomData.players); // 헤더 즉시 업데이트
+                    
+                    const myPlayerEl = playerElements[myPlayerId];
+                    if (myPlayerEl && TILE_WIDTH > 0 && TILE_HEIGHT > 0) {
+                        const x = newC * TILE_WIDTH; const y = newR * TILE_HEIGHT;
+                        myPlayerEl.style.left = `${x}px`; myPlayerEl.style.top = `${y}px`;
+                        if (myIndicatorElement) {
+                            const indicatorY = y - TILE_HEIGHT * 0.6;
+                            myIndicatorElement.style.left = `${x}px`; myIndicatorElement.style.top = `${indicatorY}px`;
+                        }
+                    }
+                    // --- 예측 이동 끝 ---
+
+                    // Firebase에 업데이트 전송
+                    roomRef.child('players/' + myPlayerId).update(updates)
+                        .catch(error => console.error("플레이어 업데이트 오류:", error));
+                
+                // 3c. 그냥 이동 (빈 타일)
+                } else {
+                    updates.r = newR;
+                    updates.c = newC;
+                    updates.direction = moveDirection.current;
+
+                    // --- 클라이언트 예측 이동 (빈 타일) ---
+                    currentRoomData.players[myPlayerId].r = newR;
+                    currentRoomData.players[myPlayerId].c = newC;
+
+                    const myPlayerEl = playerElements[myPlayerId];
+                    if (myPlayerEl && TILE_WIDTH > 0 && TILE_HEIGHT > 0) {
+                        const x = newC * TILE_WIDTH; const y = newR * TILE_HEIGHT;
+                        myPlayerEl.style.left = `${x}px`; myPlayerEl.style.top = `${y}px`;
+                        if (myIndicatorElement) {
+                            const indicatorY = y - TILE_HEIGHT * 0.6;
+                            myIndicatorElement.style.left = `${x}px`; myIndicatorElement.style.top = `${indicatorY}px`;
+                        }
+                    }
+                    // --- 예측 이동 끝 ---
+                    
+                    // Firebase에 업데이트 전송
+                    roomRef.child('players/' + myPlayerId).update(updates)
+                        .catch(error => console.error("플레이어 업데이트 오류:", error));
+                }
+            }
+
+
+            // 이동 가능 여부 확인 함수
+            function isWalkable(r, c) {
+                 // 1. 맵 범위 체크
+                if (r < 0 || r >= GRID_ROWS || c < 0 || c >= GRID_COLS) {
+                     return false; // 맵 밖
+                }
+                 // 2. 타일 타입 체크 (Firebase 데이터 기준)
+                 // 데이터 없으면 이동 불가 처리
+                const tileType = currentRoomData?.map?.[r]?.[c];
+                // 벽(1) 또는 상자(2)면 이동 불가
+                if (tileType === 1 || tileType === 2) {
+                    return false;
+                }
+                 // 맵 데이터 자체가 없으면 이동 불가
+                 if (tileType === undefined) return false;
+
+                 // 3. 폭탄 위치 체크
+                const bombs = currentRoomData.bombs || {};
+                // 모든 폭탄 순회
+                for (const bombId in bombs) {
+                     const bombData = bombs[bombId];
+                    // 폭탄 데이터 있고, 터지는 중 아니고, 해당 위치에 있으면 이동 불가
+                    if (bombData && !explodingBombs.has(bombId) && bombData.r === r && bombData.c === c) {
+                        return false;
+                    }
+                }
+                // 모든 조건 통과 시 이동 가능 (길 0)
+                return true;
+            }
+
+            // --- 게임 시작 ---
+            initialize();
+
+            // 페이지 벗어나기 전 처리 (타이머 정리)
+             window.addEventListener('beforeunload', () => {
+                 clearInterval(bombTimerInterval);
+                 clearInterval(gameTimerInterval); // ✨ [신규] 게임 타이머도 정리
+                 bombTimerInterval = null;
+                 gameTimerInterval = null;
+             });
+
+             // 화면 크기 변경 시 처리 (레이아웃 재계산)
+             window.addEventListener('resize', () => {
+                 // 리사이즈 멈춘 후 잠시 뒤 실행 (성능 최적화)
+                 clearTimeout(window.resizeTimeout);
+                 window.resizeTimeout = setTimeout(setupGameLayout, 150);
+             });
+        });
+    </script>
+</body>
+</html>

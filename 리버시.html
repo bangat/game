@@ -1,0 +1,1055 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>리버시 게임</title>
+    <link rel="manifest" href="manifest.json">
+    <link href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff" as="font" type="font/woff" crossorigin>
+    <style>
+        @font-face {
+            font-family: 'GmarketSans';
+            src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff') format('woff');
+            font-weight: 500;
+        }
+        @font-face {
+            font-family: 'GmarketSans';
+            src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansBold.woff') format('woff');
+            font-weight: 700;
+        }
+
+        :root {
+            --bg-color: #1a2a1a;
+            --board-bg: #006A4E;
+            --border-color: #4a2c2a;
+            --primary-color: #4a8dff;
+            --accent-color: #ffc84a;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%; height: 100%; overflow: hidden;
+            font-family: 'GmarketSans', sans-serif;
+            background-color: var(--bg-color); color: white;
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            -webkit-user-select: none; user-select: none;
+            touch-action: manipulation;
+        }
+
+        #game-wrapper {
+            width: 100%; height: 100%;
+            display: flex; flex-direction: column;
+        }
+        #game-header {
+            flex-shrink: 0; display: flex;
+            justify-content: space-around; align-items: center;
+            padding: 10px 15px; background-color: rgba(0,0,0,0.3);
+            gap: 15px;
+        }
+        
+        .player-info {
+            display: flex; flex-direction: column;
+            gap: 5px;
+            flex: 1; min-width: 0;
+            position: relative;
+        }
+        .profile-box {
+            display: flex; align-items: center; gap: 8px;
+            background-color: rgba(255,255,255,0.1);
+            padding: 8px; border-radius: 10px;
+            transition: all 0.3s ease;
+        }
+        .player-info.my-turn .profile-box {
+            background-color: var(--accent-color);
+            color: #111;
+            transform: scale(1.05);
+            box-shadow: 0 0 15px var(--accent-color);
+        }
+        .profile-box .avatar { 
+            font-size: 1.8em; 
+            width: 36px; height: 36px;
+            display: flex; justify-content: center; align-items: center;
+            flex-shrink: 0;
+        }
+        .profile-box .avatar img {
+            width: 100%; height: 100%;
+            object-fit: contain; border-radius: 50%;
+        }
+        .profile-box .nickname {
+            font-weight: 700; font-size: 1em;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .status-box {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 4px 8px; border-radius: 8px;
+            background-color: rgba(0,0,0,0.2);
+        }
+        .status-box .stone-count { font-weight: 700; font-size: 1em; }
+
+        #game-container {
+            width: 100%; flex-grow: 1;
+            display: flex; justify-content: center; align-items: center;
+            position: relative; overflow: hidden; padding: 15px;
+            background-image: url('https://www.transparenttextures.com/patterns/wood-pattern.png');
+        }
+       #game-board {
+            position: relative;
+            background-color: var(--board-bg);
+            border: 8px solid var(--border-color);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5), inset 0 0 15px rgba(0,0,0,0.4);
+            border-radius: 8px;
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            grid-template-rows: repeat(8, 1fr);
+            aspect-ratio: 1 / 1;
+            padding: 5px; gap: 2px;
+            width: 95vmin;
+            height: 95vmin;
+            max-width: 500px;
+            max-height: 500px;
+        }
+        .board-cell {
+            background-color: rgba(0,0,0,0.15);
+            border-radius: 4px;
+            display: flex; justify-content: center; align-items: center;
+        }
+        .board-cell.valid-move::after {
+            content: '';
+            width: 30%; height: 30%;
+            background-color: rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            cursor: pointer;
+            animation: pulse-valid 1.5s infinite;
+        }
+        @keyframes pulse-valid { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
+        
+        .board-cell.best-move::after {
+            content: '★';
+            width: 70%; height: 70%;
+            display: flex; justify-content: center; align-items: center;
+            font-size: 1.5em;
+            color: white;
+            background-color: var(--accent-color);
+            border-radius: 50%;
+            cursor: pointer;
+            animation: pulse-best 1.2s infinite;
+            text-shadow: 0 0 5px black;
+        }
+        @keyframes pulse-best {
+            0% { transform: scale(0.9); box-shadow: 0 0 5px var(--accent-color); }
+            50% { transform: scale(1.1); box-shadow: 0 0 20px var(--accent-color); }
+            100% { transform: scale(0.9); box-shadow: 0 0 5px var(--accent-color); }
+        }
+
+        .stone {
+            width: 90%; height: 90%;
+            border-radius: 50%;
+            transition: transform 0.6s;
+            transform-style: preserve-3d;
+            position: relative;
+        }
+        .stone-face {
+            position: absolute; width: 100%; height: 100%;
+            border-radius: 50%;
+            backface-visibility: hidden; -webkit-backface-visibility: hidden;
+            box-shadow: inset 0 -3px 6px rgba(0,0,0,0.3), inset 0 3px 6px rgba(255,255,255,0.2), 0 3px 6px rgba(0,0,0,0.4);
+        }
+        .stone-face.black-face {
+            background: radial-gradient(circle at 30% 30%, #555, #333 50%, #222);
+            transform: rotateY(180deg);
+        }
+        .stone-face.white-face {
+            background: radial-gradient(circle at 30% 30%, #ffffff, #f5f5f5 50%, #e0e0e0);
+        }
+        .stone.black { transform: rotateY(180deg); }
+        .stone.white { transform: rotateY(0deg); }
+        .stone.placed { animation: place-anim 0.3s ease-out; }
+        @keyframes place-anim { from { transform: scale(0.5); } to { transform: scale(1); } }
+        
+        .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 200; text-align: center; background-color: rgba(0,0,0,0.7); }
+        .spinner { border: 4px solid rgba(255, 255, 255, 0.3); border-radius: 50%; border-top: 4px solid white; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        .modal-content { background: #2c3e50; color: white; padding: 0; border-radius: 20px; width: 90%; max-width: 400px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); overflow: hidden; }
+        .modal-header { background-color: #34495e; padding: 15px; }
+        .modal-header h2 { font-size: 1.8em; }
+        .modal-body { padding: 25px; }
+        .modal-buttons { display: flex; flex-direction: column; gap: 12px; align-items: center; margin-top: 25px; }
+        .menu-btn { width: 100%; padding: 15px; font-size: 1.2em; font-weight: bold; border-radius: 12px; border: none; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.1s; margin: 8px 0; }
+        .menu-btn.primary { background-color: var(--primary-color); color: white; }
+        .menu-btn.secondary { background-color: #e9eff8; color: #333; }
+        .menu-btn:active { transform: scale(0.98); }
+        .menu-btn:disabled { background-color: #ccc; color: #888; cursor: not-allowed; }
+        
+        #countdown-number { font-size: 8em; font-weight: 700; color: white; text-shadow: 0 0 30px rgba(255,255,255,0.8); animation: countdown-pop 1s; }
+        @keyframes countdown-pop { from { transform: scale(0.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+        #score-board { margin: 20px 0; }
+        .score-row { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-radius: 8px; font-size: 1.2em; font-weight: 700; margin: 8px auto; max-width: 300px; }
+        .score-row.winner { background-color: var(--accent-color); color: #111; transform: scale(1.05); }
+        .score-row.loser { background-color: #f0f3f4; color: #333; }
+        
+        .score-avatar { display: inline-flex; align-items: center; gap: 8px; }
+        .score-avatar img { width: 28px; height: 28px; object-fit: contain; border-radius: 50%; }
+        
+    </style>
+</head>
+<body>
+    <div id="game-wrapper">
+        <div id="game-header"></div>
+        <div id="game-container"><div id="game-board"></div></div>
+    </div>
+    
+    <div id="game-over-overlay" class="overlay" style="display: none;"></div>
+    <div id="info-overlay" class="overlay">
+        <div class="modal-content" style="background: transparent; box-shadow: none;">
+             <p style="color: white; font-size: 1.3em; margin-bottom: 20px;">게임에 참가하는 중...</p>
+            <div class="spinner"></div>
+        </div>
+    </div>
+
+    <audio id="place-sound" src="https://blog.kakaocdn.net/dna/cnH2Cr/dJMb9MbM5sW/AAAAAAAAAAAAAAAAAAAAAK8LHWNFSSUShSE7hgIkidBVnIkUD5U5vzXrBx2W9hE-/%EC%98%A4%EB%8D%B8%EB%A1%9C.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=CCe1TksJn9y0CIFXF%2Bwys7LCNYA%3D&attach=1&knm=tfile.mp3" preload="auto"></audio>
+    <audio id="flip-sound" src="https://blog.kakaocdn.net/dna/bBfLgT/dJMb9YwY4fF/AAAAAAAAAAAAAAAAAAAAAAKzHw-12dE9FjL7iWk1m70Y0JqL243dYvG7b5gJ0wK1/cardsound32562-37691.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=2XU4lIeFhV%2Fz11qWnQc4%252B0V5I8o%253D&attach=1&knm=tfile.mp3" preload="auto"></audio>
+    <audio id="win-sound" src="https://blog.kakaocdn.net/dna/kC4is/dJMb8WZJowA/AAAAAAAAAAAAAAAAAAAAAIQeZhVDJf0ZGAWyyMr_hsc6TMe3BFUVXd0FNTl5VDcY/%EA%B2%8C%EC%9D%B4%EC%8A%B9%EB%A6%AC.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=qZKwGj5NQeAFNrOvCPAMXc6aX9I%3D&attach=1&knm=tfile.mp3" preload="auto"></audio>
+    <audio id="loss-sound" src="https://blog.kakaocdn.net/dna/Zqr4u/dJMb9V0NWlD/AAAAAAAAAAAAAAAAAAAAANQFEr99iVFS25T5ZW3Q2dixeZXsbUzh7OWB40uYQMu9/%EC%95%8C%EA%B9%8C%EA%B8%B0%ED%8C%A8%EB%B0%B0.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=2xNnbSadPzs2ZZi1BssfyCye8jI%3D&attach=1&knm=tfile.mp3" preload="auto"></audio>
+    
+    <script src="아바타.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+  
+    <script>
+        function escapeHTML(str) {
+            if (typeof str !== 'string') return '';
+            const map = {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'};
+            return str.replace(/[&<>"']/g, m => map[m]);
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+             document.addEventListener('contextmenu', event => event.preventDefault());
+             document.addEventListener('keydown', event => {
+                 if (event.key === 'F12' ||
+                   (event.ctrlKey && event.shiftKey && ['I', 'J', 'C'].includes(event.key.toUpperCase())) ||
+                    (event.ctrlKey && event.key.toUpperCase() === 'U')) {
+                     event.preventDefault();
+                 }
+             });
+             setInterval(() => { try { debugger; } catch (e) {} }, 1000);
+
+             // ✨ [신규] 뒤로가기 모달 관련 변수 및 이벤트
+            const confirmExitModal = document.getElementById('confirm-exit-modal');
+            const exitConfirmBtn = document.getElementById('exit-confirm-btn');
+            const exitCancelBtn = document.getElementById('exit-cancel-btn');
+
+            history.pushState(null, '', location.href);
+            window.addEventListener('popstate', (e) => {
+                history.pushState(null, '', location.href); // 뒤로가기 방지 유지
+                confirmExitModal.style.display = 'flex'; // 모달 표시
+            });
+
+            exitConfirmBtn.addEventListener('click', () => {
+                // cleanupAndExit 함수가 이미 존재하므로 호출
+                cleanupAndExit();
+            });
+
+            exitCancelBtn.addEventListener('click', () => {
+                confirmExitModal.style.display = 'none'; // 모달 닫기
+            });
+
+            function ensureBoardArray(board) {
+    if (!board) return Array(64).fill(null);
+    if (Array.isArray(board)) return board;
+    
+    // Firebase에서 객체 {0: 'white', 1: null, ...} 로 반환된 경우
+    const newBoard = Array(64).fill(null);
+    for (let i = 0; i < 64; i++) {
+        newBoard[i] = board[i] || null;
+    }
+    return newBoard;
+}
+
+// ensureBoardArray 함수 아래에 추가
+function isEmpty(cell) {
+    return !cell || cell === 'empty';
+}
+
+function findValidMoves(board, color) {
+    const opponentColor = color === 'black' ? 'white' : 'black';
+    const validMoves = [];
+    const directions = [-9, -8, -7, -1, 1, 7, 8, 9];
+    
+    for (let i = 0; i < 64; i++) {
+        // ✨ 빈 칸이 아니면 건너뛰기
+        if (!isEmpty(board[i])) continue;
+        
+        let isValid = false;
+        for (const dir of directions) {
+            const firstStep = i + dir;
+            const col = i % 8;
+            
+            // 경계 체크
+            if ((dir === 1 || dir === -7 || dir === 9) && col === 7) continue;
+            if ((dir === -1 || dir === 7 || dir === -9) && col === 0) continue;
+            if (firstStep < 0 || firstStep >= 64 || board[firstStep] !== opponentColor) continue;
+            
+            let current = firstStep + dir;
+            while (current >= 0 && current < 64) {
+                // 보드 경계를 넘어가는지 체크
+                if (Math.abs((current % 8) - ((current - dir) % 8)) > 1) break;
+                
+                if (board[current] === color) { 
+                    isValid = true; 
+                    break; 
+                }
+                // ✨ 빈 칸을 만나면 중단
+                if (isEmpty(board[current])) break;
+                
+                current += dir;
+            }
+            if (isValid) break;
+        }
+        if (isValid) validMoves.push(i);
+    }
+    return validMoves;
+}
+
+            const firebaseConfig = {
+                apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
+                authDomain: "goodluck-7c14b.firebaseapp.com",
+                databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com",
+                projectId: "goodluck-7c14b",
+                storageBucket: "goodluck-7c14b.appspot.com",
+                messagingSenderId: "858281658455",
+                appId: "1:858281658455:web:9131280a459be983933b12"
+            };
+            firebase.initializeApp(firebaseConfig);
+            const db = firebase.database();
+            const auth = firebase.auth();
+            const roomsRef = db.ref('rooms');
+            const usersRef = db.ref('users');
+
+            const gameWrapper = document.getElementById('game-wrapper');
+            const gameBoard = document.getElementById('game-board');
+            const gameHeader = document.getElementById('game-header');
+            const infoOverlay = document.getElementById('info-overlay');
+            const gameOverOverlay = document.getElementById('game-over-overlay');
+            
+            let myPlayerId, myNickname, myAvatar, myColor;
+            let roomRef, currentRoomData, isHost, gameMode;
+            let countdownTimerStarted = false; // ✨ [신규] 카운트다운 중복 실행 방지 플래그
+            let isGameLive = false, gameOverFlag = false, isExiting = false;
+
+            const SPECIAL_USER_ID = "ZzdavJuEjJSVIokf9DK4F89TjN82";
+            const WEIGHT_MAP = [
+                120, -20,  20,   5,   5,  20, -20, 120,
+                -20, -40,  -5,  -5,  -5,  -5, -40, -20,
+                 20,  -5,  15,   3,   3,  15,  -5,  20,
+                  5,  -5,   3,   3,   3,   3,  -5,   5,
+                  5,  -5,   3,   3,   3,   3,  -5,   5,
+                 20,  -5,  15,   3,   3,  15,  -5,  20,
+                -20, -40,  -5,  -5,  -5,  -5, -40, -20,
+                120, -20,  20,   5,   5,  20, -20, 120
+            ];
+
+            function playSound(id) {
+                const sound = document.getElementById(id);
+                if (sound) { sound.currentTime = 0; sound.play().catch(e => {}); }
+            }
+            
+        function initialize() {
+    auth.onAuthStateChanged(user => {
+        if (user) {
+            myPlayerId = user.uid; 
+            myNickname = localStorage.getItem('userNickname') || 'Player';
+            myAvatar = localStorage.getItem('userAvatar') || '😊';
+
+            if (!myNickname) {
+                alert("플레이어 정보(닉네임)가 없습니다.");
+                window.location.href = 'index.html';
+                return;
+            }
+            
+            console.log('[리버시] Initialize - myPlayerId:', myPlayerId); // 디버깅용
+
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const roomId = urlParams.get('roomId');
+                    const mode = urlParams.get('mode');
+
+                    if (mode === 'solo') {
+                        // '혼자 하기' 모드일 경우
+                        gameMode = 'single';
+                        myColor = 'black'; // AI전에서는 항상 흑돌(선공)
+                        countdownTimerStarted = true; // ✨ [수정] 전역 플래그 설정
+                        startCountdown(); // 즉시 카운트다운 시작
+                    } else if (roomId) {
+                        // '같이 하기' 모드일 경우 (기존 로직)
+                        gameMode = 'multi'; // gameMode를 여기서 미리 설정
+                        joinRoom(roomId);
+                    } else {
+                        // 둘 다 아닐 경우
+                        alert("잘못된 접근입니다.");
+                        window.location.href = '대기실.html';
+                        return;
+                    }
+
+                } else {
+                    // 로그인되지 않은 사용자
+                    alert("로그인이 필요합니다.");
+                    window.location.href = 'index.html';
+                }
+            });
+        }
+
+            function joinRoom(roomId) {
+                console.log('[리버시] joinRoom 시작:', roomId);
+                roomRef = roomsRef.child(roomId);
+                roomRef.once('value', snapshot => {
+                    if (!snapshot.exists()) {
+                        alert("방을 찾을 수 없습니다.");
+                        window.location.href = '대기실.html';
+                        return;
+                    }
+                    currentRoomData = snapshot.val();
+                    console.log('[리버시] 현재 방 데이터:', currentRoomData);
+                    
+                    const playerIds = Object.keys(currentRoomData.players);
+                    gameMode = playerIds.includes('ai_player') ? 'single' : 'multi';
+                    isHost = currentRoomData.hostId === myPlayerId;
+                    
+                    console.log('[리버시] gameMode:', gameMode, 'isHost:', isHost, 'status:', currentRoomData.status);
+                    
+                    if (gameMode === 'single') {
+                        myColor = 'black';
+                        countdownTimerStarted = true; // ✨ [수정] 전역 플래그 설정
+                        startCountdown();
+                    } else {
+                        if (isHost) {
+                            roomRef.onDisconnect().remove();
+                        } else {
+                            roomRef.child('players/' + myPlayerId).onDisconnect().remove();
+                        }
+                        
+                        // players에 내 정보 확인
+                        const myPlayerExists = currentRoomData.players[myPlayerId];
+                        console.log('[리버시] 내 플레이어 존재:', myPlayerExists);
+                        
+                        if (!myPlayerExists) {
+                            console.log('[리버시] 플레이어 정보 추가 중...');
+                            roomRef.child('players/' + myPlayerId).set({
+                                nickname: myNickname,
+                                avatar: myAvatar,
+                                isHost: isHost
+                            });
+                        }
+                        
+                        listenToRoomChanges();
+                        
+                        // board가 이미 있으면 readyPlayers 설정 불필요
+                        if (!currentRoomData.board) {
+                            console.log('[리버시] readyPlayers 설정 중...');
+                            roomRef.child('readyPlayers/' + myPlayerId).set(true);
+                        }
+                    }
+                });
+            }
+            
+          function listenToRoomChanges() {
+                console.log('[리버시] listenToRoomChanges 시작');
+                // let countdownStarted = false; // ✨ [삭제] 로컬 변수 삭제
+                
+                roomRef.on('value', snapshot => {
+                    console.log('[리버시] Firebase 업데이트 감지');
+                    
+                    if (isExiting) {
+                        console.log('[리버시] 퇴장 중이므로 무시');
+                        return;
+                    }
+
+                    if (!snapshot.exists()) {
+                        console.log('[리버시] 방이 사라짐');
+                        if (isGameLive) alert("방장이 나가 방이 사라졌습니다.");
+                        cleanupAndExit();
+                        return;
+                    }
+                    
+                    currentRoomData = snapshot.val();
+                    console.log('[리버시] 업데이트된 방 데이터:', currentRoomData);
+                    
+                    if (!currentRoomData.players || !currentRoomData.players[myPlayerId]) {
+                        console.log('[리버시] 플레이어 정보 없음');
+                        if(isGameLive) alert("방에서 퇴장되었습니다.");
+                        cleanupAndExit();
+                        return;
+                    }
+
+                    console.log('[리버시] status:', currentRoomData.status);
+                    
+                    if (currentRoomData.status === 'playing') {
+    console.log('[리버시] 게임 중 상태');
+    
+    // ✨ board와 color가 모두 있을 때만 시작
+    if (currentRoomData.board) {
+        console.log('[리버시] 게임판이 이미 존재함');
+        
+        const playerData = currentRoomData.players[myPlayerId];
+        console.log('[리버시] myPlayerId:', myPlayerId);
+        console.log('[리버시] playerData:', playerData);
+        
+        // ✨ color가 없으면 대기 (아직 게임방에서 업데이트 중)
+        if (!playerData || !playerData.color) {
+            console.log('[리버시] 색상 할당 대기 중...');
+            infoOverlay.style.display = 'flex';
+            return; // 다음 업데이트를 기다림
+        }
+        
+        myColor = playerData.color;
+        console.log('[리버시] myColor:', myColor);
+                            
+                            // ✨ [수정] 로컬 변수 대신 전역 플래그(countdownTimerStarted) 사용
+                            if (!countdownTimerStarted) {
+    console.log('[리버시] 카운트다운 시작');
+    countdownTimerStarted = true; // ✨ [수정] 전역 플래그 설정
+    // ✨ updateHeaderUI()와 drawBoard()를 startCountdown 이후로 이동
+    infoOverlay.style.display = 'flex';
+    // ✨ [수정] 불필요한 innerHTML 초기화 제거 (startCountdown에서 3을 바로 표시)
+    // infoOverlay.innerHTML = `<div id="countdown-number"></div>`; 
+    startCountdown();
+} else if (isGameLive) {
+                                console.log('[리버시] 게임 진행 중 업데이트');
+                                infoOverlay.style.display = 'none';
+                                updateHeaderUI();
+                                drawBoard();
+                            }
+                        } else {
+                            // board가 없을 때만 readyPlayers 체크
+                            const readyPlayers = currentRoomData.readyPlayers || {};
+                            const readyCount = Object.keys(readyPlayers).length;
+                            const totalPlayers = Object.keys(currentRoomData.players).filter(id => id !== 'ai_player').length;
+                            
+                            console.log('[리버시] readyCount:', readyCount, 'totalPlayers:', totalPlayers);
+                            
+                            // [버그 수정] 게스트도 이 함수를 호출해야 'playing' 상태로 넘어감
+                            if (readyCount === totalPlayers) {
+                                if (isHost) {
+                                    console.log('[리버시] 방장이 게임 초기화 중...');
+                                    initializeMultiplayerGame();
+                                } else {
+                                                }
+                                return;
+                            } else {
+                                console.log('[리버시] 게임판 생성 대기 중...');
+                                infoOverlay.style.display = 'flex';
+                            }
+                        }
+                    } 
+                    else if (currentRoomData.status === 'gameOver' && !gameOverFlag) {
+                        console.log('[리버시] 게임 종료');
+                        gameOverFlag = true;
+                        drawBoard();
+                        showGameOverScreen();
+                    } 
+                    else if (currentRoomData.status === 'waiting') {
+                        console.log('[리버시] 대기 중 상태');
+                        
+                        // [신규] '다시하기' 후 게임오버 모달 끄기
+                        if (gameOverOverlay.style.display === 'flex') {
+                            gameOverOverlay.style.display = 'none';
+                            gameOverOverlay.innerHTML = '';
+                            gameOverFlag = false;
+                            countdownTimerStarted = false;
+                            isGameLive = false;
+                        }
+                        
+                        // [신규] '다시하기' 준비 신호 전송
+                        if (roomRef && myPlayerId && !currentRoomData.board) {
+                             roomRef.child('readyPlayers/' + myPlayerId).set(true);
+                        }
+
+                        infoOverlay.style.display = 'flex';
+                    }
+                });
+            }
+
+            function initializeMultiplayerGame() {
+                const playerIds = Object.keys(currentRoomData.players);
+                playerIds.sort(() => Math.random() - 0.5);
+                
+                const playersWithColors = { ...currentRoomData.players };
+                if (playersWithColors[playerIds[0]]) {
+                    playersWithColors[playerIds[0]].color = 'black';
+                }
+                if (playersWithColors[playerIds[1]]) {
+                    playersWithColors[playerIds[1]].color = 'white';
+                }
+                
+                const initialBoard = Array(64).fill(null);
+                initialBoard[27] = 'white'; initialBoard[28] = 'black';
+                initialBoard[35] = 'black'; initialBoard[36] = 'white';
+
+                roomRef.update({
+                    status: 'playing', 
+                    board: initialBoard,
+                    turn: 'black',
+                    players: playersWithColors,
+                    passedTurn: false,
+                    lastMove: null,
+                });
+            }
+            
+            function startCountdown() {
+    infoOverlay.style.display = 'flex';
+    let count = 3;
+    infoOverlay.innerHTML = `<div id="countdown-number">${count}</div>`;
+    
+    const interval = setInterval(() => {
+        count--;
+        const el = document.getElementById('countdown-number');
+        if(el) {
+            el.style.animation = 'none';
+            el.offsetHeight;
+            el.style.animation = 'countdown-pop 1s';
+            el.textContent = count > 0 ? count : '';
+        }
+        if (count <= 0) {
+            clearInterval(interval);
+            infoOverlay.style.display = 'none';
+            isGameLive = true; // ✨ 먼저 게임 시작 상태로 변경
+            
+            if (gameMode === 'single') {
+                setupSinglePlayerGame();
+            } else {
+                // ✨ 멀티플레이어 모드일 때 UI 업데이트
+                updateHeaderUI();
+                drawBoard();
+            }
+        }
+    }, 1000);
+}
+            
+            function setupSinglePlayerGame() {
+                const initialBoard = Array(64).fill(null);
+                initialBoard[27] = 'white'; initialBoard[28] = 'black';
+                initialBoard[35] = 'black'; initialBoard[36] = 'white';
+                
+                currentRoomData = {
+                    board: initialBoard,
+                    turn: 'black',
+                    players: {
+                        [myPlayerId]: { nickname: myNickname, avatar: myAvatar, color: 'black'},
+                        'ai_player': { nickname: 'AI', avatar: '🤖', color: 'white'}
+                    }
+                };
+                updateHeaderUI();
+                drawBoard();
+            }
+
+            // 1. ensureBoardArray 함수 (이미 추가됨 - OK)
+
+// 2. drawBoard 함수 수정
+function drawBoard() {
+    if (!currentRoomData || !currentRoomData.board) return;
+    gameBoard.innerHTML = '';
+    const boardData = currentRoomData.board;
+    // ✨ [수정] Object.values 대신 안전한 배열 변환 로직 사용
+    const board = ensureBoardArray(boardData);
+    
+    const { turn } = currentRoomData;
+    const isMyTurn = myColor === turn && isGameLive;
+      // ✨ 디버깅 로그
+    console.log('[drawBoard] isMyTurn:', isMyTurn, 'myColor:', myColor, 'turn:', turn);
+    
+    const validMoves = isMyTurn ? findValidMoves(board, myColor) : [];
+    
+    // ✨ 디버깅 로그
+    console.log('[drawBoard] validMoves:', validMoves);
+    
+    let bestMoveIndex = -1;
+    if (isMyTurn && myPlayerId === SPECIAL_USER_ID) {
+        bestMoveIndex = findBestMove(board, myColor);
+    }
+
+    for (let i = 0; i < 64; i++) {
+        const cell = board[i];
+        const cellEl = document.createElement('div');
+        cellEl.className = 'board-cell';
+
+        if (validMoves.includes(i)) {
+            cellEl.classList.add(i === bestMoveIndex ? 'best-move' : 'valid-move');
+            cellEl.addEventListener('click', () => handleCellClick(i));
+        }
+        
+        // ✨ 'empty'가 아닌 실제 돌만 렌더링
+        if (cell && cell !== 'empty') {
+            const stoneEl = document.createElement('div');
+            stoneEl.className = 'stone ' + cell;
+            if (currentRoomData.lastMove === i) stoneEl.classList.add('placed');
+            stoneEl.innerHTML = `<div class="stone-face white-face"></div><div class="stone-face black-face"></div>`;
+            cellEl.appendChild(stoneEl);
+        }
+        gameBoard.appendChild(cellEl);
+    }
+}
+
+// 3. handleCellClick - 첫 번째 것만 남기고 수정
+function handleCellClick(index) {
+    if (currentRoomData.turn !== myColor || !isGameLive) return;
+    playSound('place-sound');
+
+    const boardData = currentRoomData.board;
+    // ✨ [수정] Object.values 대신 안전한 배열 변환 로직 사용
+    const newBoard = ensureBoardArray(boardData);
+    const flippedStones = getFlippedStones(newBoard, index, myColor);
+
+    if (flippedStones.length > 0) {
+        newBoard[index] = myColor;
+        flippedStones.forEach(pos => newBoard[pos] = myColor);
+        setTimeout(() => playSound('flip-sound'), 200);
+        
+        checkTurnEnd(newBoard, index);
+    }
+}
+
+function checkTurnEnd(board, lastMove) {
+    const opponentColor = myColor === 'black' ? 'white' : 'black';
+    const oppHasMoves = findValidMoves(board, opponentColor).length > 0;
+    const myHasMoves = findValidMoves(board, myColor).length > 0;
+    
+    let nextTurn, passed = false;
+    if (oppHasMoves) {
+        nextTurn = opponentColor;
+    } else if (myHasMoves) {
+        nextTurn = myColor;
+        passed = true;
+    } else {
+        // 게임 종료
+        if (gameMode === 'single') {
+            currentRoomData.board = board;
+            gameOverFlag = true;
+            showGameOverScreen();
+        } else {
+            roomRef.update({ board, lastMove, status: 'gameOver' });
+        }
+        return;
+    }
+    
+    // 턴 업데이트
+    if (gameMode === 'single') {
+        currentRoomData.board = board;
+        currentRoomData.turn = nextTurn;
+        currentRoomData.lastMove = lastMove;
+        updateHeaderUI();
+        drawBoard();
+        if (nextTurn === opponentColor) {
+            setTimeout(aiMove, 1000);
+        }
+    } else {
+        roomRef.update({ board, turn: nextTurn, passedTurn: passed, lastMove });
+    }
+}
+
+
+// 4. 두 번째 handleCellClick 함수는 완전히 삭제!
+
+            function getFlippedStones(board, index, color) {
+    const opponentColor = color === 'black' ? 'white' : 'black';
+    const directions = [-9, -8, -7, -1, 1, 7, 8, 9];
+    let allFlipped = [];
+
+    directions.forEach(dir => {
+        const stonesToFlip = [];
+        let current = index + dir;
+        while (current >= 0 && current < 64 && Math.abs((current % 8) - ((current - dir) % 8)) <= 1) {
+            if (board[current] === opponentColor) {
+                stonesToFlip.push(current);
+            } else if (board[current] === color) {
+                allFlipped.push(...stonesToFlip);
+                break;
+            } else {
+                // ✨ 빈 칸이거나 다른 값이면 중단
+                break;
+            }
+            current += dir;
+        }
+    });
+    return allFlipped;
+}
+            
+            
+
+            function aiMove() {
+                if(gameOverFlag) return;
+                const bestMove = findBestMove(currentRoomData.board, 'white');
+                if (bestMove !== -1) {
+                    playSound('place-sound');
+                    const newBoard = [...currentRoomData.board];
+                    const flipped = getFlippedStones(newBoard, bestMove, 'white');
+                    newBoard[bestMove] = 'white';
+                    flipped.forEach(pos => newBoard[pos] = 'white');
+                    setTimeout(() => playSound('flip-sound'), 200);
+
+                    const oppHasMoves = findValidMoves(newBoard, 'black').length > 0;
+                    const myHasMoves = findValidMoves(newBoard, 'white').length > 0;
+
+                    if (oppHasMoves) {
+                        currentRoomData.turn = 'black';
+                    } else if (!myHasMoves) {
+                        currentRoomData.board = newBoard;
+                        gameOverFlag = true;
+                        showGameOverScreen();
+                        return;
+                    }
+                    currentRoomData.board = newBoard;
+                    updateHeaderUI();
+                    drawBoard();
+                }
+            }
+
+            
+
+            function findBestMove(board, color) {
+                const validMoves = findValidMoves(board, color);
+                if (validMoves.length === 0) return -1;
+                let bestMove = -1, maxScore = -Infinity;
+                validMoves.forEach(move => {
+                    const score = WEIGHT_MAP[move];
+                    if (score > maxScore) {
+                        maxScore = score;
+                        bestMove = move;
+                    }
+                });
+                return bestMove;
+            }
+
+            function updateHeaderUI() {
+    if (!currentRoomData || !currentRoomData.players) return;
+    const { players, board, turn } = currentRoomData;
+    gameHeader.innerHTML = '';
+
+    Object.values(players).sort((a,b)=>(a.color==='black' ? -1 : 1)).forEach(p => {
+        // ✨ [수정] Object.values 대신 안전한 배열 변환 로직 사용
+        const boardArray = ensureBoardArray(board);
+        const count = boardArray.filter(c => c === p.color).length || 2;
+        const stoneIcon = p.color === 'black' ? '⚫' : '⚪';
+                    // ✨ [수정] 4방향 아바타 세트(ID), 이미지, 이모지 순으로 확인
+                    const avatarSet = AVATAR_SETS[p.avatar];
+                    let avatarHTML = '';
+                    if (avatarSet) {
+                        avatarHTML = `<img src="${avatarSet.front}" alt="avatar">`;
+                    } else if (p.avatar && (p.avatar.startsWith('http') || /\.(png|jpg|jpeg|gif|webp)$/i.test(p.avatar))) {
+                        avatarHTML = `<img src="${p.avatar}" alt="avatar">`;
+                    } else {
+                        avatarHTML = escapeHTML(p.avatar); // 이모지
+                    }
+                    const avatar = avatarHTML; // 기존 변수명(avatar)에 할당
+                    
+                    const infoEl = document.createElement('div');
+                    infoEl.className = 'player-info';
+                    if (turn === p.color) infoEl.classList.add('my-turn');
+                    
+                    infoEl.innerHTML = `
+                        <div class="profile-box">
+                            <div class="avatar">${avatar}</div>
+                            <div class="nickname">${escapeHTML(p.nickname)}</div>
+                        </div>
+                        <div class="status-box">
+                            <div class="stone-count">${stoneIcon} ${count}</div>
+                        </div>`;
+                    gameHeader.appendChild(infoEl);
+                });
+            }
+
+            function showGameOverScreen() {
+    const { players } = currentRoomData;
+    const boardData = currentRoomData.board;
+    // ✨ [수정] Object.values 대신 안전한 배열 변환 로직 사용
+    const board = ensureBoardArray(boardData);
+    const blackCount = board.filter(c => c === 'black').length;
+    const whiteCount = board.filter(c => c === 'white').length;
+    let winnerColor = null, message;
+
+    if (blackCount > whiteCount) winnerColor = 'black';
+    else if (whiteCount > blackCount) winnerColor = 'white';
+
+    console.log('[게임오버] blackCount:', blackCount, 'whiteCount:', whiteCount);
+    console.log('[게임오버] winnerColor:', winnerColor, 'myColor:', myColor);
+
+    const iWon = winnerColor === myColor;
+    if (winnerColor) {
+        message = iWon ? "🎉 승리!" : "😢 패배...";
+        playSound(iWon ? 'win-sound' : 'loss-sound');
+        console.log('[게임오버] updatePlayerStats 호출 - iWon:', iWon);
+        updatePlayerStats(iWon);
+    } else {
+        message = "무승부!";
+        playSound('loss-sound');
+        console.log('[게임오버] updatePlayerStats 호출 - 무승부');
+        updatePlayerStats(false);
+    }
+                
+                if(gameMode === 'multi' && isHost) roomRef.child('status').set('gameOver');
+
+                const scoresHTML = Object.values(players).sort((a,b) => (a.color==='black'?-1:1)).map(p => {
+                    const count = board.filter(c => c === p.color).length;
+                    
+                    // ✨ [수정] 4방향 아바타 세트(ID), 이미지, 이모지 순으로 확인
+                    const avatarSet = AVATAR_SETS[p.avatar];
+                    let avatarHTML = '';
+                    if (avatarSet) {
+                        avatarHTML = `<img src="${avatarSet.front}" alt="avatar">`;
+                    } else if (p.avatar && (p.avatar.startsWith('http') || /\.(png|jpg|jpeg|gif|webp)$/i.test(p.avatar))) {
+                        avatarHTML = `<img src="${p.avatar}" alt="avatar">`;
+                    } else {
+                        avatarHTML = escapeHTML(p.avatar); // 이모지
+                    }
+                    const avatar = avatarHTML; // 기존 변수명(avatar)에 할당
+
+                    return `<div class="score-row ${p.color === winnerColor ? 'winner' : 'loser'}">
+                                <span class="score-avatar">${avatar} ${escapeHTML(p.nickname)}</span>
+                                <span>${p.color==='black'?'⚫':'⚪'} ${count}</span>
+                            </div>`;
+                }).join('');
+
+                gameOverOverlay.innerHTML = `
+                    <div class="modal-content" style="background: #2c3e50;">
+                        <div class="modal-header"><h2>${message}</h2></div>
+                        <div class="modal-body" style="color:white;">
+                            <div id="score-board">${scoresHTML}</div>
+                            ${gameMode === 'multi' ? '<button id="rematch-btn" class="menu-btn primary">다시 하기</button>' : ''}
+                            <button id="lobby-btn" class="menu-btn secondary">대기실로</button>
+                        </div>
+                    </div>`;
+                gameOverOverlay.style.display = 'flex';
+                
+                if (gameMode === 'multi') {
+                    const rematchBtn = document.getElementById('rematch-btn');
+                    rematchBtn.addEventListener('click', () => {
+                        rematchBtn.textContent = '상대방 기다리는 중...'; 
+                        rematchBtn.disabled = true;
+                        roomRef.child('rematchRequests/' + myPlayerId).set(true);
+                    });
+                    
+                    // [버그 수정] '다시하기' 리스너 로직 변경
+                    roomRef.child('rematchRequests').on('value', snapshot => {
+                        if (!snapshot.exists() || !currentRoomData || !currentRoomData.players || !gameOverOverlay.style.display) return;
+
+                        const requests = snapshot.val();
+                        const requestCount = Object.keys(requests).length;
+                        const playerCount = Object.keys(currentRoomData.players).filter(id => id !== 'ai_player').length;
+
+                        if (requestCount === playerCount) {
+                            if (isHost) {
+                                // [수정] 새 방 대신 'waiting' 상태로 되돌림
+                                roomRef.update({
+                                    status: 'waiting',
+                                    board: null,
+                                    turn: null,
+                                    players: currentRoomData.players, // players는 유지
+                                    passedTurn: null,
+                                    lastMove: null,
+                                    rematchRequests: null,
+                                    readyPlayers: null // readyPlayers 초기화
+                                });
+                            }
+                        }
+                    });
+                }
+                document.getElementById('lobby-btn').addEventListener('click', cleanupAndExit);
+            }
+            
+           
+            function updatePlayerStats(won) {
+    console.log('[updatePlayerStats] 시작 - myPlayerId:', myPlayerId, 'won:', won, 'gameMode:', gameMode);
+    
+    if (!myPlayerId || myPlayerId.startsWith('guest_')) {
+        console.log('[updatePlayerStats] guest 사용자 또는 ID 없음 - 전적 갱신 안함');
+        return;
+    }
+    
+    const userRef = usersRef.child(myPlayerId);
+    userRef.transaction(userData => {
+        console.log('[updatePlayerStats] transaction userData:', userData);
+        
+        if (userData) {
+            if (!userData.profile) userData.profile = {};
+            const profile = userData.profile;
+            profile.level = profile.level || 1;
+            profile.createdAt = profile.createdAt || firebase.database.ServerValue.TIMESTAMP;
+            profile.exp = profile.exp || 0;
+            profile.points = profile.points || 0;
+            
+            let expGained, pointsGained;
+            if (gameMode === 'single') {
+                expGained = won ? 60 : 10;
+                pointsGained = won ? 100 : 20;
+            } else {
+                expGained = won ? 120 : 30;
+                pointsGained = won ? 200 : 100;
+            }
+            
+            console.log('[updatePlayerStats] 기존 exp:', profile.exp, '추가:', expGained);
+            console.log('[updatePlayerStats] 기존 points:', profile.points, '추가:', pointsGained);
+            
+            profile.exp += expGained;
+            profile.points += pointsGained;
+
+            if (!userData.gameStats) userData.gameStats = {};
+            if (!userData.gameStats.reversi) userData.gameStats.reversi = { wins: 0, losses: 0, plays: 0 };
+            
+            const stats = userData.gameStats.reversi;
+            console.log('[updatePlayerStats] 기존 전적:', stats);
+            
+            if (won) stats.wins = (stats.wins || 0) + 1;
+            else stats.losses = (stats.losses || 0) + 1;
+            stats.plays = (stats.plays || 0) + 1;
+            
+            console.log('[updatePlayerStats] 업데이트된 전적:', stats);
+        } else {
+            console.error('[updatePlayerStats] userData가 null!');
+        }
+        return userData;
+    }, (error, committed, snapshot) => {
+        if (error) {
+            console.error('[updatePlayerStats] Transaction 실패:', error);
+        } else if (committed) {
+            console.log('[updatePlayerStats] Transaction 성공! 새 데이터:', snapshot.val());
+        } else {
+            console.log('[updatePlayerStats] Transaction 중단됨');
+        }
+    });
+}
+
+           function cleanupAndExit() {
+                isExiting = true;
+                if (roomRef) {
+                    if (isHost) {
+                        roomRef.remove();
+                    } else if (gameMode === 'multi') {
+                        roomRef.child('players/' + myPlayerId).remove();
+                    }
+                    roomRef.off();
+                }
+                window.location.replace('대기실.html');
+            }
+            
+            initialize();
+        });
+    </script>
+
+    <div id="confirm-exit-modal" class="overlay" style="display: none;">
+        <div class="modal-content" style="max-width: 350px;">
+             <div class="modal-body" style="padding: 30px; text-align: center;">
+                 <h3 style="font-size: 1.4em; margin-bottom: 15px;">정말 게임에서 나가시겠습니까?</h3>
+                 <p style="font-size: 0.9em; color: #ccc;">게임은 패배 처리됩니다.</p>
+             </div>
+             <div style="display: flex; gap: 10px; padding: 15px; background-color: #22303f; border-top: 1px solid #3e566d;">
+                 <button id="exit-cancel-btn" class="menu-btn secondary" style="background-color: #78909c;">취소</button>
+                 <button id="exit-confirm-btn" class="menu-btn primary" style="background-color: var(--danger-color, #e53935);">확인</button>
+             </div>
+         </div>
+    </div>
+
+</body>
+</html>

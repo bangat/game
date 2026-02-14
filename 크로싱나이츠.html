@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>크로싱 나이츠</title>
+    <link rel="manifest" href="manifest.json">
+    <style>
+        :root {
+            --bg-color: #4a4e69; --board-color: #f2e9e4; --border-color: #22223b;
+            --p1-color: #ff6b6b; --p2-color: #4dabf7;
+            --accent-color: #ffd43b; --text-color: #ffffff; --move-indicator-color: #51cf66;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%; height: 100%; overflow: hidden;
+            font-family: sans-serif; background-color: var(--bg-color); color: var(--text-color);
+            -webkit-user-select: none; user-select: none; touch-action: none;
+        }
+        #game-wrapper { width: 100%; height: 100%; display: flex; flex-direction: column; }
+        
+        /* --- ✨ [CSS 수정] --- */
+        #game-header {
+            flex-shrink: 0; display: flex; align-items: center;
+            background-color: rgba(0,0,0,0.3);
+            max-width: 700px;
+            width: 100%;
+            margin: 0 auto; /* 중앙 정렬 */
+
+            /* 좁은 화면에서 줄바꿈 및 유연하게 변경 */
+            padding: 10px;
+            gap: 10px;
+            flex-wrap: wrap; 
+            justify-content: center; /* space-between -> center */
+        }
+        .player-info {
+            display: flex; align-items: center;
+            border-radius: 12px; transition: all 0.3s ease; background-color: rgba(255,255,255,0.1);
+            overflow: hidden; /* 넘치는 텍스트 숨김 */
+
+            /* 좁은 화면에서 유연하게 변경 */
+            gap: 8px;
+            padding: 8px 10px;
+            flex-grow: 1; /* 남는 공간 차지 */
+            flex-basis: 160px; /* 기본 너비 (이보다 작아지면 줄바꿈 시도) */
+            justify-content: center; /* 내부 요소 중앙 정렬 */
+            min-width: 0; /* flex 아이템이 수축할 수 있도록 */
+        }
+        /* --- ✨ [CSS 수정 끝] --- */
+
+        .player-info.my-turn {
+            background-color: var(--accent-color); transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(255, 200, 74, 0.5);
+        }
+        .player-info.my-turn .nickname { color: black; }
+        
+        /* ✨ 아바타 CSS 수정: .avatar img 태그 선택자 사용 */
+        .player-info .avatar {
+            width: 40px;
+            height: 40px;
+            flex-shrink: 0; /* 찌그러지지 않게 */
+        }
+        .player-info .avatar img { 
+            width: 100%; 
+            height: 100%; 
+            object-fit: contain; 
+            border-radius: 50%; 
+        }
+        /* ✨ [추가] 닉네임 넘침 처리 */
+        .player-info .nickname {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-weight: 700; 
+            font-size: 1.1em;
+        }
+        .player-info .piece-emoji { font-size: 1.8em; margin-right: 5px; }
+        
+        #game-container {
+            width: 100%; flex-grow: 1; display: flex; justify-content: center; align-items: center;
+            position: relative; padding: 20px 10px;
+            flex-direction: column;
+        }
+        #game-canvas { background-color: var(--board-color); border: 6px solid var(--border-color); border-radius: 8px; }
+
+        .overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex;
+            flex-direction: column; justify-content: center; align-items: center;
+            z-index: 200; text-align: center; background-color: rgba(0,0,0,0.8);
+        }
+        .modal-content { background: linear-gradient(135deg, #6d6875 0%, #4a4e69 100%); color: white; padding: 40px; border-radius: 25px; width: 90%; max-width: 380px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
+        .menu-btn {
+            width: 90%; max-width: 320px; padding: 15px; font-size: 1.5em; font-weight: 700;
+            border-radius: 12px; border: none; cursor: pointer; margin: 10px 0;
+            background-color: var(--p1-color); color: white;
+        }
+        #countdown-number { font-size: 8em; font-weight: 700; color: var(--accent-color); animation: pulse 1s ease-in-out infinite; }
+        @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.2); } }
+        .spinner { margin: 20px auto; border: 4px solid rgba(255,255,255,0.3); border-radius: 50%; border-top: 4px solid white; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div id="game-wrapper">
+        <div id="game-header"></div>
+        <div id="game-container">
+            <canvas id="game-canvas"></canvas>
+        </div>
+    </div>
+    
+    <div id="game-over-overlay" class="overlay" style="display: none;"></div>
+    <div id="waiting-overlay" class="overlay" style="display: none;"></div>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+
+            function escapeHTML(str) {
+        if (typeof str !== 'string') return '';
+        const map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        };
+        return str.replace(/[&<>"']/g, m => map[m]);
+    }
+            document.addEventListener('contextmenu', event => event.preventDefault());
+ document.addEventListener('keydown', event => {
+    if (event.key === 'F12' ||
+         (event.ctrlKey && event.shiftKey && ['I', 'J', 'C'].includes(event.key.toUpperCase())) ||
+         (event.ctrlKey && event.key.toUpperCase() === 'U')) {
+       event.preventDefault();
+     }
+ });
+ setInterval(() => { try { debugger; } catch (e) {} }, 1000);
+
+ // ✨ [신규] 뒤로가기 모달 관련 변수 및 이벤트
+        const confirmExitModal = document.getElementById('confirm-exit-modal');
+        const exitConfirmBtn = document.getElementById('exit-confirm-btn');
+        const exitCancelBtn = document.getElementById('exit-cancel-btn');
+
+        history.pushState(null, '', location.href);
+        window.addEventListener('popstate', (e) => {
+            history.pushState(null, '', location.href); // 뒤로가기 방지 유지
+            confirmExitModal.style.display = 'flex'; // 모달 표시
+        });
+
+        exitConfirmBtn.addEventListener('click', () => {
+             // 게임오버 시의 나가기 버튼 로직과 동일하게 처리
+             if (isHost && roomRef) roomRef.remove();
+             window.location.href='대기실.html';
+        });
+
+        exitCancelBtn.addEventListener('click', () => {
+            confirmExitModal.style.display = 'none'; // 모달 닫기
+        });
+        // ✨ [신규] 끝
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
+            authDomain: "goodluck-7c14b.firebaseapp.com",
+            databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com",
+            projectId: "goodluck-7c14b",
+            storageBucket: "goodluck-7c14b.appspot.com",
+            messagingSenderId: "858281658455",
+            appId: "1:858281658455:web:9131280a459be983933b12"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+        const auth = firebase.auth();
+        const usersRef = db.ref('users');
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        const gameOverOverlay = document.getElementById('game-over-overlay');
+        const waitingOverlay = document.getElementById('waiting-overlay');
+        const gameHeader = document.getElementById('game-header');
+
+        let myPlayerId, roomRef, isHost, myPlayerNum;
+        let player1Info, player2Info;
+        let isMyTurn = false;
+        let isGameOver = false;
+        
+        let nodes = [];
+        let adjacency = {};
+        let boardSize = 0;
+        let nodeRadius = 0;
+        
+        let player1Piece = '🔴';
+        let player2Piece = '🔵';
+
+        let selectedNodeId = null;
+        let possibleMoves = [];
+
+        auth.onAuthStateChanged(user => {
+            if (!user) {
+                alert('로그인이 필요합니다.');
+                window.location.href = 'index.html';
+                return;
+            }
+            myPlayerId = user.uid;
+            initializeGame();
+        });
+
+        function initializeGame() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const roomId = urlParams.get('roomId');
+            if (!roomId) {
+                alert("잘못된 접근입니다.");
+                window.location.href = '대기실.html';
+                return;
+            }
+            joinMultiplayerGame(roomId);
+        }
+
+        function joinMultiplayerGame(roomId) {
+            waitingOverlay.innerHTML = `<div class="spinner"></div><p>참가중...</p>`;
+            waitingOverlay.style.display = 'flex';
+            roomRef = db.ref('rooms').child(roomId);
+
+            roomRef.once('value', snapshot => {
+                if (!snapshot.exists()) {
+                    alert('방을 찾을 수 없습니다.');
+                    window.location.href = '대기실.html';
+                    return;
+                }
+                const roomData = snapshot.val();
+                
+                if(!roomData.players || Object.keys(roomData.players).length < 2) {
+                    if (roomData.hostId !== myPlayerId) {
+                        alert('상대방이 아직 입장하지 않았습니다.');
+                        window.location.href = '대기실.html';
+                        return;
+                    } else {
+                        waitingOverlay.innerHTML = `<div class="spinner"></div><p>상대를 기다리는 중...</p>`;
+                        waitingOverlay.style.display = 'flex';
+                        roomRef.child('players').on('value', checkPlayers);
+                        return;
+                    }
+                }
+
+                startGame(roomData);
+            });
+        }
+
+        function checkPlayers(snapshot) {
+            if (!snapshot.exists()) return;
+            const players = snapshot.val();
+            if (Object.keys(players).length >= 2) {
+                roomRef.child('players').off('value', checkPlayers);
+                roomRef.once('value', s => startGame(s.val()));
+            }
+        }
+
+        function startGame(roomData) {
+            isHost = roomData.hostId === myPlayerId;
+            myPlayerNum = isHost ? 1 : 2;
+            
+            const hostData = roomData.players[roomData.hostId];
+            const guestId = Object.keys(roomData.players).find(id => id !== roomData.hostId);
+            const guestData = roomData.players[guestId];
+            
+            player1Info = { nickname: hostData.nickname, avatar: hostData.avatar };
+            player2Info = { nickname: guestData.nickname, avatar: guestData.avatar };
+
+            if (isHost) {
+                roomRef.onDisconnect().remove();
+            } else {
+                roomRef.child('players/' + myPlayerId).onDisconnect().remove();
+            }
+            
+            startCountdown();
+        }
+
+        function startCountdown() {
+            waitingOverlay.innerHTML = `<div id="countdown-number">3</div>`;
+            let count = 3;
+            const interval = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    waitingOverlay.innerHTML = `<div id="countdown-number">${count}</div>`;
+                } else {
+                    clearInterval(interval);
+                    waitingOverlay.style.display = 'none';
+                    setupGame();
+                }
+            }, 1000);
+        }
+        
+        function setupGame() {
+            const container = document.getElementById('game-container');
+            const maxBoardSize = 700; 
+            boardSize = Math.min(container.clientWidth * 0.95, container.clientHeight * 0.95, maxBoardSize);
+            canvas.width = boardSize;
+            canvas.height = boardSize;
+            nodeRadius = boardSize / 30; 
+
+            if(isHost) {
+                generateRandomMap();
+                placePieces();
+                
+                const colorPairs = [
+                    ['🔴', '🔵'], ['🟢', '🟣'], ['🟡', '🟤'],
+                    ['🟠', '🔵'], ['🔴', '🟢']
+                ];
+                const selectedPair = colorPairs[Math.floor(Math.random() * colorPairs.length)];
+                player1Piece = selectedPair[0];
+                player2Piece = selectedPair[1];
+
+                const initialState = {
+                    nodes: nodes,
+                    adjacency: adjacency,
+                    currentTurn: 1,
+                    player1Piece: player1Piece,
+                    player2Piece: player2Piece
+                };
+                roomRef.child('gameState').set(initialState);
+            }
+            
+            listenToGameChanges();
+            setupInputHandlers();
+        }
+
+        function listenToGameChanges() {
+            roomRef.child('gameState').on('value', snapshot => {
+                if (!snapshot.exists() || isGameOver) return;
+                
+                const state = snapshot.val();
+                if (typeof state === 'string') {
+                    if (state === 'restarting') {
+                        alert("상대방이 게임을 나갔습니다.");
+                        location.reload();
+                    }
+                    return;
+                }
+
+                if (!state || !state.nodes || !state.adjacency) return;
+
+                // nodes 복원
+                if (Array.isArray(state.nodes)) {
+                    nodes = state.nodes;
+                } else {
+                    const maxId = Math.max(...Object.keys(state.nodes).map(k => parseInt(k)));
+                    nodes = new Array(maxId + 1);
+                    Object.keys(state.nodes).forEach(key => {
+                        nodes[parseInt(key)] = state.nodes[key];
+                    });
+                }
+
+                // adjacency 복원
+                adjacency = {};
+                if (Array.isArray(state.adjacency)) {
+                    state.adjacency.forEach((neighbors, index) => {
+                        if (neighbors !== null && neighbors !== undefined) {
+                            adjacency[index] = Array.isArray(neighbors) ? neighbors : Object.values(neighbors || {});
+                        }
+                    });
+                } else {
+                    Object.keys(state.adjacency).forEach(nodeId => {
+                        const neighbors = state.adjacency[nodeId];
+                        adjacency[nodeId] = Array.isArray(neighbors) ? neighbors : Object.values(neighbors || {});
+                    });
+                }
+
+                isMyTurn = state.currentTurn === myPlayerNum;
+                player1Piece = state.player1Piece;
+                player2Piece = state.player2Piece;
+                
+                deselectPiece(); // drawBoard()가 여기서 호출됨
+                updateHeaderUI(); // 헤더 정보 업데이트
+                checkWinCondition(); // 승리 조건 확인
+            });
+
+            roomRef.child('players').on('value', snapshot => {
+                if (isGameOver || !snapshot.exists()) return;
+                const players = snapshot.val();
+                if (Object.keys(players).length < 2 && !isHost) {
+                    roomRef.child('gameState').set('restarting');
+                }
+            });
+        }
+
+        function addNode(x, y, isP1Home, isP2Home) {
+            const id = nodes.length;
+            nodes.push({ id, x, y, piece: null, isPlayer1Home: isP1Home, isPlayer2Home: isP2Home });
+            adjacency[id] = [];
+            return id;
+        }
+
+        function addEdge(id1, id2) {
+            if (!adjacency[id1].includes(id2)) adjacency[id1].push(id2);
+            if (!adjacency[id2].includes(id1)) adjacency[id2].push(id1);
+        }
+        
+       function generateRandomMap() {
+            nodes = [];
+            adjacency = {};
+            
+            const mapGenerators = [
+                generateAlquerqueMap,    
+                generateHourglassMap,    
+                generateLauKataKatiMap,  
+                generateChaukaBaraMap    
+            ];
+
+            const chosenGenerator = mapGenerators[Math.floor(Math.random() * mapGenerators.length)];
+            chosenGenerator();
+        }
+        
+        function generateAlquerqueMap() {
+            const rows = 5, cols = 5;
+            const padding = boardSize * 0.1;
+            const cellW = (boardSize - 2 * padding) / (cols - 1);
+            const cellH = (boardSize - 2 * padding) / (rows - 1);
+
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    const x = padding + c * cellW;
+                    const y = padding + r * cellH;
+                    const isP1Home = r < 2;
+                    const isP2Home = r > 2;
+                    addNode(x, y, isP1Home, isP2Home);
+                }
+            }
+            
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    const id = r * cols + c;
+                    if (c < cols - 1) addEdge(id, id + 1); 
+                    if (r < rows - 1) addEdge(id, id + cols); 
+                    if (r < rows - 1 && c < cols - 1) addEdge(id, id + cols + 1); 
+                    if (r < rows - 1 && c > 0) addEdge(id, id + cols - 1); 
+                }
+            }
+        }
+
+        function generateLauKataKatiMap() {
+            const p = boardSize * 0.15;
+            const w = boardSize - 2 * p, h = boardSize - 2 * p;
+
+            addNode(p + w/2, p,       true, false);  // 0: P1 홈
+            addNode(p,       p + h/2, false, false); // 1: Mid-Left (중립)
+            addNode(p + w,   p + h/2, false, false); // 2: Mid-Right (중립)
+            addNode(p + w/2, p + h,   false, true);  // 3: P2 홈
+            addNode(p + w/4, p + h/4, true, false);  // 4: P1 홈
+            addNode(p + 3*w/4, p + h/4, true, false);  // 5: P1 홈
+            addNode(p + w/4, p + 3*h/4, false, true);  // 6: P2 홈
+            addNode(p + 3*w/4, p + 3*h/4, false, true);  // 7: P2 홈
+            addNode(p + w/2, p + h/2, false, false); // 8: Center (중립)
+
+            [
+                [0,4], [0,5], [4,1], [5,2], [1,8], [2,8], [1,6], [2,7],
+                [8,6], [8,7], [6,3], [7,3]
+            ].forEach(([a, b]) => addEdge(a, b));
+        }
+
+        function generateChaukaBaraMap() {
+            const p = boardSize * 0.1;
+            const w = boardSize - 2 * p, h = boardSize - 2 * p;
+
+            addNode(p,         p,         true, false);  // 0: P1 홈
+            addNode(p + w/3,   p,         true, false);  // 1: P1 홈
+            addNode(p,         p + h/3,   false, false); // 2: 중립
+            addNode(p + w/3,   p + h/3,   false, false); // 3: 중립
+            addNode(p,         p + 2*h/3, false, false); // 4: 중립
+            addNode(p + w/3,   p + 2*h/3, false, false); // 5: 중립
+            addNode(p,         p + h,     true, false);  // 6: P1 홈
+            addNode(p + w/3,   p + h,     true, false);  // 7: P1 홈
+            addNode(p + 2*w/3, p,         false, true);   // 8: P2 홈
+            addNode(p + w,     p,         false, true);   // 9: P2 홈
+            addNode(p + 2*w/3, p + h/3,   false, false); // 10: 중립
+            addNode(p + w,     p + h/3,   false, false); // 11: 중립
+            addNode(p + 2*w/3, p + 2*h/3, false, false); // 12: 중립
+            addNode(p + w,     p + 2*h/3, false, false); // 13: 중립
+            addNode(p + 2*w/3, p + h,     false, true);   // 14: P2 홈
+            addNode(p + w,     p + h,     false, true);   // 15: P2 홈
+
+            const connections = [
+                [0,1], [0,2], [1,3], [2,3], [2,4], [3,5], [4,5], [4,6], [5,7], [6,7],
+                [8,9], [8,10], [9,11], [10,11], [10,12], [11,13], [12,13], [12,14], [13,15], [14,15],
+                [1,8], [3,10], [5,12], [7,14],
+                [0,3], [1,2], [2,5], [3,4], [4,7], [5,6],
+                [8,11], [9,10], [10,13], [11,12], [12,15], [13,14]
+            ];
+            connections.forEach(([a, b]) => addEdge(a, b));
+        }
+
+        function generateHourglassMap() {
+            const p = boardSize * 0.15;
+            const w = boardSize - 2 * p, h = boardSize - 2 * p;
+
+            addNode(p + w/2, p,       true, false);  // 0: P1 홈
+            addNode(p,       p + h/4, true, false);  // 1: P1 홈
+            addNode(p + w,   p + h/4, true, false);  // 2: P1 홈
+            addNode(p,       p + h/2, true, false);  // 3: P1 홈
+            addNode(p + w/2, p + h/2, false, false); // 4: Center (중립)
+            addNode(p + w,   p + h/2, true, false);  // 5: P1 홈
+            addNode(p,       p + 3*h/4, false, true); // 6: P2 홈
+            addNode(p + w,   p + 3*h/4, false, true); // 7: P2 홈
+            addNode(p + w,   p + h,     false, true); // 8: P2 홈
+            addNode(p,       p + h,     false, true); // 9: P2 홈
+            addNode(p + w/2, p + h,     false, true); // 10: P2 홈
+
+            [
+                [0,1], [0,2], [1,3], [1,4], [2,4], [2,5],
+                [3,4], [4,5], [3,6], [4,6], [4,7], [5,7],
+                [6,9], [6,10], [7,10], [8,10], [9,10], [8,9]
+            ].forEach(([a, b]) => addEdge(a, b));
+        }
+
+        function placePieces() {
+            nodes.forEach(node => {
+                if (node.isPlayer1Home) node.piece = 1;
+                if (node.isPlayer2Home) node.piece = 2;
+            });
+        }
+        
+        // --- ✨ [JS 수정] XSS 방지를 위해 DOM 방식 사용 ---
+        function updateHeaderUI() {
+            if (!player1Info || !player2Info) return;
+
+            const p1Turn = (myPlayerNum === 1 && isMyTurn) || (myPlayerNum === 2 && !isMyTurn);
+            const p2Turn = !p1Turn;
+            
+            gameHeader.innerHTML = ''; // 헤더 초기화
+
+            // --- Player 1 (왼쪽) ---
+            const p1InfoDiv = document.createElement('div');
+            p1InfoDiv.className = `player-info ${p1Turn ? 'my-turn' : ''}`;
+            
+            const p1AvatarDiv = document.createElement('div');
+            p1AvatarDiv.className = 'avatar';
+            if (player1Info.avatar && player1Info.avatar.startsWith('http')) {
+                const p1Img = document.createElement('img');
+                p1Img.src = player1Info.avatar;
+                p1AvatarDiv.appendChild(p1Img);
+            } else if (player1Info.avatar) {
+                p1AvatarDiv.textContent = player1Info.avatar; // 이모지 등
+            }
+            
+            const p1PieceSpan = document.createElement('span');
+            p1PieceSpan.className = 'piece-emoji';
+            p1PieceSpan.textContent = player1Piece;
+            
+            const p1NicknameSpan = document.createElement('span');
+            p1NicknameSpan.className = 'nickname';
+            p1NicknameSpan.textContent = player1Info.nickname; // ✨ .textContent로 안전하게 닉네임 설정
+            
+            p1InfoDiv.append(p1AvatarDiv, p1PieceSpan, p1NicknameSpan);
+            
+            // --- Player 2 (오른쪽) ---
+            const p2InfoDiv = document.createElement('div');
+            p2InfoDiv.className = `player-info ${p2Turn ? 'my-turn' : ''}`;
+            
+            const p2NicknameSpan = document.createElement('span');
+            p2NicknameSpan.className = 'nickname';
+            p2NicknameSpan.textContent = player2Info.nickname; // ✨ .textContent로 안전하게 닉네임 설정
+            
+            const p2PieceSpan = document.createElement('span');
+            p2PieceSpan.className = 'piece-emoji';
+            p2PieceSpan.textContent = player2Piece;
+
+            const p2AvatarDiv = document.createElement('div');
+            p2AvatarDiv.className = 'avatar';
+            if (player2Info.avatar && player2Info.avatar.startsWith('http')) {
+                const p2Img = document.createElement('img');
+                p2Img.src = player2Info.avatar;
+                p2AvatarDiv.appendChild(p2Img);
+            } else if (player2Info.avatar) {
+                p2AvatarDiv.textContent = player2Info.avatar; // 이모지 등
+            }
+            
+            p2InfoDiv.append(p2NicknameSpan, p2PieceSpan, p2AvatarDiv);
+            
+            // 헤더에 추가
+            gameHeader.append(p1InfoDiv, p2InfoDiv);
+        }
+        // --- ✨ [JS 수정 끝] ---
+        
+        function setupInputHandlers() {
+            canvas.addEventListener('click', e => {
+                if (!isMyTurn || isGameOver) return;
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+
+                const clickedNode = nodes.find(n => n && Math.hypot(n.x - x, n.y - y) < nodeRadius * 1.5);
+
+                if (!clickedNode) {
+                    deselectPiece();
+                    return;
+                }
+
+                if (selectedNodeId !== null) {
+                    if (possibleMoves.includes(clickedNode.id)) {
+                        movePiece(selectedNodeId, clickedNode.id);
+                    } else if (clickedNode.piece === myPlayerNum) {
+                        selectPiece(clickedNode);
+                    } else {
+                        deselectPiece();
+                    }
+                } else {
+                    if (clickedNode.piece === myPlayerNum) {
+                        selectPiece(clickedNode);
+                    }
+                }
+            });
+        }
+
+        function drawBoard() {
+            if (!nodes.length) return;
+            ctx.clearRect(0, 0, boardSize, boardSize);
+            
+            // 홈 영역 배경
+            ctx.globalAlpha = 0.4;
+            ctx.fillStyle = "#ff6b6b";
+            nodes.filter(n => n && n.isPlayer1Home).forEach(n => {
+                ctx.beginPath();
+                ctx.arc(n.x, n.y, nodeRadius * 1.8, 0, 2 * Math.PI);
+                ctx.fill();
+            });
+            ctx.fillStyle = "#4dabf7";
+            nodes.filter(n => n && n.isPlayer2Home).forEach(n => {
+                ctx.beginPath();
+                ctx.arc(n.x, n.y, nodeRadius * 1.8, 0, 2 * Math.PI);
+                ctx.fill();
+            });
+            ctx.globalAlpha = 1.0;
+
+            // 연결선
+            ctx.strokeStyle = '#22223b';
+            ctx.lineWidth = 3;
+            for (let i = 0; i < nodes.length; i++) {
+                if (!nodes[i]) continue;
+                const neighbors = adjacency[i] || [];
+                neighbors.forEach(neighborId => {
+                    if (i < neighborId && nodes[neighborId]) {
+                        ctx.beginPath();
+                        ctx.moveTo(nodes[i].x, nodes[i].y);
+                        ctx.lineTo(nodes[neighborId].x, nodes[neighborId].y);
+                        ctx.stroke();
+                    }
+                });
+            }
+
+            // 노드
+            nodes.forEach(node => {
+                if (!node) return;
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, nodeRadius, 0, 2 * Math.PI);
+                ctx.fillStyle = '#fff';
+                ctx.fill();
+                ctx.strokeStyle = '#22223b';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            });
+
+            // 이동 가능 위치 표시
+            possibleMoves.forEach(moveId => {
+                const node = nodes[moveId];
+                if (!node) return;
+                
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, nodeRadius * 1.5, 0, 2 * Math.PI);
+                ctx.strokeStyle = '#51cf66';
+                ctx.lineWidth = 6;
+                ctx.stroke();
+                
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, nodeRadius * 0.8, 0, 2 * Math.PI);
+                ctx.fillStyle = '#51cf66';
+                ctx.globalAlpha = 0.5;
+                ctx.fill();
+                ctx.globalAlpha = 1.0;
+            });
+
+            // 이모지
+            ctx.font = `${nodeRadius * 1.8}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            nodes.forEach(node => {
+                if (!node) return;
+                if (node.piece === 1) {
+                    ctx.fillText(player1Piece, node.x, node.y);
+                } else if (node.piece === 2) {
+                    ctx.fillText(player2Piece, node.x, node.y);
+                }
+            });
+
+            // 선택 표시
+            nodes.forEach(node => {
+                if (!node || selectedNodeId !== node.id) return;
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, nodeRadius * 1.6, 0, 2 * Math.PI);
+                ctx.strokeStyle = '#ffd43b';
+                ctx.lineWidth = 8;
+                ctx.setLineDash([10, 5]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            });
+        }
+
+        function movePiece(fromId, toId) {
+            const newNodes = JSON.parse(JSON.stringify(nodes)); 
+            newNodes[toId].piece = newNodes[fromId].piece;
+            newNodes[fromId].piece = null;
+            
+            roomRef.child('gameState').update({
+                nodes: newNodes,
+                currentTurn: myPlayerNum === 1 ? 2 : 1
+            });
+            
+            deselectPiece();
+        }
+        
+        function selectPiece(node) {
+            if (!node) return;
+            selectedNodeId = node.id;
+            const neighbors = adjacency[node.id] || [];
+            
+            possibleMoves = neighbors.filter(id => {
+                const targetNode = nodes[id];
+                return targetNode && (targetNode.piece === null || targetNode.piece === undefined);
+            });
+            
+            drawBoard();
+        }
+
+        function deselectPiece() {
+            selectedNodeId = null;
+            possibleMoves = [];
+            drawBoard();
+        }
+
+        function checkWinCondition() {
+            if (isGameOver || !nodes.length) return;
+            const p1HomeNodes = nodes.filter(n => n && n.isPlayer1Home);
+            const p2HomeNodes = nodes.filter(n => n && n.isPlayer2Home);
+            
+            if (p2HomeNodes.length && p2HomeNodes.every(n => n.piece === 1)) showGameOver(1);
+            else if (p1HomeNodes.length && p1HomeNodes.every(n => n.piece === 2)) showGameOver(2);
+        }
+        
+        function showGameOver(winnerNum) {
+            if(isGameOver) return;
+            isGameOver = true;
+            if(roomRef) roomRef.off();
+            
+            let result = 'loss';
+            let resultText = '😢 패배...';
+
+            if (winnerNum === myPlayerNum) {
+                result = 'win';
+                resultText = '🎉 승리!';
+            }
+            
+            updateMyStats(result);
+
+            gameOverOverlay.innerHTML = `
+                <div class="modal-content">
+                    <h2>${resultText}</h2>
+                    <button class="menu-btn" onclick="location.href='대기실.html'">대기실로</button>
+                </div>`;
+            gameOverOverlay.style.display = 'flex';
+            
+            if(isHost) roomRef.remove();
+        }
+
+        async function updateMyStats(result) {
+            if (!myPlayerId || String(myPlayerId).startsWith('guest_')) {
+                console.log('Guest user or no ID, skipping stats update.');
+                return;
+            }
+
+            const uid = myPlayerId;
+            const gameId = 'crossingKnights'; 
+            
+            try {
+                const transactionResult = await usersRef.child(uid).transaction(data => {
+                    if (data) {
+                        if (!data.profile) data.profile = {};
+                        const profile = data.profile;
+                        profile.level = profile.level || 1;
+                        profile.createdAt = profile.createdAt || firebase.database.ServerValue.TIMESTAMP;
+                        profile.exp = profile.exp || 0;
+                        profile.points = profile.points || 0;
+                        
+                        if (!data.gameStats) data.gameStats = {};
+                        if (!data.gameStats[gameId]) {
+                            data.gameStats[gameId] = { wins: 0, losses: 0, plays: 0 };
+                        }
+                        
+                        data.gameStats[gameId].plays = (data.gameStats[gameId].plays || 0) + 1;
+                        
+                        if (result === 'win') {
+                            data.gameStats[gameId].wins = (data.gameStats[gameId].wins || 0) + 1;
+                            profile.exp += 50;
+                            profile.points += 100;
+                        } else if (result === 'loss') {
+                            data.gameStats[gameId].losses = (data.gameStats[gameId].losses || 0) + 1;
+                            profile.exp += 10;
+                            profile.points += 30;
+                        }
+                    }
+                    return data;
+                });
+
+                if (transactionResult.committed) {
+                    console.log(`[${gameId}] Stats update success!`);
+                } else {
+                    console.log(`[${gameId}] Stats update transaction aborted.`);
+                }
+            } catch (error) {
+                console.error(`[${gameId}] Stats update failed:`, error);
+            }
+        }
+    });
+    </script>
+
+    <div id="confirm-exit-modal" class="overlay" style="display: none;">
+         <div class="modal-content" style="max-width: 350px;">
+             <div style="padding: 30px 20px 20px; text-align: center;">
+                 <h3 style="font-size: 1.4em; margin-bottom: 15px;">정말 게임에서 나가시겠습니까?</h3>
+                 <p style="font-size: 0.9em; color: #ccc;">게임은 패배 처리 됩니다.</p>
+             </div>
+             <div style="display: flex; gap: 10px; padding: 15px; background-color: #3d4a5a; border-top: 1px solid #667a99;">
+                 <button id="exit-cancel-btn" class="menu-btn secondary" style="background-color: #78909c;">취소</button>
+                 <button id="exit-confirm-btn" class="menu-btn primary" style="background-color: var(--danger-color, #e53935);">확인</button>
+             </div>
+         </div>
+    </div>
+
+</body>
+</html>

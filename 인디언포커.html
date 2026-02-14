@@ -1,0 +1,1321 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>인디언 포커</title>
+    <link rel="manifest" href="manifest.json">
+    <link href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff" as="font" type="font/woff" crossorigin>
+    <style>
+        @font-face {
+            font-family: 'GmarketSans';
+            src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff') format('woff');
+            font-weight: 500;
+        }
+        @font-face {
+            font-family: 'GmarketSans';
+            src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansBold.woff') format('woff');
+            font-weight: 700;
+        }
+
+        :root {
+            --table-bg: #006442; --card-bg: #fff; --text-light: #fff; --text-dark: #333;
+            --accent-color: #ffc107; --bet-color: #f0ad4e; --fold-color: #777;
+            --chip-red: #d9534f; --chip-blue: #428bca; --chip-green: #5cb85c;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%; height: 100%; overflow: hidden; font-family: 'GmarketSans', sans-serif;
+            background-color: #1a1a1a; color: var(--text-light);
+            -webkit-user-select: none; user-select: none; touch-action: manipulation;
+        }
+        
+        #game-wrapper {
+            width: 100%; height: 100%; display: none; flex-direction: column;
+            background: var(--table-bg);
+            background-image: radial-gradient(ellipse at center, #00784e, #005034);
+            position: relative;
+        }
+        
+        #game-header {
+            flex-shrink: 0; padding: 10px; position: relative; z-index: 10;
+            height: 140px; display: flex; align-items: flex-start; justify-content: flex-end;
+        }
+        #game-footer {
+            flex-shrink: 0; padding: 10px; position: relative; z-index: 10;
+            height: 150px; display: flex; align-items: flex-end; justify-content: flex-start;
+        }
+        
+        #game-main {
+            flex-grow: 1; display: flex; flex-direction: column;
+            justify-content: space-around; align-items: center; padding: 10px 0;
+        }
+
+        .player-layout {
+            display: flex;
+            align-items: center;
+            width: auto;
+            gap: 15px;
+        }
+        #game-header .player-layout { flex-direction: row-reverse; }
+
+        .player-details {
+            display: flex; align-items: center; gap: 10px;
+            background: rgba(0,0,0,0.2); padding: 8px; border-radius: 30px;
+            border: 2px solid rgba(255,255,255,0.1); transition: all 0.3s ease;
+            position: relative;
+        }
+        .my-turn .player-details {
+            border-color: var(--accent-color);
+            box-shadow: 0 0 15px var(--accent-color);
+            transform: scale(1.05);
+            animation: pulse-turn 1.5s infinite;
+        }
+        @keyframes pulse-turn {
+            0% { box-shadow: 0 0 10px var(--accent-color); }
+            50% { box-shadow: 0 0 25px var(--accent-color); }
+            100% { box-shadow: 0 0 10px var(--accent-color); }
+        }
+
+        #result-indicator-container {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            pointer-events: none;
+            z-index: 400;
+            overflow: hidden;
+        }
+       .result-indicator {
+            position: absolute;
+            font-size: 6em;
+            font-weight: 700;
+            opacity: 0;
+            transform: scale(0.5);
+            transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            -webkit-text-stroke: 2px black;
+            text-shadow: 0 0 15px rgba(0,0,0,0.7);
+        }
+        .result-indicator.show {
+            opacity: 1;
+            transform: scale(1);
+        }
+        #win-indicator { color: var(--accent-color); }
+        #lose-indicator { color: var(--fold-color); }
+        #draw-indicator { color: var(--chip-blue); }
+
+        .folded { filter: grayscale(1); opacity: 0.6; }
+
+        .player-details .avatar {
+            width: 60px; height: 60px; border-radius: 50%;
+            font-size: 2.2em; display: flex; justify-content: center;
+            align-items: center; background-color: #f0f0f0;
+            border: 2px solid var(--text-light); overflow: hidden; flex-shrink: 0;
+        }
+        .player-details .avatar img { width: 100%; height: 100%; object-fit: contain; }
+        
+        .info-text { display: flex; flex-direction: column; align-items: flex-start; }
+        #game-header .info-text { align-items: flex-end; }
+        .info-text .nickname { font-weight: 700; font-size: 1.1em; }
+        .info-text .chips { display: flex; align-items: center; gap: 4px; font-size: 1em; font-weight: 700; color: var(--accent-color); }
+        .info-text .chip-icon { width: 22px; height: 22px; }
+
+        .player-card {
+            width: 80px; height: 112px; background-color: var(--card-bg);
+            border: 1px solid #aaa; border-radius: 8px;
+            display: flex; justify-content: center; align-items: center;
+            font-size: 3.2em; font-weight: bold; color: var(--text-dark);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3); flex-shrink: 0;
+            position: absolute; left: 50%; transform: translateX(-50%);
+        }
+        #my-card-container { position: relative; width: 100%; height: 112px; }
+        #my-card-container .player-card { bottom: 0; }
+        #opponent-card-container { position: relative; width: 100%; height: 112px; }
+        #opponent-card-container .player-card { top: 0; }
+
+        .player-card.hidden {
+            background-image: linear-gradient(135deg, #444 25%, #555 25%, #555 50%, #444 50%, #444 75%, #555 75%, #555 100%);
+            background-size: 40px 40px; color: white;
+        }
+        
+        .bet-display { display: flex; align-items: center; gap: 8px; font-size: 1.2em; font-weight: 700; }
+        .bet-display .chip-icon { width: 35px; height: 35px; }
+        
+        #pot-container { text-align: center; color: var(--text-light); }
+        #game-log { font-size: 0.9em; margin-bottom: 5px; height: 20px; font-weight: 500; }
+        #pot-label { font-size: 1.1em; letter-spacing: 2px; }
+        #pot-amount { font-size: 1.8em; font-weight: 700; color: var(--accent-color); }
+
+        #action-controls {
+            background: rgba(0,0,0,0.3); padding: 10px;
+            display: flex; justify-content: center; gap: 8px;
+            border-radius: 15px; margin-top: 15px; width: 100%;
+        }
+        .action-btn {
+            flex: 1; max-width: 120px; height: 50px; font-size: 1.1em; font-weight: 700;
+            border: none; border-radius: 10px; cursor: pointer; color: white;
+            box-shadow: 0 4px 0px 0px rgba(0,0,0,0.4), inset 0 -2px 5px rgba(255,255,255,0.2);
+            transition: all 0.1s ease;
+        }
+        .action-btn:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 2px 0px 0px rgba(0,0,0,0.4); }
+        .action-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: 0 4px 0px 0px rgba(0,0,0,0.4); }
+        
+        #die-btn    { background-color: var(--fold-color); }
+        #check-btn  { background-color: var(--chip-green); }
+        #call-btn   { background-color: var(--chip-blue); }
+        #bet-btn    { background-color: var(--bet-color); }
+        #raise-btn  { background-color: var(--chip-red); }
+        
+        #chat-bubble-btn {
+            position: fixed; top: 50%; right: 10px; transform: translateY(-50%);
+            width: 50px; height: 50px; border-radius: 50%; border: none;
+            background: rgba(0,0,0,0.5); font-size: 1.8em; color: white;
+            cursor: pointer; z-index: 300;
+        }
+        .chat-bubble {
+            position: absolute; background-color: white; color: black;
+            padding: 8px 12px; border-radius: 15px; max-width: 150px;
+            font-size: 0.9em; word-break: break-all; opacity: 0;
+            transition: opacity 0.5s ease; pointer-events: none; z-index: 100;
+        }
+        #my-chat-bubble { bottom: 100%; left: 60px; margin-bottom: 5px; }
+        #opponent-chat-bubble { top: 100%; right: 60px; margin-top: 5px; }
+        .chat-bubble.show { opacity: 1; }
+
+        .overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 500; text-align: center; background-color: rgba(0,0,0,0.8);
+            backdrop-filter: blur(5px);
+        }
+        .modal-content { background: #2c3e50; padding: 30px; border-radius: 20px; width: 90%; max-width: 350px; }
+        .menu-btn { width: 100%; max-width: 250px; padding: 15px; font-size: 1.2em; font-weight: bold; border-radius: 12px; border: none; cursor: pointer; }
+        .menu-btn.primary { background-color: var(--accent-color); color: var(--text-dark); }
+        
+        #bet-modal-overlay { z-index: 510; }
+        #bet-modal-content { display: flex; flex-direction: column; gap: 15px; align-items: center; }
+        .spinner { margin: 20px auto; border: 4px solid rgba(255, 255, 255, 0.3); border-radius: 50%; border-top: 4px solid white; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        #countdown-number { font-size: 8em; font-weight: 700; color: white; text-shadow: 0 0 30px rgba(255,255,255,0.8); animation: countdown-pop 1s; }
+        @keyframes countdown-pop { from { transform: scale(0.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    </style>
+</head>
+<body>
+    <div id="game-wrapper">
+        <header id="game-header">
+             <div id="opponent-zone"></div>
+        </header>
+        <div id="result-indicator-container">
+            <div id="win-indicator" class="result-indicator">WIN</div>
+            <div id="lose-indicator" class="result-indicator">LOSE</div>
+            <div id="draw-indicator" class="result-indicator">DRAW</div>
+        </div>
+        <main id="game-main">
+            <div id="opponent-card-container"></div>
+            <div id="pot-container">
+                <div id="game-log"></div>
+                <div id="pot-label">POT</div>
+                <div id="pot-amount">0</div>
+            </div>
+            <div id="my-card-container"></div>
+        </main>
+        <footer id="game-footer">
+            <div style="width:100%">
+                <div id="my-zone"></div>
+                <div id="action-controls"></div>
+            </div>
+        </footer>
+    </div>
+
+    <button id="chat-bubble-btn">💬</button>
+
+    <div id="bet-modal-overlay" class="overlay" style="display: none;">
+        <div id="bet-modal-content" class="modal-content">
+            <h2>얼마를 베팅할까요?</h2>
+            <button class="menu-btn" data-amount="5">5</button>
+            <button class="menu-btn" data-amount="10">10</button>
+            <button class="menu-btn" data-amount="15">15</button>
+            <button class="menu-btn" data-amount="20">20</button>
+            <button class="menu-btn" style="background-color:#777; margin-top: 10px;" onclick="document.getElementById('bet-modal-overlay').style.display='none'">취소</button>
+        </div>
+    </div>
+    <div id="info-overlay" class="overlay">
+        <div id="info-modal-content" class="modal-content">
+            <h2 id="info-title">게임 접속 중</h2>
+            <p id="info-message">잠시만 기다려주세요...</p>
+            <div class="spinner" id="info-spinner"></div>
+            <div id="info-buttons" style="display: flex; flex-direction: column; gap: 10px; margin-top: 20px;"></div>
+        </div>
+    </div>
+
+    <audio id="bet-sound" src="https://blog.kakaocdn.net/dna/o6ujv/dJMb9W6ueNh/AAAAAAAAAAAAAAAAAAAAAAYyfBtP_39UEAZu00TN6daYBoqOGtc2LsnWHFF5hrBh/%ED%8F%AC%EC%BB%A4%EB%B0%B0%ED%8C%85.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=LC095aMN5yWasw8wat%2BgNg8nWnE%3D&attach=1&knm=tfile.mp3" preload="auto"></audio>
+    <audio id="call-sound" src="https://blog.kakaocdn.net/dna/bfYKQn/dJMb9W6ueNg/AAAAAAAAAAAAAAAAAAAAAGuRZZjQwqvcXiLaFyRNuGbESg40Kl5o1X66sP0t3pbk/%ED%8F%AC%EC%BB%A4%EC%BD%9C.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=PbNczqJ7rG%2FPMNwMhaGoBdA50S8%3D&attach=1&knm=tfile.mp3" preload="auto"></audio>
+    <audio id="die-sound" src="https://blog.kakaocdn.net/dna/CjwXm/dJMb9W6ueNf/AAAAAAAAAAAAAAAAAAAAALM59Q9_dkV3dUhoiaJ6dUdJTMIZ8pjbn5v4z-CBjU7S/%ED%8F%AC%EC%BB%A4%EB%8B%A4%EC%9D%B4.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=BCmsj8srpU7GOEi%2BM7Jz%2BsEzPpI%3D&attach=1&knm=tfile.mp3" preload="auto"></audio>
+    
+    <script src="avatars.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script> 
+    <script>
+    function escapeHTML(str) {
+        if (typeof str !== 'string') return '';
+        const map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        };
+        return str.replace(/[&<>"']/g, m => map[m]);
+    }
+            document.addEventListener('contextmenu', event => event.preventDefault());
+ document.addEventListener('keydown', event => {
+    if (event.key === 'F12' ||
+         (event.ctrlKey && event.shiftKey && ['I', 'J', 'C'].includes(event.key.toUpperCase())) ||
+         (event.ctrlKey && event.key.toUpperCase() === 'U')) {
+       event.preventDefault();
+     }
+ });
+ setInterval(() => { try { debugger; } catch (e) {} }, 1000);
+
+    document.addEventListener('DOMContentLoaded', () => {
+
+        // ✨ [신규] 뒤로가기 모달 관련 변수 및 이벤트
+        const confirmExitModal = document.getElementById('confirm-exit-modal');
+        const exitConfirmBtn = document.getElementById('exit-confirm-btn');
+        const exitCancelBtn = document.getElementById('exit-cancel-btn');
+
+        history.pushState(null, '', location.href);
+        window.addEventListener('popstate', (e) => {
+            history.pushState(null, '', location.href); // 뒤로가기 방지 유지
+            confirmExitModal.style.display = 'flex'; // 모달 표시
+        });
+
+        exitConfirmBtn.addEventListener('click', () => {
+             // 나가기 버튼 로직 재사용 (게임 종료 모달의 exitBtn 로직과 유사)
+             if (rematchListener) roomRef.child('rematchRequests').off('value', rematchListener);
+             if (roomRef) roomRef.off();
+             const promise = isHost ? roomRef.remove() : roomRef.child('players/' + myPlayerId).remove();
+             promise.finally(() => {
+                 window.location.href = '대기실.html';
+             });
+        });
+
+        exitCancelBtn.addEventListener('click', () => {
+            confirmExitModal.style.display = 'none'; // 모달 닫기
+        });
+        // ✨ [신규] 끝
+
+      // ✨ 디버그 로그 시스템 추가
+      const debugLog = (() => {
+          const logs = [];
+          const maxLogs = 100;
+          
+          function addLog(message, type = 'info') {
+              const timestamp = new Date().toLocaleTimeString();
+              const logEntry = `[${timestamp}] ${type.toUpperCase()}: ${message}`;
+              logs.push(logEntry);
+              if (logs.length > maxLogs) logs.shift();
+              
+              // 콘솔에도 출력
+              console.log(logEntry);
+              
+              // 모달 업데이트
+              const content = document.getElementById('debug-log-content');
+              if (content) {
+                  content.innerHTML = logs.map(log => `<div>${log}</div>`).join('');
+                  content.scrollTop = content.scrollHeight;
+              }
+          }
+          
+          return { addLog };
+      })();
+      
+      // 디버그 토글 버튼
+      document.getElementById('debug-toggle-btn').addEventListener('click', () => {
+          const modal = document.getElementById('debug-log-modal');
+          modal.style.display = modal.style.display === 'none' ? 'block' : 'none';
+      });
+
+      (function() {
+          const devtools = {
+              isOpen: false,
+              orientation: undefined
+          };
+          const threshold = 160;
+          const emitEvent = (isOpen, orientation) => {
+              window.dispatchEvent(new CustomEvent('devtoolschange', {
+                  detail: {
+                      isOpen,
+                      orientation
+                  }
+              }));
+          };
+          const main = ({emitEvents = true} = {}) => {
+              const widthThreshold = window.outerWidth - window.innerWidth > threshold;
+              const heightThreshold = window.outerHeight - window.innerHeight > threshold;
+              const orientation = widthThreshold ? 'vertical' : 'horizontal';
+              if (!(heightThreshold && widthThreshold) && ((window.Firebug && window.Firebug.chrome && window.Firebug.chrome.isInitialized) || widthThreshold || heightThreshold)) {
+                  if (!devtools.isOpen || devtools.orientation !== orientation) {
+                      if (emitEvents) {
+                          emitEvent(true, orientation);
+                      }
+                  }
+                  devtools.isOpen = true;
+                  devtools.orientation = orientation;
+              } else {
+                  if (devtools.isOpen) {
+                      if (emitEvents) {
+                          emitEvent(false, undefined);
+                      }
+                  }
+                  devtools.isOpen = false;
+                  devtools.orientation = undefined;
+              }
+          };
+          main({emitEvents: false});
+          setInterval(main, 500);
+          window.addEventListener('devtoolschange', event => {
+              if (event.detail.isOpen) {
+                  document.body.innerHTML = '<div style="color:white; font-size:2em; text-align:center; padding-top:100px;">Developer tools are not allowed.</div>';
+              }
+          });
+          document.addEventListener('contextmenu', e => e.preventDefault());
+          function blockKeys(e) {
+              if (
+                  e.keyCode === 123 ||
+                  (e.ctrlKey && e.shiftKey && (e.keyCode === 'I'.charCodeAt(0) || e.keyCode === 'J'.charCodeAt(0) || e.keyCode === 'C'.charCodeAt(0))) ||
+                  (e.ctrlKey && e.keyCode === 'U'.charCodeAt(0))
+              ) {
+                  e.preventDefault();
+              }
+          }
+          window.addEventListener('keydown', blockKeys);
+          function checkDebugger() {
+              const before = new Date().getTime();
+              debugger;
+              const after = new Date().getTime();
+              if (after - before > 100) {
+                  document.body.innerHTML = '<div style="color:white; font-size:2em; text-align:center; padding-top:100px;">Developer tools are not allowed.</div>';
+              }
+          }
+          if (document.readyState === 'complete') {
+              checkDebugger();
+              setInterval(checkDebugger, 1000);
+          } else {
+              window.addEventListener('load', () => {
+                  checkDebugger();
+                  setInterval(checkDebugger, 1000);
+              });
+          }
+      })();
+ 
+        const firebaseConfig = {
+            apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw", authDomain: "goodluck-7c14b.firebaseapp.com",
+            databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com", projectId: "goodluck-7c14b",
+            storageBucket: "goodluck-7c14b.firebasestorage.app", messagingSenderId: "858281658455",
+            appId: "1:858281658455:web:9131280a459be983933b12"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+        // ✨ [수정 2] auth 객체 생성
+        const auth = firebase.auth(); 
+        const gameRoomsRef = database.ref('rooms'); // ← 리버시처럼 'rooms' 사용
+        const usersRef = database.ref('users');
+
+        const gameWrapper = document.getElementById('game-wrapper');
+        const potAmountEl = document.getElementById('pot-amount');
+        const actionControls = document.getElementById('action-controls');
+        const gameLogEl = document.getElementById('game-log');
+        const infoOverlay = document.getElementById('info-overlay');
+        const opponentZone = document.getElementById('opponent-zone');
+        const myZone = document.getElementById('my-zone');
+        const myCardContainer = document.getElementById('my-card-container');
+        const opponentCardContainer = document.getElementById('opponent-card-container');
+        const betModalOverlay = document.getElementById('bet-modal-overlay');
+        const chatBubbleBtn = document.getElementById('chat-bubble-btn');
+
+        let myPlayerId, myNickname, myAvatar, roomId, roomRef, isHost = false;
+        let currentRoomData = null;
+        let isGameInitialized = false;
+        let previousGameState = null;
+        let rematchListener = null;
+
+        const CARD_RANKS = ['2','3','4','5','6','7','8','9','10','A'];
+        const TOTAL_ROUNDS = 10;
+        const STARTING_CHIPS = 250;
+        const MANDATORY_BET = 10;
+        const MY_CHIP_IMG_URL = 'https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdna%2FcKGrWm%2FbtsQ8tqCtxA%2FAAAAAAAAAAAAAAAAAAAAAMtqUdB8mZJXZHveQot57uccUtjwWFoLvJmhSt5G14z7%2Fimg.png%3Fcredential%3DyqXZFxpELC7KVnFOS48ylbz2pIh7yKj8%26expires%3D1761922799%26allow_ip%3D%26allow_referer%3D%26signature%3Duq5eoVhwlmFc5SppQwmMS9ZtyVQ%253D';
+        const OPPONENT_CHIP_IMG_URL = 'https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdna%2FbdOp5p%2FbtsQ60CtTJD%2FAAAAAAAAAAAAAAAAAAAAAMw3nG5fGg0FCyfcQNHjXg6jthvvh1QJp2gUFleg_ybo%2Fimg.png%3Fcredential%3DyqXZFxpELC7KVnFOS48ylbz2pIh7yKj8%26expires%3D1761922799%26allow_ip%3D%26allow_referer%3D%26signature%3DhThuOEgms%252Foxtq38zHgu4R1aLA0%253D';
+        
+        let koreanMaleVoice = null;
+        window.speechSynthesis.onvoiceschanged = () => {
+            const voices = window.speechSynthesis.getVoices();
+            koreanMaleVoice = voices.find(v => v.lang === 'ko-KR' && v.name.includes('남자')) || voices.find(v => v.lang === 'ko-KR');
+        };
+
+        function playSound(id) {
+            const sound = document.getElementById(id);
+            if (sound) { sound.currentTime = 0; sound.play().catch(e => {}); }
+        }
+        function speak(text) {
+            if (!window.speechSynthesis) return;
+            const utterance = new SpeechSynthesisUtterance(text);
+            if (koreanMaleVoice) utterance.voice = koreanMaleVoice;
+            utterance.lang = 'ko-KR';
+            window.speechSynthesis.speak(utterance);
+        }
+
+        function initialize() {
+            debugLog.addLog('🚀 initialize 함수 시작');
+            
+            // myPlayerId는 auth.onAuthStateChanged에서 이미 확인되었으므로 localStorage에서 다시 가져옵니다.
+            // (다른 파일과의 일관성을 위해 localStorage 사용 유지)
+            myPlayerId = localStorage.getItem('myPlayerId');
+            myNickname = localStorage.getItem('userNickname');
+            myAvatar = localStorage.getItem('userAvatar');
+            
+            debugLog.addLog(`Player ID: ${myPlayerId}`);
+            debugLog.addLog(`Nickname: ${myNickname}`);
+            
+            const urlParams = new URLSearchParams(window.location.search);
+            roomId = urlParams.get('roomId');
+            
+            debugLog.addLog(`Room ID: ${roomId}`);
+
+            if (!myPlayerId || !roomId) {
+                debugLog.addLog('❌ Player ID 또는 Room ID 없음');
+                alert("잘못된 접근입니다."); window.location.href = 'index.html'; return;
+            }
+            
+            debugLog.addLog('✅ Firebase 참조 생성 중...');
+            roomRef = gameRoomsRef.child(roomId);
+            debugLog.addLog('✅ listenToRoom 호출 직전');
+            
+            // Firebase 연결 상태 체크 (권한 오류 확인용)
+            debugLog.addLog('🔍 Firebase 연결 상태 체크 중...');
+            roomRef.once('value').then(snapshot => {
+                debugLog.addLog(`✅ Firebase 연결 성공! 방 존재: ${snapshot.exists()}`);
+                if (snapshot.exists()) {
+                    debugLog.addLog(`방 데이터: ${JSON.stringify(snapshot.val()).substring(0, 100)}...`);
+                }
+                // 연결 성공 후 리스너 시작
+                listenToRoom();
+                debugLog.addLog('✅ listenToRoom 호출 완료');
+                
+            }).catch(error => {
+                // 이 부분에서 여전히 오류가 발생한다면, DB 규칙 문제일 수 있습니다.
+                debugLog.addLog(`❌ Firebase 연결 실패: ${error.message}`);
+                alert(`방에 연결할 수 없습니다. (오류: ${error.message})`);
+                window.location.href = '대기실.html';
+            });
+            
+            betModalOverlay.querySelectorAll('.menu-btn[data-amount]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const amount = parseInt(btn.dataset.amount, 10);
+                    performBet(amount);
+                });
+            });
+
+            actionControls.addEventListener('click', (event) => {
+                const button = event.target.closest('.action-btn');
+                if (!button || button.disabled) return;
+               switch (button.id) {
+                    case 'die-btn': handleFold(); break;
+                    case 'check-btn': handleCheck(); break;
+                    case 'call-btn': handleCall(); break;
+                    case 'bet-btn': openBetModal(); break;
+                    case 'raise-btn': handleRaise(); break;
+                    case 'allin-btn': handleAllIn(); break;
+                }
+            });
+
+            const chatModalOverlay = document.getElementById('chat-modal-overlay');
+            const chatInput = document.getElementById('chat-input');
+            const sendChatBtn = document.getElementById('send-chat-btn');
+            const cancelChatBtn = document.getElementById('cancel-chat-btn');
+
+            chatBubbleBtn.addEventListener('click', () => {
+                chatModalOverlay.style.display = 'flex';
+                chatInput.focus();
+            });
+            
+            cancelChatBtn.addEventListener('click', () => {
+                chatModalOverlay.style.display = 'none';
+            });
+
+            sendChatBtn.addEventListener('click', () => {
+                const message = chatInput.value.trim();
+                if (message !== '') {
+                    roomRef.child('latestChat').set({
+                        senderId: myPlayerId,
+                        message: message.substring(0, 20),
+                        timestamp: firebase.database.ServerValue.TIMESTAMP
+                    });
+                    chatInput.value = '';
+                    chatModalOverlay.style.display = 'none';
+                }
+            });
+            
+            chatInput.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter') {
+                    sendChatBtn.click();
+                }
+            });
+        }
+        
+        function listenToRoom() {
+            debugLog.addLog('📡 listenToRoom 시작');
+            let lastChatTimestamp = 0;
+            
+            debugLog.addLog('Firebase .on() 리스너 등록 시도...');
+            
+            roomRef.on('value', (snapshot) => {
+                debugLog.addLog(`🔔 Firebase 콜백 실행! exists: ${snapshot.exists()}`);
+                
+                if (!snapshot.exists()) {
+                    debugLog.addLog('❌ 방이 존재하지 않음');
+                    if(rematchListener) roomRef.child('rematchRequests').off('value', rematchListener);
+                    roomRef.off();
+                    if(isGameInitialized) {
+                        showInfoModal('알림', '방장이 게임을 종료했거나, 연결이 끊겼습니다.', false, () => window.location.href = '대기실.html');
+                    }
+                    return;
+                }
+                currentRoomData = snapshot.val();
+
+                const currentGameState = currentRoomData.gameState;
+                debugLog.addLog(`게임 상태: ${currentGameState}, 이전: ${previousGameState}`);
+                
+                if ((previousGameState === 'showdown' || previousGameState === 'betting') && currentGameState === 'startingRound') {
+                    const log = currentRoomData.gameLog || '';
+                    if (log.includes('무승부')) {
+                        showRoundResultAnimation('draw');
+                    } else if (log.includes('승리')) {
+                        const winnerId = currentRoomData.currentTurnPlayerId;
+                        if (winnerId) {
+                            showRoundResultAnimation(winnerId === myPlayerId ? 'win' : 'lose');
+                        }
+                    }
+                }
+                
+                // ▼▼▼ [버그 수정] 카운트다운을 화면에 표시하는 로직 추가 ▼▼▼
+    if (currentGameState === 'countdown' && previousGameState !== 'countdown') {
+    debugLog.addLog('🎮 카운트다운 시작 트리거');
+    startCountdown();
+}
+                // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+                
+                previousGameState = currentGameState;
+                
+                if (!isGameInitialized && currentRoomData.players && currentRoomData.players[myPlayerId]) {
+                    isHost = currentRoomData.hostId === myPlayerId;
+                    if (isHost) roomRef.onDisconnect().remove(); 
+                    else roomRef.child('players/' + myPlayerId).onDisconnect().remove();
+                }
+
+                if (isHost && currentRoomData.gameState === 'launching' && !isGameInitialized) {
+                    isGameInitialized = true;
+                    startGame();
+                    return;
+                }
+
+                const playerIds = Object.keys(currentRoomData.players || {});
+                if (isGameInitialized && currentRoomData.gameState !== 'finalGameOver' && currentRoomData.allPlayerIds && playerIds.length < 2) {
+                    if (playerIds.includes(myPlayerId) && isHost) {
+                        endGameOnDisconnect();
+                    }
+                    return;
+                }
+
+                if (currentRoomData.gameState && currentRoomData.gameState !== 'launching') {
+    debugLog.addLog(`게임 래퍼 표시, 상태: ${currentRoomData.gameState}`);
+    gameWrapper.style.display = 'flex';
+    
+    const activePlayStates = ['betting', 'showdown', 'dealing', 'startingRound', 'finalGameOver'];
+    if (activePlayStates.includes(currentRoomData.gameState)) {
+        debugLog.addLog('✅ 게임 렌더링 시작');
+        infoOverlay.style.display = 'none';
+        renderGame();
+    }
+}
+
+                if (currentRoomData.latestChat && currentRoomData.latestChat.timestamp > lastChatTimestamp) {
+                    lastChatTimestamp = currentRoomData.latestChat.timestamp;
+                    showChatBubble(currentRoomData.latestChat.senderId, currentRoomData.latestChat.message);
+                }
+                
+                if (isHost) { 
+                    setTimeout(handleHostLogic, 50); 
+                }
+            });
+        }
+        
+        function showChatBubble(senderId, message) {
+            const isMe = senderId === myPlayerId;
+            const bubbleId = isMe ? 'my-chat-bubble' : 'opponent-chat-bubble';
+            let bubbleEl = document.getElementById(bubbleId);
+            if (!bubbleEl) {
+                bubbleEl = document.createElement('div');
+                bubbleEl.className = 'chat-bubble';
+                bubbleEl.id = bubbleId;
+                const detailsEl = document.querySelector(isMe ? '#my-zone .player-details' : '#opponent-zone .player-details');
+                if (detailsEl) detailsEl.appendChild(bubbleEl);
+            }
+            bubbleEl.textContent = message;
+            const escapeHtml = (unsafe) => {
+                return unsafe
+                     .replace(/&/g, "&amp;")
+                     .replace(/</g, "&lt;")
+                     .replace(/>/g, "&gt;")
+                     .replace(/"/g, "&quot;")
+                     .replace(/'/g, "&#039;");
+            };
+            bubbleEl.innerHTML = escapeHtml(message);
+            bubbleEl.classList.add('show');
+            setTimeout(() => { bubbleEl.classList.remove('show'); }, 3000);
+        }
+
+             function startGame() {
+            debugLog.addLog('🎲 startGame 호출');
+            if (!isHost) return;
+            const playerIds = Object.keys(currentRoomData.players);
+            const players = {};
+            playerIds.forEach((pid, index) => {
+                players[pid] = { ...currentRoomData.players[pid], id: pid, chips: STARTING_CHIPS, color: index === 0 ? 'blue' : 'red' };
+            });
+            const firstTurnPlayerId = playerIds[Math.floor(Math.random() * playerIds.length)];
+            roomRef.update({ 
+                players, 
+                currentTurnPlayerId: firstTurnPlayerId, 
+                gameState: 'startingRound', 
+                currentRound: 0, 
+                carryOverPot: 0,
+                actionsThisRound: 0,
+                rematchRequests: null,
+                allPlayerIds: playerIds
+            });
+        }
+
+        function startRematch() {
+            if (!isHost) return;
+            startGame();
+        }
+
+        function startCountdown() {
+    debugLog.addLog('⏰ startCountdown 함수 실행');
+    const infoTitle = document.getElementById('info-title');
+    const infoMessage = document.getElementById('info-message');
+    const infoSpinner = document.getElementById('info-spinner');
+    const infoButtons = document.getElementById('info-buttons');
+    const infoModalContent = document.getElementById('info-modal-content');
+
+    // 모달 스타일 초기화
+    infoModalContent.style.backgroundColor = '';
+    infoModalContent.style.boxShadow = '';
+    infoModalContent.style.padding = '';
+    infoTitle.style.display = '';
+    infoTitle.textContent = '';
+    
+    infoOverlay.style.display = 'flex';
+    infoSpinner.style.display = 'none';
+    infoButtons.innerHTML = '';
+    infoMessage.innerHTML = '<div id="countdown-number">3</div>';
+    
+    let count = 3;
+    const countdownInterval = setInterval(() => {
+        count--;
+        if (count > 0) {
+            const countdownEl = document.getElementById('countdown-number');
+            if (countdownEl) {
+                countdownEl.style.animation = 'none';
+                countdownEl.offsetHeight;
+                countdownEl.style.animation = 'countdown-pop 1s';
+                countdownEl.textContent = count;
+            }
+        } else {
+            clearInterval(countdownInterval);
+            debugLog.addLog('✅ 카운트다운 종료, 모달 숨김');
+            infoOverlay.style.display = 'none';
+            if (isHost) {
+                debugLog.addLog('방장이 betting 상태로 변경');
+                roomRef.update({ gameState: 'betting' });
+            }
+        }
+    }, 1000);
+}
+        
+        function handleHostLogic() {
+            const { gameState, players, actionsThisRound } = currentRoomData;
+            if (!isHost || !gameState || !players) return;
+            
+            switch(gameState) {
+                case 'startingRound':
+                    startNewRound();
+                    break;
+                case 'betting':
+                    const activePlayers = Object.values(players).filter(p => p && !p.hasFolded);
+                    if (activePlayers.length <= 1) {
+                        roomRef.update({ gameState: 'showdown' });
+                        return;
+                    }
+                    const isPlayerBankruptAtStart = activePlayers.some(p => p.chips === 0);
+                    if (isPlayerBankruptAtStart && actionsThisRound === 0) {
+                        roomRef.update({ gameState: 'showdown' });
+                        return;
+                    }
+                    const allPlayersActed = activePlayers.every(p => p.lastAction !== null);
+                    const enoughActionsTaken = actionsThisRound >= activePlayers.length;
+                    if (allPlayersActed && enoughActionsTaken) {
+                        const bets = activePlayers.map(p => p.bet);
+                        const allBetsEqual = new Set(bets).size === 1;
+                        const isAnyPlayerAllIn = activePlayers.some(p => p.chips === 0);
+                        if (allBetsEqual || isAnyPlayerAllIn) {
+                            roomRef.update({ gameState: 'showdown' });
+                        }
+                    }
+                    break;
+                case 'showdown':
+                      setTimeout(endRound, 2500);
+                    break;
+            }
+        }
+        
+        function startNewRound() {
+            if (!isHost) return;
+            const { players, currentRound, carryOverPot } = currentRoomData;
+
+            const playerIdsWithChips = Object.keys(players).filter(pid => players[pid] && players[pid].chips > 0);
+            if (playerIdsWithChips.length < 2) {
+                endGame(); return;
+            }
+
+            const nextRound = (currentRound || 0) + 1;
+            if (nextRound > TOTAL_ROUNDS) {
+                endGame(); return;
+            }
+
+            const deck = shuffleDeck();
+            const updates = { pot: 0, currentBet: 0, gameLog: `라운드 ${nextRound} 시작!`, actionsThisRound: 0 };
+            const newPlayers = JSON.parse(JSON.stringify(players));
+            let currentPot = carryOverPot || 0;
+
+            playerIdsWithChips.forEach(pid => {
+                const p = newPlayers[pid];
+                p.card = deck.pop();
+                p.hasFolded = false;
+                const betAmount = Math.min(MANDATORY_BET, p.chips);
+                p.bet = betAmount;
+                p.chips -= betAmount;
+                p.lastAction = null;
+                currentPot += betAmount;
+            });
+
+            updates.pot = currentPot;
+            updates.currentBet = MANDATORY_BET;
+            updates.players = newPlayers;
+            updates.currentRound = nextRound;
+            updates.carryOverPot = 0;
+
+            const isPlayerBankruptAfterAnte = playerIdsWithChips.some(pid => newPlayers[pid].chips <= 0);
+            if (isPlayerBankruptAfterAnte) {
+                updates.gameState = 'showdown';
+            } else if (nextRound === 1) {
+                updates.gameState = 'countdown';
+            } else {
+                updates.gameState = 'dealing';
+            }
+            
+            roomRef.update(updates).then(() => {
+                if (updates.gameState === 'dealing' && isHost) {
+                    setTimeout(() => roomRef.update({ gameState: 'betting' }), 1500);
+                }
+            });
+        }
+
+       function endRound() {
+            if (!isHost) return;
+            const { players, pot, currentRound } = currentRoomData;
+            const activePlayers = Object.values(players).filter(p => p && !p.hasFolded);
+            let winner = null, isDraw = false, logMessage;
+
+            if (activePlayers.length === 1) {
+                winner = activePlayers[0];
+                logMessage = `${winner.nickname}님이 라운드 승리!`;
+            } else {
+                let highestRank = -1, potentialWinners = [];
+                activePlayers.forEach(p => {
+                    const rank = CARD_RANKS.indexOf(p.card);
+                    if (rank > highestRank) { highestRank = rank; potentialWinners = [p]; }
+                    else if (rank === highestRank) { potentialWinners.push(p); }
+                });
+                if (potentialWinners.length === 1) {
+                    winner = potentialWinners[0];
+                    logMessage = `${winner.nickname}님이 승리! (카드: ${winner.card})`;
+                } else {
+                    isDraw = true;
+                    logMessage = `무승부! (카드: ${potentialWinners.length > 0 ? potentialWinners[0].card : '?'}) 팟이 이월됩니다.`;
+                }
+            }
+            
+            const finalPlayersState = JSON.parse(JSON.stringify(players));
+
+            if (isDraw) {
+                Object.keys(finalPlayersState).forEach(pid => {
+                    finalPlayersState[pid].chips += finalPlayersState[pid].bet;
+                });
+            } else if (winner) {
+                const loser = Object.values(finalPlayersState).find(p => p.id !== winner.id && activePlayers.some(ap => ap.id === p.id));
+                let winnings = pot;
+                if (loser && winner.bet < loser.bet) {
+                    const refundToLoser = loser.bet - winner.bet;
+                    winnings -= refundToLoser;
+                    finalPlayersState[loser.id].chips += refundToLoser;
+                }
+                finalPlayersState[winner.id].chips += winnings;
+            }
+            
+            const playersWithChips = Object.values(finalPlayersState).filter(p => p.chips > 0);
+            const isGameOver = playersWithChips.length < 2 || (currentRound >= TOTAL_ROUNDS);
+
+            if (isGameOver) {
+                endGame(finalPlayersState);
+                return;
+            }
+            
+            const updates = {
+                gameState: 'startingRound',
+                gameLog: logMessage,
+                carryOverPot: isDraw ? pot : 0, 
+                currentTurnPlayerId: isDraw ? currentRoomData.currentTurnPlayerId : winner.id,
+                players: finalPlayersState
+            };
+            roomRef.update(updates);
+        }
+
+        function endGame(finalPlayersState = null) {
+            if(!isHost) return;
+            
+            setTimeout(() => {
+                const players = Object.values(finalPlayersState || currentRoomData.players);
+                if (players.length < 2) { return endGameOnDisconnect(); }
+                
+                const p1 = players[0], p2 = players[1];
+                let winnerId = null, loserId = null, isDraw = false;
+                
+                if (p1.chips > p2.chips) { winnerId = p1.id; loserId = p2.id; } 
+                else if (p2.chips > p1.chips) { winnerId = p2.id; loserId = p1.id; } 
+                else { isDraw = true; winnerId = p1.id; loserId = p2.id; }
+                
+                updatePlayerStats(winnerId, loserId, isDraw);
+                roomRef.update({ gameState: 'finalGameOver', finalWinnerId: isDraw ? null : winnerId, isDraw });
+            }, 3000); 
+
+        }
+        
+       function endGameOnDisconnect() {
+            if (!isHost || currentRoomData.gameState === 'finalGameOver') return;
+            
+            const winnerId = myPlayerId;
+            const loserId = currentRoomData.allPlayerIds.find(pid => pid !== winnerId);
+
+            updatePlayerStats(winnerId, loserId, false);
+            
+            roomRef.update({ 
+                gameState: 'finalGameOver', 
+                finalWinnerId: winnerId, 
+                isDraw: false,
+                endedByDisconnect: true 
+            });
+        }
+
+        async function updatePlayerStats(winnerId, loserId, isDraw = false) {
+    const updatePromises = [];
+    
+    const updateUser = (uid, result) => {
+        if (!uid || String(uid).startsWith('guest_')) return;
+        
+        const promise = usersRef.child(uid).transaction(data => {
+            if (data) {
+                // profile 확인
+                if (!data.profile) data.profile = {};
+                const profile = data.profile;
+                profile.level = profile.level || 1;
+                profile.createdAt = profile.createdAt || firebase.database.ServerValue.TIMESTAMP;
+                profile.exp = profile.exp || 0;
+                profile.points = profile.points || 0;
+                
+                // gameStats 확인
+                if (!data.gameStats) data.gameStats = {};
+                if (!data.gameStats.indianpoker) {
+                    data.gameStats.indianpoker = { wins: 0, losses: 0, plays: 0 };
+                }
+                
+                // plays 증가
+                data.gameStats.indianpoker.plays = (data.gameStats.indianpoker.plays || 0) + 1;
+                
+                // 결과에 따른 업데이트
+                if (isDraw) {
+                    // 무승부
+                    profile.exp += 25;
+                    profile.points += 50;
+                } else if (result === 'win') {
+                    // 승리
+                    data.gameStats.indianpoker.wins = (data.gameStats.indianpoker.wins || 0) + 1;
+                    profile.exp += 50;
+                    profile.points += 100;
+                } else if (result === 'loss') {
+                    // 패배
+                    data.gameStats.indianpoker.losses = (data.gameStats.indianpoker.losses || 0) + 1;
+                    profile.exp += 10;
+                    profile.points += 30;
+                }
+            }
+            return data;
+        }, (error, committed, snapshot) => {
+            if (error) {
+                console.error('[인디언포커] 전적 업데이트 실패:', error);
+            } else if (committed) {
+                console.log('[인디언포커] 전적 업데이트 성공:', snapshot.val());
+            }
+        });
+        
+        updatePromises.push(promise);
+    };
+    
+    if (isDraw) {
+        updateUser(winnerId, 'draw');
+        updateUser(loserId, 'draw');
+    } else {
+        updateUser(winnerId, 'win');
+        updateUser(loserId, 'loss');
+    }
+    
+    await Promise.all(updatePromises).catch(e => console.error("전적 업데이트 실패", e));
+}
+        
+        function renderGame() {
+            const data = currentRoomData;
+            if (data.gameState === 'finalGameOver') {
+                const winnerInfo = data.finalWinnerId ? data.players[data.finalWinnerId] : null;
+                const winnerNickname = winnerInfo ? winnerInfo.nickname : '무승부';
+                let message = data.isDraw ? "👏 최종 결과: 무승부! 👏" : (data.finalWinnerId === myPlayerId ? "🎉 당신이 최종 승리했습니다! 🎉" : `😢 ${winnerNickname}님의 최종 승리! 😢`);
+                if (data.endedByDisconnect) message = '상대방이 나가서 승리했습니다.';
+                showInfoModal('게임 종료!', message, false);
+                return;
+            }
+            const { players } = data;
+            myZone.innerHTML = ''; opponentZone.innerHTML = '';
+            myCardContainer.innerHTML = ''; opponentCardContainer.innerHTML = '';
+            potAmountEl.textContent = data.pot || 0;
+            gameLogEl.textContent = data.gameLog || '인디언 포커';
+            
+            Object.values(players || {}).forEach(p => {
+                if (!p || !p.id) return;
+                const isMe = p.id === myPlayerId;
+                
+                // ✨ [수정] 4방향 아바타 세트(ID), 이미지, 이모지 순으로 확인
+                const avatarSet = AVATAR_SETS[p.avatar];
+                let avatarHTML = '';
+                if (avatarSet) {
+                    avatarHTML = `<img src="${avatarSet.front}" alt="avatar">`;
+                } else if (p.avatar && (p.avatar.startsWith('http') || /\.(png|jpg|jpeg|gif|webp)$/i.test(p.avatar))) {
+                    avatarHTML = `<img src="${p.avatar}" alt="avatar">`;
+                } else {
+                    avatarHTML = escapeHTML(p.avatar); // 이모지
+                }
+
+                const chipImg = p.color === 'blue' ? MY_CHIP_IMG_URL : OPPONENT_CHIP_IMG_URL;
+                const playerLayoutHTML = `
+                    <div class="player-layout ${p.id === data.currentTurnPlayerId ? 'my-turn' : ''} ${p.hasFolded ? 'folded' : ''}">
+                        <div class="player-details">
+                            <div class="avatar">${avatarHTML}</div>
+                            <div class="info-text">
+                                <div class="nickname">${p.nickname}</div>
+                                <div class="chips"><img src="${chipImg}" class="chip-icon"><span>${p.chips || 0}</span></div>
+                            </div>
+                        </div>
+                        <div class="bet-display"><img src="${chipImg}" class="chip-icon"><span>${p.bet || 0}</span></div>
+                    </div>`;
+                const isCardHidden = isMe && data.gameState !== 'showdown';
+                const cardContent = p.card ? (isCardHidden ? '❓' : p.card) : '';
+                const cardHTML = `<div class="player-card ${isCardHidden ? 'hidden' : ''}">${cardContent}</div>`;
+                if (isMe) { myZone.innerHTML = playerLayoutHTML; myCardContainer.innerHTML = cardHTML; } 
+                else { opponentZone.innerHTML = playerLayoutHTML; opponentCardContainer.innerHTML = cardHTML; }
+            });
+            renderActionButtons();
+        }
+
+        function renderActionButtons() {
+            const { players, gameState, currentTurnPlayerId, currentBet } = currentRoomData;
+            const myPlayer = players ? players[myPlayerId] : null;
+            if (!myPlayer) { actionControls.innerHTML = ''; return; }
+            const isMyTurn = gameState === 'betting' && currentTurnPlayerId === myPlayerId;
+            const toCall = (currentBet || 0) - myPlayer.bet;
+            const canCheck = toCall <= 0;
+
+            let buttonsHTML = `<button id="die-btn" class="action-btn" ${!isMyTurn ? 'disabled' : ''}>다이</button>`;
+
+            if (canCheck) {
+                buttonsHTML += `<button id="check-btn" class="action-btn" ${!isMyTurn ? 'disabled' : ''}>체크</button>
+                                <button id="bet-btn" class="action-btn" ${!isMyTurn || myPlayer.chips <= 0 ? 'disabled' : ''}>베팅</button>`;
+            } else {
+                if (myPlayer.chips <= toCall) {
+                    buttonsHTML += `<button id="allin-btn" class="action-btn" style="background-color: #d9534f;" ${!isMyTurn ? 'disabled' : ''}>올인 (${myPlayer.chips})</button>`;
+                } else {
+                    buttonsHTML += `<button id="call-btn" class="action-btn" ${!isMyTurn ? 'disabled' : ''}>콜 (${toCall})</button>`;
+                    const minRaiseCost = toCall + (currentBet || MANDATORY_BET);
+                    if (myPlayer.chips > minRaiseCost) {
+                        buttonsHTML += `<button id="raise-btn" class="action-btn" ${!isMyTurn ? 'disabled' : ''}>레이즈</button>`;
+                    } else {
+                        buttonsHTML += `<button id="allin-btn" class="action-btn" style="background-color: #d9534f;" ${!isMyTurn ? 'disabled' : ''}>올인 (${myPlayer.chips})</button>`;
+                    }
+                }
+            }
+            actionControls.innerHTML = buttonsHTML;
+        }
+        
+        function handleFold() { performAction('fold'); }
+        function handleCheck() { performAction('check'); }
+        function handleCall() { performAction('call'); }
+        function handleRaise() { performAction('raise'); }
+        function handleAllIn() { performAction('all-in'); }
+        function openBetModal() { betModalOverlay.style.display = 'flex'; }
+        function performBet(amount) { betModalOverlay.style.display = 'none'; performAction('bet', amount); }
+
+        function performAction(type, amount = 0) {
+            const myPlayer = currentRoomData.players[myPlayerId];
+            if (!myPlayer) return;
+            const updates = {};
+            updates['/actionsThisRound'] = firebase.database.ServerValue.increment(1);
+            let logMessage = `${myPlayer.nickname}님이 `;
+            let potIncrease = 0;
+            updates[`/players/${myPlayerId}/lastAction`] = type;
+
+            const toCall = currentRoomData.currentBet - myPlayer.bet;
+            const opponent = Object.values(currentRoomData.players).find(p => p.id !== myPlayerId);
+
+            switch(type) {
+                case 'fold': playSound('die-sound'); updates[`/players/${myPlayerId}/hasFolded`] = true; logMessage += '다이했습니다.'; break;
+                case 'check': speak('체크'); logMessage += '체크했습니다.'; break;
+                case 'call':
+                    playSound('call-sound');
+                    if (myPlayer.chips < toCall) return;
+                    updates[`/players/${myPlayerId}/chips`] = myPlayer.chips - toCall;
+                    updates[`/players/${myPlayerId}/bet`] = myPlayer.bet + toCall;
+                    potIncrease = toCall;
+                    logMessage += '콜했습니다.'; break;
+                case 'bet':
+                    playSound('bet-sound');
+                    if (myPlayer.chips < amount) return;
+                    updates[`/players/${myPlayerId}/chips`] = myPlayer.chips - amount;
+                    updates[`/players/${myPlayerId}/bet`] = myPlayer.bet + amount;
+                    updates['/currentBet'] = myPlayer.bet + amount;
+                    potIncrease = amount;
+                    logMessage += `${amount} 베팅했습니다.`;
+                    if (opponent) updates[`/players/${opponent.id}/lastAction`] = null; break;
+                case 'raise':
+                    speak('레이즈'); playSound('bet-sound');
+                    const raiseAmount = toCall + currentRoomData.currentBet;
+                    if (myPlayer.chips < raiseAmount) return;
+                    const newTotalBet = myPlayer.bet + raiseAmount;
+                    updates[`/players/${myPlayerId}/chips`] = myPlayer.chips - raiseAmount;
+                    updates[`/players/${myPlayerId}/bet`] = newTotalBet;
+                    updates['/currentBet'] = newTotalBet;
+                    potIncrease = raiseAmount;
+                    logMessage += `레이즈했습니다. (총 ${newTotalBet})`;
+                    if (opponent) updates[`/players/${opponent.id}/lastAction`] = null; break;
+                case 'all-in':
+                    speak('올인'); playSound('bet-sound');
+                    const allInAmount = myPlayer.chips;
+                    const finalBet = myPlayer.bet + allInAmount;
+                    updates[`/players/${myPlayerId}/chips`] = 0;
+                    updates[`/players/${myPlayerId}/bet`] = finalBet;
+                    if (finalBet > currentRoomData.currentBet) {
+                        updates['/currentBet'] = finalBet;
+                    }
+                    potIncrease = allInAmount;
+                    logMessage += `올인했습니다! (${allInAmount})`;
+                        if (opponent) updates[`/players/${opponent.id}/lastAction`] = null;
+                    break;
+            }
+            updates['/pot'] = currentRoomData.pot + potIncrease;
+            updates['/gameLog'] = logMessage;
+            if (opponent) { updates['/currentTurnPlayerId'] = opponent.id; }
+            roomRef.update(updates);
+        }
+
+        function showRoundResultAnimation(result) {
+            let indicator;
+            if (result === 'win') indicator = document.getElementById('win-indicator');
+            else if (result === 'lose') indicator = document.getElementById('lose-indicator');
+            else if (result === 'draw') indicator = document.getElementById('draw-indicator');
+            else return;
+
+            if (indicator) {
+                indicator.classList.add('show');
+                setTimeout(() => {
+                    indicator.classList.remove('show');
+                }, 1800);
+            }
+        }
+
+        function shuffleDeck() {
+            const deck = [...CARD_RANKS];
+            for (let i = deck.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [deck[i], deck[j]] = [deck[j], deck[i]];
+            }
+            return deck;
+        }
+
+      function showInfoModal(title, message, showSpinner = true, onConfirm = null) {
+            const infoModalContent = document.getElementById('info-modal-content');
+            
+            infoOverlay.style.backgroundColor = '';
+            infoOverlay.style.backdropFilter = '';
+            infoModalContent.style.backgroundColor = '';
+            infoModalContent.style.boxShadow = '';
+            infoModalContent.style.padding = '';
+            document.getElementById('info-title').style.display = '';
+            
+            infoOverlay.style.display = 'flex';
+            document.getElementById('info-title').textContent = title;
+            document.getElementById('info-message').textContent = message;
+            document.getElementById('info-spinner').style.display = showSpinner ? 'block' : 'none';
+            const buttonsContainer = document.getElementById('info-buttons');
+            buttonsContainer.innerHTML = '';
+
+            if (title === '게임 종료!') {
+                if (currentRoomData.endedByDisconnect) {
+                    document.getElementById('info-message').textContent = '상대방이 접속을 종료하여 승리했습니다.';
+                    const lobbyBtn = document.createElement('button');
+                    lobbyBtn.className = 'menu-btn primary';
+                    lobbyBtn.textContent = '대기실로 이동';
+                    lobbyBtn.onclick = () => {
+                        roomRef.off();
+                        if (isHost) roomRef.remove().then(() => window.location.href = '대기실.html');
+                        else window.location.href = '대기실.html';
+                    };
+                    buttonsContainer.appendChild(lobbyBtn);
+                } else {
+                    const rematchBtn = document.createElement('button');
+                    rematchBtn.className = 'menu-btn primary';
+                    rematchBtn.textContent = '다시 하기';
+                    rematchBtn.onclick = () => {
+                        rematchBtn.textContent = '상대방 기다리는 중...';
+                        rematchBtn.disabled = true;
+                                roomRef.child('rematchRequests/' + myPlayerId).set(true);
+                    };
+
+                    const exitBtn = document.createElement('button');
+                    exitBtn.className = 'menu-btn';
+                    exitBtn.style.backgroundColor = '#777';
+                    exitBtn.style.color = 'white';
+                    exitBtn.textContent = '나가기';
+                    exitBtn.onclick = () => {
+                        if (rematchListener) roomRef.child('rematchRequests').off('value', rematchListener);
+                        roomRef.off();
+                        const promise = isHost ? roomRef.remove() : roomRef.child('players/' + myPlayerId).remove();
+                        promise.finally(() => {
+                            window.location.href = '대기실.html';
+                        });
+                    };
+                    
+                    buttonsContainer.appendChild(rematchBtn);
+                    buttonsContainer.appendChild(exitBtn);
+
+                    if (rematchListener) roomRef.child('rematchRequests').off('value', rematchListener);
+                    rematchListener = roomRef.child('rematchRequests').on('value', snapshot => {
+                        if (!snapshot.exists() || !currentRoomData.players) return;
+                        const playerCount = Object.keys(currentRoomData.players).length;
+                        if (playerCount > 0 && Object.keys(snapshot.val()).length >= playerCount) {
+                            if (rematchListener) roomRef.child('rematchRequests').off('value', rematchListener);
+                            if (isHost) {
+                                startRematch();
+                            }
+                        }
+                    });
+                }
+            } else if (onConfirm) {
+                const confirmBtn = document.createElement('button');
+                confirmBtn.className = 'menu-btn primary';
+                confirmBtn.textContent = '확인';
+                confirmBtn.onclick = () => { infoOverlay.style.display = 'none'; onConfirm(); };
+                buttonsContainer.appendChild(confirmBtn);
+            }
+        }
+        
+        // ✨ [수정 3] initialize()를 직접 호출하는 대신, auth 상태 리스너로 감싸기
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                // 사용자가 로그인한 상태
+                debugLog.addLog(`✅ Firebase Auth 상태 확인: 로그인됨 (UID: ${user.uid})`);
+                
+                // localStorage의 ID와 실제 인증된 ID가 일치하는지 확인
+                const storedPlayerId = localStorage.getItem('myPlayerId');
+                if (storedPlayerId === user.uid) {
+                    initialize(); // 인증이 확인된 후 게임 초기화
+                } else {
+                    debugLog.addLog(`❌ Auth/localStorage ID 불일치. Stored: ${storedPlayerId}, Auth: ${user.uid}`);
+                    alert('인증 정보가 일치하지 않습니다. 다시 로그인해주세요.');
+                    window.location.href = 'index.html';
+                }
+            } else {
+                // 사용자가 로그인하지 않은 상태
+                debugLog.addLog('❌ Firebase Auth 상태 확인: 로그아웃됨');
+                alert('로그인이 필요합니다.');
+                window.location.href = 'index.html';
+            }
+        });
+
+    });
+    </script>
+
+    <div id="chat-modal-overlay" class="overlay" style="display: none;">
+        <div id="chat-modal-content" class="modal-content" style="padding: 20px;">
+           <h2 style="margin-bottom: 20px;">채팅 메시지</h2>
+            <input type="text" id="chat-input" placeholder="메시지를 입력하세요 (최대 20자)" maxlength="20" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #555; background-color: #333; color: white; font-size: 1em;" autocomplete="off">
+            <div style="display: flex; gap: 10px; margin-top: 20px; width: 100%;">
+                <button id="send-chat-btn" class="menu-btn primary" style="flex: 2;">전송</button>
+                <button id="cancel-chat-btn" class="menu-btn" style="flex: 1; background-color:#777;">취소</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="confirm-exit-modal" class="overlay" style="display: none;">
+         <div class="modal-content" style="max-width: 350px;">
+             <div style="padding: 30px 20px 20px; text-align: center;">
+                 <h3 style="font-size: 1.4em; margin-bottom: 15px;">정말 게임에서 나가시겠습니까?</h3>
+                 <p style="font-size: 0.9em; color: #ccc;">게임은 패배 처리 됩니다.</p>
+             </div>
+             <div style="display: flex; gap: 10px; padding: 15px; background-color: #1a2a38; border-top: 1px solid #3e566d;">
+                 <button id="exit-cancel-btn" class="menu-btn secondary" style="background-color: #78909c;">취소</button>
+                 <button id="exit-confirm-btn" class="menu-btn primary" style="background-color: var(--danger-color, #e53935);">확인</button>
+             </div>
+         </div>
+    </div>
+
+
+    
+    <button id="debug-toggle-btn" style="position: fixed; bottom: 10px; right: 10px; z-index: 1001; background: rgba(0,0,0,0.5); color: white; border: none; border-radius: 5px; padding: 5px 10px; cursor: pointer;">🐞</button>
+    <div id="debug-log-modal" class="overlay" style="display: none; background-color: rgba(0,0,0,0.7); z-index: 1000;">
+        <div class="modal-content" style="width: 95%; max-width: 600px; height: 80%; display: flex; flex-direction: column;">
+            <div class="modal-header" style="background-color: #333;">
+                <h2>🐞 디버그 로그</h2>
+            </div>
+            <div id="debug-log-content" class="modal-body" style="background-color: #1e1e1e; color: #d4d4d4; font-family: monospace; font-size: 0.8em; flex-grow: 1; overflow-y: auto; padding: 15px;">
+                </div>
+            <div class="modal-footer" style="background-color: #333; padding: 10px;">
+                <button class="menu-btn secondary" onclick="document.getElementById('debug-log-modal').style.display='none'">닫기</button>
+            </div>
+        </div>
+    </div>
+    </body>
+</html>

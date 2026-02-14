@@ -1,0 +1,2531 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>캐치마인드</title>
+    <link href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff" as="font" type="font/woff" crossorigin>
+    
+    <script src="레벨업.js"></script>
+    <script src="아바타.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #FFFBEB; --primary-color: #FF6B6B; --secondary-color: #4ECDC4;
+            --accent-color: #FFD93D; --text-color-dark: #574141; --panel-bg: #FFFFFF;
+            --panel-border: #F0EAD2; --panel-shadow: #E4DCCF; --danger-color: #F76363;
+            --font-main: 'GmarketSans', sans-serif;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; touch-action: none; /* 중요: 스크롤 방지 */ }
+        
+        html, body {
+            width: 100%; height: 100%; overflow: hidden; font-family: var(--font-main);
+            background-color: var(--bg-color); color: var(--text-color-dark);
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+        }
+
+        /* === 🏗️ 전체 레이아웃 (세로 배치 4단) === */
+        #game-wrapper {
+            width: 100%; height: 100%;
+            display: flex; flex-direction: column;
+            background: var(--bg-color);
+            overflow: hidden;
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+
+/* 1. 최상단: 제시어 영역 (모바일 최적화: 초슬림 화이트보드 프레임) */
+        #top-word-bar {
+            flex-shrink: 0;
+            height: 42px; /* [핵심] 높이를 70px -> 42px로 대폭 축소 */
+            background: #f4f4f4;
+            
+            /* 프레임 두께도 6px -> 4px로 줄여서 공간 절약 */
+            border-bottom: 4px solid var(--text-color-dark); 
+            
+            display: flex; justify-content: center; align-items: center;
+            z-index: 30;
+            /* 그림자도 살짝 줄여서 자연스럽게 */
+            box-shadow: 0 4px 6px -2px rgba(0,0,0,0.3);
+        }
+
+        #word-display {
+            background: white;
+            /* [핵심] 패딩과 글자 크기를 줄여서 슬림하게 변경 */
+            padding: 2px 15px; 
+            font-size: 0.95em; /* 1.2em -> 0.95em */
+            
+            border-radius: 20px;
+            border: 2px solid var(--primary-color); /* 테두리도 3px -> 2px */
+            color: var(--text-color-dark);
+            font-weight: 900;
+            box-shadow: 0 2px 0 rgba(0,0,0,0.1);
+            min-width: 100px; /* 최소 너비도 줄임 */
+            text-align: center;
+        }
+
+        /* 2. 중앙 상단: 캔버스 영역 (비중 확대 [문제4 해결]) */
+        /* 2. 중앙 상단: 캔버스 영역 (화이트보드 표면 효과) */
+        #main-canvas-area {
+            flex: 7;
+            position: relative;
+            background: white;
+            /* border-bottom 제거 -> 팔레트 바의 상단 테두리가 대신함 */
+            border: none; 
+            overflow: hidden;
+            touch-action: none;
+            z-index: 20;
+            /* [핵심] 상하 안쪽 그림자로 캔버스가 프레임 안으로 들어간 느낌 연출 */
+            box-shadow: inset 0 8px 8px -5px rgba(0,0,0,0.2),
+                        inset 0 -8px 8px -5px rgba(0,0,0,0.2);
+        }
+        
+        canvas { 
+            width: 100%; height: 100%; 
+            display: block; cursor: crosshair; 
+            touch-action: none !important;
+        }
+
+        /* [문제1 해결] 오버레이: 타이머와 라운드를 가로로 컴팩트하게 배치 */
+        #canvas-overlay-info {
+            position: absolute;
+            top: 10px; left: 10px;
+            display: flex; flex-direction: row; /* 가로 정렬 */
+            align-items: center;
+            gap: 8px;
+            pointer-events: none; 
+            z-index: 10;
+        }
+
+        /* 시간 타이머 배지 */
+        #timer-badge {
+            width: 38px; height: 38px;
+            background: white; border: 3px solid var(--text-color-dark);
+            border-radius: 50%; display: flex; justify-content: center; align-items: center;
+            font-weight: 900; font-size: 1.1em; color: var(--primary-color);
+            box-shadow: 2px 2px 0 rgba(0,0,0,0.2);
+        }
+        #timer-badge.urgent { color: var(--danger-color); animation: pulse 0.5s infinite; }
+
+        /* 라운드 텍스트 (컴팩트 스타일) */
+        .round-badge {
+            font-size: 0.9em; font-weight: 800;
+            color: var(--text-color-dark);
+            background: rgba(255, 255, 255, 0.9);
+            padding: 6px 12px; border-radius: 20px;
+            border: 2px solid var(--text-color-dark);
+            white-space: nowrap;
+            box-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+        }
+
+/* [문제2 해결] 팔레트 바 (화이트보드 하단 프레임 적용) */
+        #palette-bar {
+            flex-shrink: 0;
+            height: 55px; /* 프레임 높이 확보 */
+            background: #f4f4f4; /* 프레임 배경색 */
+            /* [핵심] 두꺼운 상단 테두리로 하단 프레임 표현 */
+            border-top: 6px solid var(--text-color-dark);
+            /* 하단 구분선은 얇게 유지 */
+            border-bottom: 2px solid var(--text-color-dark);
+            display: none; /* JS로 제어 */
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 0 10px;
+            overflow-x: auto;
+            white-space: nowrap;
+            z-index: 30; /* 캔버스보다 위에 위치 */
+            /* [핵심] 캔버스 위쪽으로 그림자를 드리워 입체감 부여 */
+            box-shadow: 0 -6px 10px -2px rgba(0,0,0,0.4);
+        }
+        #palette-bar::-webkit-scrollbar { display: none; }
+
+        /* 팔레트 버튼 스타일 */
+        .palette-btn {
+            width: 34px; height: 34px;
+            border-radius: 50%;
+            display: inline-flex; justify-content: center; align-items: center;
+            font-size: 1em; cursor: pointer;
+            border: 2px solid transparent;
+            transition: transform 0.1s;
+            flex-shrink: 0;
+        }
+        .palette-btn:active { transform: scale(0.9); }
+        .palette-btn.active { border-color: var(--text-color-dark); transform: scale(1.1); box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        .color-circle { border: 1px solid rgba(0,0,0,0.1); }
+
+        /* 3. 유저 목록 (컴팩트화 [문제3 해결]) */
+        #player-bar {
+            flex-shrink: 0;
+            height: 70px; /* 90px -> 70px 축소 */
+            background: #FFFAE0;
+            border-bottom: none;
+           box-shadow: 0 4px 6px -4px rgba(0,0,0,0.1);
+            display: flex; align-items: center;
+            overflow-x: auto; overflow-y: hidden;
+            gap: 15px; padding: 0 10px;
+            white-space: nowrap;
+        }
+        #player-bar::-webkit-scrollbar { display: none; }
+
+        /* 플레이어 슬롯 컴팩트 */
+        .player-slot {
+            display: inline-flex; flex-direction: column; align-items: center;
+            width: 65px; /* 너비 축소 */
+            flex-shrink: 0; position: relative;
+        }
+        .player-avatar {
+            width: 38px; height: 38px; /* 아바타 축소 */
+            border-radius: 12px; background: #fff;
+            border: 2px solid var(--panel-border);
+            display: flex; justify-content: center; align-items: center;
+            overflow: hidden;
+            position: relative;
+        }
+        .player-avatar img { width: 100%; height: 100%; object-fit: contain; }
+        .player-name { 
+            font-size: 0.6em; margin-top: 3px; width: 100%; 
+            text-align: center; overflow: hidden; text-overflow: ellipsis; 
+            font-weight: bold;
+        }
+        .player-score { font-size: 0.7em; color: var(--primary-color); font-weight: 900; margin-top: -2px; }
+        
+        .player-slot.drawer .player-avatar { 
+            border-color: var(--accent-color); 
+            box-shadow: 0 0 0 2px var(--accent-color); 
+        }
+
+        /* 4. 채팅 및 입력 (비중 축소 [문제4 해결]) */
+        #chat-section {
+            flex: 2; /* 비율 4 -> 2로 축소 */
+            display: flex; flex-direction: column;
+            background: var(--bg-color);
+            min-height: 0; 
+            position: relative;
+        }
+
+        #chat-log-container {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 10px;
+            display: flex; flex-direction: column; justify-content: flex-start;
+        }
+        #chat-list { list-style: none; width: 100%; padding-bottom: 5px; }
+        
+        .chat-item {
+    display: flex !important;       /* 가로 배치 */
+    align-items: center !important; /* 세로 중앙 정렬 */
+    gap: 8px !important;            /* [핵심] 닉네임과 말풍선 사이 8px 간격 띄우기 */
+    margin-bottom: 6px;
+    font-size: 0.9em;
+    line-height: 1.3;
+    width: 100%;
+}
+
+/* [수정] 2. 닉네임 스타일 */
+.chat-item .sender {
+    font-weight: 900;
+    font-size: 0.95em;
+    white-space: nowrap;
+    flex-shrink: 0;
+    height: auto;
+    padding-top: 2px;
+    margin-right: 0 !important; /* gap이 있으므로 마진 제거 */
+}
+
+        .chat-item.system { 
+            color: #888; text-align: center; font-size: 0.85em; 
+            background: rgba(0,0,0,0.05); border-radius: 10px; 
+            padding: 4px 8px; margin: 5px 0; 
+        }
+        .chat-item.correct { 
+            color: var(--primary-color); font-weight: bold; 
+            background: #FFF9C4; padding: 6px; border-radius: 8px; 
+            text-align: center; margin: 5px 0; border: 2px dashed var(--accent-color);
+        }
+
+        /* 입력바 */
+        #input-bar {
+            padding: 8px; background: white; flex-shrink: 0;
+            border-top: 2px solid var(--panel-border);
+            padding-bottom: calc(8px + env(safe-area-inset-bottom));
+        }
+        #open-input-btn {
+            width: 100%; padding: 10px; font-size: 1em; /* 버튼 크기 축소 */
+            background: var(--primary-color); color: white;
+            font-weight: 900; border: none; border-radius: 10px;
+            cursor: pointer; border-bottom: 3px solid #C04A4A;
+        }
+        #open-input-btn:active { transform: translateY(2px); border-bottom-width: 2px; }
+
+        /* 말풍선 레이어 */
+        #speech-bubble-layer {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 50; overflow: hidden;
+        }
+        .speech-bubble-item {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.95);
+            color: #333; padding: 6px 10px; border-radius: 10px;
+            border: 2px solid var(--text-color-dark);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            font-size: 0.85em; font-weight: bold;
+            max-width: 160px; word-break: break-word;
+            animation: popIn 0.3s ease-out, fadeOut 0.5s ease-in 2.5s forwards;
+            z-index: 50;
+        }
+        .speech-bubble-item::after {
+            content: ''; position: absolute; bottom: -8px; left: 50%; margin-left: -6px;
+            border-width: 8px 6px 0; border-style: solid;
+            border-color: var(--text-color-dark) transparent transparent transparent;
+        }
+        .speech-bubble-item::before {
+            content: ''; position: absolute; bottom: -5px; left: 50%; margin-left: -4px;
+            border-width: 6px 4px 0; border-style: solid;
+            border-color: rgba(255, 255, 255, 0.95) transparent transparent transparent;
+            z-index: 1;
+        }
+        .speech-bubble-item.correct { background: #FFF9C4; border-color: #FBC02D; }
+        .speech-bubble-item.correct::after { border-top-color: #FBC02D; }
+        .speech-bubble-item.correct::before { border-top-color: #FFF9C4; }
+
+        /* 모달 등 공통 */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.3); z-index: 2000;
+            display: none; justify-content: center; align-items: center;
+        }
+        .modal-overlay.active { display: flex; }
+        
+        .input-modal {
+            width: 90%; max-width: 400px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(5px);
+            padding: 20px; border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            animation: popInInput 0.3s;
+            margin-bottom: 20%;
+        }
+        .input-group { display: flex; gap: 8px; width: 100%; }
+        #answer-input {
+            flex: 1; min-width: 0; padding: 12px; font-size: 1.1em;
+            border: 2px solid var(--text-color-dark); border-radius: 10px;
+            outline: none;
+        }
+        #send-btn {
+            padding: 0 20px; height: 48px;
+            background: var(--secondary-color); color: white; border: none;
+            border-radius: 10px; font-weight: bold; border-bottom: 4px solid #379A93;
+            flex-shrink: 0;
+        }
+
+        .fullscreen-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); z-index: 3000;
+            display: none; flex-direction: column; justify-content: center; align-items: center;
+            color: white;
+        }
+        .fullscreen-overlay.active { display: flex; }
+        
+        .result-card {
+            background: var(--panel-bg); width: 90%; max-width: 350px;
+            border-radius: 20px; border: 4px solid var(--text-color-dark);
+            overflow: hidden; color: var(--text-color-dark);
+        }
+        .result-header { background: var(--primary-color); padding: 15px; text-align: center; color: white; font-size: 1.5em; font-weight: bold; }
+        .result-body { padding: 20px; max-height: 50vh; overflow-y: auto; }
+        .result-item { display: flex; justify-content: space-between; padding: 10px; background: #f5f5f5; border-radius: 10px; margin-bottom: 5px; font-weight: bold; }
+        .result-item.winner { background: #FFF9C4; border: 2px solid var(--accent-color); }
+        .result-footer { padding: 15px; display: flex; gap: 10px; background: #FFFAE0; border-top: 2px solid #eee; }
+        .footer-btn { flex: 1; padding: 12px; border-radius: 10px; border: none; color: white; font-weight: bold; cursor: pointer; }
+        .btn-retry { background: var(--primary-color); border-bottom: 4px solid #C04A4A; }
+        .btn-exit { background: var(--secondary-color); border-bottom: 4px solid #379A93; }
+
+        .player-slot.winner-highlight .player-avatar {
+            border-color: #FFD700 !important;
+            box-shadow: 0 0 15px #FFD700; transform: scale(1.2);
+            transition: all 0.3s;
+        }
+
+        /* [핵심] translate(-50%, -100%)를 포함시켜 위치가 고정된 상태로 커지게 변경 */
+        @keyframes popIn { 
+            from { opacity: 0; transform: translate(-50%, -100%) scale(0.5); } 
+            to { opacity: 1; transform: translate(-50%, -100%) scale(1); } 
+        }
+        @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+        @keyframes popInInput { from { opacity: 0; transform: scale(0.8) translateY(20px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+
+        /* [신규] 확장 컬러 팝업 스타일 */
+        #palette-bar { position: relative; overflow: visible; } /* 팝업이 잘리지 않게 visible로 변경 */
+        
+        #color-popup {
+            display: none; /* 기본 숨김 */
+            position: absolute;
+            bottom: 60px; /* 팔레트 바 위쪽으로 띄움 */
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(5px);
+            padding: 10px;
+            border-radius: 16px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.15);
+            border: 2px solid var(--text-color-dark);
+            grid-template-columns: repeat(4, 1fr); /* 4열 배치 */
+            gap: 8px;
+            z-index: 100;
+            animation: popUpColor 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        
+        #color-popup.active { display: grid; }
+        
+        /* 말풍선 꼬리 */
+        #color-popup::after {
+            content: ''; position: absolute; bottom: -8px; left: 50%; margin-left: -8px;
+            border-width: 8px 8px 0; border-style: solid;
+            border-color: var(--text-color-dark) transparent transparent transparent;
+        }
+
+        @keyframes popUpColor {
+            from { opacity: 0; transform: translateX(-50%) scale(0.8) translateY(10px); }
+            to { opacity: 1; transform: translateX(-50%) scale(1) translateY(0); }
+        }
+
+        /* [카운트다운 업그레이드] 애니팡 스타일 */
+        #countdown-text {
+            font-size: 7em; /* 크기 대폭 확대 */
+            font-weight: 900;
+            color: white;
+            text-shadow: 0 0 20px rgba(255,255,255,0.8), 4px 4px 0px rgba(0,0,0,0.2);
+            /* 애니메이션은 JS에서 제어합니다 */
+        }
+
+        @keyframes countdown-pop { 
+            0% { transform: scale(0.5); opacity: 0; } 
+            50% { transform: scale(1.2); opacity: 1; } 
+            100% { transform: scale(1); opacity: 1; } 
+        }
+
+       /* [수정] 팔레트 바를 가리지 않는 컴팩트 사이즈 */
+        #ref-modal {
+            display: none; 
+            position: absolute;
+            bottom: 0; left: 0; width: 100%; 
+            height: 240px; /* [핵심] 높이를 고정값으로 줄여서 팔레트 침범 방지 */
+            background: rgba(255, 255, 255, 0.98); 
+            z-index: 1500; 
+            border-radius: 20px 20px 0 0;
+            box-shadow: 0 -5px 20px rgba(0,0,0,0.15);
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            border-top: 4px solid var(--primary-color);
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            padding-top: 10px;
+            touch-action: none; 
+        }
+        
+        #ref-modal.active { display: flex; animation: slideUp 0.3s ease-out; }
+
+        /* 이미지 컨테이너 */
+        #ref-img-container {
+            width: 90%; height: 75%;
+            display: flex; justify-content: center; align-items: center;
+            background: #f0f0f0;
+            border-radius: 15px;
+            overflow: hidden;
+            position: relative;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.1);
+        }
+
+        #ref-image {
+            width: 100%; height: 100%;
+            object-fit: contain; /* 비율 유지하며 꽉 채우기 */
+            pointer-events: none; /* 이미지 드래그 방지 */
+            transition: opacity 0.3s;
+        }
+
+        /* [추가] 이미지 넘기기 화살표 */
+        .nav-btn {
+            position: absolute; top: 50%; transform: translateY(-50%);
+            background: rgba(0,0,0,0.3); color: white;
+            border: none; border-radius: 50%;
+            width: 40px; height: 40px;
+            font-size: 1.5em; cursor: pointer;
+            display: flex; justify-content: center; align-items: center;
+            z-index: 20; transition: background 0.2s;
+        }
+        .nav-btn:active { background: rgba(0,0,0,0.6); }
+        .nav-btn.prev { left: 10px; }
+        .nav-btn.next { right: 10px; }
+
+
+
+        .ref-guide {
+            margin-top: 10px;
+            font-size: 0.9em;
+            color: #555;
+            font-weight: 900;
+            display: flex; align-items: center; gap: 5px;
+        }
+
+        #ref-close-btn {
+            position: absolute; top: 10px; right: 15px;
+            background: #eee; border: none; width: 30px; height: 30px;
+            border-radius: 50%; font-weight: bold; cursor: pointer;
+            z-index: 10;
+        }
+        
+        #ref-modal.active { display: flex; animation: slideUp 0.3s ease-out; }
+
+        /* 네이버 퀵 버튼 스타일 */
+    .naver-btn {
+        background-color: #03C75A; /* 네이버 그린 */
+        color: white;
+        font-size: 1.1em;
+        font-weight: 900;
+        padding: 12px 30px;
+        border: none;
+        border-radius: 30px;
+        box-shadow: 0 4px 10px rgba(3, 199, 90, 0.3);
+        cursor: pointer;
+        transition: transform 0.1s;
+        width: 80%;
+        max-width: 250px;
+    }
+    .naver-btn:active {
+        transform: scale(0.95);
+        background-color: #02b150;
+    }
+
+        #ref-close-btn {
+            position: absolute; top: 10px; right: 15px;
+            background: none; border: none; font-size: 1.2em;
+            cursor: pointer; color: #888;
+        }
+        
+        #ref-modal.active { display: flex; animation: slideUp 0.3s ease-out; }
+        
+        #ref-image {
+            max-width: 90%; max-height: 80%;
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            border: 2px solid #fff;
+            pointer-events: none; /* 스와이프를 위해 이미지 클릭 방지 */
+        }
+
+        .ref-guide {
+            margin-top: 10px;
+            font-size: 0.8em;
+            color: #666;
+            font-weight: bold;
+            background: rgba(255,255,255,0.5);
+            padding: 4px 10px;
+            border-radius: 15px;
+        }
+
+        #ref-close-btn {
+            position: absolute; top: 10px; right: 15px;
+            background: none; border: none; font-size: 1.5em;
+            cursor: pointer; opacity: 0.6;
+        }
+
+        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+        /* [신규] 스타일 전환 버튼 스타일 */
+        #style-toggle-btn {
+            position: absolute; top: 10px; right: 10px;
+            padding: 6px 12px;
+            background: rgba(255, 255, 255, 0.9);
+            border: 2px solid var(--primary-color);
+            border-radius: 20px;
+            font-size: 0.8em; font-weight: bold;
+            color: var(--text-color-dark);
+            cursor: pointer; z-index: 25;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            transition: all 0.2s;
+        }
+        #style-toggle-btn:active { transform: scale(0.95); }
+        
+        /* 실사 모드일 때 버튼 반전 */
+        #style-toggle-btn.photo-mode {
+            background: var(--primary-color);
+            color: white;
+            border-color: white;
+        }
+      /* [수정] 펜 굵기 팝업 (가로 배치 + 위치 고정) */
+    #pen-popup {
+        display: none; /* 기본 숨김 */
+        position: absolute;
+        bottom: 60px; /* 버튼 위에 띄움 */
+        left: 50%;
+        transform: translateX(-50%); /* 좌우 중앙 정렬 */
+        background: rgba(255, 255, 255, 0.98);
+        border: 2px solid var(--text-color-dark);
+        border-radius: 20px; /* 알약 모양 */
+        padding: 10px 15px;
+        gap: 12px; /* 버튼 간격 */
+        
+        /* [핵심 1] 가로(Row) 배치로 변경 */
+        flex-direction: row; 
+        align-items: center;
+        
+        box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+        z-index: 102;
+        
+        /* [핵심 2] 전용 애니메이션 적용 (위치 튐 방지) */
+        animation: popInPen 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+    
+    #pen-popup.active { display: flex; }
+    
+    /* 말풍선 꼬리 */
+    #pen-popup::after {
+        content: ''; position: absolute; bottom: -8px; left: 50%; margin-left: -8px;
+        border-width: 8px 8px 0; border-style: solid;
+        border-color: var(--text-color-dark) transparent transparent transparent;
+    }
+
+    /* [신규] 펜 팝업 전용 등장 애니메이션 */
+    /* 기존 popIn과 달리, translateX(-50%)를 유지해서 위치가 튀지 않게 함 */
+    @keyframes popInPen {
+        from { opacity: 0; transform: translateX(-50%) scale(0.5) translateY(10px); }
+        to { opacity: 1; transform: translateX(-50%) scale(1) translateY(0); }
+    }
+
+  /* === [수정] 말풍선 스킨 스타일 (ID와 일치하도록 언더바 _ 사용) === */
+
+/* 1. 기본 */
+.bubble_default { background-color: #FFFFFF !important; border-color: #F0EAD2 !important; color: #574141 !important; }
+.speech-bubble-item.bubble_default::after { border-top-color: #F0EAD2 !important; }
+
+/* 2. 러블리 핑크 (bubble-pink -> bubble_pink) */
+.bubble_pink { background-color: #FFEBEE !important; border-color: #FFCDD2 !important; color: #C62828 !important; }
+.bubble_pink strong, .bubble_pink .sender { color: #B71C1C !important; }
+.speech-bubble-item.bubble_pink::after { border-top-color: #FFCDD2 !important; }
+.speech-bubble-item.bubble_pink::before { border-top-color: #FFEBEE !important; }
+
+/* 3. 구름 스카이 (bubble-sky -> bubble_sky) */
+.bubble_sky { background-color: #E3F2FD !important; border-color: #BBDEFB !important; color: #1565C0 !important; }
+.bubble_sky strong, .bubble_sky .sender { color: #0D47A1 !important; }
+.speech-bubble-item.bubble_sky::after { border-top-color: #BBDEFB !important; }
+.speech-bubble-item.bubble_sky::before { border-top-color: #E3F2FD !important; }
+
+/* 4. 상쾌한 민트 (bubble-mint -> bubble_mint) */
+.bubble_mint { background-color: #E0F2F1 !important; border-color: #80CBC4 !important; color: #00695C !important; }
+.bubble_mint strong, .bubble_mint .sender { color: #004D40 !important; }
+.speech-bubble-item.bubble_mint::after { border-top-color: #80CBC4 !important; }
+.speech-bubble-item.bubble_mint::before { border-top-color: #E0F2F1 !important; }
+
+/* 5. 다크 모드 (bubble-dark -> bubble_dark) */
+.bubble_dark { background-color: #424242 !important; border-color: #212121 !important; color: #FFFFFF !important; }
+.bubble_dark strong, .bubble_dark .sender { color: #FFD93D !important; }
+.speech-bubble-item.bubble_dark::after { border-top-color: #212121 !important; }
+.speech-bubble-item.bubble_dark::before { border-top-color: #424242 !important; }
+
+/* 6. 골드 럭셔리 (bubble-gold -> bubble_gold) */
+.bubble_gold { 
+    background-color: #FFF8E1 !important; border-color: #FFD54F !important; color: #FF6F00 !important;
+    box-shadow: 0 2px 5px rgba(255, 215, 0, 0.4) !important; 
+}
+.bubble_gold strong, .bubble_gold .sender { color: #E65100 !important; }
+.speech-bubble-item.bubble_gold::after { border-top-color: #FFD54F !important; }
+.speech-bubble-item.bubble_gold::before { border-top-color: #FFF8E1 !important; }  
+
+/* === [수정 완료] 2만 포인트 프리미엄 레인보우 스킨 === */
+
+/* 1. 무지개 테두리 애니메이션 */
+@keyframes premium-rainbow-flow {
+    0% { border-color: #ff0000; box-shadow: 0 0 5px #ff0000; }
+    25% { border-color: #00ff00; box-shadow: 0 0 5px #00ff00; }
+    50% { border-color: #0000ff; box-shadow: 0 0 5px #0000ff; }
+    75% { border-color: #ff00ff; box-shadow: 0 0 5px #ff00ff; }
+    100% { border-color: #ff0000; box-shadow: 0 0 5px #ff0000; }
+}
+
+/* 2. 반짝이 팝업 애니메이션 */
+@keyframes sparkle-bounce {
+    0%, 100% { transform: scale(0.8); opacity: 0.8; }
+    50% { transform: scale(1.2); opacity: 1; }
+}
+
+/* 3. [공통] 기본 디자인 (색상, 테두리) */
+.bubble_rainbow_premium {
+    background-color: #FFFFFF !important;
+    color: #333 !important;
+    font-weight: 900 !important;
+    border: 3px solid #ff0000 !important;
+    border-radius: 12px !important;
+    animation: premium-rainbow-flow 2s linear infinite !important;
+    box-sizing: border-box !important;
+}
+
+/* 4. [머리 위] 둥둥 떠다니는 말풍선 (absolute 필수) */
+.speech-bubble-item.bubble_rainbow_premium {
+    position: absolute !important; /* 좌표로 이동 */
+    width: fit-content !important;
+    white-space: nowrap !important; /* 줄바꿈 금지 */
+    z-index: 50 !important;
+}
+/* 머리 위 말풍선 꼬리 숨기기 (무지개 테두리 간섭 방지) */
+.speech-bubble-item.bubble_rainbow_premium::after,
+.speech-bubble-item.bubble_rainbow_premium::before {
+    border-color: transparent !important;
+}
+
+/* 5. [채팅창] 목록 내 말풍선 (relative 필수, 줄바꿈 허용) */
+/* 게임방(.content)과 캐치마인드(.bubble-content) 둘 다 적용 */
+.content.bubble_rainbow_premium, 
+.bubble-content.bubble_rainbow_premium {
+    border-width: 2px !important;
+    background-color: #FFFFFF !important;
+    font-weight: 900 !important;
+    animation: premium-rainbow-flow 2s linear infinite !important;
+    /* 프리미엄은 테두리 때문에 살짝 더 작게 보여서 마진 추가 */
+    margin: 2px !important; 
+}
+
+/* 6. 반짝이 아이콘 위치 (공통) */
+.p-sparkle {
+    position: absolute;
+    font-size: 1.2em;
+    animation: sparkle-bounce 1s infinite ease-in-out;
+    pointer-events: none;
+    z-index: 100;
+    line-height: 1;
+}
+/* 반짝이 위치 미세 조정 */
+.p-sparkle.s1 { top: -10px; right: -10px; }
+.p-sparkle.s2 { bottom: -10px; left: -10px; }
+
+/* [신규] 채팅 말풍선 공통 베이스 (모양 예쁘게 잡기) */
+.bubble-content {
+    display: block;
+    /* [수정] 상하 4px, 좌우 10px로 살짝 늘려 숨통 틔우기 */
+    padding: 4px 10px !important; 
+    border-radius: 14px; /* 좀 더 둥글게 */
+    font-weight: 500;
+    line-height: 1.4;
+    position: relative;
+    word-break: break-all;
+    max-width: 75%;
+    width: fit-content;
+}
+
+/* 닉네임 스타일 미세 조정 */
+.chat-item .sender {
+    font-weight: 900;
+    font-size: 0.9em;
+    vertical-align: middle;
+    margin-right: 0; /* 말풍선에 margin-left가 있으므로 제거 */
+}
+</style>
+</head>
+<body>
+<div id="game-wrapper">
+        
+    <!-- 1. 최상단: 제시어 (높이 축소) -->
+    <div id="top-word-bar">
+        <span id="word-display">대기중...</span>
+    </div>
+
+    <!-- 2. 캔버스 영역 (비중 확대) -->
+    <div id="main-canvas-area">
+        <canvas id="game-canvas"></canvas>
+        
+        <!-- [문제1 해결] 오버레이: 타이머와 라운드를 묶어서 가로 배치 -->
+        <div id="canvas-overlay-info">
+            <div id="timer-badge">--</div>
+            <div class="round-badge">라운드<span id="round-display">1/5</span></div>
+        </div>
+    </div>
+
+   <div id="palette-bar">
+        <div class="palette-btn color-circle active" style="background:black;" onclick="setColor('black', this)"></div>
+        <div class="palette-btn color-circle" style="background:#FF6B6B;" onclick="setColor('#FF6B6B', this)"></div>
+        <div class="palette-btn color-circle" style="background:#FFD93D;" onclick="setColor('#FFD93D', this)"></div>
+        <div class="palette-btn color-circle" style="background:#3333FF;" onclick="setColor('#3333FF', this)"></div>
+        
+        <div class="palette-btn" id="rainbow-btn" onclick="toggleColorPopup()" style="background: white; border: 2px dashed #ccc; font-size: 1.2em;">🌈</div>
+
+        <div style="width:1px; height:20px; background:#ccc; margin:0 5px; flex-shrink:0;"></div>
+        
+        <div style="position: relative;">
+            <div class="palette-btn" id="pen-tool-btn" onclick="togglePenPopup()" style="font-size:1.2em;">🖊️</div>
+            
+            <div id="pen-popup">
+                <div class="palette-btn" onclick="selectPenWidth(3, this)" title="얇게">
+                    <div style="width:4px; height:4px; background:black; border-radius:50%;"></div>
+                </div>
+                <div class="palette-btn" onclick="selectPenWidth(8, this)" title="중간">
+                    <div style="width:8px; height:8px; background:black; border-radius:50%;"></div>
+                </div>
+                <div class="palette-btn" onclick="selectPenWidth(16, this)" title="굵게">
+                    <div style="width:14px; height:14px; background:black; border-radius:50%;"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="palette-btn" onclick="setColor('white', this, 20)" style="font-size:1.2em;">🧽</div>
+        <div class="palette-btn" onclick="clearCanvas()" style="color:var(--danger-color); font-size:1.2em;">🗑️</div>
+
+        <div id="color-popup">
+            <div class="palette-btn color-circle" style="background:#4ECDC4;" onclick="selectExtendedColor('#4ECDC4', this)"></div> <div class="palette-btn color-circle" style="background:#FF9F43;" onclick="selectExtendedColor('#FF9F43', this)"></div>
+            <div class="palette-btn color-circle" style="background:#FF9FF3;" onclick="selectExtendedColor('#FF9FF3', this)"></div>
+            <div class="palette-btn color-circle" style="background:#8B4513;" onclick="selectExtendedColor('#8B4513', this)"></div>
+            <div class="palette-btn color-circle" style="background:#7f8c8d;" onclick="selectExtendedColor('#7f8c8d', this)"></div>
+            <div class="palette-btn color-circle" style="background:#9b59b6;" onclick="selectExtendedColor('#9b59b6', this)"></div>
+            <div class="palette-btn color-circle" style="background:#2ecc71;" onclick="selectExtendedColor('#2ecc71', this)"></div>
+        </div>
+    </div>
+
+<div id="player-bar"></div>
+
+    <div id="ref-modal">
+        <button id="ref-close-btn" onclick="closeRefModal()">✕</button>
+        
+        <div id="ref-img-container">
+            <button id="style-toggle-btn" onclick="toggleStyleMode()">📷 실사로 보기</button>
+
+            <button class="nav-btn prev" onclick="prevImage()">‹</button>
+            <button class="nav-btn next" onclick="nextImage()">›</button>
+            
+            <img id="ref-image" src="" alt="참고 이미지">
+            <div id="ref-loading" style="position:absolute; display:none; font-weight:bold; color:#555;">🎨 그림 찾는 중...</div>
+        </div>
+
+        <div class="ref-guide">
+            <span id="ref-keyword-display" style="font-size: 1.2em; color: var(--text-color-dark);">단어</span>
+        </div>
+        <div style="font-size:0.7em; color:#999; margin-top:2px;">화살표를 눌러 다른 그림 보기</div>
+    </div>
+
+    <div id="chat-section">
+        <div id="chat-log-container">
+            <ul id="chat-list"></ul>
+        </div>
+        
+        <div id="speech-bubble-layer"></div> 
+
+        <div id="input-bar">
+            <button id="open-input-btn">💬 정답 / 채팅 입력</button>
+        </div>
+    </div>
+
+<!-- 모달 (기존 유지) -->
+<div id="input-modal-overlay" class="modal-overlay">
+    <div class="input-modal">
+        <form class="input-group" action="#" onsubmit="event.preventDefault(); sendAnswer();">
+            <input type="text" id="answer-input" placeholder="정답을 입력하세요!" autocomplete="off">
+            <button type="submit" id="send-btn">전송</button>
+        </form>
+    </div>
+</div>
+
+<div id="loading-overlay" class="fullscreen-overlay active">
+    <div id="loading-text" style="font-size:1.5em; margin-bottom:20px;">접속 중...</div>
+    <div id="countdown-text"></div>
+</div>
+
+<div id="correct-answer-overlay" class="fullscreen-overlay" style="background: rgba(0,0,0,0.85); z-index: 2500;">
+    <div style="text-align: center; color: white;">
+        <div style="font-size: 1.5em; margin-bottom: 10px; color: #FFD700; font-weight: bold;">✨정답자✨</div>
+        <div id="winner-name-display" style="font-size: 2.5em; font-weight: 900; margin-bottom: 20px;">닉네임</div>
+        <div style="width: 100%; height: 2px; background: rgba(255,255,255,0.3); margin: 20px 0;"></div>
+        <div style="font-size: 1.2em; margin-bottom: 5px; opacity: 0.8;">정답은?</div>
+        <div id="answer-text-display" style="font-size: 4em; font-weight: 900; color: var(--secondary-color); text-shadow: 3px 3px 0 #000;">사과</div>
+    </div>
+</div>
+
+<div id="result-overlay" class="fullscreen-overlay">
+    <div class="result-card">
+        <div class="result-header">🏆 최종 순위</div>
+        <div class="result-body" id="result-list"></div>
+        <div class="result-footer">
+            <button class="footer-btn btn-retry" id="retry-btn">다시하기</button>
+            <button class="footer-btn btn-exit" id="exit-btn">대기실로</button>
+        </div>
+    </div>
+</div>
+
+<audio id="bgm-player" loop volume="0.3"></audio>
+<audio id="snd-start" src="https://raw.githubusercontent.com/bangat/game/main/sound/start.mp3"></audio>
+<audio id="snd-correct" src="./캐치마인드효과음/캐치마인드정답.mp3"></audio>
+<audio id="snd-wrong" src="./캐치마인드효과음/캐치마인드오답.mp3"></audio>
+<audio id="snd-win" src="./캐치마인드효과음/캐치마인드승리.mp3"></audio>
+<audio id="snd-lose" src="./캐치마인드효과음/캐치마인드패배.mp3"></audio>
+
+<script>
+    const firebaseConfig = {
+        apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
+        authDomain: "goodluck-7c14b.firebaseapp.com",
+        databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com",
+        projectId: "goodluck-7c14b",
+        storageBucket: "goodluck-7c14b.appspot.com",
+        messagingSenderId: "858281658455",
+        appId: "1:858281658455:web:9131280a459be983933b12"
+    };
+
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const auth = firebase.auth();
+
+    let myUid, myNick, myAvatar, roomId;
+    let roomRef, myRef;
+    let isHost = false;
+    let resultSoundPlayed = false;
+    let isRoundProcessing = false;
+    let gameState = null;
+    let ctx, isDrawing = false;
+    let currentColor = 'black', currentWidth = 3;
+    let drawHistory = []; 
+    let lastX = 0, lastY = 0;
+    let timerInterval;
+    let isExiting = false;
+    let countdownTimer = null;
+    let lastDrawerUid = null;
+    let isCountdownInProgress = false;
+    let myChatSkin = 'bubble_default'; // [신규] 내 스킨 변수
+
+    // [수정 1] 출제자 실종 시간 체크용 변수 추가
+    let drawerMissingSince = null;
+    // [최종] 제시어 리스트 (600개 이상)
+    const WORDS = [
+        "강아지", "고양이", "토끼", "병아리", "오리", "돼지", "소", "양", "말", "사자",
+        "호랑이", "코끼리", "기린", "원숭이", "팬더", "펭귄", "북극곰", "다람쥐", "고래", "상어",
+        "거북이", "개구리", "뱀", "문어", "오징어", "물고기", "게", "새우", "하마", "악어",
+        "공룡", "박쥐", "나비", "꿀벌", "거미", "달팽이", "잠자리", "무당벌레", "개미", "파리",
+        "모기", "바퀴벌레", "지렁이", "전갈", "사마귀", "메뚜기", "여우", "늑대", "곰", "사슴",
+        "낙타", "캥거루", "코알라", "두더지", "고슴도치", "수달", "물개", "해파리", "불가사리", "카멜레온",
+        "타조", "독수리", "부엉이", "참새", "비둘기", "까치", "앵무새", "공작새", "미어캣", "나무늘보",
+        "알파카", "치타", "하이에나", "코뿔소", "직박구리", "장수풍뎅이", "사슴벌레", "하루살이", "가오리", "복어",
+        "멸치", "고등어", "갈치", "해마", "불독", "푸들", "비글", "치와와", "시베리안허스키", "웰시코기",
+        "햄스터", "기니피그", "청설모", "오소리", "너구리", "족제비", "스컹크", "반딧불이", "돈벌레", "곱등이",
+        "사과", "바나나", "포도", "수박", "딸기", "복숭아", "귤", "파인애플", "체리", "당근",
+        "옥수수", "오이", "고추", "호박", "버섯", "브로콜리", "피자", "햄버거", "치킨", "감자튀김",
+        "핫도그", "샌드위치", "김밥", "라면", "만두", "떡볶이", "도넛", "케이크", "사탕", "초콜릿",
+        "우유", "주스", "콜라", "치즈", "달걀", "빵", "밥", "국수", "물", "조개",
+        "아이스크림", "팥빙수", "붕어빵", "호떡", "군고구마", "순대", "오뎅", "튀김", "족발", "보쌈",
+        "삼겹살", "갈비", "스테이크", "스파게티", "초밥", "회", "비빔밥", "김치", "된장찌개", "미역국",
+        "카레", "짜장면", "짬뽕", "탕수육", "팝콘", "시리얼", "요거트", "커피", "맥주", "소주",
+        "마라탕", "탕후루", "버블티", "마카롱", "크로플", "소떡소떡", "닭꼬치", "양꼬치", "곱창", "대창",
+        "막창", "닭발", "계란찜", "순두부찌개", "부대찌개", "삼계탕", "치즈볼", "멘보샤", "꿔바로우", "양념치킨",
+        "간장게장", "양념게장", "산낙지", "육회", "물냉면", "비빔냉면", "칼국수", "수제비", "잔치국수", "비빔국수",
+        "콩국수", "메밀소바", "우동", "쌀국수", "팟타이", "나시고랭", "타코", "부리또", "감바스",
+        "고르곤졸라", "페퍼로니", "민트초코", "슈팅스타", "엄마는외계인", "솜사탕", "달고나", "약과", "식혜", "수정과",
+        "텔레비전", "냉장고", "세탁기", "선풍기", "청소기", "컴퓨터", "휴대폰", "카메라", "시계", "침대",
+        "이불", "베개", "소파", "의자", "책상", "거울", "빗", "칫솔", "치약", "비누",
+        "수건", "휴지", "컵", "숟가락", "젓가락", "그릇", "냄비", "후라이팬", "칼", "도마",
+        "연필", "지우개", "가위", "풀", "자", "공책", "책", "가방", "안경", "모자",
+        "신발", "양말", "장갑", "목도리", "우산", "지갑", "열쇠", "리모컨", "마우스", "키보드",
+        "헤드폰", "마이크", "스피커", "전구", "건전지", "충전기", "드라이기", "다리미", "바늘", "실",
+        "단추", "지퍼", "옷걸이", "휴지통", "변기", "욕조", "샤워기", "세면대", "신호등", "소화기",
+        "면봉", "이쑤시개", "손톱깎이", "효자손", "파리채", "모기향", "에프킬라", "보조배터리", "셀카봉", "삼각대",
+        "텀블러", "빨대", "물티슈", "마스크", "손소독제", "체온계", "청진기", "주사기", "휠체어", "목발",
+        "반창고", "붕대", "깁스", "링거", "인공호흡기", "소화전", "CCTV", "드론",
+        "노트북", "태블릿", "공유기", "멀티탭", "형광등", "샹들리에", "커튼", "블라인드", "카페트", "러그",
+        "눈", "코", "입", "귀", "손", "발", "머리카락", "눈썹", "속눈썹", "쌍꺼풀",
+        "보조개", "주근깨", "점", "수염", "배꼽", "등", "엉덩이", "허벅지", "종아리", "발가락",
+        "손가락", "손톱", "발톱", "심장", "뇌", "해골", "뼈", "근육", "핏줄", "겨드랑이",
+        "똥", "방귀", "트림", "하품", "기침", "재채기", "딸꾹질", "코골이", "이갈이", "잠꼬대",
+        "브라자", "팬티", "양말", "스타킹", "레깅스", "청바지", "반바지", "치마", "원피스", "셔츠",
+        "티셔츠", "후드티", "맨투맨", "니트", "가디건", "조끼", "패딩", "이아린", "최서율", "김민정",
+        "김민지", "최스방", "최서준", "최서아", "김민영", "김민우", "코트", "잠옷", "수영복",
+        "비키니", "래쉬가드", "넥타이", "나비넥타이", "벨트", "멜빵", "귀걸이", "목걸이", "반지", "팔찌",
+        "의사", "간호사", "경찰관", "소방관", "선생님", "학생", "요리사", "화가", "가수", "배우",
+        "운동선수", "과학자", "우주인", "탐정", "도둑", "해적", "왕", "여왕", "공주", "왕자",
+        "천사", "악마", "귀신", "마녀", "좀비", "미라", "드라큘라", "로봇", "외계인", "산타클로스",
+        "대통령", "군인", "미용사", "승무원", "파일럿", "농부", "어부", "광대", "마술사", "조련사",
+        "판사", "변호사", "기자", "아나운서", "성우", "감독", "작가", "웹툰작가", "유튜버", "BJ",
+        "아이돌", "래퍼", "댄서", "모델", "디자이너", "프로그래머", "해커", "게이머", "건물주", "백수",
+        "스파이더맨", "아이언맨", "헐크", "배트맨", "슈퍼맨", "피카츄", "라이츄", "파이리", "꼬부기", "도라에몽",
+        "짱구", "뽀로로", "펭수", "마리오", "소닉", "미키마우스", "헬로키티", "토토로", "가오나시",
+        "자동차", "버스", "택시", "경찰차", "소방차", "구급차", "트럭", "포크레인", "자전거", "오토바이",
+        "기차", "비행기", "헬리콥터", "배", "잠수함", "로켓", "UFO", "유모차", "휠체어", "스케이트보드",
+        "킥보드", "인라인스케이트", "롤러스케이트", "스키", "보드", "썰매", "마차", "인력거", "열기구", "행글라이더",
+        "학교", "병원", "집", "아파트", "놀이터", "수영장", "도서관", "미용실", "마트", "편의점",
+        "경찰서", "소방서", "우체국", "은행", "식당", "카페", "영화관", "노래방", "주유소",
+        "공항", "기차역", "항구", "등대", "다리", "터널", "성", "텐트", "이글루", "피라미드",
+        "에펠탑", "자유의여신상", "만리장성", "남산타워", "롯데타워", "63빌딩", "청와대", "국회의사당", "놀이공원", "동물원",
+        "해", "달", "별", "구름", "비", "눈", "눈사람", "무지개", "번개", "불",
+        "물방울", "바다", "산", "나무", "꽃", "해바라기", "선인장", "돌", "모래", "흙",
+        "화산", "폭포", "동굴", "섬", "사막", "정글", "빙하", "온천", "호수", "강",
+        "바람", "태풍", "지진", "안개", "이슬", "단풍", "은행나무", "소나무", "잔디", "장미",
+        "민들레", "개나리", "진달래", "벚꽃", "코스모스", "튤립", "카네이션", "선인장", "야자수", "대나무",
+        "블랙홀", "혜성", "유성", "오로라", "일식", "월식", "토네이도", "쓰나미", "가뭄", "홍수",
+        "축구", "농구", "야구", "배구", "테니스", "배드민턴", "골프", "볼링", "수영", "달리기",
+        "스키", "스케이트", "권투", "양궁", "태권도", "탁구", "당구", "낚시", "등산", "캠핑",
+        "요가", "필라테스", "헬스", "줄넘기", "훌라후프", "철봉", "피구", "족구", "발야구", "씨름",
+        "윷놀이", "연날리기", "팽이치기", "제기차기", "공기놀이", "숨바꼭질", "술래잡기", "말뚝박기", "오징어게임",
+        "게임", "웹툰", "영화", "드라마", "독서", "요리", "청소", "빨래", "설거지", "분리수거",
+        "사랑", "결혼", "생일", "크리스마스", "설날", "추석", "졸업", "입학", "방학", "개학",
+        "시험", "숙제", "일기", "편지", "선물", "약속", "비밀", "거짓말", "꿈", "악몽",
+        "감기", "몸살", "두통", "치통", "복통", "멀미", "상처", "흉터", "문신", "점",
+        "유튜브", "넷플릭스", "카카오톡", "인스타그램", "페이스북", "틱톡", "당근마켓", "쿠팡", "배달의민족", "요기요",
+        "삼성", "애플", "스타벅스", "맥도날드", "버거킹", "나이키", "아디다스", "구찌", "샤넬", "루이비통",
+        "비트코인", "주식", "로또", "복권", "저금통", "통장", "카드", "현금", "수표", "동전",
+        "검문소", "소방관", "우거지", "이수근", "오동나무", "도시락", "주전자", "개막식", "개발자",
+        "개인기", "거지", "고구려", "고인돌", "공중전화", "구두쇠", "구명조끼", "권투선수", "기름부자", 
+        "김경호", "나무젓가락", "낚시터", "난쟁이", "눈사람", "다이빙", "닭똥집", "대기만성", "대학생",
+        "도너츠", "도둑고양이", "돈까스", "동갑내기", "돼지저금통", "두루마리휴지", "뒷북", "드라이브", "디스코", "딸기잼",
+        "떡국", "라이터", "라디오", "레몬에이드", "로봇청소기", "롤케이크", "루돌프","마법사", "마스크팩",
+        "만리장성", "만화가", "말년병장", "매니큐어", "머리핀", "먹구름", "면도기", "모나리자", "모래시계",
+        "목욕탕", "무지개떡", "물개박수", "물안경", "미스코리아", "미이라", "바나나우유", "바늘구멍", "박쥐맨", "반지의제왕",
+        "발레리나", "배트맨", "백설공주", "뱀파이어", "번지점프", "벌집피자", "베토벤", "변호인", "보디가드",
+        "보물지도", "부메랑", "불꽃놀이", "불사조", "비닐봉지", "비상구", "비행접시", "빨래집게",
+        "사오정", "산악자전거", "산타할아버지", "삼각김밥", "삼겹살파티", "상어이빨", "새우깡", "샌드백", "선글라스", "선풍기아줌마",
+        "설국열차", "성냥팔이소녀", "세종대왕", "소나기", "손흥민", "수류탄", "슈퍼마리오", "슈퍼맨", "스님",
+        "시소", "신데렐라", "아기공룡둘리", "아마존", "아바타", "아이유", "아이스하키", "아파트단지", "악어떼",
+        "알라딘", "암벽등반", "압력밥솥", "야구방망이", "양치기소년", "어벤져스", "얼음낚시", "에어로빅", "엑스레이", "엘리베이터",
+        "여의주", "연예인", "오리발", "오징어땅콩", "오페라", "올림픽", "요구르트", "용가리",
+        "우비소년", "운동회", "원두커피", "월드컵", "유령선", "유치원생", "은하철도999", "자판기", "이순신",
+        "인어공주", "인터넷강의", "일광욕", "자동차극장", "자유의여신상", "자이로드롭", "잠수부", "장독대", "장화신은고양이", "재활용",
+        "저승사자", "전기충격기", "전화번호부", "접시닦이", "정육점", "제주도", "조폭마누라", "종이접기", "주유소습격사건", "죽마고우",
+        "중국집", "쥐불놀이", "지하철", "진시황", "징검다리", "짜파게티", "짱구는못말려", "천하장사", "청개구리", "초코파이",
+        "총알택시", "축구공", "치과의사", "치어리더", "칠판지우개", "카네이션", "카우보이", "칸쵸", "캥거루족", "커피포트",
+        "컴퓨터바이러스", "코뿔소", "콘택트렌즈", "콜라곰", "콩쥐팥쥐", "크리스마스카드", "타이타닉", "타잔", "태권브이", "터미네이터",
+        "토스트기", "톰과제리", "트랜스포머", "티라노사우루스", "파마머리", "파리채", "판다곰", "팔굽혀펴기", "팽이치기", "포장마차",
+        "폭탄머리", "표지판", "피구왕통키", "피노키오", "피사의사탑", "피카소", "하이힐", "학교종", "한석봉", "할리우드",
+        "핫도그", "해녀", "해리포터", "해바라기씨", "해수욕장", "해수면", "햄스터", "행운의편지", "허수아비", "헬스장", "호두까기인형",
+        "호랑이굴", "호루라기", "홍길동", "진심", "포옹", "샴푸", "화생방", "화장실", "효자손", "후라이드치킨", "훌라후프", "휴지걸이", "히말라야"
+    ];
+
+    const MAX_ROUNDS = 5;
+    const TURN_TIME = 140;
+
+    const canvas = document.getElementById('game-canvas');
+    const chatList = document.getElementById('chat-list');
+    const inputModal = document.getElementById('input-modal-overlay');
+    const inputField = document.getElementById('answer-input');
+    const openInputBtn = document.getElementById('open-input-btn');
+    const loadingOverlay = document.getElementById('loading-overlay');
+    const resultOverlay = document.getElementById('result-overlay');
+    const timerBadge = document.getElementById('timer-badge');
+    const roundDisplay = document.getElementById('round-display');
+    const wordDisplay = document.getElementById('word-display');
+    const playerBar = document.getElementById('player-bar');
+    const paletteBar = document.getElementById('palette-bar');
+
+    const bgmFiles = ["캐치마인드브금1.mp3", "캐치마인드브금2.mp3", "캐치마인드브금3.mp3"];
+    const bgmPlayer = document.getElementById('bgm-player');
+    let isBgmPlaying = false;
+
+    function playRandomBgm() {
+        if (isBgmPlaying) return;
+        const randomIndex = Math.floor(Math.random() * bgmFiles.length);
+        bgmPlayer.src = "./캐치마인드효과음/" + bgmFiles[randomIndex];
+        bgmPlayer.volume = 0.3; 
+        bgmPlayer.play().then(() => {
+            isBgmPlaying = true;
+        }).catch(e => console.log("BGM 재생 실패:", e));
+    }
+
+    function stopBgm() {
+        bgmPlayer.pause();
+        bgmPlayer.currentTime = 0;
+        isBgmPlaying = false;
+    }
+
+    function playSound(id) {
+        const sound = document.getElementById(id);
+        if (sound) {
+            sound.currentTime = 0;
+            sound.play().catch(() => {});
+        }
+    }
+
+    function escapeHTML(str) {
+        if (typeof str !== 'string') return '';
+        const map = {'&': '&amp;','<': '&lt;','>': '&gt;','"': '&quot;',"'": '&#039;'};
+        return str.replace(/[&<>"']/g, m => map[m]);
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                myUid = user.uid;
+                myNick = localStorage.getItem('userNickname') || 'User';
+                myAvatar = localStorage.getItem('userAvatar');
+                
+                const params = new URLSearchParams(location.search);
+                roomId = params.get('roomId');
+                
+                if (roomId) initGame(roomId);
+                else location.href = '대기실.html';
+            } else location.href = 'index.html';
+        });
+
+        ctx = canvas.getContext('2d');
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+        
+        openInputBtn.addEventListener('click', () => {
+            inputModal.classList.add('active');
+            setTimeout(() => inputField.focus(), 100);
+        });
+        inputModal.addEventListener('click', (e) => {
+            if(e.target === inputModal) inputModal.classList.remove('active');
+        });
+    
+        document.getElementById('retry-btn').addEventListener('click', sendRematchRequest);
+        document.getElementById('exit-btn').addEventListener('click', exitGame);
+    });
+
+    function initGame(id) {
+        roomRef = db.ref(`rooms/${id}`);
+        myRef = roomRef.child(`players/${myUid}`);
+
+        // [핵심 수정] 내 스킨 정보 가져오기 (비동기 처리)
+        // usersRef가 전역에 없으므로 db.ref로 직접 접근합니다.
+        db.ref(`users/${myUid}/profile`).once('value', snapshot => {
+            const profile = snapshot.val() || {};
+            window.myChatSkin = profile.equippedChatSkin || 'bubble_default';
+        });
+
+        myRef.update({
+            nickname: myNick,
+            avatar: myAvatar,
+            score: 0,
+            online: true,
+            isReady: false
+        });
+        myRef.onDisconnect().remove();
+
+        resizeCanvas();
+
+        let isInitialLoad = true;
+        roomRef.child('chat').on('child_added', snap => {
+            const chatData = snap.val();
+            if (!chatData) return;
+            
+            if (isInitialLoad) {
+                const msgTime = chatData.timestamp || 0;
+                const now = Date.now();
+                if (now - msgTime < 60000) {
+                    addChatBubble(chatData);
+                }
+            } else {
+                addChatBubble(chatData);
+                
+                if (chatData.type === 'correct') {
+                    inputModal.classList.remove('active');
+                    if (document.activeElement) document.activeElement.blur();
+                    showCorrectEffect(chatData);
+                }
+                
+                if (isHost && chatData.type === 'correct' && gameState?.status === 'playing') {
+                    if (isRoundProcessing) return; 
+                    isRoundProcessing = true;
+                    setTimeout(() => nextTurn("정답!"), 2500);
+                }
+            }
+        });
+        
+        roomRef.child('chat').once('value', () => {
+            isInitialLoad = false;
+        });
+
+        let isFirstClearCheck = true;
+        roomRef.child('clearCanvas').on('value', snap => {
+            if (isFirstClearCheck) {
+                isFirstClearCheck = false;
+                return; 
+            }
+            const timestamp = snap.val();
+            if (timestamp) {
+                drawHistory = [];
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }
+        });
+
+        // 기존 변수 (유지)
+        let lastPlayersJson = ''; 
+
+        // [수정] 방 데이터 수신 리스너 (자동 복구 기능 탑재)
+        // [수정] 최적화된 리스너: 전체 데이터를 한번에 받지 않고 쪼개서 받음 (튕김 방지)
+        // drawLines와 chat은 별도 리스너(child_added)가 처리하므로 여기서 제외됨
+        if (!gameState) gameState = { players: {}, gameData: {}, status: 'waiting', rematchRequests: {} };
+
+        const updateUnifiedState = () => {
+            if (isExiting) return;
+            if (!gameState) return;
+
+            // 1. 방 폭파 감지 (status가 null이면 방이 없는 것)
+            if (gameState.status === null) {
+                 if (!document.getElementById('result-overlay').classList.contains('active')) {
+                    alert('방이 종료되었습니다.');
+                }
+                location.href = '대기실.html';
+                return;
+            }
+
+            // 2. 고스트 현상 감지 및 자동 부활 (데이터가 로드됐는데 내 정보만 없을 때)
+            if (gameState.players && Object.keys(gameState.players).length > 0 && !gameState.players[myUid]) {
+                console.warn("⚠️ 고스트 현상 발생! -> 즉시 부활 시도");
+                let savedScore = 0; // 점수는 0점으로 초기화 방지 로직 필요하면 추가
+                myRef.update({
+                    nickname: myNick,
+                    avatar: myAvatar,
+                    score: savedScore,
+                    online: true,
+                    isReady: false
+                });
+                myRef.onDisconnect().remove();
+                return; // 복구 중이므로 이번 처리는 스킵
+            }
+
+            // 3. 호스트 마이그레이션
+            const playerIds = Object.keys(gameState.players || {}).sort();
+            if (gameState.hostId && (!gameState.players || !gameState.players[gameState.hostId]) && playerIds.length > 0) {
+                const newHostId = playerIds[0];
+                if (newHostId === myUid) {
+                    console.log("👑 방장이 떠나 내가 새로운 방장이 되었습니다!");
+                    roomRef.update({ hostId: myUid });
+                    if (typeof showToast === 'function') showToast("👑 내가 방장이 되었습니다!");
+                }
+            }
+            isHost = (gameState.hostId === myUid);
+
+            // 4. 게임 종료 후 재시작 대기 (호스트 전용)
+            if (isHost && gameState.status === 'gameOver') {
+                const reqs = gameState.rematchRequests || {};
+                const allReady = playerIds.length > 0 && playerIds.every(uid => reqs[uid] === true);
+
+                if (allReady) {
+                    const updates = {};
+                    updates['status'] = 'waiting';
+                    updates['starting'] = true;
+                    updates['gameData'] = {
+                        round: 1,
+                        drawer: playerIds[0],
+                        word: '',
+                        timer: TURN_TIME,
+                        roundWinner: null
+                    };
+                    updates['chat'] = null;
+                    updates['drawLines'] = null;
+                    updates['rematchRequests'] = null;
+                    updates['clearCanvas'] = Date.now();
+                    playerIds.forEach(pid => { updates[`players/${pid}/score`] = 0; });
+                    roomRef.update(updates);
+                }
+            }
+
+            // 5. 방장 전용 데이터 초기화
+            if (isHost && !gameState.gameData && gameState.status !== 'gameOver') {
+                roomRef.update({
+                    status: 'waiting',
+                    gameData: { round: 1, timer: TURN_TIME, drawer: '', word: '', roundWinner: null }
+                });
+            }
+
+            // 6. UI 업데이트 (플레이어 목록)
+            const currentPlayersJson = JSON.stringify(gameState.players) + (gameState.gameData?.drawer || '');
+            if (lastPlayersJson !== currentPlayersJson) {
+                renderPlayers(gameState.players || {}, gameState.gameData?.drawer);
+                lastPlayersJson = currentPlayersJson;
+
+                if (gameState.status === 'gameOver') {
+                    showResult(gameState.players || {}, gameState.rematchRequests || {});
+                    if (isHost) checkAutoStartByHost();
+                }
+            }
+
+            // 7. 출제자 탈주 감지 (호스트 전용)
+            if (isHost && gameState.status === 'playing') {
+                const currentDrawer = gameState.gameData?.drawer;
+                const currentPlayers = gameState.players || {};
+                
+                if (currentDrawer && !currentPlayers[currentDrawer]) {
+                    if (!drawerMissingSince) {
+                        drawerMissingSince = Date.now();
+                    } else if (Date.now() - drawerMissingSince > 4000) {
+                        console.warn("🚨 출제자 탈주 확정! 턴 넘김");
+                        roomRef.child('gameData/timer').set(0);
+                        drawerMissingSince = null;
+                    }
+                } else {
+                    if (drawerMissingSince) drawerMissingSince = null;
+                }
+            }
+
+            // 8. 게임 상태 처리 (타이머 등)
+            handleGameState(gameState);
+        };
+
+        // [핵심] 개별 리스너 등록 (drawLines와 chat을 제외하고 수신)
+        const listenTo = (key) => {
+            roomRef.child(key).on('value', snap => {
+                if (!gameState) gameState = {};
+                gameState[key] = snap.val();
+                updateUnifiedState();
+            });
+        };
+
+        ['status', 'gameData', 'players', 'rematchRequests', 'starting', 'hostId'].forEach(key => listenTo(key));
+
+        roomRef.child('drawLines').on('child_added', snap => drawLineRemote(snap.val()));
+
+        window.addEventListener('keydown', (e) => {
+            if (document.activeElement === document.getElementById('answer-input')) return;
+            if (e.key.toLowerCase() === 'e') {
+                if (isHost && roomRef) {
+                    console.log("🛑 치트키: 강제 게임 종료 실행");
+                    roomRef.update({ status: 'gameOver' });
+                }
+            }
+        });
+    }
+
+    function handleGameState(data) {
+        const status = data.status;
+        const gData = data.gameData || {};
+let isGameStarting = false; // 전역 플래그 추가
+
+        if (status === 'waiting') {
+            loadingOverlay.classList.add('active');
+            resultOverlay.classList.remove('active');
+
+            if (data.starting) {
+                const chatList = document.getElementById('chat-list');
+                if (chatList) chatList.innerHTML = '';
+            }
+
+            if (!data.starting) {
+                const playerCount = Object.keys(data.players || {}).length;
+                document.getElementById('loading-text').style.display = 'block';
+                document.getElementById('loading-text').innerText = `대기중 (${playerCount}명)...`;
+                document.getElementById('countdown-text').innerText = "";
+                
+                isCountdownInProgress = false;
+                if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+
+                if (isHost && playerCount >= 2) {
+                    roomRef.update({ starting: true });
+                }
+            } else {
+                loadingOverlay.classList.add('active'); 
+                document.getElementById('loading-text').style.display = 'none';
+                
+                if (!isCountdownInProgress) {
+                    startCountdown(); 
+                }
+            }
+        }
+        else if (status === 'playing') {
+            isRoundProcessing = false;
+            loadingOverlay.classList.remove('active');
+            resultOverlay.classList.remove('active');
+            
+            isCountdownInProgress = false;
+            if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+
+            playRandomBgm();
+
+            roundDisplay.innerText = `${gData.round || 1}/${MAX_ROUNDS}`;
+            timerBadge.innerText = gData.timer || 0;
+            
+            if ((gData.timer || 0) <= 10) timerBadge.classList.add('urgent');
+            else timerBadge.classList.remove('urgent');
+
+            if (gData.drawer !== lastDrawerUid) {
+                lastDrawerUid = gData.drawer;
+                
+                const isDrawer = (gData.drawer === myUid);
+                const inputBar = document.getElementById('input-bar');
+
+                if (isDrawer) {
+                    paletteBar.style.display = 'flex';
+                    inputBar.style.display = 'none';     
+                    wordDisplay.innerText = `제시어: ${gData.word}`;
+                    wordDisplay.style.color = "var(--text-color-dark)";
+                } else {
+                    paletteBar.style.display = 'none';
+                    inputBar.style.display = 'block';    
+                    
+                    if (gData.revealAnswer) {
+                        wordDisplay.innerText = `정답: ${gData.word}`;
+                        wordDisplay.style.color = "var(--danger-color)"; 
+                    } else {
+                        const wordLen = gData.word ? gData.word.length : 0;
+                        const hint = "O ".repeat(wordLen);
+                        wordDisplay.innerText = `힌트: ${hint}`;
+                        wordDisplay.style.color = "var(--text-color-dark)"; 
+                    }
+                    
+                    openInputBtn.innerText = "💬 정답 / 채팅 입력";
+                    openInputBtn.disabled = false;
+                    openInputBtn.style.background = "var(--primary-color)";
+                }
+            }
+
+            if (isHost && !timerInterval && gData.timer > 0) {
+                runTimer();
+            }
+        }
+        else if (status === 'gameOver') {
+            showResult(data.players, data.rematchRequests);
+        }
+    }
+
+    function startCountdown() {
+        if (isCountdownInProgress) return;
+        isCountdownInProgress = true;
+        resultSoundPlayed = false;
+        
+        const winSound = document.getElementById('snd-win');
+        const loseSound = document.getElementById('snd-lose');
+        if (winSound) { winSound.pause(); winSound.currentTime = 0; }
+        if (loseSound) { loseSound.pause(); loseSound.currentTime = 0; }
+
+        document.getElementById('loading-text').style.display = 'none';
+        
+        let count = 3;
+        const countText = document.getElementById('countdown-text');
+        
+        const triggerAnim = (text) => {
+            countText.innerText = text;
+            countText.style.animation = 'none'; 
+            countText.offsetHeight; 
+            countText.style.animation = 'countdown-pop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards';
+        };
+
+        triggerAnim(count);
+        playSound('snd-start'); 
+
+        countdownTimer = setInterval(() => {
+            count--;
+            if (count > 0) {
+                triggerAnim(count);
+                playSound('snd-start');
+            } else {
+                clearInterval(countdownTimer);
+                countdownTimer = null;
+                
+                triggerAnim("GO!");
+                playSound('snd-start'); 
+                
+                if (isHost) {
+                    setTimeout(() => {
+                         isGameStarting = false; // 플래그 해제
+                        const pIds = Object.keys(gameState.players);
+                        const pick = getUniqueWord(true); 
+
+                        roomRef.update({
+                            status: 'playing',
+                            starting: false,
+                            gameData: {
+                                round: 1,
+                                drawer: pIds[0],
+                                word: pick.word,        
+                                usedWords: pick.list,   
+                                timer: TURN_TIME
+                            },
+                            drawLines: null,
+                            clearCanvas: Date.now()
+                        }).then(() => {
+                            runTimer();
+                        });
+                    }, 1000);
+                }
+            }
+        }, 1000);
+    }
+
+    function runTimer() {
+        if (!isHost) return;
+        
+        if (timerInterval) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+        }
+
+        timerInterval = setInterval(() => {
+            if (!roomRef) {
+                clearInterval(timerInterval);
+                return;
+            }
+
+            roomRef.child('gameData/timer').transaction(t => {
+                if (t === null || t === undefined) return TURN_TIME;
+                return t > 0 ? t - 1 : 0;
+            }, (err, committed, snap) => {
+                if (err) {
+                    console.warn("타이머 업데이트 실패:", err);
+                    return;
+                }
+                if (committed && snap.val() === 0) {
+                    clearInterval(timerInterval);
+                    timerInterval = null;
+                    nextTurn("⏰ 시간 초과!");
+                }
+            });
+        }, 1000);
+    }
+
+    function nextTurn(reasonMsg) {
+        if (!isHost) return;
+        
+        if (timerInterval) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+        }
+
+        if (reasonMsg && gameState && gameState.gameData) {
+            const word = gameState.gameData.word || '';
+            sendSysMsg(`${reasonMsg} 정답: ${word}`);
+        }
+
+        roomRef.child('gameData/revealAnswer').set(true);
+
+        setTimeout(() => {
+            if (!gameState || !gameState.gameData || !gameState.players) return;
+            
+            const gData = gameState.gameData;
+            const pIds = Object.keys(gameState.players).sort(); 
+            
+            const currIdx = pIds.indexOf(gData.drawer);
+            let nextIdx = currIdx + 1;
+            let nextRound = gData.round;
+
+            if (nextIdx >= pIds.length) {
+                nextIdx = 0;
+                nextRound++;
+            }
+
+            if (nextRound > MAX_ROUNDS) {
+                roomRef.update({ status: 'gameOver' });
+            } else {
+                const pick = getUniqueWord();
+
+                roomRef.update({
+                    gameData: {
+                        round: nextRound,
+                        drawer: pIds[nextIdx],
+                        word: pick.word,       
+                        usedWords: pick.list, 
+                        timer: TURN_TIME,
+                        revealAnswer: false,
+                        roundWinner: null 
+                    },
+                    drawLines: null,
+                    clearCanvas: Date.now()
+                });
+            }
+        }, 3000); 
+    }
+
+    function getUniqueWord(isReset = false) {
+        let used = [];
+        if (!isReset && gameState && gameState.gameData && gameState.gameData.usedWords) {
+            used = gameState.gameData.usedWords;
+        }
+
+        const available = WORDS.filter(w => !used.includes(w));
+
+        if (available.length === 0) {
+            const resetWord = WORDS[Math.floor(Math.random() * WORDS.length)];
+            return { word: resetWord, list: [resetWord] };
+        }
+
+        const newWord = available[Math.floor(Math.random() * available.length)];
+        const newList = [...used, newWord];
+        
+        return { word: newWord, list: newList };
+    }
+
+    function resizeCanvas() {
+        const wrapper = document.getElementById('main-canvas-area');
+        if (wrapper && canvas) {
+            canvas.width = wrapper.clientWidth;
+            canvas.height = wrapper.clientHeight;
+            
+            if (drawHistory.length > 0) {
+                drawHistory.forEach(l => {
+                    drawLineRemote(l, false); 
+                });
+            }
+        }
+    }
+
+    function getPos(e) {
+        const r = canvas.getBoundingClientRect();
+        let clientX, clientY;
+
+        if (e.touches && e.touches.length > 0) {
+            clientX = e.touches[0].clientX;
+            clientY = e.touches[0].clientY;
+        } else if (e.changedTouches && e.changedTouches.length > 0) {
+            clientX = e.changedTouches[0].clientX;
+            clientY = e.changedTouches[0].clientY;
+        } else {
+            clientX = e.clientX;
+            clientY = e.clientY;
+        }
+
+        return { 
+            x: (clientX - r.left) / r.width, 
+            y: (clientY - r.top) / r.height 
+        };
+    }
+
+    const startDraw = (e) => {
+        if (e.cancelable) e.preventDefault(); 
+        if (gameState?.gameData?.drawer !== myUid) return;
+        isDrawing = true;
+        const p = getPos(e);
+        lastX = p.x; lastY = p.y;
+    };
+
+    const draw = (e) => {
+        if (e.cancelable) e.preventDefault();
+        if (!isDrawing) return;
+        const p = getPos(e);
+        
+        drawLineRemote({ lx: lastX, ly: lastY, x: p.x, y: p.y, c: currentColor, w: currentWidth }, true);
+
+        if (roomRef) {
+            roomRef.child('drawLines').push({
+                lx: lastX, ly: lastY, x: p.x, y: p.y, c: currentColor, w: currentWidth
+            });
+        }
+        lastX = p.x; lastY = p.y;
+    };
+    const endDraw = () => { isDrawing = false; };
+
+    canvas.addEventListener('mousedown', startDraw);
+    canvas.addEventListener('touchstart', startDraw, {passive:false});
+    canvas.addEventListener('mousemove', draw);
+    canvas.addEventListener('touchmove', draw, {passive:false});
+    window.addEventListener('mouseup', endDraw);
+    window.addEventListener('touchend', endDraw);
+
+    function drawLineRemote(l, saveHistory = true) {
+        if (saveHistory) drawHistory.push(l); 
+
+        const w = canvas.width; 
+        const h = canvas.height;
+        ctx.beginPath();
+        ctx.moveTo(l.lx*w, l.ly*h);
+        ctx.lineTo(l.x*w, l.y*h);
+        ctx.strokeStyle = l.c; 
+        ctx.lineWidth = l.w;
+        ctx.lineCap = 'round'; 
+        ctx.stroke();
+    }
+
+    const originalSetColor = window.setColor;
+    window.setColor = (color, btn, width = null) => {
+        document.querySelectorAll('.palette-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.color-circle').forEach(b => b.classList.remove('active'));
+        
+        if(btn) btn.classList.add('active');
+        
+        currentColor = color; 
+        
+        if (width !== null) currentWidth = width;
+
+        const rainbowBtn = document.getElementById('rainbow-btn');
+        if (btn !== rainbowBtn && rainbowBtn) {
+            rainbowBtn.style.background = 'white';
+            rainbowBtn.style.borderColor = '#ccc';
+        }
+
+        const penPopup = document.getElementById('pen-popup');
+        if(penPopup) penPopup.classList.remove('active');
+    };
+
+    window.clearCanvas = () => {
+        if (gameState?.gameData?.drawer === myUid) roomRef.child('clearCanvas').set(Date.now());
+    };
+
+   // ==========================================
+    // 👥 2. 플레이어 표시 (데이터 누락 방지 강화판)
+    // ==========================================
+
+    // [필수] 5연타 감지 변수
+    let secretClickCount = 0;
+    let secretClickTimer = null;
+
+    function renderPlayers(players, drawerUid) {
+        const playerBar = document.getElementById('player-bar');
+        if (!playerBar) return; 
+
+     if (!players || Object.keys(players).length === 0) {
+        playerBar.innerHTML = '<div style="text-align:center; padding:20px;">플레이어가 없습니다.</div>';
+        console.warn("⚠️ 플레이어 데이터 없음 - 빈 화면 표시");
+        return;
+    }
+
+        // [수정] 데이터가 확실히 있을 때만 기존 목록 초기화
+        playerBar.innerHTML = '';
+        
+        const sortedUids = Object.keys(players).sort();
+
+        sortedUids.forEach(uid => {
+            try {
+                const p = players[uid];
+                
+                // [중요] 데이터가 없어도 객체로 만들어서 렌더링 강행
+                // (이 부분이 없으면 데이터 꼬일 때 유저가 사라짐)
+                const playerData = p || { nickname: '접속중...', score: 0, avatar: '👤' };
+
+                const div = document.createElement('div');
+                div.className = `player-slot ${uid === drawerUid ? 'drawer' : ''}`;
+                div.setAttribute('data-uid', String(uid));
+                
+                // [시크릿] 내 프로필 5연타 기능 연결
+                if (uid === myUid) {
+                    div.onclick = () => handleSecretTrigger();
+                    div.style.cursor = 'pointer';
+                }
+                
+                // 1. 아바타 처리 (안전장치 포함)
+                let imgHtml = '';
+                const avatarVal = playerData.avatar;
+
+                const avatarSet = (typeof AVATAR_SETS !== 'undefined') ? AVATAR_SETS[avatarVal] : null;
+                
+                if (avatarSet) {
+                    imgHtml = `<img src="${avatarSet.front}" alt="av">`;
+                } 
+                else if (typeof avatarVal === 'string' && (avatarVal.includes('.') || avatarVal.startsWith('http'))) {
+                    imgHtml = `<img src="${avatarVal}" alt="av">`;
+                } 
+                else {
+                    // 아바타가 없으면 기본 이모지
+                    imgHtml = `<span style="font-size:1.5em">${avatarVal || '👤'}</span>`;
+                }
+
+                // 2. 닉네임 & 점수 처리 (없으면 기본값)
+                const safeNickname = escapeHTML(playerData.nickname || 'Unknown');
+                const safeScore = (playerData.score !== undefined && playerData.score !== null) ? playerData.score : 0;
+
+                div.innerHTML = `
+                    <div class="player-avatar">${imgHtml}</div>
+                    <div class="player-name">${safeNickname}</div>
+                    <div class="player-score">${safeScore}</div>
+                `;
+                playerBar.appendChild(div);
+
+            } catch (err) {
+                // 치명적인 에러가 나도 콘솔에만 찍고, 다음 플레이어는 계속 그림
+                console.error(`[렌더링 오류] 유저(${uid}) 표시 실패:`, err);
+            }
+        });
+    }
+
+    // [필수] 5연타 로직 (renderPlayers와 세트)
+    function handleSecretTrigger() {
+        if (gameState?.gameData?.drawer !== myUid) return;
+
+        secretClickCount++;
+        
+        if (secretClickTimer) clearTimeout(secretClickTimer);
+        secretClickTimer = setTimeout(() => {
+            secretClickCount = 0;
+        }, 2000); 
+
+        if (secretClickCount >= 5) {
+            console.log("Secret Mode Triggered!");
+            startAIDrawing(); // 이미지 뷰어 실행
+            secretClickCount = 0;
+            
+            document.body.style.backgroundColor = '#ffebee';
+            setTimeout(() => document.body.style.backgroundColor = '', 200);
+        }
+    }
+
+    function showResult(players, reqs={}) {
+        if (gameState && gameState.status !== 'gameOver') {
+            if(resultOverlay) resultOverlay.classList.remove('active');
+            return;
+        }
+
+        if (!resultOverlay.classList.contains('active')) {
+            stopBgm();
+            resultOverlay.classList.add('active');
+        }
+
+        const resultList = document.getElementById('result-list');
+        if (!resultList) return;
+        
+        resultList.innerHTML = ''; 
+        
+        const sorted = Object.entries(players).sort((a, b) => (b[1].score || 0) - (a[1].score || 0));
+        
+        sorted.forEach(([uid, p], i) => {
+            const rank = i + 1;
+            const isMe = uid === myUid;
+            const scoreVal = p.score || 0;
+            
+            const isReady = reqs && reqs[uid] === true;
+            
+            const statusHtml = isReady 
+                ? '<span style="color:#28a745; font-weight:900; margin-left:5px;">✅ 준비완료</span>' 
+                : '<span style="color:#aaa; font-size:0.9em; margin-left:5px;">⏳ 대기중</span>';
+
+            const row = document.createElement('div');
+            row.className = 'result-item';
+            if (i === 0) row.classList.add('winner'); 
+            if (isMe) row.style.border = "2px solid var(--primary-color)"; 
+
+            row.innerHTML = `
+                <div style="display:flex; align-items:center; gap:5px; flex-grow:1; overflow:hidden;">
+                    <span style="font-size:1.2em; min-width:35px;">${rank === 1 ? '🥇' : rank + '위'}</span>
+                    <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHTML(p.nickname)}</span>
+                    <span style="flex-shrink:0;">${statusHtml}</span>
+                </div>
+                <div style="color:var(--primary-color); font-weight:bold; min-width:50px; text-align:right;">${scoreVal}점</div>
+            `;
+            
+            resultList.appendChild(row);
+            
+            if(isMe && !resultSoundPlayed) {
+                if(rank === 1) {
+                    playSound('snd-win');
+                    if(typeof applyExpAndPoints === 'function') applyExpAndPoints(db, myUid, 150, 100);
+                } else {
+                    playSound('snd-lose');
+                    if(typeof applyExpAndPoints === 'function') applyExpAndPoints(db, myUid, 50, 30);
+                }
+            }
+        });
+        
+        if (!resultSoundPlayed) {
+            resultSoundPlayed = true;
+        }
+        
+        updateRetryBtnState(reqs);
+    }
+
+    function updateRetryBtnState(reqs) {
+        const retryBtn = document.getElementById('retry-btn');
+        if (retryBtn) {
+            if (reqs && reqs[myUid]) {
+                retryBtn.disabled = true;
+                retryBtn.innerText = "준비완료";
+            } else {
+                retryBtn.disabled = false;
+                retryBtn.innerText = "다시하기";
+            }
+        }
+    }
+
+    function checkAutoStartByHost() {
+        if (!isHost || !gameState || gameState.status !== 'gameOver') return;
+        
+        const players = gameState.players || {};
+        const reqs = gameState.rematchRequests || {};
+        const playerIds = Object.keys(players);
+        
+        if (playerIds.length < 2) return;
+
+        const allReady = playerIds.every(uid => reqs[uid] === true);
+
+        if (allReady) {
+            console.log("인원 변동 후 전원 준비 완료 확인 -> 게임 시작");
+            const updates = {};
+            updates['status'] = 'waiting';
+            updates['starting'] = true; 
+            updates['gameData'] = {
+                round: 1,
+                drawer: playerIds[0],
+                word: '',
+                timer: TURN_TIME
+            };
+            updates['chat'] = null; 
+            updates['drawLines'] = null;
+            updates['rematchRequests'] = null;
+            updates['clearCanvas'] = Date.now();
+            playerIds.forEach(pid => { updates[`players/${pid}/score`] = 0; });
+            roomRef.update(updates);
+        }
+    }
+
+    function sendRematchRequest() {
+        const retryBtn = document.getElementById('retry-btn');
+        if(retryBtn) {
+            retryBtn.disabled = true;
+            retryBtn.innerText = "신호 보내는 중...";
+        }
+        roomRef.child(`rematchRequests/${myUid}`).set(true);
+    }
+
+    function exitGame() {
+        isExiting = true;
+        roomRef.off();
+        roomRef.child(`players/${myUid}`).remove();
+        location.href = '대기실.html';
+    }
+
+    function showCorrectEffect(data) {
+        const overlay = document.getElementById('correct-answer-overlay');
+        const winnerText = document.getElementById('winner-name-display');
+        const answerText = document.getElementById('answer-text-display');
+        
+        let rawAnswer = data.answer;
+        if (!rawAnswer && data.content) {
+            const match = data.content.match(/\[(.*?)\]/);
+            rawAnswer = match ? match[1] : '정답';
+        }
+
+        winnerText.textContent = data.senderNickname;
+        answerText.textContent = rawAnswer;
+        
+        overlay.classList.add('active'); 
+        
+        const playerSlots = document.querySelectorAll('.player-slot');
+        playerSlots.forEach(slot => {
+            if (slot.querySelector('.player-name').textContent === data.senderNickname) {
+                slot.classList.add('winner-highlight');
+            }
+        });
+
+        setTimeout(() => {
+            overlay.classList.remove('active');
+            playerSlots.forEach(slot => slot.classList.remove('winner-highlight'));
+        }, 2500);
+    }
+
+    function fireConfetti() {
+        if (typeof confetti === 'undefined') return;
+
+        var duration = 2 * 1000;
+        var animationEnd = Date.now() + duration;
+        var defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 9999 };
+
+        function randomInRange(min, max) {
+            return Math.random() * (max - min) + min;
+        }
+
+        var interval = setInterval(function() {
+            var timeLeft = animationEnd - Date.now();
+
+            if (timeLeft <= 0) {
+                return clearInterval(interval);
+            }
+
+            var particleCount = 50 * (timeLeft / duration);
+            confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 } }));
+            confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } }));
+        }, 250);
+    }
+
+    function isLightColor(color) {
+        if(!color) return true;
+        const hex = color.replace('#', '');
+        if (hex.length !== 6) return true;
+        
+        const r = parseInt(hex.substr(0, 2), 16);
+        const g = parseInt(hex.substr(2, 2), 16);
+        const b = parseInt(hex.substr(4, 2), 16);
+        const brightness = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+        return brightness > 155; 
+    }
+
+    // [신규] 펜 팝업 토글
+    window.togglePenPopup = () => {
+        const popup = document.getElementById('pen-popup');
+        if(document.getElementById('color-popup')) document.getElementById('color-popup').classList.remove('active'); 
+        popup.classList.toggle('active');
+    };
+
+    // [신규] 굵기 선택 함수
+    window.selectPenWidth = (width, btn) => {
+        currentWidth = width; 
+        
+        if (currentColor === 'white') {
+            currentColor = 'black'; 
+            document.querySelectorAll('.color-circle').forEach(b => b.classList.remove('active'));
+            const blackBtn = document.querySelector('.color-circle[style*="black"]');
+            if(blackBtn) blackBtn.classList.add('active');
+        }
+
+        document.querySelectorAll('.palette-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById('pen-tool-btn').classList.add('active');
+        document.getElementById('pen-popup').classList.remove('active');
+    };
+
+    // [신규] 무지개 버튼 팝업 토글 함수
+    window.toggleColorPopup = () => {
+        const popup = document.getElementById('color-popup');
+        if(document.getElementById('pen-popup')) document.getElementById('pen-popup').classList.remove('active');
+        popup.classList.toggle('active');
+        playSound('snd-pop'); 
+    };
+
+    // [신규] 팝업 내부 색상 선택 시 처리
+    window.selectExtendedColor = (color, btn) => {
+        setColor(color, btn);
+        
+        document.querySelectorAll('.palette-btn').forEach(b => b.classList.remove('active'));
+        const rainbowBtn = document.getElementById('rainbow-btn');
+        if(rainbowBtn) {
+            rainbowBtn.classList.add('active');
+            rainbowBtn.style.background = color; 
+            rainbowBtn.style.borderColor = "var(--text-color-dark)";
+        }
+        document.getElementById('color-popup').classList.remove('active');
+    };
+
+    function sendAnswer() {
+        const txt = inputField.value.trim();
+        if (!txt) return;
+        
+        inputModal.classList.remove('active');
+        inputField.value = '';
+
+        if (!gameState || !gameState.gameData) return;
+
+        if (isRoundProcessing || gameState.gameData.roundWinner) {
+            sendChat(txt);
+            return;
+        }
+
+        const answer = gameState.gameData.word || "";
+        const isDrawer = gameState.gameData.drawer === myUid;
+        
+        if (isDrawer) {
+            sendChat(txt);
+            return;
+        }
+
+        const normalizedAnswer = answer.replace(/\s+/g, '').trim();
+        const normalizedInput = txt.replace(/\s+/g, '').trim();
+        
+        if (normalizedInput === normalizedAnswer) {
+            roomRef.child('gameData/roundWinner').transaction((currentWinner) => {
+                if (currentWinner === null) {
+                    return myUid; 
+                } else {
+                    return; 
+                }
+            }, (error, committed, snapshot) => {
+                if (error) {
+                    console.error("Transaction failed: ", error);
+                    sendChat(txt); 
+                } else if (committed) {
+                    playSound('snd-correct');
+                    const remainingTime = gameState.gameData.timer || 0;
+                    const guesserScore = 50 + (remainingTime * 2); 
+                    const drawerScore = 50 + remainingTime;        
+
+                    roomRef.child(`players/${myUid}/score`).transaction(s => (s||0) + guesserScore);
+                    
+                    const drawerId = gameState.gameData.drawer;
+                    if (drawerId) {
+                        roomRef.child(`players/${drawerId}/score`).transaction(s => (s||0) + drawerScore);
+                    }
+
+                    roomRef.child('chat').push({
+                        senderId: myUid,
+                        senderNickname: myNick,
+                        content: `🎉 정답! (+${guesserScore}점)`, 
+                        type: 'correct',
+                        answer: answer, 
+                        timestamp: firebase.database.ServerValue.TIMESTAMP
+                    });
+                } else {
+                    console.log("아깝게 늦었습니다!");
+                    sendChat(txt); 
+                }
+            });
+        } else {
+            playSound('snd-wrong');
+            sendChat(txt);
+        }
+    }
+
+    function sendChat(msg) {
+        // 전역 변수나 window 객체에서 스킨 가져오기
+        const skinToUse = window.myChatSkin || 'bubble_default';
+
+        roomRef.child('chat').push({
+            senderId: myUid,
+            senderNickname: myNick,
+            content: msg,
+            chatSkin: skinToUse, // [핵심] 스킨 정보 전송
+            type: 'chat',
+            timestamp: firebase.database.ServerValue.TIMESTAMP
+        });
+    }
+
+    function sendSysMsg(msg) {
+        if (!roomRef) return;
+        roomRef.child('chat').push({
+            content: msg,
+            type: 'system',
+            timestamp: firebase.database.ServerValue.TIMESTAMP
+        }).catch(err => {
+            console.error("시스템 메시지 전송 실패:", err);
+        });
+    }
+
+   function addChatBubble(data) {
+        if (!data) return;
+
+        const chatList = document.getElementById('chat-list');
+        const chatLogContainer = document.getElementById('chat-log-container');
+        
+        // 데이터에서 스킨 정보 꺼내기
+        const skinClass = data.chatSkin || 'bubble_default';
+
+        // 1. 하단 채팅 목록에 추가
+        if (chatList) {
+            const li = document.createElement('li');
+            li.className = 'chat-item';
+            
+            if (data.type === 'system') {
+                li.classList.add('system');
+                li.textContent = data.content;
+            } else if (data.type === 'correct') {
+                li.classList.add('correct');
+                li.textContent = `🎉 ${data.senderNickname}님이 정답을 맞혔습니다! (${data.answer || '정답'})`;
+} else {
+                // [수정] 인라인 스타일 제거 -> CSS(.bubble-content)로 제어
+                // skinClass 앞에 'bubble-content' 클래스를 꼭 붙여야 합니다.
+                li.innerHTML = `
+                    <span class="sender">${escapeHTML(data.senderNickname)}</span>
+                    <span class="bubble-content ${skinClass}">
+                        ${escapeHTML(data.content)}
+                    </span>
+                `;
+            }
+            
+            chatList.appendChild(li);
+            if(chatLogContainer) chatLogContainer.scrollTop = chatLogContainer.scrollHeight;
+        }
+
+        if (data.type === 'system') return;
+
+        // 2. 머리 위 둥둥 떠다니는 말풍선
+        const layer = document.getElementById('speech-bubble-layer');
+        const senderId = data.senderId;
+        const targetSlot = document.querySelector(`.player-slot[data-uid="${senderId}"]`); // 캐치마인드용
+        // 게임방.html의 경우 selector가 다를 수 있으므로 방어코드
+        const targetSlotGame = document.querySelector(`.player-slot-compact[data-player-id="${senderId}"]`); 
+        
+        const target = targetSlot || targetSlotGame;
+
+        if (target && layer) {
+            const avatarEl = target.querySelector('.player-avatar') || target.querySelector('.avatar');
+            const rect = avatarEl.getBoundingClientRect();
+            
+            const bubble = document.createElement('div');
+            bubble.className = 'speech-bubble-item';
+            
+            // 스킨 클래스 추가
+            bubble.classList.add(skinClass);
+
+            if (data.type === 'correct') {
+                bubble.classList.remove(skinClass); 
+                bubble.classList.add('correct');
+            }
+            
+            // [핵심 수정] 텍스트 넣기 (반짝이 스킨이면 별도 태그 추가)
+            bubble.textContent = data.content || '';
+
+            // 프리미엄 스킨일 경우에만 반짝이 태그 추가 (꼬리와 충돌 방지)
+            if (skinClass === 'bubble_rainbow_premium') {
+                const s1 = document.createElement('span'); s1.className = 'p-sparkle s1'; s1.textContent = '✨';
+                const s2 = document.createElement('span'); s2.className = 'p-sparkle s2'; s2.textContent = '✨';
+                bubble.appendChild(s1);
+                bubble.appendChild(s2);
+            }
+            
+            // 위치 계산
+            bubble.style.left = (rect.left + rect.width / 2) + 'px'; 
+            bubble.style.top = (rect.top - 15) + 'px'; 
+            bubble.style.transform = "translate(-50%, -100%)";
+            
+            layer.appendChild(bubble);
+            
+            // 3초 후 삭제
+            setTimeout(() => { if (bubble.parentNode) bubble.parentNode.removeChild(bubble); }, 3000);
+            
+            if (data.type === 'correct' && typeof fireConfetti === 'function') fireConfetti();
+        }
+    }
+
+    // [핵심] 한글 제시어 -> 영어 번역 사전 (최신 업데이트 완료)
+    const WORD_TRANSLATION = {
+        // [동물/곤충]
+        "강아지": "puppy", "고양이": "cat", "토끼": "rabbit", "병아리": "chick", "오리": "duck", 
+        "돼지": "pig", "소": "cow", "양": "sheep", "말": "horse", "사자": "lion",
+        "호랑이": "tiger", "코끼리": "elephant", "기린": "giraffe", "원숭이": "monkey", "팬더": "panda", 
+        "펭귄": "penguin", "북극곰": "polarbear", "다람쥐": "squirrel", "고래": "whale", "상어": "shark",
+        "거북이": "turtle", "개구리": "frog", "뱀": "snake", "문어": "octopus", "오징어": "squid", 
+        "물고기": "fish", "게": "crab", "새우": "shrimp", "하마": "hippo", "악어": "crocodile",
+        "공룡": "dinosaur", "박쥐": "bat", "나비": "butterfly", "꿀벌": "bee", "거미": "spider", 
+        "달팽이": "snail", "잠자리": "dragonfly", "무당벌레": "ladybug", "개미": "ant", "파리": "fly insect", 
+        "모기": "mosquito", "바퀴벌레": "cockroach", "지렁이": "earthworm", "전갈": "scorpion", "사마귀": "mantis", 
+        "메뚜기": "grasshopper", "여우": "fox", "늑대": "wolf", "곰": "bear", "사슴": "deer", 
+        "낙타": "camel", "캥거루": "kangaroo", "코알라": "koala", "두더지": "mole", "고슴도치": "hedgehog", 
+        "수달": "otter", "물개": "seal", "해파리": "jellyfish", "불가사리": "starfish", "카멜레온": "chameleon", 
+        "타조": "ostrich", "독수리": "eagle", "부엉이": "owl", "참새": "sparrow", "비둘기": "pigeon", 
+        "까치": "magpie", "앵무새": "parrot", "공작새": "peacock", "미어캣": "meerkat", "나무늘보": "sloth",
+        "알파카": "alpaca", "치타": "cheetah", "하이에나": "hyena", "코뿔소": "rhinoceros", "직박구리": "bird", 
+        "장수풍뎅이": "beetle", "사슴벌레": "stag beetle", "하루살이": "mayfly", "가오리": "stingray", "복어": "pufferfish",
+        "멸치": "anchovy", "고등어": "mackerel", "갈치": "hairtail fish", "해마": "seahorse", "불독": "bulldog", 
+        "푸들": "poodle", "비글": "beagle", "치와와": "chihuahua", "시베리안허스키": "husky", "웰시코기": "corgi",
+        "햄스터": "hamster", "기니피그": "guinea pig", "청설모": "squirrel", "오소리": "badger", "너구리": "raccoon", 
+        "족제비": "weasel", "스컹크": "skunk", "반딧불이": "firefly", "돈벌레": "centipede", "곱등이": "cricket",
+
+        // [음식]
+        "사과": "apple", "바나나": "banana", "포도": "grapes", "수박": "watermelon", "딸기": "strawberry", 
+        "복숭아": "peach", "귤": "tangerine", "파인애플": "pineapple", "체리": "cherry", "당근": "carrot",
+        "옥수수": "corn", "오이": "cucumber", "고추": "chili pepper", "호박": "pumpkin", "버섯": "mushroom", 
+        "브로콜리": "broccoli", "피자": "pizza", "햄버거": "hamburger", "치킨": "fried chicken", "감자튀김": "french fries",
+        "핫도그": "hotdog", "샌드위치": "sandwich", "김밥": "sushi roll", "라면": "ramen", "만두": "dumpling", 
+        "떡볶이": "spicy rice cake", "도넛": "donut", "케이크": "cake", "사탕": "candy", "초콜릿": "chocolate",
+        "우유": "milk", "주스": "juice", "콜라": "coke", "치즈": "cheese", "달걀": "egg", 
+        "빵": "bread", "밥": "rice bowl", "국수": "noodles", "물": "water glass", "조개": "clam",
+        "아이스크림": "ice cream", "팥빙수": "shaved ice", "붕어빵": "fish shaped pastry", "호떡": "pancake", "군고구마": "roasted sweet potato",
+        "순대": "sausage", "오뎅": "fish cake", "튀김": "fried food", "족발": "pork feet", "보쌈": "boiled pork",
+        "삼겹살": "pork belly", "갈비": "ribs", "스테이크": "steak", "스파게티": "spaghetti", "초밥": "sushi", 
+        "회": "sashimi", "비빔밥": "bibimbap", "김치": "kimchi", "된장찌개": "stew", "미역국": "soup",
+        "카레": "curry", "짜장면": "black bean noodles", "짬뽕": "spicy noodle soup", "탕수육": "sweet and sour pork", "팝콘": "popcorn", 
+        "시리얼": "cereal", "요거트": "yogurt", "커피": "coffee", "맥주": "beer", "소주": "soju",
+        "마라탕": "spicy soup", "탕후루": "candied fruit", "버블티": "bubble tea", "마카롱": "macaron", "크로플": "waffle", 
+        "소떡소떡": "sausage rice cake skewer", "닭꼬치": "chicken skewer", "양꼬치": "lamb skewer", "곱창": "intestines food", "대창": "intestines food",
+        "막창": "intestines food", "닭발": "chicken feet", "계란찜": "steamed egg", "순두부찌개": "tofu stew", "부대찌개": "sausage stew", 
+        "삼계탕": "chicken soup", "치즈볼": "cheese ball", "멘보샤": "shrimp toast", "꿔바로우": "pork cutlet", "양념치킨": "seasoned chicken",
+        "간장게장": "soy crab", "양념게장": "spicy crab", "산낙지": "live octopus", "육회": "beef tartare", "물냉면": "cold noodles", 
+        "비빔냉면": "spicy cold noodles", "칼국수": "noodle soup", "수제비": "dough soup", "잔치국수": "banquet noodles", "비빔국수": "spicy noodles",
+        "콩국수": "soy milk noodles", "메밀소바": "soba noodles", "우동": "udon", "쌀국수": "pho", "팟타이": "pad thai", 
+        "나시고랭": "fried rice", "타코": "taco", "부리또": "burrito", "감바스": "shrimp ajillo", "고르곤졸라": "pizza", 
+        "페퍼로니": "pepperoni pizza", "민트초코": "mint chocolate", "슈팅스타": "popping candy ice cream", "엄마는외계인": "chocolate ball ice cream", "솜사탕": "cotton candy", 
+        "달고나": "dalgona candy", "약과": "honey cookie", "식혜": "rice drink", "수정과": "cinnamon punch",
+
+        // [사물/도구]
+        "텔레비전": "tv", "냉장고": "refrigerator", "세탁기": "washing machine", "선풍기": "electric fan", "청소기": "vacuum cleaner", 
+        "컴퓨터": "computer", "휴대폰": "smartphone", "카메라": "camera", "시계": "clock", "침대": "bed",
+        "이불": "blanket", "베개": "pillow", "소파": "sofa", "의자": "chair", "책상": "desk", 
+        "거울": "mirror", "빗": "hair comb", "칫솔": "toothbrush", "치약": "toothpaste", "비누": "soap",
+        "수건": "towel", "휴지": "tissue", "컵": "cup", "숟가락": "spoon", "젓가락": "chopsticks", 
+        "그릇": "bowl", "냄비": "pot", "후라이팬": "frying pan", "칼": "knife", "도마": "cutting board",
+        "연필": "pencil", "지우개": "eraser", "가위": "scissors", "풀": "glue stick", "자": "ruler", 
+        "공책": "notebook", "책": "book", "가방": "backpack", "안경": "glasses", "모자": "hat", 
+        "신발": "shoes", "양말": "socks", "장갑": "gloves", "목도리": "scarf", "우산": "umbrella", 
+        "지갑": "wallet", "열쇠": "key", "리모컨": "remote control", "마우스": "mouse", "키보드": "keyboard",
+        "헤드폰": "headphones", "마이크": "microphone", "스피커": "speaker", "전구": "light bulb", "건전지": "battery", 
+        "충전기": "charger", "드라이기": "hair dryer", "다리미": "iron", "바늘": "needle", "실": "thread",
+        "단추": "button", "지퍼": "zipper", "옷걸이": "hanger", "휴지통": "trash can", "변기": "toilet", 
+        "욕조": "bathtub", "샤워기": "shower head", "세면대": "sink", "신호등": "traffic light", "소화기": "fire extinguisher",
+        "면봉": "cotton swab", "이쑤시개": "toothpick", "손톱깎이": "nail clipper", "효자손": "back scratcher", "파리채": "fly swatter", 
+        "모기향": "mosquito coil", "에프킬라": "insecticide spray", "보조배터리": "power bank", "셀카봉": "selfie stick", "삼각대": "tripod",
+        "텀블러": "tumbler", "빨대": "straw", "물티슈": "wet wipes", "마스크": "face mask", "손소독제": "hand sanitizer", 
+        "체온계": "thermometer", "청진기": "stethoscope", "주사기": "syringe", "휠체어": "wheelchair", "목발": "crutches",
+        "반창고": "band aid", "붕대": "bandage", "깁스": "cast", "링거": "iv drip", "인공호흡기": "respirator", 
+        "소화전": "fire hydrant", "CCTV": "security camera", "드론": "drone", "VR게임기": "vr headset", "닌텐도": "game console",
+        "노트북": "laptop", "태블릿": "tablet", "공유기": "router", "멀티탭": "power strip", "형광등": "fluorescent light", 
+        "샹들리에": "chandelier", "커튼": "curtain", "블라인드": "blinds", "카페트": "carpet", "러그": "rug",
+
+        // [신체/패션]
+        "눈": "eye", "코": "nose", "입": "mouth", "귀": "ear", "손": "hand", "발": "foot", 
+        "머리카락": "hair", "눈썹": "eyebrow", "속눈썹": "eyelashes", "쌍꺼풀": "double eyelid",
+        "보조개": "dimple", "주근깨": "freckles", "점": "mole spot", "수염": "beard", "배꼽": "belly button", 
+        "등": "back body", "엉덩이": "buttocks", "허벅지": "thigh", "종아리": "calf", "발가락": "toes",
+        "손가락": "fingers", "손톱": "fingernail", "발톱": "toenail", "심장": "heart organ", "뇌": "brain", 
+        "해골": "skull", "뼈": "bone", "근육": "muscle", "핏줄": "vein", "겨드랑이": "armpit",
+        "똥": "poop", "방귀": "fart", "트림": "burp", "하품": "yawn", "기침": "cough", 
+        "재채기": "sneeze", "딸꾹질": "hiccup", "코골이": "snore", "이갈이": "teeth grinding", "잠꼬대": "sleep talking",
+        "브라자": "bra", "팬티": "underwear", "스타킹": "stockings", "레깅스": "leggings", "청바지": "jeans", 
+        "반바지": "shorts", "치마": "skirt", "원피스": "dress", "셔츠": "shirt", "티셔츠": "t-shirt", 
+        "후드티": "hoodie", "맨투맨": "sweatshirt", "니트": "sweater", "가디건": "cardigan", "조끼": "vest", 
+        "패딩": "padded jacket", "코트": "coat", "잠옷": "pajamas", "수영복": "swimsuit", "비키니": "bikini", 
+        "래쉬가드": "rash guard", "넥타이": "necktie", "나비넥타이": "bow tie", "벨트": "belt", "멜빵": "suspenders", 
+        "귀걸이": "earrings", "목걸이": "necklace", "반지": "ring", "팔찌": "bracelet",
+
+        // [인물/직업]
+        "의사": "doctor", "간호사": "nurse", "경찰관": "police officer", "소방관": "firefighter", "선생님": "teacher", 
+        "학생": "student", "요리사": "chef", "화가": "painter", "가수": "singer", "배우": "actor",
+        "운동선수": "athlete", "과학자": "scientist", "우주인": "astronaut", "탐정": "detective", "도둑": "thief", 
+        "해적": "pirate", "왕": "king", "여왕": "queen", "공주": "princess", "왕자": "prince",
+        "천사": "angel", "악마": "devil", "귀신": "ghost", "마녀": "witch", "좀비": "zombie", 
+        "미라": "mummy", "드라큘라": "vampire", "로봇": "robot", "외계인": "alien", "산타클로스": "santa claus",
+        "대통령": "president", "군인": "soldier", "미용사": "hairdresser", "승무원": "flight attendant", "파일럿": "pilot", 
+        "농부": "farmer", "어부": "fisherman", "광대": "clown", "마술사": "magician", "조련사": "trainer",
+        "판사": "judge", "변호사": "lawyer", "기자": "journalist", "아나운서": "announcer", "성우": "voice actor", 
+        "감독": "director", "작가": "writer", "웹툰작가": "webtoon artist", "유튜버": "youtuber", "BJ": "streamer",
+        "아이돌": "kpop idol", "래퍼": "rapper", "댄서": "dancer", "모델": "model", "디자이너": "designer", 
+        "프로그래머": "programmer", "해커": "hacker", "게이머": "gamer", "건물주": "building owner", "백수": "unemployed",
+        "스파이더맨": "spiderman", "아이언맨": "ironman", "헐크": "hulk", "배트맨": "batman", "슈퍼맨": "superman", 
+        "피카츄": "pikachu", "라이츄": "raichu", "파이리": "charmander", "꼬부기": "squirtle", "도라에몽": "doraemon",
+        "짱구": "crayon shin chan", "장애인": "disabled person", "애자": "disabled person", "최스방": "chess room", 
+        "뽀로로": "pororo", "펭수": "pengsoo", "마리오": "mario", "소닉": "sonic", "미키마우스": "mickey mouse", 
+        "헬로키티": "hello kitty", "토토로": "totoro", "가오나시": "no face",
+
+        // [탈것/장소]
+        "자동차": "car", "버스": "bus", "택시": "taxi", "경찰차": "police car", "소방차": "fire truck", 
+        "구급차": "ambulance", "트럭": "truck", "포크레인": "excavator", "자전거": "bicycle", "오토바이": "motorcycle",
+        "기차": "train", "비행기": "airplane", "헬리콥터": "helicopter", "배": "ship", "잠수함": "submarine", 
+        "로켓": "rocket", "UFO": "ufo", "유모차": "stroller", "휠체어": "wheelchair", "스케이트보드": "skateboard",
+        "킥보드": "kickboard", "인라인스케이트": "inline skates", "롤러스케이트": "roller skates", "스키": "ski", "보드": "snowboard", 
+        "썰매": "sled", "마차": "carriage", "인력거": "rickshaw", "열기구": "hot air balloon", "행글라이더": "hang glider",
+        "학교": "school", "병원": "hospital", "집": "house", "아파트": "apartment", "놀이터": "playground", 
+        "수영장": "pool", "도서관": "library", "미용실": "hair salon", "마트": "supermarket", "편의점": "convenience store",
+        "경찰서": "police station", "소방서": "fire station", "우체국": "post office", "은행": "bank", "식당": "restaurant", 
+        "카페": "cafe", "영화관": "cinema", "노래방": "karaoke", "PC방": "internet cafe", "주유소": "gas station",
+        "공항": "airport", "기차역": "train station", "항구": "harbor", "등대": "lighthouse", "다리": "bridge", 
+        "터널": "tunnel", "성": "castle", "텐트": "tent", "이글루": "igloo", "피라미드": "pyramid",
+        "에펠탑": "eiffel tower", "자유의여신상": "statue of liberty", "만리장성": "great wall of china", "남산타워": "n seoul tower", "롯데타워": "lotte tower", 
+        "63빌딩": "63 building", "청와대": "blue house", "국회의사당": "capitol", "놀이공원": "amusement park", "동물원": "zoo",
+
+        // [자연/현상]
+        "해": "sun", "달": "moon", "별": "star", "구름": "cloud", "비": "rain", 
+        "눈": "snow", "눈사람": "snowman", "무지개": "rainbow", "번개": "lightning", "불": "fire",
+        "물방울": "water drop", "바다": "sea", "산": "mountain", "나무": "tree", "꽃": "flower", 
+        "해바라기": "sunflower", "선인장": "cactus", "돌": "stone", "모래": "sand", "흙": "dirt",
+        "화산": "volcano", "폭포": "waterfall", "동굴": "cave", "섬": "island", "사막": "desert", 
+        "정글": "jungle", "빙하": "glacier", "온천": "hot spring", "호수": "lake", "강": "river",
+        "바람": "wind", "태풍": "typhoon", "지진": "earthquake", "안개": "fog", "이슬": "dew", 
+        "단풍": "maple", "은행나무": "ginkgo tree", "소나무": "pine tree", "잔디": "grass", "장미": "rose",
+        "민들레": "dandelion", "개나리": "forsythia", "진달래": "azalea", "벚꽃": "cherry blossom", "코스모스": "cosmos flower", 
+        "튤립": "tulip", "카네이션": "carnation", "야자수": "palm tree", "대나무": "bamboo",
+        "블랙홀": "black hole", "혜성": "comet", "유성": "shooting star", "오로라": "aurora", "일식": "solar eclipse", 
+        "월식": "lunar eclipse", "토네이도": "tornado", "쓰나미": "tsunami", "가뭄": "drought", "홍수": "flood",
+
+        // [스포츠/취미]
+        "축구": "soccer", "농구": "basketball", "야구": "baseball", "배구": "volleyball", "테니스": "tennis", 
+        "배드민턴": "badminton", "골프": "golf", "볼링": "bowling", "수영": "swimming", "달리기": "running",
+        "스키": "skiing", "스케이트": "skating", "권투": "boxing", "양궁": "archery", "태권도": "taekwondo", 
+        "탁구": "ping pong", "당구": "billiards", "낚시": "fishing", "등산": "hiking", "캠핑": "camping",
+        "요가": "yoga", "필라테스": "pilates", "헬스": "gym workout", "줄넘기": "jump rope", "훌라후프": "hula hoop", 
+        "철봉": "pull up bar", "피구": "dodgeball", "족구": "foot volleyball", "발야구": "kickball", "씨름": "wrestling",
+        "윷놀이": "yutnori", "연날리기": "kite flying", "팽이치기": "spinning top", "제기차기": "korean shuttlecock", "공기놀이": "gonggi", 
+        "숨바꼭질": "hide and seek", "술래잡기": "tag game", "말뚝박기": "leapfrog game", "오징어게임": "squid game",
+        "게임": "video game", "웹툰": "webtoon", "영화": "movie", "드라마": "drama", "독서": "reading", 
+        "요리": "cooking", "청소": "cleaning", "빨래": "laundry", "설거지": "washing dishes", "분리수거": "recycling",
+
+        // [추상/상태/기타]
+        "사랑": "love heart", "결혼": "wedding", "생일": "birthday", "크리스마스": "christmas", "설날": "new year", 
+        "추석": "thanksgiving", "졸업": "graduation", "입학": "entrance", "방학": "vacation", "개학": "school start",
+        "시험": "exam", "숙제": "homework", "일기": "diary", "편지": "letter", "선물": "gift", 
+        "약속": "pinky promise", "비밀": "secret", "거짓말": "lie pinocchio", "꿈": "dream", "악몽": "nightmare",
+        "감기": "cold sick", "몸살": "body ache", "두통": "headache", "치통": "toothache", "복통": "stomachache", 
+        "멀미": "motion sickness", "상처": "wound", "흉터": "scar", "문신": "tattoo", "점": "mole",
+        "유튜브": "youtube", "넷플릭스": "netflix", "카카오톡": "kakaotalk", "인스타그램": "instagram", "페이스북": "facebook", 
+        "틱톡": "tiktok", "당근마켓": "carrot market", "쿠팡": "coupang", "배달의민족": "food delivery", "요기요": "food delivery",
+        "삼성": "samsung", "애플": "apple logo", "스타벅스": "starbucks", "맥도날드": "mcdonalds", "버거킹": "burger king", 
+        "나이키": "nike", "아디다스": "adidas", "구찌": "gucci", "샤넬": "chanel", "루이비통": "louis vuitton",
+        "비트코인": "bitcoin", "주식": "stock market chart", "로또": "lottery", "복권": "lottery ticket", "저금통": "piggy bank", 
+        "통장": "bank book", "카드": "credit card", "현금": "cash money", "수표": "check money", "동전": "coin",
+
+        // [캐치마인드 레전드/넌센스] (이미지 검색 시 핵심 키워드로 대체)
+        "검문소": "checkpoint", "소방관": "firefighter", "우거지": "cabbage soup", "이수근": "lee su geun", "오동나무": "paulownia tree", 
+        "도시락": "lunch box", "주전자": "kettle", "개막식": "opening ceremony", "개발자": "programmer", "개인기": "talent show", 
+        "거지": "beggar", "고구려": "goguryeo", "고인돌": "dolmen", "공중전화": "public phone", "구두쇠": "miser", 
+        "구명조끼": "life vest", "권투선수": "boxer", "기름부자": "oil tycoon", "김경호": "kim kyung ho", "나무젓가락": "chopsticks", 
+        "낚시터": "fishing spot", "난쟁이": "dwarf", "눈사람": "snowman", "다이빙": "diving", "닭똥집": "chicken gizzard", 
+        "대기만성": "late bloomer", "대학생": "college student", "도너츠": "donut", "도둑고양이": "stray cat", "돈까스": "pork cutlet", 
+        "동갑내기": "same age friends", "돼지저금통": "piggy bank", "두루마리휴지": "toilet paper roll", "뒷북": "drum", "드라이브": "driving car", 
+        "디스코": "disco dance", "딸기잼": "strawberry jam", "떡국": "rice cake soup", "라이터": "lighter", "라디오": "radio", 
+        "레몬에이드": "lemonade", "로봇청소기": "robot vacuum", "롤케이크": "roll cake", "루돌프": "rudolph", "마법사": "wizard", 
+        "마스크팩": "facial mask sheet", "만리장성": "great wall", "만화가": "cartoonist", "말년병장": "sergeant", "매니큐어": "nail polish", 
+        "머리핀": "hair pin", "먹구름": "dark cloud", "면도기": "razor", "모나리자": "mona lisa", "모래시계": "hourglass", 
+        "목욕탕": "public bath", "무지개떡": "rainbow rice cake", "물개박수": "clapping seal", "물안경": "goggles", "미스코리아": "miss korea", 
+        "미이라": "mummy", "바나나우유": "banana milk", "바늘구멍": "needle eye", "박쥐맨": "batman", "반지의제왕": "lord of the rings", 
+        "발레리나": "ballerina", "배트맨": "batman", "백설공주": "snow white", "뱀파이어": "vampire", "번지점프": "bungee jump", 
+        "벌집피자": "honeycomb pizza", "베토벤": "beethoven", "변호인": "lawyer", "보디가드": "bodyguard", "보물지도": "treasure map", 
+        "부메랑": "boomerang", "불꽃놀이": "fireworks", "불사조": "phoenix", "비닐봉지": "plastic bag", "비상구": "emergency exit", 
+        "비행접시": "ufo", "빨래집게": "clothespin", "사오정": "sa oh jeong", "산악자전거": "mountain bike", "산타할아버지": "santa claus", 
+        "삼각김밥": "triangle kimbap", "삼겹살파티": "pork belly party", "상어이빨": "shark teeth", "새우깡": "shrimp chips", "샌드백": "punching bag", 
+        "선글라스": "sunglasses", "선풍기아줌마": "fan lady", "설국열차": "snowpiercer", "성냥팔이소녀": "little match girl", "세종대왕": "king sejong", 
+        "소나기": "shower rain", "손흥민": "son heung min", "수류탄": "grenade", "슈퍼마리오": "super mario", "슈퍼맨": "superman", 
+        "스님": "monk", "시소": "seesaw", "신데렐라": "cinderella", "아기공룡둘리": "dooly", "아마존": "amazon rainforest", 
+        "아바타": "avatar movie", "아이유": "iu", "아이스하키": "ice hockey", "아파트단지": "apartment complex", "악어떼": "crocodiles", 
+        "알라딘": "aladdin", "암벽등반": "rock climbing", "압력밥솥": "pressure cooker", "야구방망이": "baseball bat", "양치기소년": "shepherd boy", 
+        "어벤져스": "avengers", "얼음낚시": "ice fishing", "에어로빅": "aerobics", "엑스레이": "x-ray", "엘리베이터": "elevator", 
+        "여의주": "dragon ball", "연예인": "celebrity", "오리발": "flippers", "오징어땅콩": "squid peanut snack", "오페라": "opera singer", 
+        "올림픽": "olympics", "요구르트": "yogurt drink", "용가리": "yonggary", "우비소년": "raincoat boy", "운동회": "sports day", 
+        "원두커피": "coffee beans", "월드컵": "world cup", "유령선": "ghost ship", "유치원생": "kindergartener", "은하철도999": "galaxy express 999", 
+        "자판기": "vending machine", "이순신": "general yi sun shin", "인어공주": "little mermaid", "인터넷강의": "online lecture", "일광욕": "sunbathing", 
+        "자동차극장": "drive in theater", "자유의여신상": "statue of liberty", "자이로드롭": "gyro drop", "잠수부": "diver", "장독대": "crock pot", 
+        "장화신은고양이": "puss in boots", "재활용": "recycling bin", "저승사자": "grim reaper", "전기충격기": "taser gun", "전화번호부": "phone book", 
+        "접시닦이": "dish washing", "정육점": "butcher shop", "제주도": "jeju island", "조폭마누라": "gangster wife", "종이접기": "origami", 
+        "주유소습격사건": "gas station attack", "죽마고우": "childhood friend", "중국집": "chinese restaurant", "쥐불놀이": "fire can game", "지하철": "subway train", 
+        "진시황": "qin shi huang", "징검다리": "stepping stones", "짜파게티": "chapagetti", "짱구는못말려": "crayon shin chan", "천하장사": "strong man", 
+        "청개구리": "tree frog", "초코파이": "choco pie", "총알택시": "bullet taxi", "축구공": "soccer ball", "치과의사": "dentist", 
+        "치어리더": "cheerleader", "칠판지우개": "blackboard eraser", "카네이션": "carnation flower", "카우보이": "cowboy", "칸쵸": "kancho snack", 
+        "캥거루족": "kangaroo tribe", "커피포트": "electric kettle", "컴퓨터바이러스": "computer virus", "코뿔소": "rhino", "콘택트렌즈": "contact lens", 
+        "콜라곰": "coca cola bear", "콩쥐팥쥐": "kongji patzzi", "크리스마스카드": "christmas card", "타이타닉": "titanic ship", "타잔": "tarzan", 
+        "태권브이": "taekwon v", "터미네이터": "terminator", "토스트기": "toaster", "톰과제리": "tom and jerry", "트랜스포머": "transformer", 
+        "티라노사우루스": "t-rex", "파마머리": "perm hair", "파리채": "fly swatter", "판다곰": "panda bear", "팔굽혀펴기": "push ups", 
+        "팽이치기": "spinning top game", "포장마차": "street food tent", "폭탄머리": "afro hair", "표지판": "traffic sign", "피구왕통키": "dodgeball tongki", 
+        "피노키오": "pinocchio", "피사의사탑": "leaning tower of pisa", "피카소": "picasso", "하이힐": "high heels", "학교종": "school bell", 
+        "한석봉": "han seok bong", "할리우드": "hollywood sign", "핫도그": "hotdog", "해녀": "haenyeo diver", "해리포터": "harry potter", 
+        "해바라기씨": "sunflower seeds", "해수욕장": "beach swimming", "해수면": "sea level", "햄스터": "hamster", "행운의편지": "chain letter", 
+        "허수아비": "scarecrow", "헬스장": "gym", "호두까기인형": "nutcracker doll", "호랑이굴": "tiger cave", "호루라기": "whistle", 
+        "홍길동": "hong gil dong", "진심": "sincerity heart", "포옹": "hug", "샴푸": "shampoo bottle", "화생방": "gas mask training", 
+        "화장실": "toilet room", "효자손": "back scratcher", "후라이드치킨": "fried chicken bucket", "훌라후프": "hula hoop", "휴지걸이": "toilet paper holder", 
+        "히말라야": "himalayas mountain"
+    };
+
+    const PIXABAY_API_KEY = '53422377-a282eee2fb4645a5a87405e73'; 
+
+    let currentRefKeyword = "";
+    let isSketchMode = true; // 기본값: 그림 모드
+    
+    // Pixabay 데이터 저장용 변수
+    let pixabayHits = [];
+    let pixabayIndex = 0;
+
+    // 1. 5연타 시 호출 (진입점)
+    function startAIDrawing() {
+        if (!gameState || !gameState.gameData) return;
+        const word = gameState.gameData.word;
+        openRefModal(word);
+    }
+
+    // 2. 모달 열기 & 검색 시작
+    function openRefModal(word) {
+        const modal = document.getElementById('ref-modal');
+        const display = document.getElementById('ref-keyword-display');
+        
+        currentRefKeyword = word;
+        isSketchMode = true; // 열 때마다 그림모드로 리셋
+        pixabayHits = [];    // 검색 결과 초기화
+        pixabayIndex = 0;
+        
+        display.innerText = word; 
+        updateToggleBtn(); // 버튼 UI 초기화
+        
+        modal.classList.add('active');
+        
+        // Pixabay 검색 실행
+        searchPixabayImages();
+    }
+
+    function closeRefModal() {
+        document.getElementById('ref-modal').classList.remove('active');
+    }
+
+    // 3. 모드 전환 (그림 <-> 실사) 및 재검색
+    function toggleStyleMode() {
+        isSketchMode = !isSketchMode;
+        updateToggleBtn();
+        // 모드가 바뀌었으니 다시 검색
+        pixabayHits = []; 
+        searchPixabayImages();
+    }
+
+    function updateToggleBtn() {
+        const btn = document.getElementById('style-toggle-btn');
+        if (isSketchMode) {
+            btn.innerText = "📷 실사로 보기";
+            btn.className = "";
+        } else {
+            btn.innerText = "🎨 그림으로 보기";
+            btn.className = "photo-mode";
+        }
+    }
+
+    // 4. Pixabay API 검색 함수 (핵심 로직)
+    async function searchPixabayImages() {
+        const img = document.getElementById('ref-image');
+        const loader = document.getElementById('ref-loading');
+
+        // 로딩 표시
+        img.style.opacity = '0';
+        loader.style.display = 'block';
+        loader.innerHTML = isSketchMode ? "🎨 그림 검색 중..." : "📷 사진 검색 중...";
+
+        // 1) 검색어 준비 (번역 시도)
+        let query = WORD_TRANSLATION[currentRefKeyword];
+        if (!query) {
+            // 사전에 없으면 한글 그대로 검색 + " 그림" 키워드 조합
+            query = currentRefKeyword; 
+        }
+
+        // 2) 이미지 타입 설정 (일러스트 vs 사진)
+        const imageType = isSketchMode ? 'illustration' : 'photo';
+        
+        try {
+            // 3) API 호출
+            const url = `https://pixabay.com/api/?key=${PIXABAY_API_KEY}&q=${encodeURIComponent(query)}&image_type=${imageType}&lang=ko&per_page=30&safesearch=true`;
+            
+            const response = await fetch(url);
+            const data = await response.json();
+
+            if (data.hits && data.hits.length > 0) {
+                pixabayHits = data.hits;
+                pixabayIndex = 0; // 첫 번째 이미지로 리셋
+                updateRefImageDisplay(); // 이미지 표시
+            } else {
+                loader.innerHTML = "❌ 결과 없음<br><span style='font-size:0.8em'>다른 모드로 시도해보세요</span>";
+            }
+
+        } catch (error) {
+            console.error('Pixabay API Error:', error);
+            loader.innerHTML = "❌ 통신 오류";
+        }
+    }
+
+    // 5. 화면에 이미지 표시
+    function updateRefImageDisplay() {
+        const img = document.getElementById('ref-image');
+        const loader = document.getElementById('ref-loading');
+
+        if (pixabayHits.length === 0) return;
+
+        const hit = pixabayHits[pixabayIndex];
+        // webformatURL은 중간 크기, largeImageURL은 원본
+        const imgUrl = hit.webformatURL; 
+
+        const newImg = new Image();
+        newImg.src = imgUrl;
+
+        newImg.onload = () => {
+            img.src = imgUrl;
+            img.style.opacity = '1';
+            loader.style.display = 'none';
+        };
+    }
+
+    // 6. 이미지 넘기기 (화살표)
+    function prevImage() {
+        if (pixabayHits.length === 0) return;
+        playSound('snd-pop');
+        
+        pixabayIndex--;
+        if (pixabayIndex < 0) pixabayIndex = pixabayHits.length - 1; // 순환
+        
+        updateRefImageDisplay();
+    }
+
+    function nextImage() {
+        if (pixabayHits.length === 0) return;
+        playSound('snd-pop');
+
+        pixabayIndex++;
+        if (pixabayIndex >= pixabayHits.length) pixabayIndex = 0; // 순환
+        
+        updateRefImageDisplay();
+    }
+
+    // 7. 터치 스와이프 기능
+    let touchStartX = 0;
+    let touchEndX = 0;
+    const modalEl = document.getElementById('ref-image'); // 이미지 영역에서만 스와이프 감지
+
+    if(modalEl) {
+        modalEl.addEventListener('touchstart', e => {
+            touchStartX = e.changedTouches[0].screenX;
+        }, {passive: true});
+
+        modalEl.addEventListener('touchend', e => {
+            touchEndX = e.changedTouches[0].screenX;
+            if (touchEndX < touchStartX - 50) nextImage();
+            else if (touchEndX > touchStartX + 50) prevImage();
+        }, {passive: true});
+    }
+</script>
+</body>
+</html>

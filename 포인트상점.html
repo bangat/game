@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>포인트 상점</title>
+    <link rel="manifest" href="manifest.json">
+    <link href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff" as="font" type="font/woff" crossorigin>
+    <style>
+        :root {
+            --bg-color: #FFFBEB; /* 따뜻한 크림색 배경 */
+            --primary-color: #FF6B6B; /* 활기찬 코랄색 */
+            --secondary-color: #4ECDC4; /* 상쾌한 틸(teal)색 */
+            --accent-color: #FFD93D; /* 밝은 노란색 */
+            --text-color-dark: #574141; /* 어두운 갈색 */
+            --text-color-light: #ffffff;
+            --danger-color: #F76363;
+            --panel-bg: #FFFFFF;
+            --panel-border: #F0EAD2; /* 연한 베이지색 테두리 */
+            --panel-shadow: #E4DCCF; /* 패널 그림자 */
+            --font-main: 'GmarketSans', sans-serif;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%; height: 100%; overflow: hidden; font-family: 'GmarketSans', sans-serif;
+            background-color: var(--bg-color); display: flex; flex-direction: column;
+        }
+        .header {
+            background-color: #FFFAE0; /* [수정] 대기실 헤더와 동일한 배경 */
+            color: var(--text-color-dark); /* [수정] 어두운 텍스트 */
+            padding: 15px; text-align: center; position: relative;
+            flex-shrink: 0;
+            border-bottom: 3px solid var(--panel-border); /* [추가] 대기실 헤더와 동일한 테두리 */
+        }
+        .header h1 { font-size: 1.5em; }
+        .back-btn { position: absolute; left: 15px; top: 50%; transform: translateY(-50%); font-size: 1.5em; color: var(--text-color-dark); text-decoration: none; }
+        .my-points-display {
+            position: absolute; right: 15px; top: 50%; transform: translateY(-50%); 
+            font-weight: 700; 
+            background-color: var(--accent-color); /* [수정] 포인트 표시 (대기실과 유사) */
+            color: var(--text-color-dark); /* [수정] */
+            padding: 5px 10px; 
+            border-radius: 15px; 
+            border: 2px solid #D1B030; /* [추가] */
+        }   
+        /* ✨ [신규] 탭 스타일 */
+        #shop-tabs {
+            display: flex;
+            background-color: var(--panel-bg);
+            border-bottom: 2px solid var(--panel-border);
+            flex-shrink: 0;
+        }
+        .tab-btn {
+            flex: 1;
+            padding: 14px 10px;
+            font-size: 1.1em;
+            font-weight: 700;
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: #888;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px; /* 부모 border-bottom과 겹치게 */
+        }
+        .tab-btn.active {
+            color: var(--primary-color);
+            border-bottom-color: var(--primary-color);
+        }
+        /* ✨ [신규] 탭 스타일 끝 */
+
+        .shop-container { flex-grow: 1; overflow-y: auto; padding: 20px; }
+        .item-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 20px; }
+       .avatar-item {
+            background-color: var(--panel-bg); 
+            border-radius: 20px; /* [수정] 대기실 테마 */
+            padding: 10px; /* [수정] 내부 여백 축소 */
+            text-align: center;
+            border: 3px solid var(--text-color-dark); /* [수정] 대기실 테마 */
+            box-shadow: 4px 4px 0px 0px var(--text-color-dark); /* [수정] 그림자 축소 */
+            cursor: pointer;
+            transition: all 0.1s ease-out; /* [수정] 대기실 테마 */
+            
+            position: relative;
+            overflow: visible; 
+        }
+        /* ✨ [신규] 대기실 테마 active 효과 */
+        .avatar-item:active {
+            transform: translate(2px, 2px); 
+            box-shadow: 2px 2px 0px 0px var(--text-color-dark);
+        }
+        .avatar-item.selected { 
+            border-color: var(--accent-color); 
+            box-shadow: 4px 4px 0px 0px var(--accent-color); /* [수정] 그림자 축소 */
+            background-color: #FFF8E1; /* [수정] 선택 시 배경색 */
+        }
+        .avatar-item.selected:active {
+            box-shadow: 2px 2px 0px 0px var(--accent-color); /* [신규] active 효과 */
+        }
+        .avatar-item.owned { 
+            background-color: #e8f5e9; 
+            /* 보유 상태는 배경색만 변경, 테두리/그림자는 기본 유지 */
+        }
+        .avatar-item.owned.selected {
+             background-color: #e8f5e9; /* 보유 배경색 유지 */
+        }
+        
+        .avatar-item.equipped { /* ✨ [신규] 현재 장착 */
+            border-color: var(--primary-color);
+            background-color: #e3f2fd;
+            box-shadow: 4px 4px 0px 0px var(--primary-color); /* [수정] 그림자 축소 */
+        }
+        .avatar-item.equipped:active {
+            box-shadow: 2px 2px 0px 0px var(--primary-color); /* [신규] active 효과 */
+        }
+
+        .avatar-preview { 
+            font-size: 3.5em; 
+            margin-bottom: 10px;
+            height: 70px; /* [수정] 높이 증가 */
+            display: flex; 
+            align-items: center; 
+            justify-content: center;
+            
+            position: relative; /* 오버레이 기준점 */
+            width: 70px; /* [수정] 너비 증가 */
+            margin-left: auto;
+            margin-right: auto;
+            border-radius: 12px; /* ✨ 50% -> 12px */
+            background-color: transparent; /* [수정] 부모 배경색 사용 */
+            border: none; /* ✨ [수정] 내부 사각형 테두리 제거 */
+            overflow: visible; /* ✨ '반짝임' 효과가 보이도록 hidden -> visible */
+        }
+       .avatar-preview img { width: 70px; height: 70px; object-fit: contain; /* ✨ [수정] cover -> contain */ border-radius: 0; /* ✨ [수정] 내부 둥근 모서리 제거 */ }
+        .avatar-price { font-weight: 700; color: var(--primary-color); }
+        .avatar-item.owned .avatar-price { color: #28a745; }
+        .avatar-item.equipped .avatar-price { color: var(--primary-color); }
+
+        .avatar-item strong { /* ✨ [추가] 아이템 이름 스타일 */
+            font-size: 0.9em; font-weight: 700; margin-top: 5px; 
+            display: block; height: 1.2em; /* 이름이 없어도 공간 차지 */
+        }
+
+        .action-footer { 
+            padding: 15px; 
+            background-color: #FFFAE0; /* [수정] 대기실 푸터와 동일한 배경 */
+            border-top: 3px solid var(--panel-border); /* [추가] */
+            flex-shrink: 0; 
+        }
+        
+        /* [수정] 대기실의 아케이드 버튼 스타일 전체 복사 */
+        .menu-btn {
+            width: 100%; padding: 16px; font-size: 1.25em; font-weight: 900;
+            font-family: var(--font-main);
+            border-radius: 16px; border: none; cursor: pointer;
+            transition: all 0.1s ease-out;
+            border-bottom: 5px solid; /* 3D 효과를 위한 아래쪽 테두리 */
+            text-shadow: 1px 1px 1px rgba(0,0,0,0.1);
+        }
+        .menu-btn:active { transform: translateY(3px); border-bottom-width: 2px; }
+        
+        .menu-btn.primary {
+            background-color: var(--primary-color);
+            color: var(--text-color-light);
+            border-bottom-color: #C04A4A; /* 기본 색상의 어두운 버전 */
+        }
+        .menu-btn.secondary {
+            background-color: var(--secondary-color);
+            color: var(--text-color-light);
+            border-bottom-color: #379A93;
+        }
+        .menu-btn.accent {
+            background-color: var(--accent-color);
+            color: var(--text-color-dark);
+            border-bottom-color: #D1B030;
+            text-shadow: none;
+        }
+         .menu-btn.light {
+            background-color: #F8F9FA;
+            color: var(--text-color-dark);
+            border-bottom-color: #BDBDBD;
+        }
+        .menu-btn:disabled {
+            background-color: #BDBDBD !important;
+            color: #757575 !important;
+            border-bottom-color: #8D8D8D !important;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .spinner { margin: 20px auto; border: 4px solid rgba(0, 0, 0, 0.1); border-radius: 50%; border-top: 4px solid var(--primary-color); width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+/* ✨ [신규] 알림 모달 스타일 (게임방.html과 동일) */
+        .overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            display: none; /* 기본 숨김 */
+            flex-direction: column; justify-content: center; align-items: center;
+            z-index: 200; background-color: rgba(0,0,0,0.6);
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+        }
+        .overlay.active { display: flex; } /* 활성화 */
+
+        .modal-content {
+            background: var(--panel-bg);
+            border-radius: 24px;
+            width: 90%; max-width: 420px;
+            overflow: hidden;
+            border: 4px solid var(--text-color-dark);
+            box-shadow: 8px 8px 0px 0px var(--text-color-dark);
+        }
+        .modal-body { padding: 30px 20px 20px; text-align: center; }
+        .modal-body h3 { font-size: 1.4em; margin-bottom: 15px; }
+        
+        .modal-footer {
+            display: flex; gap: 10px;
+            padding: 20px;
+            border-top: 3px solid var(--panel-border);
+            background-color: #FFFAE0; /* 대기실 테마 푸터 배경 */
+        }
+        .modal-footer .menu-btn { margin: 0; font-size: 1.1em; }
+
+        /* ✨ [수정] 입장 이펙트 스타일 */
+        .entry-effect-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; /* 클릭 방지 */
+            z-index: 10;
+        }
+        
+        /* 1. 반짝임 (틸(teal) 색상 깜빡임 효과) */
+        @keyframes teal-pulse-anim {
+            0%, 100% {
+                border-color: var(--secondary-color);
+                box-shadow: 0 0 10px 2px var(--secondary-color);
+                opacity: 0.6;
+            }
+            50% {
+                border-color: #a7fffa; /* 더 밝은 틸 */
+                box-shadow: 0 0 15px 5px var(--secondary-color);
+                opacity: 1;
+            }
+        }
+        
+        /* ✨ [수정] '반짝임' 오류 수정: 오버레이 방식(.effect-sparkle-persistent) 대신
+           .avatar-preview에 직접 애니메이션을 적용하는 클래스(.preview-effect-sparkle) 사용 */
+        .avatar-preview.preview-effect-sparkle {
+            animation: teal-pulse-anim 2.5s ease-in-out infinite;
+        }
+        /* (기존 .effect-sparkle-persistent 규칙은 삭제되거나 사용되지 않음) */
+
+        
+        /* 2. 스포트라이트 ('별가루 비' 스타일) */
+        @keyframes star-fall {
+            0% { transform: translateY(-20px); opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { transform: translateY(70px); opacity: 0; }
+        }
+        .effect-spotlight-persistent {
+            width: 100%;
+            height: 100%;
+            border-radius: 12px; /* ✨ 50% -> 12px (사각형) */
+            overflow: hidden; 
+        }
+        .effect-spotlight-persistent::before {
+            content: ''; position: absolute; top: 0; left: 50%;
+            width: 2px; height: 2px; background: #FFF; border-radius: 50%;
+            box-shadow: -20px 10px #FFF, 15px 25px #FFF, 0px 40px #FFF, -10px 55px #FFF, 25px 5px #FFF, -5px 30px #FFF;
+            animation: star-fall 1.5s linear infinite;
+            animation-delay: -0.5s; 
+        }
+        .effect-spotlight-persistent::after {
+            content: ''; position: absolute; top: 0; left: 50%;
+            width: 2px; height: 2px; background: #FFF; border-radius: 50%;
+            box-shadow: 10px 18px #FFF, -15px 35px #FFF, 5px 50px #FFF, -25px 8px #FFF, 20px 22px #FFF, -8px 42px #FFF;
+            animation: star-fall 2.5s linear infinite;
+        }
+
+        /* 3. ✨ [신규] 스포트라이트(별가루) 장착 시 아바타 배경 변경 */
+        .avatar-preview.effect-spotlight-equipped-bg {
+            background-color: #341f4b !important; /* ✨ !important로 기본 배경 덮어쓰기 */
+            transition: background-color 0.5s ease;
+        }
+
+        /* 말풍선 미리보기 박스 스타일 */
+.chat-bubble-preview-box {
+    width: 80px; height: 60px;
+    border-radius: 12px;
+    display: flex; justify-content: center; align-items: center;
+    margin: 0 auto 10px;
+    font-size: 1.5em; /* 이모지 크기 */
+    border: 3px solid transparent;
+    position: relative;
+}
+/* 말풍선 꼬리 효과 */
+.chat-bubble-preview-box::after {
+    content: ''; position: absolute; bottom: -6px; right: 20px;
+    border-width: 6px 6px 0; border-style: solid;
+    border-color: inherit; /* 부모 테두리 색상 상속 */
+    border-bottom-color: transparent; border-left-color: transparent; border-right-color: transparent;
+}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <a href="대기실.html" class="back-btn">‹</a>
+        <h1>포인트 상점</h1> <div id="my-points-display">💰 0 P</div>
+    </div>
+
+<div id="shop-tabs">
+    <button id="avatar-tab" class="tab-btn active" data-tab="avatar">아바타</button>
+    <button id="effect-tab" class="tab-btn" data-tab="effect">이펙트</button>
+    <button id="bomber-tab" class="tab-btn" data-tab="bomber">봄버맨 스킨</button>
+    <button id="bubble-tab" class="tab-btn" data-tab="bubble">말풍선</button> 
+</div>
+
+    <div class="shop-container">
+        <div id="item-grid" class="item-grid"><div class="spinner"></div></div>
+    </div>
+    <div class="action-footer">
+        <button id="purchase-btn" class="menu-btn primary" disabled>아이템을 선택하세요</button>
+    </div>
+
+    <script src="아바타.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const firebaseConfig = {
+            apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
+            authDomain: "goodluck-7c14b.firebaseapp.com",
+            databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com",
+            projectId: "goodluck-7c14b",
+            storageBucket: "goodluck-7c14b.appspot.com",
+            messagingSenderId: "858281658455",
+            appId: "1:858281658455:web:9131280a459be983933b12"
+        };
+
+        document.addEventListener('contextmenu', event => event.preventDefault());
+        document.addEventListener('keydown', event => {
+            if (event.key === 'F12' ||
+                (event.ctrlKey && event.shiftKey && ['I', 'J', 'C'].includes(event.key.toUpperCase())) ||
+                (event.ctrlKey && event.key.toUpperCase() === 'U')) {
+                event.preventDefault();
+            }
+        });
+        setInterval(() => { try { debugger; } catch (e) {} }, 1000);
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+        const auth = firebase.auth();
+        const usersRef = db.ref('users');
+
+        const itemGrid = document.getElementById('item-grid');
+        const purchaseBtn = document.getElementById('purchase-btn');
+        const myPointsDisplay = document.getElementById('my-points-display');
+        const avatarTab = document.getElementById('avatar-tab');
+        const bomberTab = document.getElementById('bomber-tab');
+        const effectTab = document.getElementById('effect-tab'); // ✨ [추가]
+        
+        let currentUser, currentUserData;
+        const alertModal = document.getElementById('alert-modal');
+        const alertModalMessage = document.getElementById('alert-modal-message');
+        const alertModalOkBtn = document.getElementById('alert-modal-ok-btn');
+        let selectedItem = null;
+        let currentActiveTab = 'avatar'; // ✨ [신규] 현재 탭 상태
+
+        // ✨ [수정] type: 'avatar' 속성 추가
+        const avatarShopItems = [
+            { id: 'avatar_bazzi', emoji: './아바타폴더/배찌.png', price: 500, type: 'avatar' },
+            { id: 'avatar_kuromi', emoji: './아바타폴더/쿠로미.png', price: 500, type: 'avatar' },
+            { id: 'avatar_duk', emoji: './아바타폴더/고라파덕.png', price: 500, type: 'avatar' },
+            { id: 'penguin_parka', emoji: './아바타폴더/펭귄정면.png', price: 1000, type: 'avatar' },
+            { id: 'puppy_set', emoji: './아바타폴더/강아지정면.png', price: 1000, type: 'avatar' },
+
+            { id: 'avatar_gom2', emoji: './아바타폴더/요리사곰돌이.png', price: 2000, type: 'avatar' },
+            { id: 'avatar_mcat', emoji: './아바타폴더/마법사고양이.png', price: 2000, type: 'avatar' },
+            { id: 'avatar_birdk', emoji: './아바타폴더/부엉이교수.png', price: 2000, type: 'avatar' },
+            { id: 'avatar_rabbit', emoji: './아바타폴더/당근토끼.png', price: 2000, type: 'avatar' },
+
+            { id: 'avatar_dessert_girl', emoji: './아바타폴더/디저트소녀.png', price: 2000, type: 'avatar' },
+            { id: 'avatar_cherry_spirit', emoji: './아바타폴더/벚꽃정령소녀.png', price: 2000, type: 'avatar' },
+            { id: 'avatar_starlight_girl', emoji: './아바타폴더/별빛소녀.png', price: 2000, type: 'avatar' },
+            { id: 'avatar_moon_rabbit', emoji: './아바타폴더/우아한달토끼.png', price: 2000, type: 'avatar' },
+            { id: 'avatar_bakery_girl', emoji: './아바타폴더/베이커리소녀.png', price: 2000, type: 'avatar' }
+        ];
+
+const effectShopItems = [
+            { id: 'effect_sparkle', name: '반짝임', emoji: '✨', price: 3000, type: 'entryEffect' },
+            { id: 'effect_spotlight', name: '스포트라이트', emoji: '💡', price: 3000, type: 'entryEffect' }
+        ];
+
+        const bomberShopItems = [
+            { id: 'bomb_default', emoji: './봄버맨사운드/물풍선.png', price: 0, type: 'bombSkin' }, // 기본 물풍선
+            { id: 'bomb_dark', emoji: './봄버맨스킨/다크풍선.png', price: 500, type: 'bombSkin' },
+            { id: 'bomb_devil', emoji: './봄버맨스킨/악마풍선.png', price: 500, type: 'bombSkin' },
+            { id: 'bomb_fivecolor', emoji: './봄버맨스킨/오색풍선.png', price: 500, type: 'bombSkin' },
+            { id: 'bomb_space', emoji: './봄버맨스킨/우주풍선.png', price: 500, type: 'bombSkin' },
+            { id: 'bomb_heart', emoji: './봄버맨스킨/하트풍선.png', price: 500, type: 'bombSkin' },
+                      { id: 'bomb_heartangel', emoji: './봄버맨스킨/하트천사.png', price: 500, type: 'bombSkin' }
+        ];
+
+        // ✨ [신규] 공용 알림 모달 표시 함수
+        function showAlert(message) {
+            if (alertModalMessage) alertModalMessage.textContent = message;
+            if (alertModal) alertModal.classList.add('active');
+        }
+
+        // ✨ [신규] 알림 모달 "확인" 버튼 리스너
+        if (alertModalOkBtn) {
+            alertModalOkBtn.addEventListener('click', () => {
+                alertModal.classList.remove('active');
+            });
+        }
+
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                currentUser = user;
+                usersRef.child(currentUser.uid).on('value', snapshot => {
+                    if (snapshot.exists()) {
+                        currentUserData = snapshot.val();
+                        // ✨ [신규] 프로필에 기본값이 없으면 설정 (최초 1회)
+                        if (!currentUserData.profile.bombSkin) {
+                            usersRef.child(currentUser.uid).child('profile/bombSkin').set('./봄버맨사운드/물풍선.png');
+                        }
+                        if (!currentUserData.profile.ownedBombSkins) {
+                             usersRef.child(currentUser.uid).child('profile/ownedBombSkins/bomb_default').set(true);
+                        }
+
+                        myPointsDisplay.textContent = `💰 ${(currentUserData.profile.points || 0).toLocaleString()} P`;
+                        renderShopItems();
+                        updatePurchaseButton(); // ✨ [신규] 유저 데이터 갱신 시 버튼도 갱신
+                    }
+                });
+            } else {
+                window.location.href = 'index.html';
+            }
+        });
+
+        // ✨ [신규] 탭 클릭 리스너
+        avatarTab.addEventListener('click', () => switchTab('avatar'));
+                effectTab.addEventListener('click', () => switchTab('effect')); // ✨ [추가]
+        bomberTab.addEventListener('click', () => switchTab('bomber'));
+
+
+        // [수정] 탭 변수 선언 추가
+        const bubbleTab = document.getElementById('bubble-tab');
+        
+        // [수정] 리스너 추가
+        bubbleTab.addEventListener('click', () => switchTab('bubble'));
+
+        function switchTab(tabName) {
+            if (currentActiveTab === tabName) return;
+            currentActiveTab = tabName;
+            
+            // 탭 버튼 UI
+            avatarTab.classList.toggle('active', tabName === 'avatar');
+            effectTab.classList.toggle('active', tabName === 'effect');
+            bomberTab.classList.toggle('active', tabName === 'bomber');
+            bubbleTab.classList.toggle('active', tabName === 'bubble');
+
+            // 선택 초기화
+            selectedItem = null;
+            renderShopItems();
+            updatePurchaseButton();
+        }
+
+        // ✨ [수정] 렌더링 로직 (탭 기반으로 변경)
+        function renderShopItems() {
+            itemGrid.innerHTML = '';
+            
+            // [수정] 4개 탭으로 확장 (말풍선 추가)
+            let itemsToRender = [];
+            if (currentActiveTab === 'avatar') itemsToRender = avatarShopItems;
+            else if (currentActiveTab === 'bomber') itemsToRender = bomberShopItems;
+            else if (currentActiveTab === 'effect') itemsToRender = effectShopItems;
+            else if (currentActiveTab === 'bubble') itemsToRender = window.chatSkinItems || [];
+            
+            const profile = currentUserData.profile;
+            const ownedAvatars = profile.ownedAvatars || {};
+            const currentAvatar = profile.avatar;
+            const ownedBombSkins = profile.ownedBombSkins || {};
+            const currentBombSkin = profile.bombSkin;
+            const ownedEntryEffects = profile.ownedEntryEffects || {}; 
+            const currentEntryEffect = profile.equippedEntryEffect;
+            // [신규] 말풍선 데이터
+            const ownedChatSkins = profile.ownedChatSkins || {};
+            const currentChatSkin = profile.equippedChatSkin || 'bubble_default';
+
+            itemsToRender.forEach(item => {
+                const itemEl = document.createElement('div');
+                itemEl.className = 'avatar-item'; 
+
+                let isOwned = false;
+                let isEquipped = false;
+                let avatarContent = '';
+                let avatarBgClass = '';
+
+                // 1. 아바타
+                if (currentActiveTab === 'avatar') {
+                    isOwned = !!ownedAvatars[item.id];
+                    const avatarValue = (AVATAR_SETS[item.id]) ? item.id : item.emoji;
+                    isEquipped = (currentAvatar === avatarValue);
+                    
+                    const isImage = item.emoji.startsWith('http') || item.emoji.startsWith('.') || /\.(png|jpg|jpeg|gif|webp)$/i.test(item.emoji);
+                    avatarContent = isImage ? `<img src="${item.emoji}" alt="item">` : item.emoji;
+
+                } 
+                // 2. 봄버맨 스킨
+                else if (currentActiveTab === 'bomber') {
+                    isOwned = !!ownedBombSkins[item.id];
+                    isEquipped = (currentBombSkin === item.emoji);
+                    
+                    const isImage = item.emoji.startsWith('http') || item.emoji.startsWith('.') || /\.(png|jpg|jpeg|gif|webp)$/i.test(item.emoji);
+                    avatarContent = isImage ? `<img src="${item.emoji}" alt="item">` : item.emoji;
+
+                } 
+                // 3. 이펙트
+                else if (currentActiveTab === 'effect') { 
+                    isOwned = !!ownedEntryEffects[item.id];
+                    isEquipped = (currentEntryEffect === item.id);
+                    
+                    const avatarSet = AVATAR_SETS[profile.avatar];
+                    let myAvatarHTML = '';
+                    if (avatarSet) {
+                        myAvatarHTML = `<img src="${avatarSet.front}" alt="my-avatar" style="width: 90%; height: 90%; object-fit: contain;">`;
+                    } else if (profile.avatar.startsWith('http') || profile.avatar.includes('.')) {
+                        myAvatarHTML = `<img src="${profile.avatar}" alt="my-avatar" style="width: 90%; height: 90%; object-fit: contain;">`;
+                    } else {
+                        myAvatarHTML = profile.avatar;
+                    }
+
+                    if (item.id === 'effect_sparkle') {
+                        avatarContent = myAvatarHTML;
+                        avatarBgClass = 'preview-effect-sparkle';
+                    } else if (item.id === 'effect_spotlight') {
+                        let effectOverlayHTML = '<div class="entry-effect-overlay effect-spotlight-persistent"></div>';
+                        avatarContent = myAvatarHTML + effectOverlayHTML; 
+                        avatarBgClass = 'effect-spotlight-equipped-bg'; 
+                    } else {
+                        avatarContent = myAvatarHTML;
+                    }
+                }
+                // 4. [신규] 말풍선
+                else if (currentActiveTab === 'bubble') {
+                    isOwned = !!ownedChatSkins[item.id] || item.price === 0;
+                    isEquipped = (currentChatSkin === item.id);
+                    
+                    // 미리보기 HTML 생성
+                    avatarContent = `
+                        <div class="chat-bubble-preview-box" 
+                             style="background-color: ${item.previewColor}; border-color: ${item.borderColor}; color: ${item.id === 'bubble_dark' ? 'white' : 'black'}">
+                            💬
+                        </div>
+                    `;
+                }
+
+                if (isOwned) itemEl.classList.add('owned');
+                if (isEquipped) itemEl.classList.add('equipped');
+
+                if (selectedItem && selectedItem.id === item.id) {
+                    itemEl.classList.add('selected');
+                }
+                
+                // 말풍선은 avatar-preview 클래스 대신 컨텐츠를 그대로 씀 (스타일 충돌 방지)
+                let finalContent = '';
+                if (currentActiveTab === 'bubble') {
+                    finalContent = avatarContent;
+                } else {
+                    finalContent = `<div class="avatar-preview ${avatarBgClass}">${avatarContent}</div>`;
+                }
+                
+                itemEl.innerHTML = `
+                    ${finalContent}
+                    <strong>${item.name || ''}</strong>
+                    <div class="avatar-price">${isEquipped ? '사용중' : (isOwned ? '보유중' : `${item.price.toLocaleString()} P`)}</div>
+                `;
+                
+                itemEl.addEventListener('click', () => {
+                    document.querySelectorAll('.avatar-item.selected').forEach(el => el.classList.remove('selected'));
+                    itemEl.classList.add('selected');
+                    selectedItem = item;
+                    updatePurchaseButton();
+                });
+                itemGrid.appendChild(itemEl);
+            });
+        }
+        
+        function updatePurchaseButton() {
+            if (!selectedItem || !currentUserData) { 
+                purchaseBtn.disabled = true; 
+                purchaseBtn.textContent = '아이템을 선택하세요'; 
+                return; 
+            }
+            
+            const profile = currentUserData.profile;
+            let isOwned = false;
+            let isEquipped = false;
+
+            // 1. 아바타 탭
+            if (currentActiveTab === 'avatar') {
+                isOwned = profile.ownedAvatars && profile.ownedAvatars[selectedItem.id];
+                const avatarValue = (AVATAR_SETS[selectedItem.id]) ? selectedItem.id : selectedItem.emoji;
+                isEquipped = (profile.avatar === avatarValue);
+            } 
+            // 2. 봄버맨 탭
+            else if (currentActiveTab === 'bomber') {
+                isOwned = profile.ownedBombSkins && profile.ownedBombSkins[selectedItem.id];
+                isEquipped = profile.bombSkin === selectedItem.emoji;
+            } 
+            // 3. 이펙트 탭
+            else if (currentActiveTab === 'effect') { 
+                isOwned = profile.ownedEntryEffects && profile.ownedEntryEffects[selectedItem.id];
+                isEquipped = profile.equippedEntryEffect === selectedItem.id;
+            }
+            // 4. [신규] 말풍선 탭
+            else if (currentActiveTab === 'bubble') {
+                isOwned = (profile.ownedChatSkins && profile.ownedChatSkins[selectedItem.id]) || selectedItem.price === 0;
+                isEquipped = profile.equippedChatSkin === selectedItem.id;
+            }
+
+            if(isOwned) {
+                purchaseBtn.disabled = isEquipped;
+                if (isEquipped) {
+                    purchaseBtn.textContent = '현재 사용중';
+                } else {
+                    // 버튼 텍스트
+                    if (currentActiveTab === 'avatar') purchaseBtn.textContent = '이 아바타로 변경';
+                    else if (currentActiveTab === 'bomber') purchaseBtn.textContent = '이 스킨으로 변경';
+                    else if (currentActiveTab === 'effect') purchaseBtn.textContent = '이 이펙트로 변경';
+                    else if (currentActiveTab === 'bubble') purchaseBtn.textContent = '이 말풍선 사용';
+                }
+            } else {
+                purchaseBtn.disabled = (profile.points || 0) < selectedItem.price;
+                purchaseBtn.textContent = purchaseBtn.disabled ? '포인트 부족' : `${selectedItem.price.toLocaleString()} P 에 구매`;
+            }
+        }
+
+        purchaseBtn.addEventListener('click', () => {
+            if (!selectedItem || purchaseBtn.disabled || !currentUser) return;
+
+            const profile = currentUserData.profile;
+            let isOwned = false;
+
+            // 현재 탭에 따라 보유 여부 확인
+            if (currentActiveTab === 'avatar') {
+                isOwned = profile.ownedAvatars && profile.ownedAvatars[selectedItem.id];
+            } else if (currentActiveTab === 'bomber') {
+                isOwned = profile.ownedBombSkins && profile.ownedBombSkins[selectedItem.id];
+            } else if (currentActiveTab === 'effect') {
+                isOwned = profile.ownedEntryEffects && profile.ownedEntryEffects[selectedItem.id];
+            } else if (currentActiveTab === 'bubble') {
+                isOwned = (profile.ownedChatSkins && profile.ownedChatSkins[selectedItem.id]) || selectedItem.price === 0;
+            }
+
+            const valueToSet = (currentActiveTab === 'avatar' && AVATAR_SETS[selectedItem.id])
+                                ? selectedItem.id
+                                : selectedItem.emoji;
+
+            // 1. 이미 소유한 아이템 (장착 로직)
+            if (isOwned) {
+                if (currentActiveTab === 'avatar') {
+                    usersRef.child(currentUser.uid).child('profile/avatar').set(valueToSet)
+                        .then(() => {
+                            localStorage.setItem('userAvatar', valueToSet);
+                            showAlert('아바타가 변경되었습니다.');
+                        });
+                } else if (currentActiveTab === 'bomber') {
+                    usersRef.child(currentUser.uid).child('profile/bombSkin').set(selectedItem.emoji)
+                        .then(() => showAlert('물풍선 스킨이 변경되었습니다.'));
+                } else if (currentActiveTab === 'effect') {
+                    usersRef.child(currentUser.uid).child('profile/equippedEntryEffect').set(selectedItem.id)
+                        .then(() => showAlert('입장 이펙트가 변경되었습니다.'));
+                } else if (currentActiveTab === 'bubble') {
+                    usersRef.child(currentUser.uid).child('profile/equippedChatSkin').set(selectedItem.id)
+                        .then(() => showAlert('말풍선 스킨이 변경되었습니다.'));
+                }
+            } 
+            // 2. 미소유 아이템 (구매 및 장착 로직)
+            else {
+                const newPoints = (profile.points || 0) - selectedItem.price;
+                const updates = {};
+                updates['profile/points'] = newPoints;
+
+                if (currentActiveTab === 'avatar') {
+                    updates['profile/avatar'] = valueToSet;
+                    updates[`profile/ownedAvatars/${selectedItem.id}`] = true;
+                    localStorage.setItem('userAvatar', valueToSet);
+                } else if (currentActiveTab === 'bomber') {
+                    updates['profile/bombSkin'] = selectedItem.emoji;
+                    updates[`profile/ownedBombSkins/${selectedItem.id}`] = true;
+                } else if (currentActiveTab === 'effect') {
+                    updates['profile/equippedEntryEffect'] = selectedItem.id;
+                    updates[`profile/ownedEntryEffects/${selectedItem.id}`] = true;
+                } else if (currentActiveTab === 'bubble') {
+                    updates['profile/equippedChatSkin'] = selectedItem.id;
+                    updates[`profile/ownedChatSkins/${selectedItem.id}`] = true;
+                }
+
+                usersRef.child(currentUser.uid).update(updates)
+                  .then(() => showAlert('아이템을 구매하고 적용했습니다!'))
+                  .catch(error => showAlert('구매 중 오류가 발생했습니다: ' + error.message));
+            }
+        });
+    });
+    </script>
+    <div id="alert-modal" class="overlay">
+        <div class="modal-content" style="max-width: 350px;">
+            <div class="modal-body">
+                <h3 id="alert-modal-message" style="font-size: 1.1em; margin: 0; line-height: 1.5; word-break: keep-all;"></h3>
+            </div>
+            <div class="modal-footer" style="padding: 20px;">
+                <button id="alert-modal-ok-btn" class="menu-btn primary" style="width: 100%;">확인</button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

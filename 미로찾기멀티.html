@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>미로찾기 게임 (멀티)</title>
+    <style>
+    :root {
+        --bg-color: #f0f2f5; --wall-color: #34495e; --path-color: #ecf0f1;
+        --button-bg: #2c3e50; --button-text: #ffffff; --button-hover: #3e5771;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+        width: 100%; height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background-color: var(--bg-color); display: flex; flex-direction: column;
+        justify-content: center; align-items: center; -webkit-user-select: none; user-select: none; touch-action: manipulation;
+    }
+    #game-wrapper { 
+        width: 100%; 
+        height: 100%; 
+        display: none; 
+        flex-direction: column; 
+        min-height: 0;
+        overflow: hidden;
+    }
+    #game-header { flex-shrink: 0; display: flex; align-items: center; width: 100%; padding: 8px 10px; gap: 8px; background-color: rgba(0,0,0,0.1); z-index: 5; overflow-x: auto; }
+    #game-header::-webkit-scrollbar { display: none; }
+    #game-header { scrollbar-width: none; }
+    .player-status { background-color: rgba(255,255,255,0.8); padding: 4px 10px; border-radius: 20px; display: flex; align-items: center; gap: 6px; font-size: 0.8em; font-weight: bold; color: #333; box-shadow: 0 1px 4px rgba(0,0,0,0.1); white-space: nowrap; transition: all 0.3s ease; }
+    .player-status.dead { opacity: 0.5; filter: grayscale(80%); transform: scale(0.95); }
+    .player-status .avatar { font-size: 1.1em; }
+    #game-container {
+    width: 100%;
+    flex-grow: 1;
+    display: flex; /* grid 대신 flex 사용 */
+    justify-content: center; /* 수평 중앙 정렬 */
+    align-items: center;     /* 수직 중앙 정렬 */
+    min-height: 0;
+    position: relative;
+    padding: 5px; /* 싱글 버전과 동일하게 약간의 여백 추가 */
+    /* overflow: hidden; 속성은 제거해도 괜찮습니다. */
+}
+#maze-wrapper {
+    /* width: auto; -> 삭제 */
+    /* height: 100%; -> 삭제 */
+    max-width: 100%;
+    height: 100%; /* 추가: 높이도 100%를 넘지 않도록 제한 */
+    aspect-ratio: 19 / 39;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    border-radius: 10px;
+    overflow: hidden;
+    background-color: var(--path-color);
+    position: relative;
+    margin: 0 auto;
+}
+    
+    #maze { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+    .wall { background-color: var(--wall-color); position: absolute; }
+    .player-avatar, .opponent-player { position: absolute; display: flex; justify-content: center; align-items: center; transition: all 0.12s linear; border-radius: 50%; z-index: 10; }
+    .player-avatar.slowed { transition: all 0.3s linear !important; }
+   .player-avatar { animation: pulse-scale 1.5s infinite ease-in-out; } /* 'pulse-me'를 'pulse-scale'로 변경 */
+    .dead { opacity: 0.4; filter: grayscale(100%); z-index: 5; animation: none !important; box-shadow: none !important; }
+   @keyframes pulse-scale {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.08); }
+    100% { transform: scale(1); }
+}
+    #goal { position: absolute; display: flex; justify-content: center; align-items: center; animation: pulse 1.5s infinite; z-index: 6; }
+    @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.2); } 100% { transform: scale(1); } }
+    .ghost, .item { position: absolute; display: flex; justify-content: center; align-items: center; }
+    .ghost { transition: all 0.4s linear; z-index: 8; animation: float 2s ease-in-out infinite; }
+    @keyframes float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-5px); } }
+    .item { z-index: 7; animation: spin-item 3s linear infinite; }
+    @keyframes spin-item { from { transform: rotateY(0deg); } to { transform: rotateY(360deg); } }
+   .ghost-pass { 
+    animation: pulse-scale 1.2s infinite ease-in-out; 
+    box-shadow: 0 0 15px 4px rgba(0, 255, 255, 0.9); /* 애니메이션 대신 고정된 그림자 효과로 변경 */
+}
+   
+    #d-pad { position: absolute; bottom: 15px; left: 15px; width: 140px; height: 140px; z-index: 100; opacity: 0.7; }
+    #d-pad::before { content: ''; position: absolute; top: 50%; left: 50%; width: 100px; height: 100px; background: rgba(0,0,0,0.3); border-radius: 50%; transform: translate(-50%, -50%); }
+    #d-pad button { position: absolute; width: 48px; height: 48px; background-color: rgba(44, 62, 80, 0.8); color: var(--button-text); border: none; border-radius: 15px; box-shadow: 0 3px 8px rgba(0,0,0,0.3); font-size: 1.5em; cursor: pointer; }
+    #d-pad button:active { transform: scale(0.95); background-color: var(--button-hover); }
+    #up { top: 0; left: 46px; } #down { bottom: 0; left: 46px; } #left { left: 0; top: 46px; } #right { right: 0; top: 46px; }
+    #inventory-bar { width: 100%; flex-shrink: 0; background-color: #dde5f3; padding: 10px; padding-bottom: max(10px, env(safe-area-inset-bottom)); border-top: 2px solid #c9d5e8; display: flex; justify-content: center; align-items: center; z-index: 5; }
+    #inventory-container { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+    .inventory-slot { width: 50px; height: 50px; background-color: #fff; border: 2px solid #b0bec5; border-radius: 10px; font-size: 2em; display: flex; justify-content: center; align-items: center; cursor: pointer; box-shadow: inset 0 2px 4px rgba(0,0,0,0.1); }
+    .inventory-slot:empty { background-color: rgba(255,255,255,0.5); cursor: default; }
+    .inventory-slot.used { animation: use-item-anim 0.4s ease-out; }
+    @keyframes use-item-anim { 0% { transform: scale(1.2); opacity: 1; } 100% { transform: scale(0.5); opacity: 0; } }
+    .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 200; text-align: center; background-color: rgba(0,0,0,0.7); }
+    #darkness-overlay { background: radial-gradient(circle at 50% 50%, transparent 100px, black 150px); pointer-events: none; z-index: 150; display: none; transition: opacity 0.3s; }
+    .modal-content { background: rgba(44, 62, 80, 0.85); padding: 30px; border-radius: 20px; backdrop-filter: blur(5px); }
+    .modal-buttons { display: flex; flex-direction: column; gap: 10px; align-items: center; margin-top: 20px;}
+    .menu-btn { width: 100%; max-width: 250px; padding: 15px; font-size: 1.2em; font-weight: bold; border-radius: 12px; border: none; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.1s; }
+    .menu-btn.primary { background-color: var(--button-bg); color: var(--button-text); }
+    .menu-btn.secondary { background-color: #f0f3f4; color: #333; }
+    .menu-btn:active { transform: scale(0.98); }
+    #game-over-message { font-size: 2.5em; font-weight: bold; margin-bottom: 20px; text-shadow: 2px 2px 4px #000; }
+    #countdown-container { color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); text-align: center; }
+    #countdown-container h2 { font-size: 1.8em; font-weight: 700; }
+    #countdown-number { font-size: 6em; font-weight: 700; margin-top: 10px; animation: countdown-pop 1s infinite; }
+    @keyframes countdown-pop { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.2); } }
+    </style>
+</head>
+<body>
+    <div id="game-over-overlay" class="overlay" style="display: none;"></div>
+    <div id="spectator-overlay" class="overlay" style="display: none; background-color: rgba(0,0,0,0.4); z-index: 199;">
+        <div style="font-size: 2em; font-weight: bold; color: white; text-shadow: 2px 2px 4px #000; text-align: center;">
+            👻 유령에게 잡혔습니다! 👻<br><span style="font-size: 0.8em;">관전 모드</span>
+        </div>
+    </div>
+    <div id="waiting-overlay" class="overlay" style="display: none;"></div>
+    <div id="darkness-overlay" class="overlay"></div>
+    <div id="game-wrapper">
+        <div id="game-header"></div>
+        <div id="game-container">
+            <div id="maze-wrapper">
+                <div id="maze"></div>
+                <div id="d-pad">
+                    <button id="up">▲</button>
+                    <button id="left">◀</button>
+                    <button id="right">▶</button>
+                    <button id="down">▼</button>
+                </div>
+            </div>
+        </div>
+        <div id="inventory-bar">
+            <div id="inventory-container"></div>
+        </div>
+    </div>
+   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const firebaseConfig = { apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw", authDomain: "goodluck-7c14b.firebaseapp.com", databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com", projectId: "goodluck-7c14b", storageBucket: "goodluck-7c14b.firebasestorage.app", messagingSenderId: "858281658455", appId: "1:858281658455:web:9131280a459be983933b12" };
+    firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
+    const gameRoomsRef = database.ref('memoryGameRooms');
+    const playersStatsRef = database.ref('users');
+
+    const gameWrapper = document.getElementById('game-wrapper'),
+          mazeContainer = document.getElementById('maze'),
+          gameOverOverlay = document.getElementById('game-over-overlay'),
+          waitingOverlay = document.getElementById('waiting-overlay'),
+          darknessOverlay = document.getElementById('darkness-overlay'),
+          inventoryContainer = document.getElementById('inventory-container'),
+          gameHeader = document.getElementById('game-header'),
+          spectatorOverlay = document.getElementById('spectator-overlay');
+    
+    let myPlayerId, myNickname, myAvatar, roomRef, currentRoomData, isHost = false;
+    let playerPos = { x: 0, y: 0 }, startPos = { x: 0, y: 0 }, goalPos = { x: 0, y: 0 };
+    let cellSize = 0, mazeLayout = [], mazeRows = 39, mazeCols = 19;
+let isDead = false, keyMoving = null; // moveInterval 제거
+    const keysPressed = { up: false, down: false, left: false, right: false };
+    let lastMoveTime = 0;
+    let ghosts = [], ghostMoveInterval = null;
+    let itemsOnMap = {};
+    let localPlayerEffects = { hasGhostPass: false, isSlowed: false };
+    let isGameRunning = false, isGameInitialized = false;
+    let allPlayers = {};
+    let rematchListener = null;
+
+    const bgmList = ['https://blog.kakaocdn.net/dna/DNQLb/dJMb9XxycAX/AAAAAAAAAAAAAAAAAAAAAI0PFuL7ek0AzPlOTefGClzWlzULUuTO1XwqaU-J_PIh/%EC%9C%A0%EB%A0%B9%EB%B0%B0%EA%B2%BD%EC%9D%8C1.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=A4xFv8udTC2J9hu1NQVltXSWhoQ%3D&attach=1&knm=tfile.mp3', 'https://blog.kakaocdn.net/dna/bs8kot/dJMb8ZB9t6k/AAAAAAAAAAAAAAAAAAAAAOxk2WMLiINzJtlcW8XmrigYRG62tKlY36Dh34dF0l-6/%EC%9C%A0%EB%A0%B9%EB%B0%B0%EA%B2%BD%EC%9D%8C2.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=Qlq4IBg6emRfVcDzoUWVb4yfPRI%3D&attach=1&knm=tfile.mp3', 'https://blog.kakaocdn.net/dna/l5FLp/dJMb89Si31V/AAAAAAAAAAAAAAAAAAAAAMrBnVgoOMl0672AWUO9SYAbfe6oJ1C51PhMYFRVphka/%EC%9C%A0%EB%A0%B9%EB%B0%B0%EA%B2%BD%EC%9D%8C3.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=0p%2FNGTODZg4seFmJOG2qPWvsnp0%3D&attach=1&knm=tfile.mp3'];
+    const winSound = new Audio('https://blog.kakaocdn.net/dna/yLiG9/dJMb9NBLH35/AAAAAAAAAAAAAAAAAAAAAHR816GoJ0hh_H3iBi2ryFMs7eTvtX1R2_MiNhMn1X1L/%EB%AF%B8%EB%A1%9C%EC%8A%B9%EB%A6%AC.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=etFa3TX%2Bm636tw%2BecTdKGFsE9%2Fo%3D&attach=1&knm=tfile.mp3');
+    const loseSound = new Audio('https://blog.kakaocdn.net/dna/YqeBo/dJMb9OHqWKw/AAAAAAAAAAAAAAAAAAAAAM8axaXYQq2O5N2k8agpwDy0McSjUZXAYGl-stM9OdBB/%EB%AF%B8%EB%A1%9C%ED%8C%A8%EB%B0%B0.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=EMAsInuCHrrRTqY%2Bxyab6N4Gd%2Fs%3D&attach=1&knm=tfile.mp3');
+    const itemSound = new Audio('https://blog.kakaocdn.net/dna/I1rs7/dJMb9OAFEW9/AAAAAAAAAAAAAAAAAAAAAGZ7k2cQ3I3jz4QPLzHVktwmXWCejW9gq1_ks5eGVS8X/%EB%AF%B8%EB%A1%9C%EC%95%84%EC%9D%B4%ED%85%9C%EB%93%9C%EB%9E%8D.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=xSvePfPnvnygwGW9LxvZwdD%2BFOY%3D&attach=1&knm=tfile.mp3');
+    const bgmAudio = new Audio();
+    bgmAudio.loop = true;
+    
+    const ITEM_TYPES = { 'ghost-pass':{emoji:'🛡️',probability:25}, 'slow':{emoji:'🐌',probability:20,duration:3000}, 'darkness':{emoji:'🔦',probability:20,duration:3000}, 'teleport':{emoji:'🌀',probability:5}, 'ghost-speed':{emoji:'🚀',probability:10,duration:5000}, 'add-ghosts':{emoji:'💀',probability:5}, 'remove-ghosts':{emoji:'✨',probability:5}, 'freeze-players':{emoji:'🥶',probability:5,duration:2000} };
+
+    function getPlayerInfo() {
+        myPlayerId = localStorage.getItem('myPlayerId');
+        if (!myPlayerId) {
+            alert("플레이어 정보가 없습니다. 메인 메뉴로 돌아갑니다.");
+            window.location.href = 'index.html';
+            return false;
+        }
+        myAvatar = localStorage.getItem('userAvatar');
+        myNickname = localStorage.getItem('userNickname');
+        return true;
+    }
+
+    if (getPlayerInfo()) {
+        const urlParams = new URLSearchParams(window.location.search);
+        const roomId = urlParams.get('roomId');
+        if (roomId) {
+            joinMultiplayerGame(roomId);
+        } else {
+            alert("잘못된 접근입니다. 대기실을 통해 입장해주세요.");
+            window.location.href = '대기실.html';
+        }
+    }
+
+    function joinMultiplayerGame(roomId) {
+        roomRef = gameRoomsRef.child(roomId);
+        listenToRoomChanges();
+    }
+    
+    function initializeMultiplayerGame(roomData) {
+        if (!isHost) return;
+        const playerCount = Object.keys(roomData.players).length;
+        const newMaze = generateMaze(mazeRows, mazeCols);
+        mazeLayout = newMaze; 
+        placeStartAndGoal(newMaze);
+        const updates = {
+            maze: newMaze,
+            items: createItems(),
+            ghosts: createInitialGhosts(playerCount),
+            gameState: 'ready',
+            winner: null,
+            events: null,
+            slowEffect: null,
+            ghostSpeedEffect: null,
+            freezeEffect: null
+        };
+        Object.keys(roomData.players).forEach(pid => {
+            updates[`players/${pid}/inventory`] = ['ghost-pass'];
+            updates[`players/${pid}/isDead`] = false;
+            updates[`players/${pid}/effects`] = null;
+            updates[`players/${pid}/wantsRematch`] = null;
+            updates[`players/${pid}/x`] = null; 
+            updates[`players/${pid}/y`] = null;
+        });
+        roomRef.update(updates);
+    }
+
+    function listenToRoomChanges() {
+        roomRef.on('value', snapshot => {
+            if (!snapshot.exists()) {
+                if (roomRef) roomRef.off();
+                alert("방이 사라졌습니다. 대기실로 돌아갑니다.");
+                window.location.href = '대기실.html';
+                return;
+            }
+            currentRoomData = snapshot.val();
+            const { players, items, winner, gameState, ghosts: ghostData } = currentRoomData;
+            
+            allPlayers = players || {};
+            isHost = currentRoomData.hostId === myPlayerId;
+
+            if (isHost) {
+                roomRef.onDisconnect().remove(); 
+            } else {
+                if (myPlayerId) roomRef.child('players/' + myPlayerId).onDisconnect().remove();
+            }
+
+            if (isHost && gameState === 'launching' && !isGameInitialized) {
+                initializeMultiplayerGame(currentRoomData);
+                return;
+            }
+            
+            if (gameState === 'ready' && !isGameInitialized && currentRoomData.maze) {
+                startMultiplayerCountdown();
+            }
+
+            if (gameState === 'playing' && isGameRunning) {
+                updateHeaderUI(players);
+                updateAllPlayerEffectsAndPositions(players);
+                updateGhostsFromServer(ghostData);
+                itemsOnMap = items || {};
+            }
+
+            if (gameState === 'gameOver' && winner && isGameRunning) {
+                showGameOverScreen({ winnerId: winner !== 'draw' ? winner : null, isDraw: winner === 'draw' });
+                return;
+            }
+            gameWrapper.style.display = 'flex';
+        });
+
+        roomRef.child('items').on('child_removed', snapshot => {
+            const el = document.getElementById('item-' + snapshot.key);
+            if (el) { el.style.transition = 'transform 0.3s ease, opacity 0.3s ease'; el.style.transform = 'scale(0)'; el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }
+        });
+        
+        roomRef.child('events').on('child_added', snapshot => {
+            if (isHost) handleItemEvent(snapshot);
+        });
+    }
+
+    function startMultiplayerCountdown() {
+        isGameInitialized = true;
+        waitingOverlay.innerHTML = `<div id="countdown-container"><h2>게임 시작!</h2><p id="countdown-number">3</p></div>`;
+        waitingOverlay.style.display = 'flex';
+        let count = 3;
+        const countdownEl = document.getElementById('countdown-number');
+        const interval = setInterval(() => {
+            count--;
+            if (count > 0) {
+                countdownEl.textContent = count;
+} else {
+                clearInterval(interval);
+                waitingOverlay.style.display = 'none';
+                if (currentRoomData) {
+                    bgmAudio.src = bgmList[Math.floor(Math.random() * bgmList.length)];
+                    bgmAudio.play().catch(e => {});
+                    setupGameFromData(currentRoomData);
+      
+                    if(isHost) {
+                         roomRef.update({ gameState: 'playing' });
+                    }
+                    roomRef.child('players/' + myPlayerId).update({ x: playerPos.x, y: playerPos.y });
+                    if (isHost) {
+                        ghostMoveInterval = setInterval(moveGhosts, 500);
+                    }
+                    requestAnimationFrame(gameLoop);
+                }
+            }
+        }, 1000);
+    }
+    
+    function updateAllPlayerEffectsAndPositions(players) {
+        const slowEffect = currentRoomData.slowEffect;
+        const isGlobalSlowActive = slowEffect && Date.now() < slowEffect.expiresAt;
+        for (const pid in players) {
+            const p = players[pid];
+            if(!p) continue;
+            const playerEffects = p.effects || {};
+            if (p.x !== undefined && p.x !== null) {
+                updatePlayerPosition(pid, p.x, p.y, p.avatar, { isSlowed: isGlobalSlowActive && slowEffect.from !== pid, hasGhostPass: playerEffects.hasGhostPass, isDead: p.isDead });
+            }
+            if (pid === myPlayerId) {
+                if (p.x !== undefined && p.x !== null && (playerPos.x !== p.x || playerPos.y !== p.y)) { 
+                    playerPos = { x: p.x, y: p.y }; 
+                    checkInteractions(); 
+                }
+                if (!!p.isDead && !isDead) {
+                    spectatorOverlay.style.display = 'flex';
+                    loseSound.play();
+                }
+                isDead = !!p.isDead;
+                if(isDead) stopMoving();
+                localPlayerEffects.isSlowed = isGlobalSlowActive && slowEffect.from !== myPlayerId;
+                localPlayerEffects.hasGhostPass = playerEffects.hasGhostPass;
+                const inDarkness = playerEffects.darkness && Date.now() < playerEffects.darkness;
+                darknessOverlay.style.display = inDarkness ? 'block' : 'none';
+                if(inDarkness) {
+                    const playerEl = document.getElementById('player-' + myPlayerId);
+                    if(playerEl) {
+                        const rect = playerEl.getBoundingClientRect();
+                        updateDarkness(rect.left + rect.width / 2, rect.top + rect.height / 2);
+                    }
+                }
+                updateInventoryUI(p.inventory);
+            }
+        }
+        if (isHost) {
+            const updates = {};
+            if (slowEffect && !isGlobalSlowActive) updates['/slowEffect'] = null;
+            Object.entries(players).forEach(([pid, p]) => {
+                if (p && p.effects?.darkness && Date.now() > p.effects.darkness) updates[`/players/${pid}/effects/darkness`] = null;
+            });
+            if(Object.keys(updates).length > 0) roomRef.update(updates);
+        }
+    }
+
+    function updateGhostsFromServer(ghostData) {
+        if (!ghostData) return;
+        if (!isHost) {
+            ghosts.forEach(g => { 
+                if(ghostData[g.id]){ g.x = ghostData[g.id].x; g.y = ghostData[g.id].y; updateGhostPosition(g); } 
+            });
+        }
+        const serverGhostIds = Object.keys(ghostData);
+        if (serverGhostIds.length !== ghosts.length) {
+            initializeGhosts(ghostData);
+        }
+    }
+    
+     function setupGameFromData(data) {
+        if (!data.maze) return;
+        isGameRunning = true;
+        mazeLayout = data.maze;
+        itemsOnMap = data.items || {};
+        for (let y = 0; y < mazeRows; y++) for (let x = 0; x < mazeCols; x++) {
+            if (mazeLayout[y][x] === 'S') startPos = { x, y };
+            else if (mazeLayout[y][x] === 'G') goalPos = { x, y };
+        }
+        playerPos = { ...startPos };
+        
+        requestAnimationFrame(() => {
+            drawMapAndEntities();
+            // ▼▼▼▼▼ 맵을 그린 직후, 여기에 유령 생성 코드를 추가합니다. ▼▼▼▼▼
+            if (currentRoomData && currentRoomData.ghosts) {
+                initializeGhosts(currentRoomData.ghosts);
+            }
+        });
+    }
+    
+    function generateMaze(rows, cols) {
+        let maze = Array(rows).fill(null).map(() => Array(cols).fill(1));
+        const carve = (x, y) => {
+            maze[y][x] = 0;
+            let directions = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+            directions.sort(() => Math.random() - 0.5);
+            for (let [dx, dy] of directions) {
+                const nx = x + dx * 2, ny = y + dy * 2;
+                if (ny >= 1 && ny < rows - 1 && nx >= 1 && nx < cols - 1 && maze[ny][nx] === 1) {
+                    maze[y + dy][x + dx] = 0;
+                    carve(nx, ny);
+                }
+            }
+        };
+        carve(1, 1);
+        const wallsToRemove = Math.floor((rows * cols) * 0.18);
+        for (let i = 0; i < wallsToRemove; i++) {
+            const x = Math.floor(Math.random() * (cols - 2)) + 1;
+            const y = Math.floor(Math.random() * (rows - 2)) + 1;
+            if (maze[y][x] === 1) {
+                maze[y][x] = 0;
+            }
+        }
+        return maze;
+    }
+    
+    function placeStartAndGoal(layout) {
+        const sx=Math.floor(mazeCols/2),sy=1;for(let y=sy-2;y<=sy+2;y++)for(let x=sx-2;x<=sx+2;x++)if(layout[y]?.[x]!==undefined)layout[y][x]=0;layout[sy][sx]='S';
+        const gx=Math.floor(mazeCols/2),gy=mazeRows-2;for(let y=gy-2;y<=gy+2;y++)for(let x=gx-2;x<=gx+2;x++)if(layout[y]?.[x]!==undefined)layout[y][x]=0;layout[gy][gx]='G';
+    }
+
+    function createItems() {
+        const i={},w=[];for(const t in ITEM_TYPES)for(let n=0;n<ITEM_TYPES[t].probability;n++)w.push(t);
+        for(let n=0;n<7;n++){let x,y;do{x=Math.floor(Math.random()*(mazeCols-2))+1;y=Math.floor(Math.random()*(mazeRows-2))+1;}while(mazeLayout[y]?.[x]!==0||i[`${x}-${y}`]||(x===startPos.x&&y===startPos.y));const t=w[Math.floor(Math.random()*w.length)];i[`${x}-${y}`]={x,y,type:t};}return i;
+    }
+
+    function createInitialGhosts(playerCount) {
+        const g={},c=playerCount+1;for(let i=0;i<c;i++){let x,y;do{x=Math.floor(Math.random()*(mazeCols-2))+1;y=Math.floor(Math.random()*(mazeRows-10))+8;}while(mazeLayout[y]?.[x]!==0||(Math.abs(x-startPos.x)<10&&Math.abs(y-startPos.y)<10));g['g'+i]={x,y, type: 'normal'};}return g;
+    }
+    
+    function checkInteractions() {
+        if (isDead || !isGameRunning) return;
+        if (!localPlayerEffects.hasGhostPass) {
+            for (const ghost of ghosts) if (ghost.x === playerPos.x && ghost.y === playerPos.y) { handleDeath(); return; }
+        } else { 
+            for (const ghost of ghosts) if (ghost.x === playerPos.x && ghost.y === playerPos.y) { roomRef.child(`players/${myPlayerId}/effects/hasGhostPass`).set(false); break; }
+        }
+        const itemKey = `${playerPos.x}-${playerPos.y}`;
+        if (itemsOnMap[itemKey]) {
+            itemSound.play();
+            const itemType = itemsOnMap[itemKey].type;
+            roomRef.child('items').child(itemKey).remove();
+            roomRef.child(`players/${myPlayerId}/inventory`).transaction(inv=>{if(!inv)inv=[];if(inv.length<5)inv.push(itemType);return inv;});
+        }
+        if (playerPos.x === goalPos.x && playerPos.y === goalPos.y) handleWin();
+    }
+
+    function move(dx, dy) {
+        const freezeEffect = currentRoomData?.freezeEffect;
+        if (isDead || !isGameRunning || (freezeEffect && Date.now() < freezeEffect.expiresAt)) return;
+        const nX = playerPos.x + dx, nY = playerPos.y + dy;
+        if (mazeLayout[nY]?.[nX] !== 1) {
+            playerPos.x = nX;
+            playerPos.y = nY;
+            roomRef.child(`players/${myPlayerId}`).update({ x: nX, y: nY });
+            updatePlayerPosition(myPlayerId, nX, nY, myAvatar, localPlayerEffects);
+            checkInteractions(); 
+        }
+    }
+    
+    // 기존 startMoving, stopMoving 함수를 gameLoop 로직으로 대체하므로 삭제하거나 아래 코드로 덮어씁니다.
+    function gameLoop(timestamp) {
+        if (!isGameRunning || isDead) {
+            // 게임이 실행 중이 아닐 때도 루프는 계속 돌려야 다시 시작할 수 있습니다.
+            requestAnimationFrame(gameLoop);
+            return;
+        }
+
+        const moveSpeed = localPlayerEffects.isSlowed ? 250 : 120; // 이동 속도 (ms), 값이 작을수록 빠릅니다.
+        if (timestamp - lastMoveTime > moveSpeed) {
+            let dx = 0, dy = 0;
+            // 동시에 눌린 키 상태를 확인하여 이동 방향을 결정합니다.
+            if (keysPressed.up) dy = -1;
+            if (keysPressed.down) dy = 1;
+            if (keysPressed.left) dx = -1;
+            if (keysPressed.right) dx = 1;
+
+            if (dx !== 0 || dy !== 0) {
+                move(dx, dy);
+                lastMoveTime = timestamp;
+            }
+        }
+        
+        // 다음 프레임에 gameLoop를 다시 호출합니다.
+        requestAnimationFrame(gameLoop);
+    }
+    
+    function handleItemUse(event) {
+        const itemType = event.currentTarget.dataset.itemType;
+        if (!itemType || isDead) return;
+        const removeItem=()=>{event.currentTarget.classList.add('used');roomRef.child(`players/${myPlayerId}/inventory`).transaction(inv=>{if(!inv)return[];const i=inv.indexOf(itemType);if(i>-1)inv.splice(i,1);return inv;});};
+        if(itemType==='ghost-pass')roomRef.child(`players/${myPlayerId}/effects/hasGhostPass`).set(true);
+        else if(itemType==='teleport')roomRef.child(`players/${myPlayerId}`).update({x:startPos.x,y:startPos.y});
+        else roomRef.child('events').push({type:itemType,from:myPlayerId});
+        removeItem();
+    }
+
+    function handleDeath() {
+        if (isDead) return;
+        isDead = true;
+        roomRef.transaction(currentRoomData => {
+            if (currentRoomData && currentRoomData.players && currentRoomData.players[myPlayerId]) {
+                currentRoomData.players[myPlayerId].isDead = true;
+                const livingPlayerIds = Object.keys(currentRoomData.players).filter(pid => !currentRoomData.players[pid].isDead);
+                if (livingPlayerIds.length === 1) {
+                    currentRoomData.winner = livingPlayerIds[0]; 
+                    currentRoomData.gameState = 'gameOver';
+                } else if (livingPlayerIds.length === 0) {
+                    currentRoomData.winner = 'draw';
+                    currentRoomData.gameState = 'gameOver';
+                }
+            }
+            return currentRoomData; 
+        });
+    }
+
+    function handleWin() {
+        if (isHost && ghostMoveInterval) {
+            clearInterval(ghostMoveInterval);
+            ghostMoveInterval = null;
+        }
+        roomRef.update({ winner: myPlayerId, gameState: 'gameOver' });
+    }
+    
+    function initializeGhosts(initialGhostsData) {
+        ghosts = [];
+        document.querySelectorAll('.ghost').forEach(el => el.remove());
+        const emojis = ['👻', '🎃', '👽', '👾']; let i = 0;
+        for (const id in initialGhostsData) {
+            const pos = initialGhostsData[id]; const el=document.createElement('div'); el.className='ghost'; el.textContent=pos.type==='reaper'?'💀':emojis[i++%emojis.length]; mazeContainer.appendChild(el);
+            const ghost = { id, x: pos.x, y: pos.y, element: el, path: [], type: pos.type };
+            ghosts.push(ghost); updateGhostPosition(ghost);
+        }
+    }
+
+    function moveGhosts() {
+        if (!isGameRunning || !isHost) return;
+        const slow = currentRoomData?.slowEffect; if(slow && Date.now() < slow.expiresAt) return;
+        const living = Object.values(allPlayers).filter(p=>!p.isDead&&p.x!==undefined); const speed = currentRoomData?.ghostSpeedEffect; const count = (speed && Date.now() < speed.expiresAt) ? 2 : 1;
+        ghosts.forEach(g=>{for(let i=0;i<count;i++){if(g.path.length===0||Math.random()<0.2){if(living.length>0){const t=living[Math.floor(Math.random()*living.length)];const p=bfs({x:g.x,y:g.y},{x:t.x,y:t.y});if(p)g.path=p.slice(1);}}
+        if(g.path.length>0){const m=g.path.shift();g.x=m.x;g.y=m.y;}else{const{x,y}=g;const m=[[0,1],[0,-1],[1,0],[-1,0]].filter(([dx,dy])=>mazeLayout[y+dy]?.[x+dx]!==1);if(m.length>0){const[dx,dy]=m[Math.floor(Math.random()*m.length)];g.x+=dx;g.y+=dy;}}}updateGhostPosition(g);});
+        const u={};ghosts.forEach(g=>{u[g.id]={x:g.x,y:g.y,type:g.type};});roomRef.child('ghosts').update(u);
+    }
+
+    function handleItemEvent(snapshot) {
+        const e = snapshot.val(); if(!e) { snapshot.ref.remove(); return; }
+        const { type, from } = e; const u = {};
+        switch(type){case 'slow':u['/slowEffect']={from,expiresAt:Date.now()+ITEM_TYPES.slow.duration};break;case 'darkness':Object.keys(allPlayers).forEach(p=>{if(p!==from)u[`/players/${p}/effects/darkness`]=Date.now()+ITEM_TYPES.darkness.duration;});break;case 'ghost-speed':u['/ghostSpeedEffect']={expiresAt:Date.now()+ITEM_TYPES['ghost-speed'].duration};break;case 'add-ghosts':for(let i=0;i<2;i++){let x,y;do{x=Math.floor(Math.random()*(mazeCols-2))+1;y=Math.floor(Math.random()*(mazeRows-2))+1;}while(mazeLayout[y]?.[x]!==0);const id=`reaper${Date.now()+i}`;u[`/ghosts/${id}`]={x,y,type:'reaper'};}break;case 'remove-ghosts':const k=Object.keys(currentRoomData.ghosts||{});if(k.length>2){for(let i=0;i<2;i++){const r=Math.floor(Math.random()*k.length);const t=k.splice(r,1)[0];if(t)u[`/ghosts/${t}`]=null;}}break;case 'freeze-players':u['/freezeEffect']={expiresAt:Date.now()+ITEM_TYPES['freeze-players'].duration};break;}
+        if(Object.keys(u).length>0)roomRef.update(u);snapshot.ref.remove();
+    }
+
+    function bfs(s,e){const q=[[s]],v=new Set([`${s.x},${s.y}`]);while(q.length>0){const p=q.shift(),c=p[p.length-1];if(c.x===e.x&&c.y===e.y)return p;const d=[[0,1],[0,-1],[1,0],[-1,0]].sort(()=>Math.random()-0.5);for(const[dx,dy]of d){const n={x:c.x+dx,y:c.y+dy};if(mazeLayout[n.y]?.[n.x]!==1&&!v.has(`${n.x},${n.y}`)){v.add(`${n.x},${n.y}`);q.push([...p,n]);}}}return null;}
+
+    async function updatePlayerStats(isWinner) {
+        if(myPlayerId.startsWith('guest_'))return; const ref=playersStatsRef.child(myPlayerId);try{await ref.transaction(d=>{if(d){if(!d.stats)d.stats={};if(!d.stats.mazeGame)d.stats.mazeGame={wins:0,losses:0};if(isWinner){d.stats.mazeGame.wins=(d.stats.mazeGame.wins||0)+1;d.exp=(d.exp||0)+50;}else{d.stats.mazeGame.losses=(d.stats.mazeGame.losses||0)+1;d.exp=(d.exp||0)+10;}}return d;});}catch(e){console.error(e);}
+    }
+
+    function showGameOverScreen(result) {
+        isGameRunning = false;
+        if(ghostMoveInterval)clearInterval(ghostMoveInterval);ghostMoveInterval=null;bgmAudio.pause();
+  const amIWinner=result.winnerId===myPlayerId;updatePlayerStats(amIWinner);if(amIWinner)winSound.play();else loseSound.play();let msg;if(result.isDraw)msg='아무도 살아남지 못했습니다!';else if(result.winnerId&&allPlayers[result.winnerId])msg=amIWinner?`🎉승리!🎉`:`🎉 ${allPlayers[result.winnerId].nickname}님 승리! 🎉`;else msg='👻 유령에게 잡혔습니다 👻';const btns=`<button id="rematch-btn" class="menu-btn primary">다시 하기</button><button id="lobby-btn" class="menu-btn secondary">나가기</button>`;gameOverOverlay.innerHTML=`<div class="modal-content"><h2 id="game-over-message">${msg}</h2><div class="modal-buttons">${btns}</div></div>`;gameOverOverlay.style.display='flex';
+        document.getElementById('rematch-btn').addEventListener('click',()=>{const b=document.getElementById('rematch-btn');b.textContent='대기중...';b.disabled=true;roomRef.child(`players/${myPlayerId}/wantsRematch`).set(true);});
+        document.getElementById('lobby-btn').addEventListener('click',()=>{window.location.href='대기실.html'});
+        if(rematchListener) roomRef.off('value', rematchListener);
+        rematchListener = snapshot => {
+            const data = snapshot.val();
+            if(!data || !data.players || data.gameState !== 'gameOver'){ if(roomRef && rematchListener) roomRef.off('value', rematchListener); return; }
+            const players = Object.values(data.players);
+            if(players.length > 0 && players.every(p => p.wantsRematch)){
+                isGameInitialized = false; isGameRunning = false; isDead = false;
+                gameOverOverlay.style.display = 'none'; spectatorOverlay.style.display = 'none';
+                if(roomRef && rematchListener) roomRef.off('value', rematchListener);
+                rematchListener = null;
+                if(isHost) startRematch();
+            }
+        };
+        roomRef.on('value', rematchListener);
+    }
+
+    function startRematch() { 
+        if (isHost) {
+            roomRef.update({ gameState: 'launching' });
+        }
+    }
+    
+    function drawMapAndEntities() {
+    const w = document.getElementById('maze-wrapper');
+    if (w.offsetWidth === 0 || w.offsetHeight === 0) {
+        setTimeout(drawMapAndEntities, 100);
+        return;
+    }
+    // 가로와 세로 비율을 모두 계산해 더 작은 값을 기준으로 cellSize를 정합니다.
+    const cellWidth = w.offsetWidth / mazeCols;
+    const cellHeight = w.offsetHeight / mazeRows;
+    cellSize = Math.min(cellWidth, cellHeight);
+
+    let h = '';
+    for (let y = 0; y < mazeRows; y++) {
+        for (let x = 0; x < mazeCols; x++) {
+            if (mazeLayout[y][x] === 1) h += `<div class="wall" style="width:${cellSize + 1}px; height:${cellSize + 1}px; left:${x * cellSize}px; top:${y * cellSize}px;"></div>`;
+        }
+    }
+    mazeContainer.innerHTML = h;
+    const g = document.createElement('div');
+    g.id = 'goal';
+    g.textContent = '🏁';
+    g.style.cssText = `width:${cellSize}px; height:${cellSize}px; font-size:${cellSize * 0.8}px; left:${goalPos.x * cellSize}px; top:${goalPos.y * cellSize}px;`;
+    mazeContainer.appendChild(g);
+    drawItems();
+    for (const p in allPlayers) {
+        const d = allPlayers[p];
+        if (d.x !== undefined && d.x !== null) updatePlayerPosition(p, d.x, d.y, d.avatar);
+    }
+}
+    function drawItems() { document.querySelectorAll('.item').forEach(e=>e.remove());for(const k in itemsOnMap){const i=itemsOnMap[k];const e=document.createElement('div');e.className='item';e.textContent='🎁';e.id='item-'+k;e.style.cssText=`width:${cellSize}px; height:${cellSize}px; font-size:${cellSize*0.8}px; left:${i.x*cellSize}px; top:${i.y*cellSize}px;`;mazeContainer.appendChild(e);} }
+    function updateInventoryUI(inv=[]) { inventoryContainer.innerHTML='';for(let i=0;i<5;i++){const s=document.createElement('div');s.className='inventory-slot';if(inv[i]){s.textContent=ITEM_TYPES[inv[i]].emoji;s.dataset.itemType=inv[i];s.addEventListener('click',handleItemUse);}inventoryContainer.appendChild(s);}}
+    function updateHeaderUI(players) { gameHeader.innerHTML='';const pids=Object.keys(players).sort();pids.forEach(pid=>{const p=players[pid];const s=document.createElement('div');s.className='player-status';s.classList.toggle('dead',p.isDead);s.innerHTML=`<span class="avatar">${p.avatar}</span> <span class="nickname">${p.nickname}</span>`;gameHeader.appendChild(s);}); }
+    function updatePlayerPosition(pid, x, y, avatar, effects = {}) {
+        let el=document.getElementById('player-'+pid);if(!el){el=document.createElement('div');el.id='player-'+pid;el.className=pid===myPlayerId?'player-avatar':'opponent-player';el.style.position = 'absolute'; mazeContainer.appendChild(el);}
+        if(avatar.startsWith('http')){el.innerHTML=`<img src="${avatar}" style="width:100%; height:100%; object-fit:contain; border-radius:50%;">`;}else{el.textContent=avatar;}
+        el.style.width = `${cellSize * 0.9}px`;
+        el.style.height = `${cellSize * 0.9}px`;
+        el.style.fontSize = `${cellSize * 0.7}px`;
+        el.style.left = `${x * cellSize + (cellSize * 0.05)}px`;
+        el.style.top = `${y * cellSize + (cellSize * 0.05)}px`;
+        el.classList.toggle('dead',!!effects.isDead);el.classList.toggle('ghost-pass',!!effects.hasGhostPass);el.classList.toggle('slowed',!!effects.isSlowed);
+    }
+    function updateGhostPosition(g){if(g.element){g.element.style.width=`${cellSize}px`; g.element.style.height=`${cellSize}px`; g.element.style.fontSize=`${cellSize*0.8}px`; g.element.style.left=`${g.x*cellSize}px`; g.element.style.top=`${g.y*cellSize}px`;}}
+    const updateDarkness=(x,y)=>{darknessOverlay.style.background=`radial-gradient(circle at ${x}px ${y}px, transparent 100px, black 150px)`;};
+   ['up','down','left','right'].forEach(direction => {
+        const button = document.getElementById(direction);
+        const start = (e) => { e.preventDefault(); keysPressed[direction] = true; };
+        const end = (e) => { e.preventDefault(); keysPressed[direction] = false; };
+        button.addEventListener('mousedown', start);
+        button.addEventListener('touchstart', start, { passive: false });
+        button.addEventListener('mouseup', end);
+        button.addEventListener('mouseleave', end);
+        button.addEventListener('touchend', end);
+    });
+    window.addEventListener('keydown', e => {
+        switch (e.key) {
+            case 'ArrowUp': keysPressed.up = true; break;
+            case 'ArrowDown': keysPressed.down = true; break;
+            case 'ArrowLeft': keysPressed.left = true; break;
+            case 'ArrowRight': keysPressed.right = true; break;
+        }
+    });
+    window.addEventListener('keyup', e => {
+        switch (e.key) {
+            case 'ArrowUp': keysPressed.up = false; break;
+            case 'ArrowDown': keysPressed.down = false; break;
+            case 'ArrowLeft': keysPressed.left = false; break;
+            case 'ArrowRight': keysPressed.right = false; break;
+        }
+    });
+});
+</script>
+</body>
+</html>

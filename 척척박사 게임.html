@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<!-- saved from url=(0233)https://firebasestorage.googleapis.com/v0/b/youtubu-c770d.firebasestorage.app/o/files%2F%EC%B2%99%EC%B2%99%EB%B0%95%EC%8A%A4_1759461917240_%EC%B2%99%EC%B2%99%EB%B0%95%EC%82%AC.html?alt=media&token=429bfc1d-b128-41e3-ac24-ea14049f7118 -->
+<html lang="ko"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>척척박사 게임</title>
+    <style>
+        /* CSS는 이전과 동일합니다. */
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&display=swap');
+        :root { --bg-color: #f0f8ff; --primary-color: #4a90e2; --card-bg-color: #ffffff; --correct-color: #28a745; --incorrect-color: #dc3545; --font-color: #333333; --border-radius: 15px; --shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        body { font-family: 'Noto Sans KR', sans-serif; background-color: var(--bg-color); color: var(--font-color); display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 10px; box-sizing: border-box; -webkit-user-select: none; user-select: none; overscroll-behavior-y: contain; }
+        .game-screen { display: none; }
+        .game-screen.active { display: block; }
+        #game-container { width: 100%; max-width: 600px; padding: 20px; box-sizing: border-box; text-align: center; }
+        h1 { font-size: 2.5em; color: var(--primary-color); margin: 10px 0 20px 0; }
+        h2 { font-size: 2em; color: var(--primary-color); margin: 10px 0 30px 0; }
+        #start-screen .menu-button { display: block; width: 80%; max-width: 300px; margin: 20px auto; padding: 20px; font-size: 1.5em; font-weight: bold; color: white; background-color: var(--primary-color); border: none; border-radius: 30px; cursor: pointer; transition: transform 0.2s; }
+        #start-screen .menu-button:hover { transform: scale(1.05); }
+        #status-bar { display: flex; justify-content: space-around; flex-wrap: wrap; gap: 10px; margin-top: 10px; font-size: 1.1em; font-weight: bold; }
+        .status-box { background-color: rgba(255, 255, 255, 0.7); padding: 10px 15px; border-radius: 20px; }
+        .feedback { margin-top: 20px; font-size: 1.5em; font-weight: bold; height: 40px; }
+        .feedback-correct { color: var(--correct-color); }
+        .feedback-incorrect { color: var(--incorrect-color); }
+        .back-button { position: absolute; top: 20px; left: 20px; font-size: 1.5em; background: none; border: none; cursor: pointer; }
+        #draggable-item-wrapper { height: 180px; display: flex; justify-content: center; align-items: center; margin-bottom: 20px; }
+        .draggable-item { width: 140px; height: 140px; background-color: var(--card-bg-color); border-radius: var(--border-radius); box-shadow: var(--shadow); display: flex; flex-direction: column; justify-content: center; align-items: center; cursor: grab; }
+        .draggable-item.dragging { opacity: 0.5; }
+        .ghost-item { position: absolute; width: 140px; height: 140px; background-color: var(--card-bg-color); border-radius: var(--border-radius); box-shadow: 0 8px 25px rgba(0,0,0,0.2); pointer-events: none; z-index: 100; transform: scale(1.05); }
+        .item-emoji { font-size: 3.5em; }
+        .item-name { font-size: 1.1em; font-weight: bold; margin-top: 10px; }
+        #drop-zones { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+        .drop-zone { flex-grow: 1; min-width: 120px; padding: 20px 10px; border: 3px dashed var(--primary-color); border-radius: var(--border-radius); background-color: rgba(255, 255, 255, 0.5); transition: background-color 0.2s, transform 0.2s; }
+        .drop-zone.drag-over { background-color: #dcfce7; transform: translateY(-5px); }
+        .zone-name { font-size: 1.2em; font-weight: bold; }
+        #odd-one-out-options { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .odd-option { background-color: var(--card-bg-color); border-radius: var(--border-radius); box-shadow: var(--shadow); padding: 20px; cursor: pointer; transition: transform 0.2s; }
+        .odd-option:hover { transform: scale(1.05); }
+        #sticker-book-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 15px; max-height: 70vh; overflow-y: auto; padding: 10px; background: rgba(255,255,255,0.7); border-radius: var(--border-radius); }
+        .sticker-item { background: var(--card-bg-color); border-radius: var(--border-radius); padding: 10px; box-shadow: var(--shadow); }
+        .sticker-item.locked { background: #e0e0e0; color: #a0a0a0; }
+        .sticker-item .item-emoji { font-size: 2.5em; }
+        .sticker-item .item-name { font-weight: bold; font-size: 0.9em; }
+        #sticker-notification { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background-color: var(--correct-color); color: white; padding: 15px 30px; border-radius: 30px; font-size: 1.2em; font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.2); opacity: 0; visibility: hidden; transition: opacity 0.5s, top 0.5s; z-index: 200; }
+        #sticker-notification.show { opacity: 1; visibility: visible; top: 40px; }
+    </style>
+<script src="chrome-extension://ecmeogcbcoalojmkfkmancobmiahaigg/content_script/content_script.js"></script></head>
+<body>
+    <div id="game-container">
+        <div id="start-screen" class="game-screen active"><h1>척척박사 분류하기</h1><button id="start-game-btn" class="menu-button">🚀 게임 시작</button><button id="sticker-book-btn" class="menu-button">🌟 스티커 도감</button></div>
+        <div id="sort-game-screen" class="game-screen"><div id="header"><div id="status-bar"><div class="status-box">레벨: <span id="level">1</span></div><div class="status-box">점수: <span id="score">0</span></div><div class="status-box">성공: <span id="progress">0 / 10</span></div></div></div><div id="draggable-item-wrapper"></div><div id="drop-zones"></div><div id="feedback-sort" class="feedback"></div></div>
+        <div id="odd-one-out-screen" class="game-screen"><h2>다른 친구를 찾아봐!</h2><div id="odd-one-out-options"></div><div id="feedback-odd" class="feedback"></div></div>
+        <div id="sticker-book-screen" class="game-screen"><button id="sticker-book-back-btn" class="back-button">⬅️</button><h2>나의 스티커 도감</h2><div id="sticker-book-grid"></div></div>
+        <div id="game-over-screen" class="game-screen"><h2>🎉 모든 레벨 클리어! 🎉</h2><p>최종 점수: <span id="final-score">0</span>점</p><button id="restart-btn">처음부터 다시하기</button></div>
+    </div>
+    <div id="sticker-notification">🌟 새로운 스티커 획득!</div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // --- 데이터 정의 (이전과 동일) ---
+        const allItems = [
+            { name: '사과', emoji: '🍎', category: '과일' }, { name: '바나나', emoji: '🍌', category: '과일' }, { name: '딸기', emoji: '🍓', category: '과일' }, { name: '수박', emoji: '🍉', category: '과일' }, { name: '포도', emoji: '🍇', category: '과일' },
+            { name: '사자', emoji: '🦁', category: '동물' }, { name: '호랑이', emoji: '🐯', category: '동물' }, { name: '코끼리', emoji: '🐘', category: '동물' }, { name: '원숭이', emoji: '🐒', category: '동물' }, { name: '강아지', emoji: '🐶', category: '동물' },
+            { name: '책상', emoji: '🪑', category: '사물' }, { name: '시계', emoji: '⏰', category: '사물' }, { name: '연필', emoji: '✏️', category: '사물' }, { name: '가방', emoji: '🎒', category: '사물' },
+            { name: '자동차', emoji: '🚗', category: '탈것' }, { name: '비행기', emoji: '✈️', category: '탈것' }, { name: '기차', emoji: '🚂', category: '탈것' }, { name: '배', emoji: '🚢', category: '탈것' },
+            { name: '당근', emoji: '🥕', category: '채소' }, { name: '오이', emoji: '🥒', category: '채소' }, { name: '토마토', emoji: '🍅', category: '채소' }, { name: '브로콜리', emoji: '🥦', category: '채소' }
+        ];
+        const levelConfig = [
+            { level: 1, categories: ['과일', '동물'], itemsToPass: 10 }, { level: 2, categories: ['과일', '동물', '사물'], itemsToPass: 15 }, { level: 3, categories: ['사물', '탈것', '채소'], itemsToPass: 15 },
+        ];
+        
+        // --- 게임 상태 변수 ---
+        let currentLevel, score, correctInLevel, levelItems, currentItemIndex;
+        let unlockedStickers = JSON.parse(localStorage.getItem('unlockedStickers')) || [];
+
+        // --- 사운드 & 새로고침 방지 ---
+        const correctSound = new Audio("data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4LjQ1LjEwMAAAAAAAAAAAAAAA//tAwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWWimRlVhxMAAAGQ0gAABY5gAABpAAAACgAAAA0AAAAgAAAAARTimRlVhxMAAAGQ0gAABY5gAABpAAAACgAAAA0AAAAgAAAAARUDHwABBuLBWBgAABAAWAAACggAAAsKAABf9v/7T9CAMAADXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV//tA0JYAAAhhEwAAYUmAAABY9BUMCAAAAAD/88+lJgABgAAAG9v+2h5DMP//8AjGkcjLAAAAVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/7QNCWAAAhhgQAD+lJgAABY9BUMCAAAAAD/88+lJgABgAAAG9v+2h5DMP//8AjGkcjLAAAAVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/7QNCWAAAhhgQAD+lJgAABY9BUMCAAAAAD/88+lJgABgAAAG9v+2h5DMP//8AjGkcjLAAAAVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/7QNCWAAAhhgQAD+lJgAABY9BUMCAAAAAD/88+lJgABgAAAG9v+2h5DMP//8AjGkcjLAAAAVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/7QNCWAAAhhgQAD+lJgAABY9BUMCAAAAAD/88+lJgABgAAAG9v+2h5DMP//8AjGkcjLAAAAVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/7QNCWAAAAAABVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/7QNCWAAAAAABVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/7QNCWAAAAAABVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/7QNCWAAAAAABVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/7QNCWAAAAAABVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/7QNCWAAAAAABVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/7QNCWAAAAAABVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/7QNCWAAAAAABVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/7QNCWAAAAAABVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/7QNCWAAAAAABVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/AOAEAAAAAAAoAAAAAAAAAAAAAAA");
+        window.addEventListener('beforeunload', (e) => { e.preventDefault(); e.returnValue = ''; });
+
+        // --- DOM 요소들을 여기서 한번에 선언합니다 ---
+        const screens = document.querySelectorAll('.game-screen');
+        const startGameBtn = document.getElementById('start-game-btn');
+        const stickerBookBtn = document.getElementById('sticker-book-btn');
+        const stickerBookBackBtn = document.getElementById('sticker-book-back-btn');
+        const restartBtn = document.getElementById('restart-btn');
+
+        // --- 핵심 함수들 (이전과 동일) ---
+        function showScreen(screenId) { screens.forEach(screen => screen.classList.toggle('active', screen.id === screenId)); }
+        function unlockSticker(itemName) { if (!unlockedStickers.includes(itemName)) { unlockedStickers.push(itemName); localStorage.setItem('unlockedStickers', JSON.stringify(unlockedStickers)); const notification = document.getElementById('sticker-notification'); notification.classList.add('show'); setTimeout(() => notification.classList.remove('show'), 2000); } }
+        function displayStickerBook() { const grid = document.getElementById('sticker-book-grid'); grid.innerHTML = ''; allItems.forEach(item => { const isUnlocked = unlockedStickers.includes(item.name); const stickerDiv = document.createElement('div'); stickerDiv.className = `sticker-item ${isUnlocked ? '' : 'locked'}`; stickerDiv.innerHTML = `<div class="item-emoji">${isUnlocked ? item.emoji : '❓'}</div><div class="item-name">${isUnlocked ? item.name : '????'}</div>`; grid.appendChild(stickerDiv); }); showScreen('sticker-book-screen'); }
+        function initializeGame() { currentLevel = 1; score = 0; startSortLevel(); }
+        function startSortLevel() { showScreen('sort-game-screen'); correctInLevel = 0; currentItemIndex = 0; const config = levelConfig[currentLevel - 1]; const filtered = allItems.filter(item => config.categories.includes(item.category)); levelItems = [...filtered].sort(() => Math.random() - 0.5); updateStatusDisplay(); createDropZones(config.categories); loadNextSortItem(); }
+        function loadNextSortItem() {
+            if (currentItemIndex >= levelItems.length) { currentItemIndex = 0; levelItems.sort(() => Math.random() - 0.5); }
+            const feedback = document.getElementById('feedback-sort');
+            feedback.textContent = ''; feedback.className = 'feedback';
+            const item = levelItems[currentItemIndex];
+            const draggableItemWrapper = document.getElementById('draggable-item-wrapper');
+            draggableItemWrapper.innerHTML = `<div class="draggable-item"><span class="item-emoji">${item.emoji}</span><span class="item-name">${item.name}</span></div>`;
+            const draggableItem = draggableItemWrapper.querySelector('.draggable-item');
+            draggableItem.draggable = true;
+            addDragEvents(draggableItem);
+            addTouchEvents(draggableItem);
+        }
+        function handleSortAnswer(isCorrect) {
+            const item = levelItems[currentItemIndex];
+            if (isCorrect) {
+                correctSound.currentTime = 0; correctSound.play().catch(e => console.log("Sound play failed:", e));
+                score += 10; correctInLevel++; unlockSticker(item.name);
+                document.getElementById('feedback-sort').textContent = '정답! 🎉';
+                document.getElementById('feedback-sort').className = 'feedback feedback-correct';
+                updateStatusDisplay();
+                setTimeout(() => {
+                    const config = levelConfig[currentLevel - 1];
+                    if (correctInLevel >= config.itemsToPass) {
+                        currentLevel++;
+                        if (currentLevel > levelConfig.length) { endGame(); } else { startOddOneOutGame(); }
+                    } else { currentItemIndex++; loadNextSortItem(); }
+                }, 1000);
+            } else {
+                document.getElementById('feedback-sort').textContent = '다시 해볼까요? 🤔';
+                document.getElementById('feedback-sort').className = 'feedback feedback-incorrect';
+            }
+        }
+        function startOddOneOutGame() {
+            showScreen('odd-one-out-screen');
+            const feedback = document.getElementById('feedback-odd'); feedback.textContent = '';
+            const categories = [...new Set(allItems.map(i => i.category))];
+            const correctCatIndex = Math.floor(Math.random() * categories.length);
+            const correctCategory = categories[correctCatIndex];
+            let wrongCatIndex;
+            do { wrongCatIndex = Math.floor(Math.random() * categories.length); } while (wrongCatIndex === correctCatIndex);
+            const wrongCategory = categories[wrongCatIndex];
+            const correctItemsPool = allItems.filter(i => i.category === correctCategory).sort(() => 0.5 - Math.random());
+            const wrongItem = allItems.filter(i => i.category === wrongCategory).sort(() => 0.5 - Math.random())[0];
+            const options = [...correctItemsPool.slice(0, 3), wrongItem].sort(() => 0.5 - Math.random());
+            const optionsContainer = document.getElementById('odd-one-out-options');
+            optionsContainer.innerHTML = '';
+            options.forEach(option => {
+                const optionDiv = document.createElement('div');
+                optionDiv.className = 'odd-option';
+                optionDiv.innerHTML = `<span class="item-emoji">${option.emoji}</span><span class="item-name">${option.name}</span>`;
+                optionDiv.onclick = () => {
+                    if (option.category === wrongCategory) {
+                        correctSound.currentTime = 0; correctSound.play().catch(e => console.log("Sound play failed:", e));
+                        score += 20; unlockSticker(option.name);
+                        feedback.textContent = '찾았다! 정답이에요! 👍';
+                        feedback.className = 'feedback feedback-correct';
+                        setTimeout(startSortLevel, 1500);
+                    } else {
+                        feedback.textContent = '음.. 다른 친구가 있을텐데?';
+                        feedback.className = 'feedback feedback-incorrect';
+                    }
+                };
+                optionsContainer.appendChild(optionDiv);
+            });
+        }
+        function addDragEvents(item) { item.addEventListener('dragstart', () => item.classList.add('dragging')); item.addEventListener('dragend', () => item.classList.remove('dragging')); }
+        function addTouchEvents(item) {
+            let ghost, startX, startY, offsetX, offsetY, lastDropZone;
+            item.addEventListener('touchstart', e => {
+                e.preventDefault();
+                const touch = e.touches[0]; startX = touch.clientX; startY = touch.clientY;
+                const rect = item.getBoundingClientRect(); offsetX = startX - rect.left; offsetY = startY - rect.top;
+                ghost = item.cloneNode(true); ghost.classList.add('ghost-item'); document.body.appendChild(ghost);
+                ghost.style.left = `${startX - offsetX}px`; ghost.style.top = `${startY - offsetY}px`;
+                item.style.opacity = '0.5';
+            }, { passive: false });
+            item.addEventListener('touchmove', e => {
+                e.preventDefault();
+                if (!ghost) return;
+                const touch = e.touches[0]; const newX = touch.clientX; const newY = touch.clientY;
+                ghost.style.left = `${newX - offsetX}px`; ghost.style.top = `${newY - offsetY}px`;
+                if (lastDropZone) lastDropZone.classList.remove('drag-over');
+                ghost.style.visibility = 'hidden';
+                const elementUnder = document.elementFromPoint(newX, newY);
+                ghost.style.visibility = 'visible';
+                if (elementUnder) { const dropZone = elementUnder.closest('.drop-zone'); if (dropZone) { dropZone.classList.add('drag-over'); lastDropZone = dropZone; } }
+            }, { passive: false });
+            item.addEventListener('touchend', e => {
+                item.style.opacity = '1';
+                if (!ghost) return;
+                if (lastDropZone) {
+                    lastDropZone.classList.remove('drag-over');
+                    const currentItem = levelItems[currentItemIndex];
+                    handleSortAnswer(currentItem.category === lastDropZone.dataset.category);
+                }
+                document.body.removeChild(ghost); ghost = null; lastDropZone = null;
+            });
+        }
+        function addDropZoneEvents() { document.querySelectorAll('.drop-zone').forEach(zone => { zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); }); zone.addEventListener('dragleave', () => zone.classList.remove('drag-over')); zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('drag-over'); const currentItem = levelItems[currentItemIndex]; handleSortAnswer(currentItem.category === zone.dataset.category); }); }); }
+        function endGame() { document.getElementById('final-score').textContent = score; showScreen('game-over-screen'); }
+        function updateStatusDisplay() { document.getElementById('level').textContent = currentLevel; document.getElementById('score').textContent = score; const config = levelConfig[currentLevel - 1]; if(config) document.getElementById('progress').textContent = `${correctInLevel} / ${config.itemsToPass}`; }
+        function createDropZones(categories) { const container = document.getElementById('drop-zones'); container.innerHTML = ''; categories.forEach(category => { const zone = document.createElement('div'); zone.className = 'drop-zone'; zone.dataset.category = category; const emojiMap = {'과일':'🍎','동물':'🦁','사물':'✏️','탈것':'🚗','채소':'🥕'}; zone.innerHTML = `<span class="zone-name">${category} ${emojiMap[category] || ''}</span>`; container.appendChild(zone); }); addDropZoneEvents(); }
+        
+        // --- 버튼 이벤트 리스너 (중복 선언 제거) ---
+        startGameBtn.addEventListener('click', initializeGame);
+        stickerBookBtn.addEventListener('click', displayStickerBook);
+        stickerBookBackBtn.addEventListener('click', () => showScreen('start-screen'));
+        restartBtn.addEventListener('click', () => showScreen('start-screen'));
+    });
+    </script>
+
+<iframe id="itemscout-extension-gtag" src="./척척박사 분류하기 v4.1_files/saved_resource.html" scrolling="no" style="
+      width: 1px;
+      height: 1px;
+      border: none;
+      margin: 0;
+      position: absolute;
+      top:0;
+      left:0;
+    "></iframe><div id="its-image-search-container"></div><div id="its-image-crop-container"></div></body></html>

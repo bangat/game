@@ -1,0 +1,1630 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>버블팡 대전</title>
+    <link rel="manifest" href="manifest.json">
+    <link href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff" as="font" type="font/woff" crossorigin>
+    
+    <script src="아바타.js"></script>
+    <script src="레벨업.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #FFFBEB;
+            --primary-color: #FF6B6B;
+            --secondary-color: #4ECDC4;
+            --accent-color: #FFD93D;
+            --text-color-dark: #574141;
+            --panel-bg: #FFFFFF;
+            --panel-border: #F0EAD2;
+            --panel-shadow: #E4DCCF;
+            --font-main: 'GmarketSans', sans-serif;
+            --danger-color: #FF4444;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%; height: 100%; overflow: hidden;
+            font-family: var(--font-main);
+            background-color: var(--bg-color);
+            color: var(--text-color-dark);
+            display: flex; flex-direction: column;
+            align-items: center;
+            user-select: none; -webkit-user-select: none;
+            touch-action: none;
+        }
+
+        #game-wrapper {
+            width: 100%; 
+            flex-grow: 1;
+            max-width: 500px;
+            display: flex; flex-direction: column;
+            position: relative;
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+
+        /* [수정] 헤더: 상대방 미니보드 표시 영역 */
+        #game-header {
+            flex-shrink: 0;
+            padding: 5px;
+            background: #263238; /* 게임 배경과 어울리는 어두운 톤 */
+            border-bottom: 3px solid #5D4037;
+            display: flex; 
+            justify-content: center; /* 중앙 정렬 */
+            gap: 8px;
+            z-index: 10;
+            height: 140px; /* 미니보드 높이 확보 */
+            align-items: center;
+        }
+
+        .opponent-card {
+            width: 80px; /* 고정 너비 (컴팩트) */
+            height: 100%;
+            background: rgba(0, 0, 0, 0.3);
+            border: 2px solid #555;
+            border-radius: 8px;
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: flex-start;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .opponent-card.dead { 
+            border-color: #555; 
+            opacity: 0.5; 
+        }
+        .opponent-card.dead canvas {
+            filter: grayscale(100%);
+        }
+        /* 죽었을 때 표시할 텍스트 */
+        .opponent-card.dead::after {
+            content: "GAME OVER";
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            color: #FF4444;
+            font-weight: 900;
+            font-size: 0.8em;
+            text-shadow: 1px 1px 0 #000;
+            white-space: nowrap;
+        }
+
+        .op-canvas-wrapper {
+            width: 100%;
+            flex-grow: 1; /* 남은 공간 채움 */
+            background-color: #1b2327; /* 보드 배경색 */
+            position: relative;
+        }
+        
+        .op-mini-canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        .op-name { 
+            width: 100%;
+            text-align: center;
+            font-size: 0.75em; 
+            font-weight: 700; 
+            color: #FFF;
+            background-color: #444;
+            padding: 2px 0;
+            white-space: nowrap; 
+            overflow: hidden; 
+            text-overflow: ellipsis;
+            border-top: 1px solid #555;
+            flex-shrink: 0; /* 크기 고정 */
+        }
+
+        /* 피버 게이지 */
+        #fever-bar-container {
+            flex-shrink: 0;
+            height: 20px;
+            background: #333;
+            margin: 5px 10px;
+            border-radius: 10px;
+            border: 2px solid #555;
+            position: relative;
+            overflow: hidden;
+            box-shadow: inset 0 0 5px rgba(0,0,0,0.5);
+        }
+        #fever-fill {
+            height: 100%; width: 0%;
+            background: linear-gradient(90deg, #F1C40F, #E67E22);
+            transition: width 0.3s ease-out;
+            box-shadow: 0 0 10px #F1C40F;
+        }
+        #fever-text {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: white; font-size: 0.7em; font-weight: 900; text-shadow: 1px 1px 2px black;
+            z-index: 2;
+        }
+
+        /* 게임 보드 */
+        #board-frame {
+            flex-grow: 1;
+            margin: 0 10px 10px 10px;
+            border: 6px solid #5D4037;
+            border-radius: 16px;
+            box-shadow: inset 3px 3px 10px rgba(0,0,0,0.5);
+            position: relative;
+            background-color: #263238;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        canvas { display: block; width: 100%; height: 100%; }
+
+        #danger-zone {
+            position: absolute;
+            bottom: 0; left: 0; width: 100%; height: 120px;
+            border-top: 2px dashed rgba(255, 0, 0, 0.5);
+            pointer-events: none;
+            z-index: 1;
+        }
+        #danger-zone::after {
+            content: "DANGER LINE";
+            color: rgba(255,0,0,0.5);
+            font-size: 10px;
+            position: absolute;
+            top: -15px;
+            right: 5px;
+        }
+
+        /* UI 오버레이 */
+        #ui-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 20;
+        }
+        .combo-text {
+            font-size: 3.5em; font-weight: 900; color: #FFD700;
+            text-shadow: 2px 2px 0 #000, -1px -1px 0 #000, 0 0 20px rgba(255, 215, 0, 0.8);
+            animation: pop-in 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            opacity: 0; transform: scale(0);
+        }
+        .combo-text.show { opacity: 1; transform: scale(1); }
+
+        /* 모달 공통 */
+        .overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7); backdrop-filter: blur(5px);
+            display: none; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 100;
+        }
+        .overlay.active { display: flex; }
+        
+        .modal-content {
+            background: var(--panel-bg);
+            border-radius: 24px;
+            width: 90%; max-width: 400px;
+            text-align: center;
+            border: 4px solid var(--text-color-dark);
+            box-shadow: 8px 8px 0 var(--text-color-dark);
+            overflow: hidden;
+        }
+        .modal-header {
+            background: var(--primary-color); color: white;
+            padding: 15px; border-bottom: 4px solid #C04A4A;
+            display: flex; align-items: center; justify-content: center; position: relative;
+        }
+        .modal-header h2 { margin: 0; font-size: 1.5em; text-shadow: 1px 1px rgba(0,0,0,0.2); }
+        .modal-body { padding: 20px; }
+        .modal-footer {
+            padding: 20px; background: #FFFAE0; border-top: 3px solid var(--panel-border);
+            display: flex; gap: 10px; justify-content: center;
+        }
+        
+        .menu-btn { 
+            width: 100%; padding: 12px; font-size: 1.1em; font-weight: 900; 
+            font-family: var(--font-main);
+            border-radius: 12px; border: none; cursor: pointer; 
+            transition: all 0.1s ease-out;
+            border-bottom: 4px solid; margin: 0; flex: 1;
+        }
+        .menu-btn:active { transform: translateY(3px); border-bottom-width: 1px; }
+        .menu-btn.primary { background-color: var(--primary-color); color: white; border-bottom-color: #C04A4A; }
+        .menu-btn.secondary { background-color: var(--secondary-color); color: white; border-bottom-color: #379A93; }
+
+        /* 카운트다운 */
+        #countdown-number { font-size: 7em; font-weight: 900; color: #FFF; text-shadow: 0 0 20px rgba(255,255,255,0.8); animation: pulse 1s infinite; }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
+
+        /* 결과 리스트 (애니팡 스타일) */
+        #rematch-status-list {
+            text-align: left; margin-top: 10px; padding: 10px;
+            background-color: #FFFAE0; border-radius: 10px;
+            border: 2px solid var(--panel-border);
+            font-size: 1.0em; line-height: 1.8;
+            display: flex; flex-direction: column; gap: 8px;
+        }
+        .rematch-player-row { display: flex; justify-content: space-between; align-items: center; }
+        .rematch-player-row.my-row .player-name { color: var(--primary-color); text-shadow: 0 0 5px rgba(255, 107, 107, 0.5); }
+        .player-rank { color: var(--primary-color); min-width: 25px; font-weight: 900; }
+        .player-name { font-weight: 700; }
+        .status-text { font-weight: 900; color: #ccc; font-size: 1.1em; min-width: 50px; text-align: right; }
+        .status-text.ready { color: #28a745; text-shadow: 0 0 5px rgba(40, 167, 69, 0.5); }
+
+        /* 채팅 (애니팡 스타일) */
+        #rematch-chat-messages {
+            height: 120px; overflow-y: auto;
+            background: #FFF; border: 2px solid var(--panel-border);
+            border-radius: 10px; padding: 10px; margin-top: 10px;
+            text-align: left; font-size: 0.9em;
+        }
+        .chat-msg { margin-bottom: 4px; word-wrap: break-word; }
+        .chat-msg strong { margin-right: 5px; color: var(--text-color-dark); }
+        .chat-msg.my-message strong { color: var(--primary-color); }
+        .system-message { color: #888; font-style: italic; text-align: center; margin: 5px 0; font-size: 0.8em; }
+
+        #toast-container { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 200; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
+        .toast { background: rgba(0,0,0,0.85); color: white; padding: 10px 20px; border-radius: 20px; font-size: 0.95em; animation: fade-up 2s forwards; font-weight: 700; }
+        @keyframes fade-up { 0% { opacity: 0; transform: translateY(10px); } 10% { opacity: 1; transform: translateY(0); } 90% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-10px); } }
+
+        .spinner {
+            width: 50px; height: 50px; border: 6px solid rgba(255,255,255,0.3);
+            border-top-color: var(--accent-color); border-radius: 50%;
+            animation: spin 1s linear infinite; margin: 0 auto 20px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } 100% { transform: rotate(360deg); } }
+
+        .rematch-mic {
+            background: none; border: 1px solid rgba(255,255,255,0.5); 
+            color: white; border-radius: 50%; width: 36px; height: 36px;
+            cursor: pointer; font-size: 1.2em; margin-left: 10px;
+            position: absolute; right: 15px;
+        }
+
+        /* 공격 이펙트용 CSS */
+        #attack-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 50; overflow: hidden;
+        }
+        .flying-bubble {
+            position: absolute; width: 30px; height: 30px;
+            border-radius: 50%; background-color: var(--secondary-color);
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
+            animation: fly 0.8s ease-in forwards;
+        }
+        @keyframes fly {
+            to { transform: translate(var(--tx), var(--ty)); opacity: 0; }
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="game-wrapper">
+        <div id="game-header">
+            </div>
+
+        <div id="fever-bar-container">
+            <div id="fever-fill"></div>
+            <div id="fever-text">FEVER</div>
+        </div>
+
+        <div id="board-frame">
+            <canvas id="game-canvas"></canvas>
+            <div id="danger-zone"></div>
+            <div id="ui-overlay">
+                <div class="combo-text" id="combo-text"></div>
+            </div>
+            <div id="attack-overlay"></div> </div>
+    </div>
+
+    <div id="loading-overlay" class="overlay active">
+        <div class="spinner"></div>
+        <h2 style="color:white;">접속 중...</h2>
+    </div>
+
+    <div id="ready-overlay" class="overlay">
+        <div class="modal-content">
+            <div class="modal-header"><h2>게임 대기실</h2></div>
+            <div class="modal-body">
+                <p id="ready-msg">플레이어를 기다리고 있습니다...</p>
+                <div id="player-count-display" style="font-weight:900; color:#555; font-size:1.2em; margin-top:10px;"></div>
+            </div>
+            <div class="modal-footer">
+                <button id="exit-btn-ready" class="menu-btn secondary">나가기</button>
+                <button id="start-btn" class="menu-btn primary" style="display:none;">게임 시작</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="countdown-overlay" class="overlay">
+        <div id="countdown-number">3</div>
+    </div>
+
+    <div id="gameover-overlay" class="overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="result-title">결과</h2>
+                <button id="rematch-tts-btn" class="rematch-mic">🔊</button>
+            </div>
+            <div class="modal-body">
+                <div id="rematch-status-list"></div>
+                <div id="rematch-chat-messages"></div>
+                
+                <div style="display: flex; gap: 5px; margin-top: 10px;">
+                    <input type="text" id="rematch-chat-input" placeholder="채팅 입력..." style="flex:1; padding:8px; border-radius:8px; border:1px solid #ccc;">
+                    <button id="rematch-chat-send-btn" class="menu-btn primary" style="width: 60px; padding: 8px;">전송</button>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="rematch-btn" class="menu-btn primary">다시하기</button>
+                <button id="lobby-btn" class="menu-btn secondary">대기실로</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-container"></div>
+
+    <audio id="bgm" src="./봄버맨사운드/버블팡배경음악.mp3" loop></audio>
+    <audio id="sfx-shoot" src="./봄버맨사운드/물풍선놓기.mp3"></audio>
+    <audio id="sfx-pop" src="./봄버맨사운드/물풍선터짐.mp3"></audio>
+    <audio id="sfx-win" src="./봄버맨사운드/win.mp3"></audio>
+    <audio id="sfx-lose" src="./봄버맨사운드/패배.mp3"></audio>
+    <audio id="sfx-bounce" src="./봄버맨사운드/버튼클릭.mp3"></audio>
+    <audio id="sfx-bomb" src="./봄버맨사운드/폭탄효과음.mp3"></audio>
+    <audio id="sfx-modal" src="./봄버맨사운드/버블팡종료모달.mp3"></audio>
+
+    <script>
+        // --- 1. 유틸리티 함수 ---
+        function escapeHTML(str) {
+            if (typeof str !== 'string') return '';
+            const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+            return str.replace(/[&<>"']/g, m => map[m]);
+        }
+
+        // --- 2. Firebase 설정 ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
+            authDomain: "goodluck-7c14b.firebaseapp.com",
+            databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com",
+            projectId: "goodluck-7c14b",
+            storageBucket: "goodluck-7c14b.appspot.com",
+            messagingSenderId: "858281658455",
+            appId: "1:858281658455:web:9131280a459be983933b12"
+        };
+        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+        const auth = firebase.auth();
+
+        // --- 3. 게임 상수 및 변수 ---
+        const BUBBLE_STYLES = [
+            { base: '#E74C3C', light: '#FF7F7F' }, // Red
+            { base: '#3498DB', light: '#85C1E9' }, // Blue
+            { base: '#F1C40F', light: '#F9E79F' }, // Yellow
+            { base: '#2ECC71', light: '#82E0AA' }, // Green
+            { base: '#9B59B6', light: '#D7BDE2' }, // Purple
+            { base: '#95A5A6', light: '#BDC3C7' }, // Grey (Junk)
+            { base: '#333333', light: '#555555' }  // Bomb (Black)
+        ];
+        const JUNK_INDEX = 5;
+        const BOMB_INDEX = 6;
+
+        const GRID_COLS = 8;
+        const SHOOT_SPEED = 25; 
+        
+        const MAX_FEVER = 100;
+        const FEVER_PER_POP = 5;
+
+        let canvas, ctx;
+        let width, height, bubbleRadius;
+        let bubbles = [];
+        let particles = [];
+        let projectile = null;
+        
+        let nextBubbles = [];
+        
+        // 조준 관련
+        let isAiming = false;
+        let aimAngle = -Math.PI / 2; 
+        let cannonX, cannonY;
+
+        // Firebase 관련
+        let myId, myName, myAvatar;
+        let roomRef, playersRef;
+        let isHost = false;
+        let isPlaying = false;
+        let isDead = false;
+        let gameLoopId;
+        let pendingJunkLines = 0; 
+        
+        let currentRoomData = null;
+        let isExiting = false;
+        let gameOverFlag = false;
+        let feverGauge = 0;
+        let hasBomb = false; 
+        let currentCombo = 0;
+let countdownStarted = false; // [신규] 애니팡 3-2-1 카운트다운 중복 방지
+        // [시간 경과 낙하 타이머 관리]
+        let dropTimerId = null;
+        let gameStartTime = 0;
+
+        // [신규] 애니팡식 동기화 변수
+        let rematchPlayerList = null; 
+        let chatListenerRef = null; 
+        let allPlayersRef = null;
+        let statusRef = null;
+        let roomValueListener = null;
+        let rematchRef = null;
+        let amIReadyForRematch = false; // [수정] 다시하기 상태 토글용
+
+        const synthesis = window.speechSynthesis;
+        let isTTSOn = true;
+
+        // --- 4. 초기화 ---
+        document.addEventListener('DOMContentLoaded', () => {
+            canvas = document.getElementById('game-canvas');
+            ctx = canvas.getContext('2d');
+            
+            window.addEventListener('resize', resizeGame);
+            
+            canvas.addEventListener('pointerdown', startAim);
+            canvas.addEventListener('pointermove', moveAim);
+            canvas.addEventListener('pointerup', endAim);
+            canvas.addEventListener('pointercancel', endAim);
+
+            document.getElementById('start-btn').addEventListener('click', startGameByHost);
+            document.getElementById('exit-btn-ready').addEventListener('click', cleanupAndExit);
+            
+            document.getElementById('rematch-chat-send-btn').addEventListener('click', sendRematchChat);
+            document.getElementById('rematch-chat-input').addEventListener('keydown', (e) => {
+                if(e.key === 'Enter') sendRematchChat();
+            });
+            document.getElementById('rematch-tts-btn').addEventListener('click', toggleTTS);
+
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    myId = user.uid;
+                    myName = localStorage.getItem('userNickname') || 'Player';
+                    myAvatar = localStorage.getItem('userAvatar') || '😊';
+                    
+                    const params = new URLSearchParams(window.location.search);
+                    const roomId = params.get('roomId');
+                    
+                    if (roomId) joinRoom(roomId);
+                    else { alert("방 정보가 없습니다."); window.location.replace('대기실.html'); }
+                } else {
+                    window.location.replace('index.html');
+                }
+            });
+        });
+
+        function resizeGame() {
+            const frame = document.getElementById('board-frame');
+            width = canvas.width = frame.clientWidth;
+            height = canvas.height = frame.clientHeight;
+            bubbleRadius = width / (GRID_COLS * 2 + 1);
+            cannonX = width / 2;
+            cannonY = height - bubbleRadius - 10;
+            
+            const dangerY = height - 120;
+            document.getElementById('danger-zone').style.height = '120px';
+
+            if(bubbles.length > 0) recalcBubblePositions();
+        }
+
+        // --- 5. Firebase 로직 ---
+        function joinRoom(roomId) {
+            roomRef = db.ref(`rooms/${roomId}`);
+            playersRef = roomRef.child('players');
+            allPlayersRef = roomRef.child('players'); 
+            statusRef = roomRef.child('status');
+
+            playersRef.child(myId).update({
+                nickname: myName,
+                avatar: myAvatar,
+                isDead: false,
+                score: 0,
+                rematchRequests: null 
+            });
+            playersRef.child(myId).onDisconnect().remove();
+
+            // [수정] 기존 룸 리스너 제거 후 새로 등록
+            if (roomValueListener) roomRef.off('value', roomValueListener);
+
+            roomValueListener = (snapshot) => {
+                if (isExiting) return;
+                if (!snapshot.exists()) {
+                    if(!gameOverFlag) alert("방이 사라졌습니다.");
+                    cleanupAndExit();
+                    return;
+                }
+
+                currentRoomData = snapshot.val();
+                const players = currentRoomData.players || {};
+                
+                isHost = (currentRoomData.hostId === myId);
+                
+                // 대기실 UI
+                if (document.getElementById('ready-overlay').classList.contains('active')) {
+                    updateReadyUI(Object.values(players));
+                }
+                
+                // 실시간 미니보드 헤더 렌더링
+                renderOpponentHeader(players);
+
+                // [핵심 수정 1] '준비완료' 버튼이 풀리지 않는 버그 수정
+                // 상태 관리에 의해 gameOverFlag가 'false'로 바뀌기 *전에*
+                // UI를 먼저 갱신해야 'rematchRequests: null' 상태를 올바르게 반영할 수 있음.
+                if (gameOverFlag) {
+                    updateRematchStatusUI();
+                }
+                
+                // 상태 관리 (애니팡.html 로직과 동일하게 수정)
+                if (currentRoomData.status === 'playing' && !countdownStarted && !gameOverFlag) {
+                    // (3단계) 'playing' 상태 감지 -> 카운트다운 시작
+                    countdownStarted = true; // [신규] 카운트다운 플래그 ON
+                    startCountdown();
+                    
+                } else if (currentRoomData.status === 'waiting') {
+                    // (1단계) 'waiting' 감지
+                    
+                    // [수정] gameOverFlag 대신 모달이 'active'인지 확인
+                    if (document.getElementById('gameover-overlay').classList.contains('active')) {
+                        console.log("[Rematch] 'waiting' 상태 감지. 게임 재시작 준비...");
+                        
+                        // [수정] resetLocalGame() 대신 수동으로 처리
+                        document.getElementById('gameover-overlay').classList.remove('active');
+                        gameOverFlag = false; 
+                        countdownStarted = false; // [핵심 수정 2] 카운트다운 플래그 OFF (재시작 가능)
+                        
+                        document.getElementById('loading-overlay').classList.add('active');
+                        
+                        if (roomRef && myId) {
+                            roomRef.child('readyPlayers/' + myId).set(true);
+                        }
+                    }
+                    
+                    // (2단계) 'waiting' (로딩 중) 상태
+                    document.getElementById('loading-overlay').classList.add('active');
+                    
+                    const readyPlayers = currentRoomData.readyPlayers || {};
+                    const totalPlayers = Object.keys(currentRoomData.players).length;
+                    const readyCount = Object.keys(readyPlayers).length;
+
+                    // (3단계) 호스트가 'playing'으로 변경
+                    if (isHost && totalPlayers >= 2 && readyCount === totalPlayers) {
+                        roomRef.update({
+                            status: 'playing',
+                            gameStarted: Date.now(),
+                            readyPlayers: null
+                        });
+                    }
+                    
+                } else if (currentRoomData.status === 'lobby') {
+                    window.location.replace(`게임방.html?roomId=${roomId}`);
+                }
+
+                // [핵심 수정] 여기서 checkAttacks() 호출을 삭제했습니다. (무한루프 원인 제거)
+                // if (isPlaying && !isDead) checkAttacks(); <--- 삭제됨
+
+                if (isPlaying) checkSurvivors(players);
+                
+            };
+            
+            roomRef.on('value', roomValueListener);
+            
+            // [신규] 공격 전용 리스너 (여기로 분리)
+            // child_added는 새 데이터가 들어올 때 '딱 한 번'만 실행됩니다.
+            const myAttackRef = roomRef.child(`attacks/${myId}`);
+            myAttackRef.on('child_added', (snapshot) => {
+                const lines = snapshot.val();
+                if (lines > 0 && isPlaying && !isDead) {
+                    console.log(`💣 공격 수신: ${lines}줄`);
+                    addAttackLines(lines);
+                    playAttackVFX('receive');
+                    showToast(`⚠️ 공격! 버블 ${lines}줄이 추가됩니다!`);
+                    
+                    // 처리 후 즉시 삭제 (중복 방지)
+                    snapshot.ref.remove();
+                }
+            });
+
+            // 채팅 리스너
+            if(chatListenerRef) chatListenerRef.off();
+            chatListenerRef = roomRef.child('chat');
+            chatListenerRef.on('child_added', snap => {
+                const msg = snap.val();
+                if(msg && document.getElementById('gameover-overlay').classList.contains('active')) {
+                    renderRematchChatMessage(msg);
+                    if(isTTSOn && msg.senderId !== myId) speakTTS(msg.content);
+                }
+            });
+        }
+
+        // [신규] 미니보드 데이터 전송
+        function sendMyBoardData() {
+            if (!isPlaying || isDead) return;
+            // 데이터 절약을 위해 필요한 정보만 전송
+            const simpleBubbles = bubbles.map(b => ({ r: b.r, c: b.c, color: b.color }));
+            playersRef.child(myId).update({ board: simpleBubbles });
+        }
+
+        // [수정] 헤더 미니보드 렌더링
+        function renderOpponentHeader(players) {
+            const header = document.getElementById('game-header');
+            const opponentIds = Object.keys(players).filter(id => id !== myId);
+            
+            header.innerHTML = '';
+
+            if (opponentIds.length === 0) {
+                header.innerHTML = '<div style="color:#aaa; font-size:0.8em;">상대방 대기 중...</div>';
+                return;
+            }
+
+            opponentIds.forEach(uid => {
+                const p = players[uid];
+                const card = document.createElement('div');
+                card.className = `opponent-card ${p.isDead ? 'dead' : ''}`;
+                
+                card.innerHTML = `
+                    <div class="op-canvas-wrapper">
+                        <canvas class="op-mini-canvas" id="mini-cvs-${uid}"></canvas>
+                    </div>
+                    <div class="op-name">${escapeHTML(p.nickname)}</div>
+                `;
+                header.appendChild(card);
+
+                if (p.board) {
+                    setTimeout(() => { drawMiniBoard(uid, p.board); }, 0);
+                }
+            });
+        }
+
+        // [신규] 미니보드 그리기
+        function drawMiniBoard(uid, boardData) {
+            const cvs = document.getElementById(`mini-cvs-${uid}`);
+            if (!cvs) return;
+            const ctx = cvs.getContext('2d');
+            const wrapper = cvs.parentElement;
+            const w = wrapper.clientWidth;
+            const h = wrapper.clientHeight;
+            cvs.width = w; cvs.height = h;
+
+            const miniRadius = w / (GRID_COLS * 2 + 1); 
+            ctx.clearRect(0, 0, w, h);
+
+            boardData.forEach(b => {
+                const offset = (b.r % 2 !== 0) ? miniRadius : 0;
+                const x = (b.c * 2 * miniRadius) + miniRadius + offset;
+                const y = (b.r * miniRadius * Math.sqrt(3)) + miniRadius;
+
+                ctx.beginPath();
+                ctx.arc(x, y, miniRadius - 0.5, 0, Math.PI * 2);
+                ctx.fillStyle = BUBBLE_STYLES[b.color].base;
+                ctx.fill();
+            });
+        }
+
+    
+
+        function checkSurvivors(players) {
+            const activePlayers = Object.values(players).filter(p => !p.isDead);
+            if (activePlayers.length === 1 && activePlayers[0].nickname === myName && Object.keys(players).length > 1) {
+                handleWin();
+            } else if (Object.keys(players).length === 1 && isDead) {
+                showGameOverModal(false); // 솔로 플레이 시 사망 처리
+            }
+        }
+
+        // --- 6. 게임 로직 ---
+      function initGame() {
+            // [핵심] 게임 시작 시 자동 퇴장 감지 기능 다시 활성화
+            if (playersRef) {
+                playersRef.child(myId).onDisconnect().remove();
+            }
+
+            // [신규] DB 상태 초기화 (resetLocalGame에서 이동)
+            playersRef.child(myId).update({ isDead: false, score: 0, board: null });
+            
+
+            resizeGame();
+            bubbles = [];
+            particles = [];
+            projectile = null;
+            isDead = false;
+            isPlaying = true;
+            gameOverFlag = false;
+            pendingJunkLines = 0;
+            feverGauge = 0;
+            hasBomb = false;
+            isAiming = false;
+            currentCombo = 0;
+            
+            updateFeverBar();
+            
+            for(let r=0; r<5; r++) addBubbleRow(r);
+            sendMyBoardData(); // [신규]
+            
+            nextBubbles = [];
+            for(let i=0; i<3; i++) nextBubbles.push(Math.floor(Math.random() * 5));
+            
+            const bgm = document.getElementById('bgm');
+            bgm.volume = 0.3; bgm.currentTime = 0; bgm.play().catch(()=>{});
+
+            if (gameLoopId) cancelAnimationFrame(gameLoopId);
+            loop();
+
+            gameStartTime = Date.now();
+            startDropTimer(60000, 0); // 0단계: 60초
+        }
+
+        // [수정] 낙하 타이머 스케줄링 로직 (60 -> 50 -> 45 고정)
+        function startDropTimer(delay, phase) {
+            if(dropTimerId) clearTimeout(dropTimerId);
+            
+            dropTimerId = setTimeout(() => {
+                if(!isPlaying || isDead) return;
+                
+                addBubbleRow(-1, false, true, 1); // 1줄 추가
+                showToast("⏳ 시간이 흘러 버블이 내려옵니다!");
+                playSfx('sfx-bounce');
+                
+                let nextDelay = 45000; // 기본 45초 (2단계 이후 계속)
+                let nextPhase = phase + 1;
+
+                if (phase === 0) { nextDelay = 50000; } // 0단계(60초) 끝 -> 다음은 50초
+                else if (phase === 1) { nextDelay = 45000; } // 1단계(50초) 끝 -> 다음은 45초
+
+                startDropTimer(nextDelay, nextPhase);
+            }, delay);
+        }
+
+        function addBubbleRow(rowIdx, isJunk = false, isTopInsert = false, count = 1) {
+            for(let k=0; k<count; k++) {
+                if (isTopInsert) {
+                    bubbles.forEach(b => b.r++);
+                    rowIdx = 0;
+                }
+                for(let c=0; c<GRID_COLS; c++) {
+                    const color = isJunk ? JUNK_INDEX : Math.floor(Math.random() * 5);
+                    bubbles.push({ r: rowIdx, c: c, color: color, x: 0, y: 0 });
+                }
+            }
+            recalcBubblePositions();
+            sendMyBoardData(); // [신규]
+            if(isTopInsert) checkLimit();
+        }
+
+function addAttackLines(count) {
+            // 기존 버블들을 아래로 밈
+            bubbles.forEach(b => b.r += count);
+            
+            // 위쪽에 새 버블(방해 버블) 추가
+            for(let i=0; i<count; i++) {
+                for(let c=0; c<GRID_COLS; c++) {
+                    // 랜덤 색상 or 방해석(JUNK_INDEX)
+                    const color = Math.floor(Math.random() * 5); 
+                    bubbles.push({ r: i, c: c, color: color, x: 0, y: 0 });
+                }
+            }
+            
+            // [중요] 좌표 재계산 및 동기화
+            recalcBubblePositions();
+            
+            // 내 보드 변경사항 전송
+            sendMyBoardData(); 
+            
+            // 라인 넘었는지 즉시 확인 (패배 처리)
+            checkLimit();
+        }
+
+        function recalcBubblePositions() {
+            bubbles.forEach(b => {
+                const pos = getGridPosition(b.r, b.c);
+                b.x = pos.x; b.y = pos.y;
+            });
+        }
+
+        function getGridPosition(r, c) {
+            const offset = (r % 2 !== 0) ? bubbleRadius : 0;
+            const x = (c * 2 * bubbleRadius) + bubbleRadius + offset;
+            const y = (r * bubbleRadius * Math.sqrt(3)) + bubbleRadius;
+            return {x, y};
+        }
+
+        // --- 입력 처리 (드래그 조준) ---
+        function startAim(e) {
+            if (!isPlaying || isDead || projectile) return;
+            isAiming = true;
+            updateAimAngle(e);
+        }
+
+        function moveAim(e) {
+            if (!isAiming) return;
+            updateAimAngle(e);
+        }
+
+        function endAim(e) {
+            if (!isAiming) return;
+            isAiming = false;
+            fire();
+        }
+
+        function updateAimAngle(e) {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            const dx = x - cannonX;
+            const dy = y - cannonY;
+            
+            let angle = Math.atan2(dy, dx);
+            if (angle > -0.2) angle = -0.2;
+            if (angle < -Math.PI + 0.2) angle = -Math.PI + 0.2;
+            
+            aimAngle = angle;
+        }
+
+        function fire() {
+            playSfx('sfx-shoot');
+            
+            const fireColor = hasBomb ? BOMB_INDEX : nextBubbles[0];
+            
+            projectile = {
+                x: cannonX, y: cannonY,
+                vx: Math.cos(aimAngle) * SHOOT_SPEED,
+                vy: Math.sin(aimAngle) * SHOOT_SPEED,
+                color: fireColor,
+                radius: bubbleRadius
+            };
+            
+            if (hasBomb) {
+                hasBomb = false;
+                feverGauge = 0;
+                updateFeverBar();
+            } else {
+                nextBubbles.shift();
+                nextBubbles.push(Math.floor(Math.random() * 5));
+            }
+        }
+
+        // --- 게임 루프 ---
+        function loop() {
+            if (!isPlaying) return;
+            update();
+            draw();
+            gameLoopId = requestAnimationFrame(loop);
+        }
+
+        function update() {
+            if (projectile) {
+                projectile.x += projectile.vx;
+                projectile.y += projectile.vy;
+
+                if (projectile.x < bubbleRadius || projectile.x > width - bubbleRadius) {
+                    projectile.vx *= -1;
+                    projectile.x = Math.max(bubbleRadius, Math.min(width - bubbleRadius, projectile.x));
+                    playSfx('sfx-bounce');
+                }
+
+                if (projectile.y < bubbleRadius) snapBubble();
+                else {
+                    for (let b of bubbles) {
+                        const dist = Math.hypot(projectile.x - b.x, projectile.y - b.y);
+                        if (dist < bubbleRadius * 1.8) { 
+                            snapBubble(); 
+                            break; 
+                        }
+                    }
+                }
+            }
+
+            for(let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx; p.y += p.vy;
+                p.life -= 0.05;
+                if(p.life <= 0) particles.splice(i, 1);
+            }
+        }
+
+        function snapBubble() {
+            if(!projectile) return;
+            
+            if (projectile.color === BOMB_INDEX) {
+                handleBombEffect(projectile.x, projectile.y);
+                projectile = null;
+                return;
+            }
+
+            let bestDist = Infinity, bestR = 0, bestC = 0;
+            const approxR = Math.round((projectile.y - bubbleRadius) / (bubbleRadius * Math.sqrt(3)));
+            
+            for(let r = Math.max(0, approxR - 2); r <= approxR + 2; r++) {
+                for(let c = 0; c < GRID_COLS; c++) {
+                    if(bubbles.some(b => b.r === r && b.c === c)) continue;
+                    
+                    const pos = getGridPosition(r, c);
+                    const dist = Math.hypot(projectile.x - pos.x, projectile.y - pos.y);
+                    
+                    const hasNeighbor = (r === 0) || getNeighbors({r, c}).length > 0;
+
+                    if(hasNeighbor && dist < bestDist) { 
+                        bestDist = dist; bestR = r; bestC = c; 
+                    }
+                }
+            }
+            
+            if (bestDist === Infinity) {
+                 bestR = approxR;
+                 bestC = Math.round((projectile.x - (bestR%2!==0?bubbleRadius:0)) / (2*bubbleRadius));
+            }
+
+            const newBubble = { r: bestR, c: bestC, color: projectile.color, x: 0, y: 0 };
+            bubbles.push(newBubble);
+            recalcBubblePositions();
+            projectile = null;
+            playSfx('sfx-shoot');
+
+            resolveMatches(newBubble);
+            sendMyBoardData(); // [신규]
+            checkLimit();
+        }
+
+        function handleBombEffect(x, y) {
+            playSfx('sfx-bomb');
+            
+            let targetColor = -1;
+            let minDist = Infinity;
+            
+            bubbles.forEach(b => {
+                const dist = Math.hypot(b.x - x, b.y - y);
+                if (dist < minDist) {
+                    minDist = dist;
+                    targetColor = b.color;
+                }
+            });
+
+            if (targetColor !== -1) {
+                const sameColorBubbles = bubbles.filter(b => b.color === targetColor);
+                shuffleArray(sameColorBubbles);
+                const targets = sameColorBubbles.slice(0, 7);
+                
+                targets.forEach(b => {
+                    createExplosion(b.x, b.y, b.color);
+                    const idx = bubbles.indexOf(b);
+                    if(idx > -1) bubbles.splice(idx, 1);
+                });
+                
+                dropFloatingBubbles();
+                showComboText(`펑! ${targets.length}개`);
+            } else {
+                const range = bubbleRadius * 3;
+                const hit = bubbles.filter(b => Math.hypot(b.x - x, b.y - y) < range);
+                hit.forEach(b => {
+                    createExplosion(b.x, b.y, b.color);
+                    const idx = bubbles.indexOf(b);
+                    if(idx > -1) bubbles.splice(idx, 1);
+                });
+                dropFloatingBubbles();
+            }
+            sendMyBoardData(); // [신규]
+        }
+
+        function resolveMatches(startNode) {
+            const matches = [];
+            const queue = [startNode];
+            const visited = new Set();
+            visited.add(`${startNode.r},${startNode.c}`);
+            matches.push(startNode);
+
+            let head = 0;
+            while(head < queue.length && head < 1000) {
+                const curr = queue[head++];
+                const neighbors = getNeighbors(curr);
+                for(let n of neighbors) {
+                    if(n.color === startNode.color && !visited.has(`${n.r},${n.c}`)) {
+                        visited.add(`${n.r},${n.c}`);
+                        matches.push(n);
+                        queue.push(n);
+                    }
+                }
+            }
+
+            if(matches.length >= 3) {
+                playSfx('sfx-pop');
+                currentCombo++;
+                
+                matches.forEach(b => {
+                    createExplosion(b.x, b.y, b.color);
+                    const idx = bubbles.indexOf(b);
+                    if(idx > -1) bubbles.splice(idx, 1);
+                });
+
+                const dropped = dropFloatingBubbles();
+                
+                if (matches.length >= 4 || currentCombo >= 2) {
+                    let attackLines = 1;
+                    if (matches.length >= 7) attackLines = 2;
+                    
+                    sendAttack(attackLines);
+                    
+                    const comboMsg = matches.length >= 4 ? `${matches.length}개 팡!` : `${currentCombo} 콤보!`;
+                    showComboText(`${comboMsg} 공격!`);
+                    playAttackVFX('send');
+                } else {
+                    showComboText(`${matches.length}개 팡!`);
+                }
+
+                const multiplier = (matches.length >= 4) ? 2 : 1;
+                feverGauge = Math.min(MAX_FEVER, feverGauge + (matches.length + dropped) * FEVER_PER_POP * multiplier);
+                
+                updateFeverGaugeUI();
+                if (feverGauge >= MAX_FEVER && !hasBomb) {
+                    hasBomb = true;
+                    showToast("💣 폭탄 장전 완료!");
+                }
+                sendMyBoardData(); // [신규]
+            } else {
+                currentCombo = 0;
+            }
+        }
+
+        function getNeighbors(node) {
+            const r = node.r;
+            const c = node.c;
+            const isEven = (r % 2 === 0);
+            const offsets = isEven 
+                ? [[-1,-1], [-1,0], [0,-1], [0,1], [1,-1], [1,0]]  
+                : [[-1,0], [-1,1], [0,-1], [0,1], [1,0], [1,1]];   
+            
+            const res = [];
+            for(let o of offsets) {
+                const nr = r + o[0];
+                const nc = c + o[1];
+                const found = bubbles.find(b => b.r === nr && b.c === nc);
+                if(found) res.push(found);
+            }
+            return res;
+        }
+
+        function dropFloatingBubbles() {
+            const anchored = new Set();
+            const queue = bubbles.filter(b => b.r === 0);
+            queue.forEach(b => anchored.add(b));
+            
+            let head = 0;
+            while(head < queue.length) {
+                const curr = queue[head++];
+                const neighbors = getNeighbors(curr);
+                for(let n of neighbors) {
+                    if(!anchored.has(n)) {
+                        anchored.add(n);
+                        queue.push(n);
+                    }
+                }
+            }
+
+            let dropCount = 0;
+            for(let i = bubbles.length - 1; i >= 0; i--) {
+                if(!anchored.has(bubbles[i])) {
+                    createExplosion(bubbles[i].x, bubbles[i].y, bubbles[i].color);
+                    bubbles.splice(i, 1);
+                    dropCount++;
+                }
+            }
+            if (dropCount > 0) sendMyBoardData(); // [신규]
+            return dropCount;
+        }
+
+        function checkLimit() {
+            const limitY = height - 120; 
+            for(let b of bubbles) {
+                if(b.y + bubbleRadius > limitY) {
+                    handleDefeat();
+                    return;
+                }
+            }
+        }
+
+        function draw() {
+            ctx.fillStyle = '#263238'; 
+            ctx.fillRect(0, 0, width, height);
+            
+            if (isAiming && projectile == null) {
+                drawTrajectory();
+            }
+
+            bubbles.forEach(drawBubble);
+            if(projectile) drawBubble(projectile);
+
+            ctx.save();
+            ctx.translate(cannonX, cannonY);
+            ctx.rotate(aimAngle + Math.PI/2);
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.moveTo(-2, 0); ctx.lineTo(2, 0); ctx.lineTo(0, -40);
+            ctx.fill();
+            ctx.restore();
+
+            const curColor = hasBomb ? BOMB_INDEX : nextBubbles[0];
+            drawBubble({x: cannonX, y: cannonY, color: curColor, radius: bubbleRadius});
+            
+            if(!hasBomb) {
+                for(let i=1; i<=3; i++) {
+                    if(i < nextBubbles.length) {
+                        const bx = cannonX + 40 + (i*25);
+                        const by = cannonY;
+                        drawBubble({x: bx, y: by, color: nextBubbles[i], radius: bubbleRadius*0.6});
+                    }
+                }
+                ctx.fillStyle = '#fff';
+                ctx.font = '10px sans-serif';
+                ctx.fillText("NEXT", cannonX + 50, cannonY - 15);
+            }
+
+            particles.forEach(p => {
+                ctx.beginPath(); ctx.arc(p.x, p.y, p.radius, 0, Math.PI*2);
+                ctx.fillStyle = BUBBLE_STYLES[p.color].base;
+                ctx.globalAlpha = p.life; ctx.fill(); ctx.globalAlpha = 1;
+            });
+        }
+
+        function drawBubble(b) {
+            const r = b.radius || bubbleRadius;
+            const style = BUBBLE_STYLES[b.color];
+            
+            const grad = ctx.createRadialGradient(b.x - r*0.3, b.y - r*0.3, r*0.1, b.x, b.y, r);
+            grad.addColorStop(0, style.light); 
+            grad.addColorStop(1, style.base);
+            
+            ctx.beginPath(); ctx.arc(b.x, b.y, r-1, 0, Math.PI*2);
+            ctx.fillStyle = grad; ctx.fill();
+            
+            ctx.beginPath(); ctx.arc(b.x - r*0.3, b.y - r*0.3, r*0.25, 0, Math.PI*2);
+            ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.fill();
+            
+            ctx.strokeStyle = 'rgba(0,0,0,0.2)'; ctx.lineWidth = 1; ctx.stroke();
+        }
+
+        function drawTrajectory() {
+            let cx = cannonX;
+            let cy = cannonY;
+            let vx = Math.cos(aimAngle) * 10;
+            let vy = Math.sin(aimAngle) * 10;
+            
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.setLineDash([5, 5]);
+            ctx.moveTo(cx, cy);
+
+            for(let i=0; i<20; i++) {
+                cx += vx * 3; cy += vy * 3;
+                if (cx < bubbleRadius || cx > width - bubbleRadius) {
+                    vx *= -1;
+                    cx = Math.max(bubbleRadius, Math.min(width - bubbleRadius, cx));
+                }
+                ctx.lineTo(cx, cy);
+                if (cy < bubbleRadius) break;
+            }
+            ctx.stroke(); ctx.setLineDash([]);
+        }
+
+        function createExplosion(x, y, color) {
+            for(let i=0; i<6; i++) {
+                particles.push({
+                    x: x, y: y, vx: (Math.random()-0.5)*10, vy: (Math.random()-0.5)*10,
+                    life: 1, color: color, radius: Math.random()*5+2
+                });
+            }
+        }
+
+        function updateFeverBar() {
+            const fill = document.getElementById('fever-fill');
+            const text = document.getElementById('fever-text');
+            fill.style.width = `${feverGauge}%`;
+            text.textContent = hasBomb ? "BOMB READY" : `${feverGauge}%`;
+        }
+
+        function playAttackVFX(type) {
+            const overlay = document.getElementById('attack-overlay');
+            const count = 10; 
+            
+            for (let i = 0; i < count; i++) {
+                const bubble = document.createElement('div');
+                bubble.className = 'flying-bubble';
+                
+                if (type === 'send') {
+                    bubble.style.left = '50%';
+                    bubble.style.top = '80%';
+                    bubble.style.setProperty('--tx', `${(Math.random() - 0.5) * 200}px`);
+                    bubble.style.setProperty('--ty', `-${window.innerHeight}px`);
+                } else {
+                    const startX = Math.random() * window.innerWidth;
+                    const startY = -50;
+                    bubble.style.left = `${startX}px`;
+                    bubble.style.top = `${startY}px`;
+                    bubble.style.setProperty('--tx', `${(Math.random() - 0.5) * 100}px`);
+                    bubble.style.setProperty('--ty', `${window.innerHeight / 2}px`);
+                }
+                
+                overlay.appendChild(bubble);
+                setTimeout(() => bubble.remove(), 800);
+            }
+        }
+
+        // --- [핵심] 게임 결과 & 멀티플레이 로직 (애니팡 이식) ---
+        function handleDefeat() {
+            if(isDead) return;
+            isDead = true;
+            isPlaying = false;
+            // playSfx('sfx-lose'); // [제거] forceGameOver에서 sfx-modal로 통합
+            playersRef.child(myId).update({ isDead: true });
+            forceGameOver(); 
+        }
+
+        function handleWin() {
+            isPlaying = false;
+            // playSfx('sfx-win'); // [제거] forceGameOver에서 sfx-modal로 통합
+            forceGameOver(); 
+        }
+
+        function sendAttack(lines) {
+            Object.keys(currentRoomData.players).forEach(uid => {
+                if(uid !== myId && !currentRoomData.players[uid].isDead) {
+                    roomRef.child(`attacks/${uid}`).push(lines);
+                }
+            });
+        }
+
+function forceGameOver() {
+            if (gameOverFlag) return;
+            gameOverFlag = true;
+            playSfx('sfx-modal'); 
+            
+            if (dropTimerId) clearTimeout(dropTimerId);
+            document.getElementById('bgm').pause();
+
+            if (playersRef) {
+                playersRef.child(myId).onDisconnect().cancel();
+            }
+
+            const modal = document.getElementById('gameover-overlay');
+            const title = document.getElementById('result-title');
+            modal.classList.add('active');
+            
+            // [핵심] 이 블록이 바로 보내주신 그 코드입니다.
+            allPlayersRef.once('value', (snapshot) => {
+                const players = snapshot.val();
+                if (!players) return;
+
+                rematchPlayerList = players;
+                loadRematchChat();
+
+                const sorted = Object.values(players).sort((a,b) => (a.isDead === b.isDead) ? 0 : a.isDead ? 1 : -1);
+                const myRank = sorted.findIndex(p => p.nickname === myName);
+                const didIWin = !players[myId].isDead; 
+
+                title.textContent = didIWin ? "🎉 승리!" : "💀 패배";
+                title.style.color = didIWin ? "var(--secondary-color)" : "var(--primary-color)";
+                
+                if(didIWin) applyExpAndPoints(db, myId, 100, 50);
+                else applyExpAndPoints(db, myId, 20, 10);
+                
+                const rematchBtn = document.getElementById('rematch-btn');
+                const lobbyBtn = document.getElementById('lobby-btn');
+                
+                const newRematch = rematchBtn.cloneNode(true);
+                const newLobby = lobbyBtn.cloneNode(true);
+                rematchBtn.parentNode.replaceChild(newRematch, rematchBtn);
+                lobbyBtn.parentNode.replaceChild(newLobby, lobbyBtn);
+
+                newRematch.textContent = "다시하기";
+                newRematch.disabled = false;
+
+                newRematch.addEventListener('click', () => {
+                    if (roomRef && myId) {
+                        if (amIReadyForRematch) { 
+                            roomRef.child('rematchRequests/' + myId).remove(); 
+                        } else { 
+                            roomRef.child('rematchRequests/' + myId).set(true); 
+                        }
+                    }
+                });
+
+                newLobby.addEventListener('click', cleanupAndExit);
+
+                updateRematchStatusUI(); // [수정] (players) 인자 제거
+                listenForRematch();
+            });
+        }
+
+        // [수정] cleanupAndExit
+        function cleanupAndExit() {
+            isExiting = true;
+            if (isHost) hostReturnToGameLobby();
+            else guestHandleReturn();
+        }
+
+        async function guestHandleReturn() {
+            isExiting = true;
+            if (roomRef) roomRef.off();
+            if (playersRef) playersRef.child(myId).onDisconnect().cancel();
+
+            const updates = {};
+            updates[`players/${myId}`] = null;
+            updates[`rematchRequests/${myId}`] = null; 
+
+            if (roomRef) await roomRef.update(updates);
+            window.location.replace('대기실.html');
+        }
+
+        async function hostReturnToGameLobby() {
+            isExiting = true;
+            if (roomRef) roomRef.off();
+            
+            await roomRef.update({
+                status: 'lobby',
+                gameStarted: false,
+                rematchRequests: null,
+                attacks: null
+            });
+            window.location.replace(`게임방.html?roomId=${roomRef.key}`);
+        }
+
+        function requestRematch() {
+            roomRef.child(`rematchRequests/${myId}`).set(true);
+            const btn = document.getElementById('rematch-btn');
+            btn.textContent = "준비완료!";
+            btn.disabled = true;
+        }
+
+        function listenForRematch() {
+            if (rematchRef) rematchRef.off();
+            rematchRef = roomRef.child('rematchRequests');
+            
+            // [핵심 수정] 'roomValueListener'에 의존하는 대신,
+            // '애니팡'과 동일하게 여기서 직접 UI 갱신 함수를 호출합니다.
+            rematchRef.on('value', () => {
+                // currentRoomData는 roomValueListener에 의해 항상 최신이므로
+                // updateRematchStatusUI()를 그냥 호출해도 됩니다.
+                // (players 인자 없이 호출하면 알아서 currentRoomData.players를 사용합니다)
+                updateRematchStatusUI(); 
+            });
+        }
+
+function resetLocalGame() {
+            // [수정] 이 함수는 이제 모달을 닫고 플래그만 리셋합니다.
+            // DB 업데이트는 initGame()에서 처리됩니다.
+            document.getElementById('gameover-overlay').classList.remove('active');
+            gameOverFlag = false; 
+        }
+
+        function loadRematchChat() {
+            const box = document.getElementById('rematch-chat-messages');
+            box.innerHTML = '<div class="spinner" style="margin: auto; width: 20px; height: 20px;"></div>';
+            roomRef.child('chat').limitToLast(10).once('value', snap => {
+                box.innerHTML = '';
+                if(snap.exists()) snap.forEach(child => renderRematchChatMessage(child.val()));
+            });
+        }
+
+       // [핵심] '다시하기' UI 및 자동 시작 (애니팡 로직 이식 - v2)
+function updateRematchStatusUI() {
+    // 1. [수정] '애니팡'과 동일하게 항상 전역 'currentRoomData'를 사용합니다.
+    if (!currentRoomData || !currentRoomData.players) return;
+    const players = currentRoomData.players;
+
+    const list = document.getElementById('rematch-status-list');
+    list.innerHTML = '';
+
+    // 2. [수정] 'players' 객체의 key(uid)를 'playerIds' 배열로 만듦
+    const playerIds = Object.keys(players);
+    const activePlayerCount = playerIds.length;
+    const requests = currentRoomData.rematchRequests || {};
+
+    // 3. [수정] '혼자 남음' 체크 로직 (애니팡.html)
+    if (isHost && activePlayerCount === 1 && gameOverFlag && !isExiting) {
+        if (currentRoomData.status !== 'waiting') {
+            roomRef.update({
+                status: 'waiting',
+                rematchRequests: null,
+                gameStarted: false
+            });
+            document.getElementById('gameover-overlay').classList.remove('active');
+            showToast("모든 참가자가 퇴장했습니다. 대기 모드로 전환합니다.");
+        }
+        return; 
+    }
+
+    // 4. [수정] "순위 정렬" 로직 (UID를 포함하여 정렬)
+    const sorted = Object.entries(players)
+        .map(([uid, data]) => ({ uid, ...data }))
+        .sort((a, b) => (a.isDead === b.isDead) ? 0 : (a.isDead ? 1 : -1));
+
+    // 5. [수정] UI 렌더링 (정렬된 배열 순회)
+    sorted.forEach((p, i) => {
+        // 'p' 객체에 이미 'uid'가 포함되어 있음
+        if (!p.uid) return; // [방어 코드]
+
+        const isReady = requests[p.uid] === true; 
+
+        const row = document.createElement('div');
+        row.className = 'rematch-player-row';
+        if (p.uid === myId) row.classList.add('my-row'); // [수정] p.nickname === myName -> p.uid === myId
+
+        const statusHtml = isReady 
+            ? '<span class="status-text ready">준비완료</span>' 
+            : '<span class="status-text">대기중</span>';
+
+        row.innerHTML = `
+            <div><span class="player-rank">${i+1}위</span> <span class="player-name">${escapeHTML(p.nickname)}</span></div>
+            ${statusHtml}
+        `;
+        list.appendChild(row);
+    });
+
+    // 6. [수정] 내 버튼 상태 동기화 (토글용)
+    amIReadyForRematch = !!requests[myId]; // [핵심] 나의 준비 상태를 전역 변수에 갱신
+    const myRematchBtn = document.getElementById('rematch-btn');
+    if (myRematchBtn) {
+        myRematchBtn.disabled = false;
+        myRematchBtn.textContent = amIReadyForRematch ? '준비완료! ✓' : '다시하기';
+    }
+
+    // 7. [수정] 전원 준비 완료 시 시작 (버그 수정된 로직)
+    const validReadyCount = Object.keys(requests).filter(uid => playerIds.includes(uid)).length;
+    const allReady = activePlayerCount >= 2 && validReadyCount === activePlayerCount;
+
+    if (isHost && allReady) {
+            // [핵심 수정] 'playing'이 아닌 'waiting'으로 변경 (애니팡과 동일한 2단계 재시작)
+            const updates = {};
+            updates['status'] = 'waiting'; 
+            updates['attacks'] = null;     
+            updates['rematchRequests'] = null;
+            
+            // [신규] '애니팡'처럼 readyPlayers를 사용하도록 초기화
+            updates['readyPlayers'] = null; 
+
+            playerIds.forEach(uid => {
+                updates[`players/${uid}/isDead`] = false;  
+                updates[`players/${uid}/score`] = 0;
+                updates[`players/${uid}/board`] = null;       
+            });
+
+            // [핵심 수정] "if (currentRoomData.status !== 'playing')" 조건문을 제거하여
+            // '애니팡'과 동일하게 즉시 'waiting' 상태로 업데이트합니다.
+            console.log("전원 준비완료! 게임을 다시 시작합니다.");
+            roomRef.update(updates);
+        }
+}
+
+        function sendRematchChat() {
+            const input = document.getElementById('rematch-chat-input');
+            const msg = input.value.trim();
+            if(msg && roomRef) {
+                roomRef.child('chat').push({
+                    senderId: myId,
+                    senderNickname: myName,
+                    content: msg,
+                    timestamp: firebase.database.ServerValue.TIMESTAMP
+                });
+                input.value = '';
+            }
+        }
+
+        function renderRematchChatMessage(msg) {
+            const box = document.getElementById('rematch-chat-messages');
+            if (!box) return; // [방어 코드]
+
+            const div = document.createElement('div');
+            
+            if (msg.isSystem) { // [신규] 시스템 메시지 처리 (애니팡 로직)
+                div.className = 'system-message';
+                div.textContent = msg.content;
+            } 
+            // [핵심 수정] rematchPlayerList를 기준으로 닉네임 찾기 (애니팡 로직)
+            else if (rematchPlayerList && rematchPlayerList[msg.senderId]) { 
+                const senderInfo = rematchPlayerList[msg.senderId];
+                const isMe = msg.senderId === myId;
+                
+                div.className = 'chat-msg';
+                if (isMe) div.classList.add('my-message');
+                
+                // [수정] escapeHTML 적용
+                div.innerHTML = `<strong>${escapeHTML(senderInfo.nickname)}:</strong> ${escapeHTML(msg.content)}`;
+            } else {
+                // [신규] 보낸 사람을 모를 경우 (방어 코드)
+                div.className = 'system-message'; // 시스템 메시지처럼 처리
+                div.textContent = `[...]: ${escapeHTML(msg.content)}`;
+            }
+            
+            box.appendChild(div);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function toggleTTS() {
+            isTTSOn = !isTTSOn;
+            showToast(isTTSOn ? "음성 듣기 켜짐" : "음성 듣기 꺼짐");
+        }
+
+        function speakTTS(text) {
+            if(!synthesis) return;
+            const u = new SpeechSynthesisUtterance(text);
+            u.lang = 'ko-KR';
+            synthesis.speak(u);
+        }
+
+        function updateReadyUI(playerList) {
+            document.getElementById('player-count-display').textContent = `현재 인원: ${playerList.length}명`;
+            if(isHost && playerList.length >= 2) {
+                document.getElementById('start-btn').style.display = 'inline-block';
+            } else {
+                document.getElementById('start-btn').style.display = 'none';
+            }
+        }
+
+        function startGameByHost() { roomRef.update({ status: 'playing' }); }
+
+        function startCountdown() {
+            document.getElementById('ready-overlay').classList.remove('active');
+            document.getElementById('loading-overlay').classList.remove('active');
+            document.getElementById('countdown-overlay').classList.add('active');
+            let count = 3;
+            const el = document.getElementById('countdown-number');
+            el.textContent = count;
+            const timer = setInterval(() => {
+                count--;
+                if(count > 0) el.textContent = count;
+                else if(count === 0) el.textContent = "GO!";
+                else {
+                    clearInterval(timer);
+                    document.getElementById('countdown-overlay').classList.remove('active');
+                    initGame();
+                }
+            }, 1000);
+        }
+
+        function showComboText(text) {
+            const el = document.getElementById('combo-text');
+            el.textContent = text;
+            el.classList.add('show');
+            setTimeout(() => el.classList.remove('show'), 800);
+        }
+
+        function showToast(msg) {
+            const t = document.createElement('div');
+            t.className = 'toast';
+            t.textContent = msg;
+            document.getElementById('toast-container').appendChild(t);
+            setTimeout(() => t.remove(), 2000);
+        }
+
+        function playSfx(id) {
+            const s = document.getElementById(id);
+            if(s) { s.currentTime = 0; s.play().catch(()=>{}); }
+        }
+
+        function updateFeverGaugeUI() {
+            const fill = document.getElementById('fever-fill');
+            if (fill) {
+                const percent = Math.min(100, (feverGauge / MAX_FEVER) * 100);
+                fill.style.width = `${percent}%`;
+            }
+        }
+
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+        }
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>라인 퍼즐 (자유 그리기)</title>
+    <link rel="manifest" href="manifest.json">
+    <link href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff" as="font" type="font/woff" crossorigin>
+    <style>
+        :root {
+            --bg-color: #2c3e50;
+            --board-bg: #34495e;
+            --cell-bg: #4a6572;
+            --primary-color: #3498DB;
+            --accent-color: #FFC84A;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%; height: 100%; overflow: hidden;
+            font-family: 'GmarketSans', sans-serif;
+            background-color: var(--bg-color); color: white;
+            display: flex; flex-direction: column;
+            justify-content: center; align: center;
+            -webkit-user-select: none; user-select: none;
+            touch-action: none;
+        }
+
+        #game-wrapper {
+            width: 100%; height: 100%;
+            display: flex; flex-direction: column;
+        }
+
+        #game-header {
+            flex-shrink: 0; display: flex;
+            justify-content: space-between; align: center;
+            padding: 15px 20px; background-color: rgba(0,0,0,0.2);
+            border-bottom: 2px solid var(--board-bg);
+        }
+        #level-info {
+            font-size: 1.5em; font-weight: 700;
+        }
+        .header-btn {
+            padding: 10px 15px; font-size: 1em; font-weight: 700;
+            border-radius: 8px; border: none; cursor: pointer;
+            background-color: var(--primary-color); color: white;
+        }
+        #reset-btn { background-color: var(--accent-color); color: #333; }
+
+        #game-container {
+            width: 100%; flex-grow: 1;
+            display: flex; justify-content: center; align: center;
+            position: relative; overflow: hidden; padding: 20px;
+        }
+        
+        /* ✨ [수정] 캔버스만 남깁니다. */
+        #game-canvas {
+            background-color: var(--board-bg);
+            border-radius: 10px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+            aspect-ratio: 1 / 1;
+            width: 90vmin;
+            height: 90vmin;
+            max-width: 450px;
+            max-height: 450px;
+        }
+
+        /* 오버레이 및 모달 (기존과 동일) */
+        .overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            display: none; flex-direction: column; justify-content: center; align: center;
+            background-color: rgba(0,0,0,0.7);
+            z-index: 1000;
+        }
+        .overlay.active { display: flex; }
+        .modal-content {
+            background: #ecf0f1; color: #333;
+            padding: 30px; border-radius: 20px;
+            text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+        }
+        .modal-content h2 { font-size: 2em; margin-bottom: 10px; color: var(--primary-color); }
+        .modal-content h3 { font-size: 1.5em; margin-bottom: 20px; color: #333; }
+        .modal-btn {
+            padding: 12px 25px; font-size: 1.1em; font-weight: 700;
+            border-radius: 10px; border: none; cursor: pointer;
+            margin: 0 10px;
+        }
+        .modal-btn.primary { background-color: var(--primary-color); color: white; }
+        .modal-btn.secondary { background-color: var(--accent-color); color: #333; }
+
+    </style>
+</head>
+<body>
+    <div id="game-wrapper">
+        <div id="game-header">
+            <button id="lobby-btn" class="header-btn">대기실</button>
+            <span id="level-info">Level 1</span>
+            <button id="reset-btn" class="header-btn">초기화</button>
+        </div>
+        <div id="game-container">
+            <canvas id="game-canvas"></canvas>
+        </div>
+    </div>
+
+    <div id="level-clear-modal" class="overlay">
+        <div class="modal-content">
+            <h2>🎉 레벨 클리어!</h2>
+            <h3 id="score-display"></h3>
+            <button id="next-level-btn" class="modal-btn primary">다음 레벨</button>
+        </div>
+    </div>
+    
+    <script>
+        document.addEventListener('contextmenu', event => event.preventDefault());
+        document.addEventListener('keydown', event => {
+            if (event.key === 'F12' ||
+                (event.ctrlKey && event.shiftKey && ['I', 'J', 'C'].includes(event.key.toUpperCase())) ||
+                (event.ctrlKey && event.key.toUpperCase() === 'U')) {
+                event.preventDefault();
+            }
+        });
+        setInterval(() => { try { debugger; } catch (e) {} }, 1000);
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const levelInfo = document.getElementById('level-info');
+            const resetBtn = document.getElementById('reset-btn');
+            const lobbyBtn = document.getElementById('lobby-btn');
+            const levelClearModal = document.getElementById('level-clear-modal');
+            const scoreDisplay = document.getElementById('score-display');
+            const nextLevelBtn = document.getElementById('next-level-btn');
+            
+            const canvas = document.getElementById('game-canvas');
+            const ctx = canvas.getContext('2d');
+
+            // --- 레벨 데이터 ---
+            const levels = [
+                // Level 1 (5x5) - 우리가 수정한 맵
+                {
+                    gridSize: 5,
+                    dots: [
+                        { c: 'red', p1: [0, 0], p2: [4, 0] },
+                        { c: 'green', p1: [1, 1], p2: [3, 3] },
+                        { c: 'blue', p1: [0, 4], p2: [4, 4] },
+                    ]
+                },
+                // Level 2 (5x5) - 새 맵 (4가지 색)
+                {
+                    gridSize: 5,
+                    dots: [
+                        { c: 'red', p1: [0, 0], p2: [4, 2] },
+                        { c: 'green', p1: [1, 0], p2: [3, 3] },
+                        { c: 'blue', p1: [0, 4], p2: [2, 2] },
+                        { c: 'yellow', p1: [2, 0], p2: [4, 4] },
+                    ]
+                },
+                // Level 3 (6x6)
+                {
+                    gridSize: 6,
+                    dots: [
+                        { c: 'red', p1: [0, 0], p2: [3, 3] },
+                        { c: 'green', p1: [1, 0], p2: [4, 3] },
+                        { c: 'blue', p1: [2, 0], p2: [5, 3] },
+                        { c: 'yellow', p1: [0, 5], p2: [5, 5] },
+                        { c: 'orange', p1: [1, 5], p2: [4, 5] },
+                    ]
+                },
+                // Level 4 (6x6) - 경로가 꼬여야 함
+                {
+                    gridSize: 6,
+                    dots: [
+                        { c: 'red', p1: [0, 0], p2: [5, 5] },
+                        { c: 'green', p1: [1, 0], p2: [4, 5] },
+                        { c: 'blue', p1: [2, 0], p2: [3, 5] },
+                        { c: 'yellow', p1: [0, 1], p2: [0, 4] },
+                        { c: 'orange', p1: [5, 1], p2: [5, 4] },
+                    ]
+                },
+                // Level 5 (7x7) - 정답 1개짜리 유명한 맵
+                {
+                    gridSize: 7,
+                    dots: [
+                        { c: 'red', p1: [0, 0], p2: [6, 6] },
+                        { c: 'green', p1: [1, 1], p2: [5, 5] },
+                        { c: 'blue', p1: [2, 2], p2: [4, 4] },
+                        { c: 'yellow', p1: [0, 3], p2: [6, 3] },
+                        { c: 'orange', p1: [3, 0], p2: [3, 6] },
+                    ]
+                },
+                // Level 6 (7x7) - 세로로 긴 맵
+                {
+                    gridSize: 7,
+                    dots: [
+                        { c: 'red', p1: [0, 0], p2: [6, 0] },
+                        { c: 'green', p1: [0, 2], p2: [6, 2] },
+                        { c: 'blue', p1: [0, 4], p2: [6, 4] },
+                        { c: 'yellow', p1: [1, 6], p2: [5, 6] },
+                        { c: 'orange', p1: [2, 6], p2: [4, 6] },
+                        { c: 'purple', p1: [3, 6], p2: [6, 6] },
+                    ]
+                },
+                // Level 7 (8x8) - 클래식 X 맵
+                {
+                    gridSize: 8,
+                    dots: [
+                        { c: 'red', p1: [0, 0], p2: [7, 7] },
+                        { c: 'green', p1: [0, 7], p2: [7, 0] },
+                        { c: 'blue', p1: [1, 1], p2: [6, 6] },
+                        { c: 'yellow', p1: [1, 6], p2: [6, 1] },
+                    ]
+                },
+                // Level 8 (8x8) - 복잡한 맵
+                {
+                    gridSize: 8,
+                    dots: [
+                        { c: 'red', p1: [0, 0], p2: [7, 4] },
+                        { c: 'green', p1: [0, 1], p2: [6, 7] },
+                        { c: 'blue', p1: [0, 2], p2: [5, 5] },
+                        { c: 'yellow', p1: [1, 3], p2: [7, 6] },
+                        { c: 'orange', p1: [2, 4], p2: [6, 3] },
+                        { c: 'purple', p1: [3, 0], p2: [3, 7] },
+                    ]
+                }
+            ];
+
+            let currentLevelIndex = 0;
+            let currentLevel;
+            let dotData = []; // { x, y, r, color, pairId, id }
+            let paths = {}; // { 'red': { points: [{x,y}, ...], isComplete: false }, ... }
+            
+            let isDrawing = false;
+            let currentPath = [];
+            let currentColor = null;
+            let currentPairId = null;
+
+            let canvasRect;
+            let scale; // 캔버스 내부 좌표 스케일
+            let dotRadius;
+            let lineWidth;
+
+            // --- 색상 맵 ---
+            function getHexColor(colorName) {
+                switch(colorName) {
+                    case 'red': return '#E74C3C';
+                    case 'green': return '#2ECC71';
+                    case 'blue': return '#3498DB';
+                    case 'yellow': return '#F1C40F';
+                    case 'orange': return '#E67E22';
+                    case 'purple': return '#9B59B6';
+                    default: return '#bdc3c7';
+                }
+            }
+            
+            // --- 게임 초기화/로드 ---
+            function loadLevel(levelIndex) {
+                currentLevel = levels[levelIndex];
+                if (!currentLevel) {
+                    currentLevelIndex = 0;
+                    currentLevel = levels[0];
+                }
+                
+                levelInfo.textContent = `Level ${levelIndex + 1}`;
+                paths = {};
+                dotData = [];
+                isDrawing = false;
+                currentPath = [];
+                
+                // 캔버스 크기 설정
+                const { width, height } = canvas.getBoundingClientRect();
+                canvas.width = width;
+                canvas.height = height;
+                canvasRect = canvas.getBoundingClientRect();
+                
+                const { gridSize, dots } = currentLevel;
+                scale = canvas.width / (gridSize + 1); // (gridSize+1)칸으로 나눠 여백 생성
+                dotRadius = scale * 0.35;
+                lineWidth = scale * 0.3;
+
+                // 점 데이터 생성
+                dots.forEach((dot, index) => {
+                    const [r1, c1] = dot.p1;
+                    const [r2, c2] = dot.p2;
+                    const id1 = `${dot.c}_0`;
+                    const id2 = `${dot.c}_1`;
+
+                    dotData.push({
+                        x: (c1 + 1) * scale,
+                        y: (r1 + 1) * scale,
+                        r: dotRadius,
+                        color: dot.c,
+                        id: id1,
+                        pairId: id2
+                    });
+                    dotData.push({
+                        x: (c2 + 1) * scale,
+                        y: (r2 + 1) * scale,
+                        r: dotRadius,
+                        color: dot.c,
+                        id: id2,
+                        pairId: id1
+                    });
+                    
+                    // 경로 객체 초기화
+                    paths[dot.c] = { points: [], isComplete: false };
+                });
+                
+                drawGame();
+            }
+
+            // --- 메인 그리기 함수 ---
+            function drawGame() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                // 1. 완성된 경로 그리기
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                
+                for (const color in paths) {
+                    const path = paths[color];
+                    if (path.points.length > 1) {
+                        ctx.strokeStyle = getHexColor(color);
+                        ctx.lineWidth = lineWidth;
+                        ctx.beginPath();
+                        ctx.moveTo(path.points[0].x, path.points[0].y);
+                        for (let i = 1; i < path.points.length; i++) {
+                            ctx.lineTo(path.points[i].x, path.points[i].y);
+                        }
+                        ctx.stroke();
+                    }
+                }
+                
+                // 2. 현재 그리는 경로 그리기
+                if (isDrawing && currentPath.length > 1) {
+                    ctx.strokeStyle = getHexColor(currentColor);
+                    ctx.lineWidth = lineWidth;
+                    ctx.beginPath();
+                    ctx.moveTo(currentPath[0].x, currentPath[0].y);
+                    for (let i = 1; i < currentPath.length; i++) {
+                        ctx.lineTo(currentPath[i].x, currentPath[i].y);
+                    }
+                    ctx.stroke();
+                }
+                
+                // 3. 점 그리기 (항상 맨 위에)
+                dotData.forEach(dot => {
+                    ctx.fillStyle = getHexColor(dot.color);
+                    ctx.beginPath();
+                    ctx.arc(dot.x, dot.y, dot.r, 0, 2 * Math.PI);
+                    ctx.fill();
+                });
+            }
+
+            // --- 헬퍼 함수 ---
+            function getPos(e) {
+                const pos = e.touches ? e.touches[0] : e;
+                return {
+                    x: pos.clientX - canvasRect.left,
+                    y: pos.clientY - canvasRect.top
+                };
+            }
+
+            function getDotAtPos(x, y) {
+                for (const dot of dotData) {
+                    const dx = dot.x - x;
+                    const dy = dot.y - y;
+                    if (dx * dx + dy * dy < dot.r * dot.r) {
+                        return dot;
+                    }
+                }
+                return null;
+            }
+            
+            // 선분 교차 판정 함수 (복잡한 수학)
+            function lineSegmentIntersection(p1, p2, p3, p4) {
+                const d = (p4.y - p3.y) * (p2.x - p1.x) - (p4.x - p3.x) * (p2.y - p1.y);
+                if (d === 0) return false; // 평행
+                const ua = ((p4.x - p3.x) * (p1.y - p3.y) - (p4.y - p3.y) * (p1.x - p3.x)) / d;
+                const ub = ((p2.x - p1.x) * (p1.y - p3.y) - (p2.y - p1.y) * (p1.x - p3.x)) / d;
+                return (ua >= 0 && ua <= 1 && ub >= 0 && ub <= 1);
+            }
+            
+            // 점-원 충돌 판정
+            function isPointInCircle(px, py, circle) {
+                const dx = px - circle.x;
+                const dy = py - circle.y;
+                return dx * dx + dy * dy < circle.r * circle.r;
+            }
+
+            // --- 이벤트 핸들러 ---
+            function onDrawStart(e) {
+                e.preventDefault();
+                const pos = getPos(e);
+                const dot = getDotAtPos(pos.x, pos.y);
+                
+                if (dot) {
+                    isDrawing = true;
+                    currentColor = dot.color;
+                    currentPairId = dot.pairId;
+                    currentPath = [pos];
+                    
+                    // 기존 경로 초기화
+                    paths[currentColor] = { points: [pos], isComplete: false };
+                    
+                    drawGame();
+                }
+            }
+
+            function onDrawMove(e) {
+                if (!isDrawing) return;
+                e.preventDefault();
+                
+                const pos = getPos(e);
+                const lastPos = currentPath[currentPath.length - 1];
+
+                // 1. 다른 선과 충돌했는지 검사
+                for (const color in paths) {
+                    if (color === currentColor) continue; // 자기 자신 제외
+                    const path = paths[color];
+                    for (let i = 0; i < path.points.length - 1; i++) {
+                        if (lineSegmentIntersection(lastPos, pos, path.points[i], path.points[i+1])) {
+                            isDrawing = false;
+                            paths[currentColor].points = []; // 실패
+                            drawGame();
+                            return;
+                        }
+                    }
+                }
+                
+                // 2. 다른 점과 충돌했는지 검사
+                for (const dot of dotData) {
+                    if (dot.color !== currentColor && isPointInCircle(pos.x, pos.y, dot)) {
+                        isDrawing = false;
+                        paths[currentColor].points = []; // 실패
+                        drawGame();
+                        return;
+                    }
+                }
+
+                // 3. 경로 추가
+                currentPath.push(pos);
+                paths[currentColor].points.push(pos);
+                drawGame();
+            }
+
+            function onDrawEnd(e) {
+                if (!isDrawing) return;
+                
+                // ✨ [수정] 손가락 뗀 위치(pos) 대신, 그려진 경로의 마지막 점을 기준으로 판정
+                const lastPos = currentPath.length > 0 ? currentPath[currentPath.length - 1] : null;
+                let dot = null;
+                if (lastPos) {
+                    dot = getDotAtPos(lastPos.x, lastPos.y);
+                }
+                
+                // 1. 올바른 짝에 도달했는지 확인
+                // 'dot'이 존재하고(경로의 끝이 점 위에 있고) 'dot.id'가 짝이 맞는지 확인
+                if (dot && dot.id === currentPairId) {
+                    paths[currentColor].isComplete = true; // 성공
+                } else {
+                    paths[currentColor].points = []; // 실패 (엉뚱한 곳에서 뗌)
+                }
+                
+                isDrawing = false;
+                currentPath = [];
+                drawGame();
+                checkWin(); // ✨ checkWin()은 여기 위치가 맞습니다.
+            }
+            function checkWin() {
+                let allComplete = true;
+                let totalScore = 0;
+                let totalLength = 0;
+                
+                for (const color in paths) {
+                    if (!paths[color].isComplete) {
+                        allComplete = false;
+                        break;
+                    }
+                    // 점수 계산 (선 길이)
+                    const path = paths[color].points;
+                    for(let i=0; i < path.length - 1; i++) {
+                        const dx = path[i+1].x - path[i].x;
+                        const dy = path[i+1].y - path[i].y;
+                        totalLength += Math.sqrt(dx*dx + dy*dy);
+                    }
+                }
+
+                if (allComplete) {
+                    // (최대점수 10000) - (선 길이 합) / (스케일*0.1)
+                    totalScore = Math.max(100, 10000 - Math.floor(totalLength / (scale * 0.1)));
+                    scoreDisplay.textContent = `SCORE: ${totalScore}`;
+                    levelClearModal.classList.add('active');
+                }
+            }
+            
+            function resetGame() {
+                loadLevel(currentLevelIndex);
+            }
+
+            // --- 리스너 등록 ---
+            canvas.addEventListener('mousedown', onDrawStart);
+            canvas.addEventListener('mousemove', onDrawMove);
+            document.addEventListener('mouseup', onDrawEnd);
+            canvas.addEventListener('touchstart', onDrawStart, { passive: false });
+            canvas.addEventListener('touchmove', onDrawMove, { passive: false });
+            document.addEventListener('touchend', onDrawEnd);
+
+            resetBtn.addEventListener('click', resetGame);
+            lobbyBtn.addEventListener('click', () => {
+                window.location.href = '대기실.html';
+            });
+            nextLevelBtn.addEventListener('click', () => {
+                currentLevelIndex++;
+                if (currentLevelIndex >= levels.length) {
+                    alert("모든 레벨을 클리어했습니다! 1레벨로 돌아갑니다.");
+                    currentLevelIndex = 0;
+                }
+                loadLevel(currentLevelIndex);
+                levelClearModal.classList.remove('active');
+            });
+            
+            loadLevel(currentLevelIndex);
+            window.addEventListener('resize', () => loadLevel(currentLevelIndex));
+        });
+    </script>
+</body>
+</html>

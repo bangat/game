@@ -1,0 +1,1322 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    
+    <title>친구</title>
+    
+    <link rel="manifest" href="manifest.json">
+    <link href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff" as="font" type="font/woff" crossorigin>
+    <style>
+        /* 대기실.html의 모든 <style> 내용을 여기에 복사합니다. */
+        :root {
+            --bg-color: #FFFBEB;
+            --primary-color: #FF6B6B;
+            --secondary-color: #4ECDC4;
+            --accent-color: #FFD93D;
+            --text-color-dark: #574141;
+            --text-color-light: #ffffff;
+            --danger-color: #F76363;
+            --panel-bg: #FFFFFF;
+            --panel-border: #F0EAD2;
+            --panel-shadow: #E4DCCF;
+            --font-main: 'GmarketSans', sans-serif;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%; height: 100%; overflow: hidden;
+            font-family: var(--font-main);
+            background-color: var(--bg-color);
+            color: var(--text-color-dark);
+            -webkit-user-select: none; user-select: none;
+            touch-action: manipulation;
+        }
+        .view {
+            width: 100%; height: 100%; 
+            display: flex; flex-direction: column;
+        }
+        .spinner {
+            border: 5px solid rgba(255,255,255,0.2);
+            border-radius: 50%;
+            border-top: 5px solid var(--accent-color);
+            width: 50px; height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 40px auto;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        /* 아케이드 스타일 버튼 (대기실.html과 동일) */
+        .menu-btn {
+            width: 100%; padding: 16px; font-size: 1.25em; font-weight: 900;
+            font-family: var(--font-main);
+            border-radius: 16px; border: none; cursor: pointer;
+            transition: all 0.1s ease-out;
+            border-bottom: 5px solid;
+            text-shadow: 1px 1px 1px rgba(0,0,0,0.1);
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+        .menu-btn:active { transform: translateY(3px); border-bottom-width: 2px; }
+        .menu-btn.primary { background-color: var(--primary-color); color: var(--text-color-light); border-bottom-color: #C04A4A; }
+        .menu-btn.secondary { background-color: var(--secondary-color); color: var(--text-color-light); border-bottom-color: #379A93; }
+        .menu-btn.accent { background-color: var(--accent-color); color: var(--text-color-dark); border-bottom-color: #D1B030; text-shadow: none; }
+        .menu-btn.light { background-color: #F8F9FA; color: var(--text-color-dark); border-bottom-color: #BDBDBD; }
+        .menu-btn.danger { background-color: var(--danger-color); color: var(--text-color-light); border-bottom-color: #A94442; }
+        .menu-btn:disabled { background-color: #BDBDBD !important; color: #757575 !important; border-bottom-color: #8D8D8D !important; cursor: not-allowed; transform: none; }
+
+
+        /* 페이지 헤더 (랭킹.html과 동일) */
+        .page-header {
+            width: 100%; padding: 10px 12px; flex-shrink: 0;
+            background: #FFFAE0;
+            border-bottom: 3px solid var(--panel-border);
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center;
+            gap: 8px;
+        }
+        .page-header h1 {
+            font-size: 1.3em;
+            color: var(--text-color-dark);
+            margin: 0;
+            flex-grow: 1;
+            text-align: center;
+        }
+        .back-btn {
+            background: none; border: none; color: var(--text-color-dark);
+            font-size: 2.0em; cursor: pointer; padding: 0 10px;
+            text-decoration: none;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        /* ------------------------- */
+        /* == 친구 관리 컨텐츠 == */
+        /* ------------------------- */
+        /* (랭킹.html의 탭 스타일 재사용) */
+        #friend-tabs {
+            display: flex;
+            overflow-x: auto; /* [신규] 탭이 많아질 경우 스크롤 */
+            padding: 10px 12px;
+            background-color: #FFFAE0;
+            border-bottom: 3px solid var(--panel-border);
+            flex-shrink: 0;
+            gap: 8px;
+        }
+        .tab-btn {
+            min-width: 80px; /* [신규] 최소 너비 */
+            padding: 10px 15px;
+            font-size: 0.9em;
+            font-weight: 700;
+            border-radius: 12px;
+            border: 3px solid var(--panel-border);
+            background: white;
+            color: #888;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+            border-bottom-width: 4px;
+            position: relative; /* 뱃지 기준점 */
+        }
+        .tab-btn:active {
+            transform: translateY(2px);
+            border-bottom-width: 2px;
+        }
+        .tab-btn.active {
+            background: var(--primary-color);
+            color: white;
+            border-color: #C04A4A;
+            border-bottom-color: #C04A4A;
+        }
+        /* [신규] 접속자 탭 활성 색상 */
+        .tab-btn[data-tab="online-users"].active {
+             background: var(--secondary-color);
+             border-color: #379A93;
+             border-bottom-color: #379A93;
+        }
+
+
+        /* 탭 뱃지 (친구 요청 수) */
+        .tab-btn .badge {
+            position: absolute;
+            top: -6px;
+            right: -6px;
+            background-color: var(--danger-color);
+            color: white;
+            border-radius: 50%;
+            width: 22px;
+            height: 22px;
+            font-size: 0.75em;
+            font-weight: 700;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border: 2px solid white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
+
+        /* 탭 컨텐츠 영역 */
+        .tab-content {
+            display: none; /* 기본적으로 숨김 */
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 15px;
+        }
+        .tab-content.active {
+            display: block; /* 활성화된 탭만 보임 */
+        }
+        
+        /* '친구 찾기' 탭 스타일 */
+        #friend-search-form {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        #friend-search-input {
+            flex-grow: 1;
+            border: 3px solid var(--text-color-dark);
+            border-radius: 12px;
+            padding: 12px;
+            font-size: 1em;
+            font-family: var(--font-main);
+            min-width: 0;
+        }
+        #friend-search-input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+        #friend-search-btn {
+            flex-shrink: 0;
+            font-family: var(--font-main);
+            font-weight: 700;
+            font-size: 1em;
+            padding: 0 20px;
+            border: none; border-radius: 12px;
+            background-color: var(--primary-color);
+            color: white;
+            border-bottom: 4px solid #C04A4A;
+            cursor: pointer;
+        }
+        #friend-search-btn:active {
+            transform: translateY(2px);
+            border-bottom-width: 2px;
+        }
+
+        /* 유저 목록 (대기실.html 접속자 목록 모달 스타일 재사용) */
+        .user-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .user-list-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px;
+            background-color: var(--panel-bg);
+            border: 3px solid var(--panel-border);
+            border-radius: 16px;
+            box-shadow: 4px 4px 0px 0px var(--panel-shadow);
+        }
+        .user-list-avatar {
+            width: 44px; height: 44px; font-size: 2.2em;
+            display: flex; justify-content: center; align-items: center;
+            border-radius: 12px; border: 3px solid var(--text-color-dark);
+            background-color: var(--panel-bg);
+            overflow: hidden; flex-shrink: 0;
+        }
+        .user-list-avatar img { width: 100%; height: 100%; object-fit: contain; }
+        
+        .user-list-nickname {
+            font-weight: 700;
+            font-size: 1.0em;
+            flex-grow: 1; min-width: 0;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+
+        /* [신규] '나' 자신을 강조하는 스타일 */
+        .user-list-item.is-me {
+            background-color: #FFF8E1; /* 연한 노란색 배경 */
+        }
+        .user-list-item.is-me .user-list-nickname {
+            color: var(--primary-color); /* 강조색 */
+        }
+        
+        .user-item-actions {
+            display: flex; gap: 8px; flex-shrink: 0;
+        }
+        .user-action-btn {
+            /* (버튼 스타일은 .menu-btn 재사용) */
+            font-size: 0.9em;
+            padding: 10px 12px;
+            min-width: 60px;
+            width: auto;
+            border-radius: 12px;
+            border-bottom-width: 4px;
+        }
+
+        /* [신규] 접속자/친구찾기 버튼 */
+        .user-action-btn.add-friend {
+            /* .menu-btn.primary */
+            background-color: var(--primary-color); 
+            color: var(--text-color-light); 
+            border-bottom-color: #C04A4A;
+        }
+        .user-action-btn.send-message {
+            /* .menu-btn.accent */
+            background-color: var(--accent-color); 
+            color: var(--text-color-dark); 
+            border-bottom-color: #D1B030;
+        }
+
+
+        /* ------------------------- */
+        /* == 1:1 쪽지 모달 (신규) == */
+        /* ------------------------- */
+        .overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            display: none; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 200; background-color: rgba(0,0,0,0.6);
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+        }
+        .overlay.active { display: flex; }
+        .modal-content {
+            background: var(--panel-bg);
+            border-radius: 24px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            width: 90%; max-width: 400px; /* 쪽지 모달 너비 */
+            overflow: hidden;
+            border: 4px solid var(--text-color-dark);
+            box-shadow: 8px 8px 0px 0px var(--text-color-dark);
+        }
+        .modal-header {
+            padding: 15px 20px;
+            background-color: var(--secondary-color);
+            color: white;
+            border-bottom: 4px solid #379A93;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .modal-header h2 {
+            font-size: 1.3em;
+            flex-grow: 1; text-align: center; margin: 0;
+        }
+        /* 모달용 뒤로가기 버튼 */
+        .modal-back-btn {
+            background: none; border: none; color: white;
+            font-size: 2.5em; cursor: pointer; padding: 0 10px;
+            text-shadow: 1px 1px 1px rgba(0,0,0,0.2);
+            line-height: 1;
+        }
+
+        #message-modal .modal-body {
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            height: 60vh; /* 모달 높이 지정 */
+            max-height: 500px;
+        }
+        #message-history {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 15px;
+            display: flex;
+            flex-direction: column-reverse; /* 새 메시지가 아래에 오도록 */
+            background-color: var(--bg-color);
+        }
+        #message-input-area {
+            display: flex;
+            padding: 10px;
+            border-top: 3px solid var(--panel-border);
+            gap: 8px;
+            background-color: #FFFAE0;
+        }
+        #message-input {
+            flex-grow: 1;
+            border: 2px solid var(--text-color-dark);
+            border-radius: 12px;
+            padding: 12px;
+            font-size: 1em;
+            font-family: var(--font-main);
+            min-width: 0;
+        }
+        #message-send-btn {
+            flex-shrink: 0;
+            font-family: var(--font-main);
+            font-weight: 700;
+            font-size: 1em;
+            padding: 0 20px;
+            border: none; border-radius: 12px;
+            background-color: var(--primary-color);
+            color: white;
+            border-bottom: 4px solid #C04A4A;
+            cursor: pointer;
+        }
+        #message-send-btn:active {
+            transform: translateY(2px);
+            border-bottom-width: 2px;
+        }
+        /* 쪽지 말풍선 */
+        .msg-bubble {
+            margin-bottom: 8px;
+            max-width: 90%;
+            align-self: flex-start;
+            display: flex;
+            align-items: flex-end;
+            gap: 8px;
+        }
+        .msg-content {
+            padding: 6px 12px;
+            border-radius: 12px;
+            background-color: var(--panel-bg);
+            border: 2px solid var(--panel-border);
+            word-wrap: break-word;
+        }
+        .msg-time {
+            font-size: 0.75em;
+            color: #888;
+            flex-shrink: 0;
+            margin-bottom: 2px;
+        }
+        .msg-bubble.my-message {
+            align-self: flex-end;
+        }
+        .msg-content.my-message {
+            background-color: var(--accent-color);
+            border-color: #D1B030;
+        }
+
+        /* ------------------------- */
+        /* == 토스트 알림 (대기실.html과 동일) == */
+        /* ------------------------- */
+        #toast-container {
+            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+            z-index: 9999; display: flex; flex-direction: column;
+            align-items: center; gap: 10px; pointer-events: none;
+        }
+        .toast-message {
+            background-color: rgba(40, 40, 40, 0.85); color: white;
+            padding: 10px 20px; border-radius: 20px;
+            font-size: 0.9em; font-weight: 700;
+            animation: toast-fade 3s ease-out forwards;
+        }
+        @keyframes toast-fade {
+            0% { opacity: 0; transform: translateY(-10px); }
+            10% { opacity: 1; transform: translateY(0); }
+            90% { opacity: 1; transform: translateY(0); }
+            100% { opacity: 0; transform: translateY(-10px); }
+        }
+        @keyframes toast-fade-out {
+            from { opacity: 1; transform: translateY(0); }
+            to { opacity: 0; transform: translateY(-10px); }
+        }
+
+        /* [추가] 받은 쪽지함 스타일 */
+        .message-list { display: flex; flex-direction: column; gap: 12px; }
+        .message-list-item {
+            background-color: var(--panel-bg);
+            border: 3px solid var(--panel-border);
+            border-radius: 16px;
+            box-shadow: 4px 4px 0px 0px var(--panel-shadow);
+        }
+        .message-list-item.is-unread {
+            background-color: #FFF8E1;
+            border-color: var(--accent-color);
+        }
+        .message-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            border-bottom: 2px dashed var(--panel-border);
+        }
+        .message-avatar {
+            width: 36px; height: 36px; font-size: 1.8em;
+            display: flex; justify-content: center; align-items: center;
+            border-radius: 10px; border: 3px solid var(--text-color-dark);
+            background-color: var(--panel-bg);
+            overflow: hidden; flex-shrink: 0;
+        }
+        .message-avatar img { width: 100%; height: 100%; object-fit: contain; }
+        .message-sender {
+            font-weight: 700;
+            font-size: 1.0em;
+            flex-grow: 1; min-width: 0;
+        }
+        .message-time {
+            font-size: 0.8em;
+            color: #777;
+            flex-shrink: 0;
+        }
+        .message-content {
+            padding: 15px 12px;
+            font-size: 0.95em;
+            line-height: 1.4;
+            word-break: break-word;
+        }
+        .message-actions {
+            display: flex;
+            gap: 8px;
+            padding: 0 12px 12px;
+        }
+        .message-actions .menu-btn {
+            font-size: 0.9em;
+            padding: 10px 12px;
+            min-width: 60px;
+            width: auto;
+            border-radius: 12px;
+            border-bottom-width: 4px;
+            flex: 1;
+        }
+    </style>
+</head>
+<body>
+    <div id="toast-container"></div>
+    <audio id="click-sound" src="https://blog.kakaocdn.net/dna/dC0WAE/dJMb84DsZw6/AAAAAAAAAAAAAAAAAAAAAC8XpuPuNVEsdp6Ia-d35XR-m3FCZxObUR5uFI1tk2iv/%EB%B2%84%ED%8A%BC%EC%82%AC%EC%9A%B4%EB%93%9C.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=RdbjxdP75HLHSpBIhymVkYpUOA0%D&attach=1&knm=tfile.mp3" preload="auto"></audio>
+    
+    <div id="friend-view" class="view">
+        <div class="page-header">
+            <a href="대기실.html" class="back-btn" id="back-btn">‹</a>
+            <h1>👥 친구</h1>
+            <div style="width: 40px; flex-shrink: 0;"></div>
+        </div>
+
+       <div id="friend-tabs">
+            <button class="tab-btn active" data-tab="online-users">접속자</button>
+            <button class="tab-btn" data-tab="list">친구 목록</button>
+            <button class="tab-btn" data-tab="requests">받은 요청</button>
+            <button class="tab-btn" data-tab="messages">받은 쪽지</button>
+            <button class="tab-btn" data-tab="search">친구 찾기</button>
+        </div>
+
+        <div id="online-users-content" class="tab-content active">
+            <div class="user-list" id="online-users-container">
+                <div class="spinner"></div>
+            </div>
+        </div>
+
+        <div id="list-content" class="tab-content">
+            <div class="user-list" id="friend-list-container">
+                <div class="spinner"></div>
+            </div>
+        </div>
+        
+        <div id="requests-content" class="tab-content">
+            <div class="user-list" id="friend-requests-container">
+                <div class="spinner"></div>
+            </div>
+        </div>
+        
+        <div id="messages-content" class="tab-content">
+            <div class="message-list" id="messages-container">
+                <div class="spinner"></div>
+            </div>
+        </div>
+
+        <div id="search-content" class="tab-content">
+            <form id="friend-search-form">
+                <input type="text" id="friend-search-input" placeholder="닉네임을 입력하세요" required>
+                <button type="submit" id="friend-search-btn">검색</button>
+            </form>
+            <div class="user-list" id="friend-search-results-container">
+                </div>
+        </div>
+    </div>
+
+    <div id="message-modal" class="overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button class="modal-back-btn" data-close>‹</button>
+                <h2 id="message-modal-nickname">...</h2>
+                <div style="width: 40px;"></div>
+            </div>
+            <div class="modal-body">
+                <div id="message-history">
+                    <div class="spinner" style="margin: 20px auto;"></div>
+                </div>
+                <div id="message-input-area">
+                    <input type="text" id="message-input" placeholder="쪽지를 입력하세요...">
+                    <button id="message-send-btn">전송</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="아바타.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script>
+        // --- 헬퍼 함수 (대기실.html과 동일) ---
+        function showToast(message, duration = 3000) {
+            const container = document.getElementById('toast-container');
+            if (!container) return;
+            const toast = document.createElement('div');
+            toast.className = 'toast-message';
+            toast.textContent = message;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.animation = 'toast-fade-out 0.5s ease-out forwards';
+                toast.addEventListener('animationend', () => toast.remove());
+            }, duration - 500);
+        }
+
+        
+        // [추가] 날짜 포맷 함수
+        function formatTimeAgo(timestamp) {
+            const now = Date.now();
+            const seconds = Math.floor((now - timestamp) / 1000);
+
+            let interval = seconds / 31536000;
+            if (interval > 1) return Math.floor(interval) + "년 전";
+            interval = seconds / 2592000;
+            if (interval > 1) return Math.floor(interval) + "달 전";
+            interval = seconds / 86400;
+            if (interval > 1) return Math.floor(interval) + "일 전";
+            interval = seconds / 3600;
+            if (interval > 1) return Math.floor(interval) + "시간 전";
+            interval = seconds / 60;
+            if (interval > 1) return Math.floor(interval) + "분 전";
+            return "방금 전";
+        }
+
+        function escapeHTML(str) {
+            if (typeof str !== 'string') return '';
+            const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+            return str.replace(/[&<>"']/g, m => map[m]);
+        }
+
+        // [신규] 시간 포맷 함수
+        function formatTime(timestamp) {
+            if (!timestamp) return '';
+            const date = new Date(timestamp);
+            const hours = date.getHours();
+            const minutes = date.getMinutes().toString().padStart(2, '0');
+            const ampm = hours >= 12 ? '오후' : '오전';
+            const formattedHours = (hours % 12) || 12; // 12-hour format
+            return `${ampm} ${formattedHours}:${minutes}`;
+        }
+
+        document.addEventListener('contextmenu', event => event.preventDefault());
+        
+        document.addEventListener('keydown', event => {
+            if (event.key === 'F12' ||
+                (event.ctrlKey && event.shiftKey && ['I', 'J', 'C'].includes(event.key.toUpperCase())) ||
+                (event.ctrlKey && event.key.toUpperCase() === 'U')) {
+            event.preventDefault();
+            }
+        });
+
+        const defaultSettings = { sfx: true, bgm: true, vibration: true };
+        let gameSettings = JSON.parse(localStorage.getItem('gameSettings')) || defaultSettings;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const firebaseConfig = {
+                apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
+                authDomain: "goodluck-7c14b.firebaseapp.com",
+                databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com",
+                projectId: "goodluck-7c14b",
+                storageBucket: "goodluck-7c14b.appspot.com",
+                messagingSenderId: "858281658455",
+                appId: "1:858281658455:web:9131280a459be983933b12"
+            };
+
+            firebase.initializeApp(firebaseConfig);
+            const db = firebase.database();
+            const auth = firebase.auth();
+            const usersRef = db.ref('users');
+            const presenceRef = db.ref('status');
+            
+            const clickSound = document.getElementById('click-sound');
+            const backBtn = document.getElementById('back-btn');
+            
+            const tabsContainer = document.getElementById('friend-tabs');
+            const tabContents = document.querySelectorAll('.tab-content');
+            
+            const onlineUsersContainer = document.getElementById('online-users-container');
+            const friendListContainer = document.getElementById('friend-list-container');
+            const friendRequestsContainer = document.getElementById('friend-requests-container');
+            const friendSearchForm = document.getElementById('friend-search-form');
+            const friendSearchInput = document.getElementById('friend-search-input');
+            const friendSearchResultsContainer = document.getElementById('friend-search-results-container');
+            
+            // [신규] 받은 쪽지함
+            const messagesContainer = document.getElementById('messages-container');
+            
+            const messageModal = document.getElementById('message-modal');
+
+            let currentUser, currentUserData;
+            let myFriendIds = {};
+            let myPresenceRef = null;
+            
+            let messageInboxRef = null;
+            let messageInboxListener = null;
+
+            let currentMessagesRef = null;
+            let currentMessageListener = null;
+            let messagesLoaded = false;
+            let lastMessageTimestamp = 0;
+
+            // [신규] 리스너 중복 방지를 위한 변수
+            let friendListRef = null;
+            let friendListListener = null;
+            let friendRequestRef = null;
+            let friendRequestListener = null;
+
+            backBtn.addEventListener('click', (e) => {
+                if (gameSettings.sfx) clickSound.play();
+            });
+
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    currentUser = user;
+                    
+                    myPresenceRef = presenceRef.child(user.uid);
+                    myPresenceRef.set(true);
+                    myPresenceRef.onDisconnect().remove();
+
+                    usersRef.child(user.uid).on('value', snapshot => {
+                        if (snapshot.exists()) {
+                            currentUserData = snapshot.val();
+                            
+                            // [수정] Firebase 규칙에 맞는 친구 목록 경로
+                            db.ref(`friends/${currentUser.uid}`).on('value', (friendSnap) => {
+                                myFriendIds = friendSnap.val() || {};
+                                
+                                // 페이지가 처음 로드될 때만 탭 리스너 설정
+                                if (!window.friendPageInitialized) {
+                                    initFriendPage();
+                                    window.friendPageInitialized = true;
+                                }
+                                
+                                // 데이터가 변경될 때마다 현재 활성화된 탭 새로고침
+                                refreshActiveTab();
+                            });
+                        }
+                    });
+
+                    // [수정] 쪽지 알림 리스너 (경로 수정)
+                    const myInboxRef = db.ref(`user_inboxes/${user.uid}`);
+                    myInboxRef.once('value', (snapshot) => {
+                        const data = snapshot.val();
+                        if (data) {
+                            Object.values(data).forEach(msg => {
+                                if (msg.timestamp > lastMessageTimestamp) {
+                                    lastMessageTimestamp = msg.timestamp;
+                                }
+                            });
+                        }
+                        const startTimestamp = lastMessageTimestamp === 0 ? 0 : lastMessageTimestamp + 1;
+                        myInboxRef.orderByChild('timestamp').startAt(startTimestamp).on('child_added', (snap) => handleNewMessageAlert(snap, user.uid));
+                        myInboxRef.on('child_changed', (snap) => handleNewMessageAlert(snap, user.uid));
+                    });
+
+                } else {
+                    window.location.replace('index.html');
+                }
+            });
+
+            // [신규] 쪽지 알림 핸들러
+            async function handleNewMessageAlert(snapshot, myUid) {
+                const messageData = snapshot.val();
+                const senderUid = snapshot.key;
+
+                if (messageData.timestamp <= lastMessageTimestamp) return;
+                lastMessageTimestamp = messageData.timestamp;
+
+                if (messageModal.classList.contains('active') && messageModal.dataset.chattingWith === senderUid) {
+                    return; 
+                }
+
+                try {
+                    const profileSnap = await usersRef.child(senderUid).child('profile').once('value');
+                    if (profileSnap.exists()) {
+                        const nickname = escapeHTML(profileSnap.val().nickname);
+                        showToast(`✉️ ${nickname}님에게 메시지가 도착했습니다!`);
+                    }
+                } catch (error) {
+                    console.error("쪽지 발신자 프로필 조회 실패:", error);
+                }
+            }
+            
+            function initFriendPage() {
+                setupTabListeners();
+                setupSearchFormListener();
+
+                
+                
+                loadOnlineUsersList();
+                listenToFriends();
+                listenToFriendRequests();
+                listenToMessages();
+            }
+            
+            function setupTabListeners() {
+                tabsContainer.querySelectorAll('.tab-btn').forEach(tab => {
+                    tab.addEventListener('click', (e) => {
+                        if (gameSettings.sfx) clickSound.play();
+                        
+                        const tabName = e.currentTarget.dataset.tab;
+                        
+                        tabsContainer.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('active'));
+                        tabContents.forEach(c => c.classList.remove('active'));
+                        
+                        e.currentTarget.classList.add('active');
+                        document.getElementById(`${tabName}-content`).classList.add('active');
+                        
+                        if (tabName === 'online-users') {
+                            loadOnlineUsersList();
+                        } else if (tabName === 'list') {
+                            listenToFriends();
+                        } else if (tabName === 'requests') {
+                            listenToFriendRequests();
+                        } else if (tabName === 'messages') {
+                            listenToMessages();
+                        }
+                    });
+                });
+            }
+
+            function refreshActiveTab() {
+    const activeTab = tabsContainer.querySelector('.tab-btn.active');
+    if (!activeTab) return;
+    
+    const tabName = activeTab.dataset.tab;
+    
+    // ✅ 접속자 목록만 수동 새로고침
+    if (tabName === 'online-users') {
+        loadOnlineUsersList();
+    }
+    // ✅ 나머지는 Firebase 리스너가 이미 등록되어 있으므로
+    //    자동으로 UI가 갱신됨 (중복 호출 불필요!)
+}
+
+            // [신규] 0. 접속자 목록 로드
+            function loadOnlineUsersList() {
+                onlineUsersContainer.innerHTML = '<div class="spinner"></div>';
+                
+                presenceRef.once('value', async (presenceSnap) => {
+                    if (!presenceSnap.exists()) {
+                        onlineUsersContainer.innerHTML = '<p style="text-align: center;">접속 중인 유저가 없습니다.</p>';
+                        return;
+                    }
+                    
+                    const uids = Object.keys(presenceSnap.val());
+                    const profilePromises = uids.map(uid => usersRef.child(uid).child('profile').once('value'));
+                    
+                    try {
+                        const profileSnapshots = await Promise.all(profilePromises);
+                        onlineUsersContainer.innerHTML = '';
+                        
+                        profileSnapshots.forEach((profileSnap, index) => {
+                            const profile = profileSnap.val();
+                            const uid = uids[index];
+                            if (!profile) return;
+                            
+                            const itemEl = createUserListItem(uid, profile, 'online');
+                            onlineUsersContainer.appendChild(itemEl);
+                        });
+
+                        if (onlineUsersContainer.innerHTML === '') {
+                            onlineUsersContainer.innerHTML = '<p style="text-align: center;">접속 중인 유저가 없습니다.</p>';
+                        }
+                    } catch (error) {
+                        console.error("접속자 프로필 로드 실패:", error);
+                        onlineUsersContainer.innerHTML = '<p style="text-align: center;">정보를 불러오는 중 오류가 발생했습니다.</p>';
+                    }
+                });
+            }
+            
+            // [수정] 1. 친구 목록 리스너 (경로 및 중복 리스너 수정)
+            function listenToFriends() {
+                friendListContainer.innerHTML = '<div class="spinner"></div>';
+                
+                // [수정] 리스너 중복 부착 방지를 위해 기존 리스너 제거
+                if (friendListRef && friendListListener) {
+                    friendListRef.off('value', friendListListener);
+                }
+
+                // [수정] 올바른 경로로 수정
+                friendListRef = db.ref(`friends/${currentUser.uid}`);
+                friendListListener = friendListRef.on('value', snapshot => {
+                    if (!snapshot.exists()) {
+                        friendListContainer.innerHTML = '<p style="text-align:center; color:#888; padding: 50px 0;">친구가 없습니다.</p>';
+                        return;
+                    }
+                    
+                    const friendIds = Object.keys(snapshot.val());
+                    const promises = friendIds.map(uid => usersRef.child(uid).child('profile').once('value'));
+                    
+                    Promise.all(promises).then(results => {
+                        friendListContainer.innerHTML = ''; // 목록 비우기
+                        results.forEach((profileSnapshot, index) => {
+                            if (profileSnapshot.exists()) {
+                                const friendProfile = profileSnapshot.val();
+                                const friendUid = friendIds[index];
+                                const itemEl = createUserListItem(friendUid, friendProfile, 'friend');
+                                friendListContainer.appendChild(itemEl);
+                            }
+                        });
+                        // [신규] 친구가 프로필 조회 실패 등으로 0명일 경우
+                        if (friendListContainer.innerHTML === '') {
+                             friendListContainer.innerHTML = '<p style="text-align:center; color:#888; padding: 50px 0;">친구 목록을 불러올 수 없습니다.</p>';
+                        }
+                    });
+                });
+            }
+            
+            // [수정] 2. 친구 요청 리스너 (리스너 중복 수정)
+            function listenToFriendRequests() {
+                friendRequestsContainer.innerHTML = '<div class="spinner"></div>';
+                
+                // [수정] 리스너 중복 부착 방지를 위해 기존 리스너 제거
+                if (friendRequestRef && friendRequestListener) {
+                    friendRequestRef.off('value', friendRequestListener);
+                }
+
+                friendRequestRef = db.ref(`friend_requests/${currentUser.uid}`);
+                friendRequestListener = friendRequestRef.on('value', async (snapshot) => {
+                    const requestBadge = tabsContainer.querySelector('[data-tab="requests"] .badge');
+                    if (!snapshot.exists()) {
+                        friendRequestsContainer.innerHTML = '<p style="text-align:center; color:#888; padding: 50px 0;">받은 친구 요청이 없습니다.</p>';
+                        if (requestBadge) requestBadge.remove();
+                        return;
+                    }
+                    
+                    const requests = snapshot.val();
+
+                    const requestUids = Object.keys(requests);
+                    
+                    const count = requestUids.length;
+                    if (requestBadge) {
+                        requestBadge.textContent = count > 9 ? '9+' : count;
+                    } else {
+                        const newBadge = document.createElement('span');
+                        newBadge.className = 'badge';
+                        newBadge.textContent = count > 9 ? '9+' : count;
+                        tabsContainer.querySelector('[data-tab="requests"]').appendChild(newBadge);
+                    }
+
+                    const profilePromises = requestUids.map(uid => usersRef.child(uid).child('profile').once('value'));
+                    const profileSnapshots = await Promise.all(profilePromises);
+
+                    friendRequestsContainer.innerHTML = '';
+                    profileSnapshots.forEach((profileSnap, index) => {
+                        if (profileSnap.exists()) {
+                            const uid = requestUids[index];
+                            const profile = profileSnap.val();
+                            const itemEl = createUserListItem(uid, profile, 'request');
+                            friendRequestsContainer.appendChild(itemEl);
+                        }
+                    });
+                });
+            }
+            
+            // 3. 친구 찾기 폼 리스너 (경로 수정 없음 - users/.. 검색)
+            function setupSearchFormListener() {
+                friendSearchForm.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    if (gameSettings.sfx) clickSound.play();
+                    
+                    const searchTerm = friendSearchInput.value.trim();
+                    if (searchTerm.length < 2) {
+                        showToast('닉네임은 2자 이상 입력해주세요.');
+                        return;
+                    }
+                    
+                    if (searchTerm === currentUserData.profile.nickname) {
+                        showToast('자기 자신은 검색할 수 없습니다.');
+                        return;
+                    }
+                    
+                    friendSearchResultsContainer.innerHTML = '<div class="spinner"></div>';
+                    
+                    usersRef.orderByChild('profile/nickname').equalTo(searchTerm).once('value', snapshot => {
+                        if (!snapshot.exists()) {
+                            friendSearchResultsContainer.innerHTML = '<p style="text-align:center; color:#888; padding: 50px 0;">검색 결과가 없습니다.</p>';
+                            return;
+                        }
+                        
+                        friendSearchResultsContainer.innerHTML = '';
+                        snapshot.forEach(child => {
+                            const foundUid = child.key;
+                            const foundProfile = child.val().profile;
+                            
+                            if (foundUid === currentUser.uid) return;
+                            
+                            const itemEl = createUserListItem(foundUid, foundProfile, 'search');
+                            friendSearchResultsContainer.appendChild(itemEl);
+                        });
+                        
+                        if (friendSearchResultsContainer.innerHTML === '') {
+                             friendSearchResultsContainer.innerHTML = '<p style="text-align:center; color:#888; padding: 50px 0;">검색 결과가 없습니다.</p>';
+                        }
+                    });
+                });
+            }
+            
+            // [수정] 공통 유저 리스트 아이템 생성 (4가지 타입)
+            function createUserListItem(uid, profile, type) {
+                const itemEl = document.createElement('div');
+                itemEl.className = 'user-list-item';
+                
+                const avatar = profile.avatar || '';
+                const avatarSet = AVATAR_SETS[avatar];
+                let avatarHTML = '';
+                if (avatarSet) {
+                    avatarHTML = `<img src="${avatarSet.front}" alt="avatar">`;
+                } else if (avatar && (avatar.startsWith('http') || avatar.includes('.'))) {
+                    avatarHTML = `<img src="${avatar}" alt="avatar">`;
+                } else {
+                    avatarHTML = escapeHTML(avatar || '❓');
+                }
+                
+                let actionsHTML = '';
+                const isMe = (uid === currentUser.uid);
+                
+                if (isMe) {
+                    itemEl.classList.add('is-me');
+                } else if (type === 'friend') {
+                    actionsHTML = `
+                        <button class="menu-btn user-action-btn send-message" data-action="message" data-uid="${uid}" data-nickname="${escapeHTML(profile.nickname)}">쪽지</button>
+                        <button class="menu-btn user-action-btn danger" data-action="remove" data-uid="${uid}">삭제</button>
+                    `;
+                } else if (type === 'request') {
+                    actionsHTML = `
+                        <button class="menu-btn user-action-btn secondary" data-action="accept" data-uid="${uid}">수락</button>
+                        <button class="menu-btn user-action-btn light" data-action="decline" data-uid="${uid}">거절</button>
+                    `;
+                } else { // 'search' 또는 'online'
+                    const isFriend = !!myFriendIds[uid];
+                    if (isFriend) {
+                        actionsHTML = `
+                            <button class="menu-btn user-action-btn send-message" data-action="message" data-uid="${uid}" data-nickname="${escapeHTML(profile.nickname)}">쪽지</button>
+                            <button class="menu-btn user-action-btn light" disabled>친구</button>
+                        `;
+                    } else {
+                        actionsHTML = `
+                            <button class="menu-btn user-action-btn send-message" data-action="message" data-uid="${uid}" data-nickname="${escapeHTML(profile.nickname)}">쪽지</button>
+                            <button class="menu-btn user-action-btn add-friend" data-action="add" data-uid="${uid}">추가</button>
+                        `;
+                    }
+                }
+                
+                itemEl.innerHTML = `
+                    <div class="user-list-avatar">${avatarHTML}</div>
+                    <div class="user-list-nickname">${escapeHTML(profile.nickname)} ${isMe ? '(나)' : ''}</div>
+                    <div class="user-item-actions">${actionsHTML}</div>
+                `;
+                
+                // 버튼에 이벤트 리스너 추가
+                itemEl.querySelector('[data-action="remove"]')?.addEventListener('click', (e) => handleRemoveFriend(e, profile.nickname));
+                itemEl.querySelector('[data-action="accept"]')?.addEventListener('click', (e) => handleAcceptRequest(e, profile));
+                itemEl.querySelector('[data-action="decline"]')?.addEventListener('click', (e) => handleDeclineRequest(e));
+                itemEl.querySelector('[data-action="add"]')?.addEventListener('click', (e) => handleAddFriend(e, profile));
+                itemEl.querySelector('[data-action="message"]')?.addEventListener('click', (e) => {
+                    if (gameSettings.sfx) clickSound.play();
+                    const targetUid = e.currentTarget.dataset.uid;
+                    const targetNickname = e.currentTarget.dataset.nickname;
+                    openMessageModal(targetUid, targetNickname);
+                });
+                
+                return itemEl;
+            }
+            
+          // [추가] 4. 받은 쪽지함 리스너
+            function listenToMessages() {
+                const messagesContainer = document.getElementById('messages-container');
+                messagesContainer.innerHTML = '<div class="spinner"></div>';
+                
+                if (messageInboxRef && messageInboxListener) {
+                    messageInboxRef.off('value', messageInboxListener);
+                }
+
+                messageInboxRef = db.ref(`user_inboxes/${currentUser.uid}`);
+                
+                messageInboxListener = messageInboxRef.orderByChild('timestamp').on('value', async (snapshot) => {
+                    const messageBadge = tabsContainer.querySelector('[data-tab="messages"] .badge');
+                    
+                    if (!snapshot.exists()) {
+                        messagesContainer.innerHTML = '<p style="text-align:center; color:#888; padding: 50px 0;">받은 쪽지가 없습니다.</p>';
+                        if (messageBadge) messageBadge.remove();
+                        return;
+                    }
+                    
+                    // [수정] 목록 중복 버그 해결
+                    messagesContainer.innerHTML = '';
+                    let unreadCount = 0;
+                    
+                    const messages = [];
+                    snapshot.forEach(child => {
+                        messages.push({ senderUid: child.key, ...child.val() });
+                    });
+                    messages.reverse(); 
+
+                    const senderUids = [...new Set(messages.map(msg => msg.senderUid))];
+                    const profilePromises = senderUids.map(uid => usersRef.child(uid).child('profile').once('value'));
+                    const profileSnapshots = await Promise.all(profilePromises);
+                    
+                    const profiles = {};
+                    profileSnapshots.forEach((snap, index) => {
+                        if(snap.exists()) profiles[senderUids[index]] = snap.val();
+                    });
+
+                    messages.forEach(msg => {
+                        const senderProfile = profiles[msg.senderUid] || { nickname: '알수없음', avatar: '❓' };
+                        const itemEl = createMessageListItem(msg.senderUid, senderProfile, msg);
+                        messagesContainer.appendChild(itemEl);
+                    });
+
+                    // 뱃지에 안 읽은 쪽지 수 표시 (일단 전체 개수로)
+                    const count = messages.length;
+                    if (count > 0) {
+                        if (messageBadge) {
+                            messageBadge.textContent = count > 9 ? '9+' : count;
+                        } else {
+                            const newBadge = document.createElement('span');
+                            newBadge.className = 'badge';
+                            newBadge.textContent = count > 9 ? '9+' : count;
+                            tabsContainer.querySelector('[data-tab="messages"]').appendChild(newBadge);
+                        }
+                    } else {
+                        if (messageBadge) messageBadge.remove();
+                    }
+                });
+            }
+            
+            // [추가] 5. 쪽지 리스트 아이템 생성
+            function createMessageListItem(senderUid, senderProfile, msgData) {
+                const itemEl = document.createElement('div');
+                itemEl.className = 'message-list-item';
+
+                const avatar = senderProfile.avatar || '';
+                const avatarSet = AVATAR_SETS[avatar];
+                let avatarHTML = '';
+                if (avatarSet) { avatarHTML = `<img src="${avatarSet.front}" alt="av">`; }
+                else if (avatar.startsWith('http') || avatar.includes('.')) { avatarHTML = `<img src="${avatar}" alt="av">`; }
+                else { avatarHTML = escapeHTML(avatar || '❓'); }
+
+                itemEl.innerHTML = `
+                    <div class="message-header">
+                        <div class="message-avatar">${avatarHTML}</div>
+                        <span class="message-sender">${escapeHTML(senderProfile.nickname)}</span>
+                        <span class="message-time">${formatTimeAgo(msgData.timestamp)}</span>
+                    </div>
+                    <div class="message-content">
+                        ${escapeHTML(msgData.lastMessage)}
+                    </div>
+                    <div class="message-actions">
+                        <button class="menu-btn user-action-btn secondary" data-action="reply">답장</button>
+                        <button class="menu-btn user-action-btn light" data-action="delete">삭제</button>
+                    </div>
+                `;
+                
+                // 답장 버튼
+                itemEl.querySelector('[data-action="reply"]').addEventListener('click', () => {
+                    openMessageModal(senderUid, senderProfile.nickname);
+                });
+                
+                // 삭제 버튼
+                itemEl.querySelector('[data-action="delete"]').addEventListener('click', () => {
+                    if (gameSettings.sfx) clickSound.play();
+                    if (confirm('이 대화를 삭제하시겠습니까? (상대방에겐 유지됩니다)')) {
+                        db.ref(`user_inboxes/${currentUser.uid}/${senderUid}`).remove();
+                        // .on('value') 리스너가 자동으로 목록을 갱신합니다.
+                    }
+                });
+
+                return itemEl;
+            }
+
+            // --- 친구 관리 액션 핸들러 (경로 수정) ---
+            
+            // [수정] 친구 추가 (경로: friend_requests, 데이터: TIMESTAMP)
+            function handleAddFriend(e, targetProfile) {
+                if (gameSettings.sfx) clickSound.play();
+                const targetUid = e.currentTarget.dataset.uid;
+                e.currentTarget.disabled = true;
+                e.currentTarget.textContent = '요청됨';
+                
+                // [수정] Firebase 규칙에 맞게 경로 및 데이터 수정
+                db.ref(`friend_requests/${targetUid}/${currentUser.uid}`).set(
+                    firebase.database.ServerValue.TIMESTAMP
+                ).then(() => {
+                    showToast(`${targetProfile.nickname}님에게 친구 요청을 보냈습니다.`);
+                }).catch((err) => {
+                     showToast(`요청 실패: ${err.message}`);
+                     e.currentTarget.disabled = false;
+                     e.currentTarget.textContent = '추가';
+                });
+            }
+            
+            // [수정] 친구 삭제 (경로: friends)
+            function handleRemoveFriend(e, friendNickname) {
+                if (gameSettings.sfx) clickSound.play();
+                // [수정] confirm()은 iframe 환경에서 작동하지 않으므로, window.confirm() 사용
+                if (!window.confirm(`${friendNickname}님을 친구에서 삭제하시겠습니까?`)) return;
+                
+                const friendUid = e.currentTarget.dataset.uid;
+                
+                const updates = {};
+                updates[`/friends/${currentUser.uid}/${friendUid}`] = null;
+                updates[`/friends/${friendUid}/${currentUser.uid}`] = null;
+                db.ref().update(updates).then(() => {
+                    showToast(`${friendNickname}님을 친구에서 삭제했습니다.`);
+                    // 'on' 리스너가 자동으로 UI를 갱신합니다.
+                });
+            }
+            
+            // [수정] 친구 수락 (경로: friends, friend_requests)
+            function handleAcceptRequest(e, requesterProfile) {
+                if (gameSettings.sfx) clickSound.play();
+                const requesterUid = e.currentTarget.dataset.uid;
+                
+                const updates = {};
+                updates[`/friends/${currentUser.uid}/${requesterUid}`] = true;
+                updates[`/friends/${requesterUid}/${currentUser.uid}`] = true;
+                updates[`/friend_requests/${currentUser.uid}/${requesterUid}`] = null;
+                
+                db.ref().update(updates).then(() => {
+                    showToast(`${requesterProfile.nickname}님의 친구 요청을 수락했습니다.`);
+                });
+            }
+            
+            // [수정] 친구 거절 (경로: friend_requests)
+            function handleDeclineRequest(e) {
+                if (gameSettings.sfx) clickSound.play();
+                const requesterUid = e.currentTarget.dataset.uid;
+                
+                db.ref(`friend_requests/${currentUser.uid}/${requesterUid}`).remove().then(() => {
+                    showToast('친구 요청을 거절했습니다.');
+                });
+            }
+
+            // [신규] 쪽지 모달 열기 (통합대기실.html에서 복사)
+            function openMessageModal(targetUid, targetNickname) {
+                messageModal.dataset.chattingWith = targetUid;
+                if (currentMessagesRef && currentMessageListener) {
+                    currentMessagesRef.off('child_added', currentMessageListener);
+                }
+
+                messageModal.querySelector('#message-modal-nickname').textContent = `${escapeHTML(targetNickname)}님과 대화`;
+                const messageInput = messageModal.querySelector('#message-input');
+                const messageSendBtn = messageModal.querySelector('#message-send-btn');
+                const messageHistory = messageModal.querySelector('#message-history');
+                messageInput.value = '';
+                messagesLoaded = false;
+
+                messageInput.onkeydown = (e) => {
+                    if (e.key === 'Enter' && !e.isComposing) {
+                        e.preventDefault();
+                        messageSendBtn.click();
+                    }
+                };
+                
+                messageHistory.innerHTML = '<div class="spinner" style="margin: 20px auto;"></div>';
+                
+                const myUid = currentUser.uid;
+                const chatId = [myUid, targetUid].sort().join('_');
+                currentMessagesRef = db.ref(`messages/${chatId}`);
+
+                messageSendBtn.onclick = () => {
+                    const message = messageInput.value.trim();
+                    if (message === '') return;
+                    
+                    messageInput.value = '';
+                    messageInput.focus();
+                    
+                    const messageData = {
+                        senderUid: myUid,
+                        message: message,
+                        timestamp: firebase.database.ServerValue.TIMESTAMP
+                    };
+
+                    currentMessagesRef.push(messageData)
+                        .then(() => {
+                            db.ref(`user_inboxes/${targetUid}/${myUid}`).set({
+                                lastMessage: message,
+                                timestamp: firebase.database.ServerValue.TIMESTAMP
+                            });
+                        })
+                        .catch(error => {
+                            console.error("쪽지 전송 실패:", error);
+                            showToast("쪽지 전송에 실패했습니다.");
+                            messageInput.value = message;
+                        });
+                };
+
+                currentMessagesRef.orderByChild('timestamp').limitToLast(50).once('value', (snapshot) => {
+                    if (!snapshot.exists()) {
+                        messageHistory.innerHTML = '<p style="text-align:center; color:#888; padding: 40px;">아직 대화 내역이 없습니다.</p>';
+                        messagesLoaded = true;
+                    }
+                });
+
+                currentMessageListener = (snapshot) => {
+                    if (!messagesLoaded) {
+                        messageHistory.innerHTML = '';
+                        messagesLoaded = true;
+                    }
+                    
+                    const data = snapshot.val();
+                    if (!data) return;
+                    
+                    const isMe = data.senderUid === myUid;
+                    const msgEl = createMessageBubble(data.message, data.timestamp, isMe);
+                    
+                    messageHistory.prepend(msgEl);
+                };
+                
+                currentMessagesRef.orderByChild('timestamp').limitToLast(50).on('child_added', currentMessageListener);
+
+                messageModal.classList.add('active');
+                setTimeout(() => messageInput.focus(), 300);
+            }
+
+            // [신규] 쪽지 말풍선 DOM 생성
+            function createMessageBubble(message, timestamp, isMe) {
+                const msgEl = document.createElement('div');
+                msgEl.className = 'msg-bubble';
+                
+                const contentEl = document.createElement('div');
+                contentEl.className = 'msg-content';
+                contentEl.textContent = escapeHTML(message);
+
+                const timeEl = document.createElement('span');
+                timeEl.className = 'msg-time';
+                timeEl.textContent = formatTime(timestamp);
+
+                if (isMe) {
+                    msgEl.classList.add('my-message');
+                    contentEl.classList.add('my-message');
+                    msgEl.appendChild(timeEl);
+                    msgEl.appendChild(contentEl);
+                } else {
+                    msgEl.appendChild(contentEl);
+                    msgEl.appendChild(timeEl);
+                }
+                return msgEl;
+            }
+
+            // [신규] 모달 닫기 버튼
+            messageModal.querySelector('[data-close]').addEventListener('click', () => {
+                if (gameSettings.sfx) clickSound.play();
+                messageModal.classList.remove('active');
+                if (currentMessagesRef && currentMessageListener) {
+                    currentMessagesRef.off('child_added', currentMessageListener);
+                    currentMessagesRef = null;
+                    currentMessageListener = null;
+                    messagesLoaded = false;
+                    delete messageModal.dataset.chattingWith;
+                }
+            });
+
+        });
+    </script>
+</body>
+</html>

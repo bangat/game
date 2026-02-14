@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>미로찾기 (혼자하기)</title>
+    <style>
+    :root {
+        --bg-color: #f0f2f5; --wall-color: #34495e; --path-color: #ecf0f1;
+        --button-bg: #2c3e50; --button-text: #ffffff; --button-hover: #3e5771;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+        width: 100%; height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background-color: var(--bg-color); display: flex; flex-direction: column;
+        justify-content: center; align-items: center; -webkit-user-select: none; user-select: none; touch-action: manipulation;
+    }
+    #game-wrapper { width: 100%; height: 100%; display: none; flex-direction: column; }
+    #game-header { flex-shrink: 0; display: flex; align-items: center; width: 100%; padding: 8px 10px; gap: 8px; background-color: rgba(0,0,0,0.1); z-index: 5; overflow-x: auto; }
+    #game-header::-webkit-scrollbar { display: none; }
+    #game-header { scrollbar-width: none; }
+    .player-status { background-color: rgba(255,255,255,0.8); padding: 4px 10px; border-radius: 20px; display: flex; align-items: center; gap: 6px; font-size: 0.8em; font-weight: bold; color: #333; box-shadow: 0 1px 4px rgba(0,0,0,0.1); white-space: nowrap; transition: all 0.3s ease; }
+    .player-status.dead { opacity: 0.5; filter: grayscale(80%); transform: scale(0.95); }
+    .player-status .avatar { font-size: 1.1em; }
+    #game-container { width: 100%; flex-grow: 1; display: flex; justify-content: center; align-items: center; min-height: 0; position: relative; padding: 5px; }
+    #maze-wrapper { width: auto; height: 100%; max-width: 100%; aspect-ratio: 19 / 39; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2); border-radius: 10px; overflow: hidden; background-color: var(--path-color); position: relative; margin: 0 auto; }
+    #maze { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+    .wall { background-color: var(--wall-color); position: absolute; }
+    .player-avatar, .opponent-player { position: absolute; display: flex; justify-content: center; align-items: center; transition: all 0.12s linear; border-radius: 50%; z-index: 10; }
+    .player-avatar.slowed { transition: all 0.3s linear !important; }
+    .player-avatar { animation: pulse-me 1.5s infinite; }
+    .dead { opacity: 0.4; filter: grayscale(100%); z-index: 5; animation: none !important; box-shadow: none !important; }
+    @keyframes pulse-me { 0% { box-shadow: 0 0 12px 3px rgba(66, 133, 244, 0.9); } 50% { box-shadow: 0 0 18px 6px rgba(66, 133, 244, 0.5); } 100% { box-shadow: 0 0 12px 3px rgba(66, 133, 244, 0.9); } }
+    #goal { position: absolute; display: flex; justify-content: center; align-items: center; animation: pulse 1.5s infinite; z-index: 6; }
+    @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.2); } 100% { transform: scale(1); } }
+    .ghost, .item { position: absolute; display: flex; justify-content: center; align-items: center; }
+    .ghost { transition: all 0.4s linear; z-index: 8; animation: float 2s ease-in-out infinite; }
+    @keyframes float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-5px); } }
+    .item { z-index: 7; animation: spin-item 3s linear infinite; }
+    @keyframes spin-item { from { transform: rotateY(0deg); } to { transform: rotateY(360deg); } }
+    .ghost-pass { animation: shield-glow 1.2s infinite ease-in-out; }
+    @keyframes shield-glow { 0% { box-shadow: 0 0 15px 4px rgba(0, 255, 255, 0.9); } 50% { box-shadow: 0 0 25px 8px rgba(0, 255, 255, 0.5); } 100% { box-shadow: 0 0 15px 4px rgba(0, 255, 255, 0.9); } }
+    #d-pad { position: absolute; bottom: 15px; left: 15px; width: 140px; height: 140px; z-index: 100; opacity: 0.7; }
+    #d-pad::before { content: ''; position: absolute; top: 50%; left: 50%; width: 100px; height: 100px; background: rgba(0,0,0,0.3); border-radius: 50%; transform: translate(-50%, -50%); }
+    #d-pad button { position: absolute; width: 48px; height: 48px; background-color: rgba(44, 62, 80, 0.8); color: var(--button-text); border: none; border-radius: 15px; box-shadow: 0 3px 8px rgba(0,0,0,0.3); font-size: 1.5em; cursor: pointer; }
+    #d-pad button:active { transform: scale(0.95); background-color: var(--button-hover); }
+    #up { top: 0; left: 46px; } #down { bottom: 0; left: 46px; } #left { left: 0; top: 46px; } #right { right: 0; top: 46px; }
+    #inventory-bar { width: 100%; flex-shrink: 0; background-color: #dde5f3; padding: 10px; padding-bottom: max(10px, env(safe-area-inset-bottom)); border-top: 2px solid #c9d5e8; display: flex; justify-content: center; align-items: center; z-index: 5; }
+    #inventory-container { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+    .inventory-slot { width: 50px; height: 50px; background-color: #fff; border: 2px solid #b0bec5; border-radius: 10px; font-size: 2em; display: flex; justify-content: center; align-items: center; cursor: pointer; box-shadow: inset 0 2px 4px rgba(0,0,0,0.1); }
+    .inventory-slot:empty { background-color: rgba(255,255,255,0.5); cursor: default; }
+    .inventory-slot.used { animation: use-item-anim 0.4s ease-out; }
+    @keyframes use-item-anim { 0% { transform: scale(1.2); opacity: 1; } 100% { transform: scale(0.5); opacity: 0; } }
+    .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 200; text-align: center; background-color: rgba(0,0,0,0.7); }
+    .modal-content { background: rgba(44, 62, 80, 0.85); padding: 30px; border-radius: 20px; backdrop-filter: blur(5px); }
+    .modal-buttons { display: flex; flex-direction: column; gap: 10px; align-items: center; margin-top: 20px;}
+    .menu-btn { width: 100%; max-width: 250px; padding: 15px; font-size: 1.2em; font-weight: bold; border-radius: 12px; border: none; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.1s; }
+    .menu-btn.primary { background-color: var(--button-bg); color: var(--button-text); }
+    .menu-btn.secondary { background-color: #f0f3f4; color: #333; }
+    .menu-btn:active { transform: scale(0.98); }
+    #game-over-message { font-size: 2.5em; font-weight: bold; margin-bottom: 20px; text-shadow: 2px 2px 4px #000; }
+    #countdown-container { color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); text-align: center; }
+    #countdown-container h2 { font-size: 1.8em; font-weight: 700; }
+    #countdown-number { font-size: 6em; font-weight: 700; margin-top: 10px; animation: countdown-pop 1s infinite; }
+    @keyframes countdown-pop { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.2); } }
+    </style>
+</head>
+<body>
+    <div id="game-over-overlay" class="overlay" style="display: none;"></div>
+    <div id="waiting-overlay" class="overlay" style="display: none;"></div>
+    <div id="game-wrapper">
+        <div id="game-header"></div>
+        <div id="game-container">
+            <div id="maze-wrapper">
+                <div id="maze"></div>
+                <div id="d-pad">
+                    <button id="up">▲</button>
+                    <button id="left">◀</button>
+                    <button id="right">▶</button>
+                    <button id="down">▼</button>
+                </div>
+            </div>
+        </div>
+        <div id="inventory-bar">
+            <div id="inventory-container"></div>
+        </div>
+    </div>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const gameWrapper = document.getElementById('game-wrapper'),
+          mazeContainer = document.getElementById('maze'),
+          gameOverOverlay = document.getElementById('game-over-overlay'),
+          waitingOverlay = document.getElementById('waiting-overlay'),
+          inventoryContainer = document.getElementById('inventory-container'),
+          gameHeader = document.getElementById('game-header');
+    
+    let myPlayerId, myAvatar, myNickname;
+    let playerPos = { x: 0, y: 0 }, startPos = { x: 0, y: 0 }, goalPos = { x: 0, y: 0 };
+    let cellSize = 0, mazeLayout = [], mazeRows = 39, mazeCols = 19;
+let isDead = false, keyMoving = null; // moveInterval 제거
+    const keysPressed = { up: false, down: false, left: false, right: false };
+    let lastMoveTime = 0;
+    let itemsOnMap = {};
+    let localPlayerEffects = { hasGhostPass: false };
+    let isGameRunning = false;
+    let playerProfile = {};
+    let ghosts = [], ghostMoveInterval = null;
+
+    const bgmList = ['https://blog.kakaocdn.net/dna/DNQLb/dJMb9XxycAX/AAAAAAAAAAAAAAAAAAAAAI0PFuL7ek0AzPlOTefGClzWlzULUuTO1XwqaU-J_PIh/%EC%9C%A0%EB%A0%B9%EB%B0%B0%EA%B2%BD%EC%9D%8C1.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=A4xFv8udTC2J9hu1NQVltXSWhoQ%3D&attach=1&knm=tfile.mp3', 'https://blog.kakaocdn.net/dna/bs8kot/dJMb8ZB9t6k/AAAAAAAAAAAAAAAAAAAAAOxk2WMLiINzJtlcW8XmrigYRG62tKlY36Dh34dF0l-6/%EC%9C%A0%EB%A0%B9%EB%B0%B0%EA%B2%BD%EC%9D%8C2.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=Qlq4IBg6emRfVcDzoUWVb4yfPRI%3D&attach=1&knm=tfile.mp3', 'https://blog.kakaocdn.net/dna/l5FLp/dJMb89Si31V/AAAAAAAAAAAAAAAAAAAAAMrBnVgoOMl0672AWUO9SYAbfe6oJ1C51PhMYFRVphka/%EC%9C%A0%EB%A0%B9%EB%B0%B0%EA%B2%BD%EC%9D%8C3.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=0p%2FNGTODZg4seFmJOG2qPWvsnp0%3D&attach=1&knm=tfile.mp3'];
+    const winSound = new Audio('https://blog.kakaocdn.net/dna/yLiG9/dJMb9NBLH35/AAAAAAAAAAAAAAAAAAAAAHR816GoJ0hh_H3iBi2ryFMs7eTvtX1R2_MiNhMn1X1L/%EB%AF%B8%EB%A1%9C%EC%8A%B9%EB%A6%AC.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=etFa3TX%2Bm636tw%2BecTdKGFsE9%2Fo%3D&attach=1&knm=tfile.mp3');
+    const loseSound = new Audio('https://blog.kakaocdn.net/dna/YqeBo/dJMb9OHqWKw/AAAAAAAAAAAAAAAAAAAAAM8axaXYQq2O5N2k8agpwDy0McSjUZXAYGl-stM9OdBB/%EB%AF%B8%EB%A1%9C%ED%8C%A8%EB%B0%B0.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=EMAsInuCHrrRTqY%2Bxyab6N4Gd%2Fs%3D&attach=1&knm=tfile.mp3');
+    const itemSound = new Audio('https://blog.kakaocdn.net/dna/I1rs7/dJMb9OAFEW9/AAAAAAAAAAAAAAAAAAAAAGZ7k2cQ3I3jz4QPLzHVktwmXWCejW9gq1_ks5eGVS8X/%EB%AF%B8%EB%A1%9C%EC%95%84%EC%9D%B4%ED%85%9C%EB%93%9C%EB%9E%8D.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=xSvePfPnvnygwGW9LxvZwdD%2BFOY%3D&attach=1&knm=tfile.mp3');
+    const bgmAudio = new Audio();
+    bgmAudio.loop = true;
+
+    const ITEM_TYPES = {'ghost-pass': {emoji: '🛡️'}};
+
+    function getPlayerInfo() {
+        myPlayerId = localStorage.getItem('myPlayerId');
+        if (!myPlayerId) {
+            alert("플레이어 정보가 없습니다. 메인 메뉴로 돌아갑니다.");
+            window.location.href = 'index.html';
+            return false;
+        }
+        myAvatar = localStorage.getItem('userAvatar');
+        myNickname = localStorage.getItem('userNickname');
+        return true;
+    }
+
+    if (getPlayerInfo()) {
+        startSinglePlayerCountdown();
+    }
+
+    function startSinglePlayerCountdown() {
+        gameWrapper.style.display = 'flex';
+        waitingOverlay.innerHTML = `<div id="countdown-container"><h2>게임 시작!</h2><p id="countdown-number">3</p></div>`;
+        waitingOverlay.style.display = 'flex';
+        let count = 3;
+        const countdownEl = document.getElementById('countdown-number');
+        const interval = setInterval(() => {
+            count--;
+            if (count > 0) {
+                countdownEl.textContent = count;
+            } else {
+                clearInterval(interval);
+                waitingOverlay.style.display = 'none';
+                startSinglePlayerGame();
+                requestAnimationFrame(gameLoop); // 게임 루프 시작
+            }
+            
+        }, 1000);
+    }
+
+    function startSinglePlayerGame() {
+        if(ghostMoveInterval) clearInterval(ghostMoveInterval);
+        
+        bgmAudio.src = bgmList[Math.floor(Math.random() * bgmList.length)];
+        bgmAudio.play().catch(e => console.log("BGM auto-play failed"));
+        
+        isGameRunning = true;
+        isDead = false;
+        localPlayerEffects = { hasGhostPass: false };
+        const initialInventory = ['ghost-pass'];
+        playerProfile = { id: myPlayerId, avatar: myAvatar, nickname: myNickname, isDead: false, inventory: initialInventory };
+
+        updateHeaderUI();
+        updateInventoryUI(initialInventory);
+        
+        mazeLayout = generateMaze(mazeRows, mazeCols);
+        placeStartAndGoal(mazeLayout);
+        itemsOnMap = createItems();
+        
+        setupGameFromData();
+        initializeGhosts(createInitialGhosts());
+        
+        ghostMoveInterval = setInterval(moveGhosts, 500);
+    }
+    
+    function setupGameFromData() {
+        mazeContainer.innerHTML = '';
+        gameOverOverlay.style.display = 'none';
+
+        for (let y = 0; y < mazeRows; y++) {
+            for (let x = 0; x < mazeCols; x++) {
+                if (mazeLayout[y][x] === 'S') startPos = { x, y };
+                else if (mazeLayout[y][x] === 'G') goalPos = { x, y };
+            }
+        }
+        playerPos = { ...startPos };
+        playerProfile.x = playerPos.x;
+        playerProfile.y = playerPos.y;
+        
+        drawMapAndEntities();
+    }
+    
+    function generateMaze(rows, cols) {
+        let maze = Array(rows).fill(null).map(() => Array(cols).fill(1));
+        const carve = (x, y) => {
+            maze[y][x] = 0;
+            let directions = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+            directions.sort(() => Math.random() - 0.5);
+            for (let [dx, dy] of directions) {
+                const nx = x + dx * 2, ny = y + dy * 2;
+                if (ny >= 1 && ny < rows - 1 && nx >= 1 && nx < cols - 1 && maze[ny][nx] === 1) {
+                    maze[y + dy][x + dx] = 0; carve(nx, ny);
+                }
+            }
+        };
+        carve(1, 1);
+        const wallsToRemove = Math.floor((rows * cols) * 0.08);
+        for (let i = 0; i < wallsToRemove; i++) {
+            const x = Math.floor(Math.random() * (cols - 2)) + 1;
+            const y = Math.floor(Math.random() * (rows - 2)) + 1;
+            if (maze[y][x] === 1) maze[y][x] = 0;
+        }
+        return maze;
+    }
+    
+    function placeStartAndGoal(layout) {
+        const startX = Math.floor(mazeCols / 2), startY = 1;
+        for (let y = startY - 2; y <= startY + 2; y++) for (let x = startX - 2; x <= startX + 2; x++) if(layout[y]?.[x] !== undefined) layout[y][x] = 0;
+        layout[startY][startX] = 'S';
+        const goalX = Math.floor(mazeCols / 2), goalY = mazeRows - 2;
+        for (let y = goalY - 2; y <= goalY + 2; y++) for (let x = goalX - 2; x <= goalX + 2; x++) if(layout[y]?.[x] !== undefined) layout[y][x] = 0;
+        layout[goalY][goalX] = 'G';
+    }
+
+    function createItems() {
+        const items = {};
+        const itemCount = 7;
+        for (let i = 0; i < itemCount; i++) {
+            let x, y;
+            do {
+                x = Math.floor(Math.random() * (mazeCols - 2)) + 1;
+                y = Math.floor(Math.random() * (mazeRows - 2)) + 1;
+            } while (mazeLayout[y]?.[x] !== 0 || items[`${x}-${y}`] || (x === startPos.x && y === startPos.y));
+            items[`${x}-${y}`] = { x, y, type: 'ghost-pass' };
+        }
+        return items;
+    }
+
+    function createInitialGhosts() {
+        const ghostCount = 2;
+        const initialGhosts = {};
+        for (let i = 0; i < ghostCount; i++) {
+            let gx, gy;
+            do {
+                gx = Math.floor(Math.random() * (mazeCols - 2)) + 1;
+                gy = Math.floor(Math.random() * (mazeRows - 10)) + 8;
+            } while (mazeLayout[gy]?.[gx] !== 0 || (Math.abs(gx - startPos.x) < 10 && Math.abs(gy - startPos.y) < 10));
+            initialGhosts['g' + i] = { x: gx, y: gy };
+        }
+        return initialGhosts;
+    }
+    
+    function initializeGhosts(initialGhostsData) {
+        ghosts = [];
+        document.querySelectorAll('.ghost').forEach(el => el.remove());
+        const ghostEmojis = ['👻', '🎃', '👽', '👾'];
+        let i = 0;
+        for (const id in initialGhostsData) {
+            const pos = initialGhostsData[id];
+            const ghostElement = document.createElement('div');
+            ghostElement.className = 'ghost';
+            ghostElement.textContent = ghostEmojis[i++ % ghostEmojis.length];
+            mazeContainer.appendChild(ghostElement);
+            const ghost = { id, x: pos.x, y: pos.y, element: ghostElement, path: [] };
+            ghosts.push(ghost);
+            updateGhostPosition(ghost);
+        }
+    }
+
+    function drawMapAndEntities() {
+        const wrapper = document.getElementById('maze-wrapper');
+        if (wrapper.offsetWidth === 0) { setTimeout(drawMapAndEntities, 50); return; }
+        cellSize = wrapper.offsetWidth / mazeCols;
+        let html = '';
+        for (let y = 0; y < mazeRows; y++) for (let x = 0; x < mazeCols; x++) if (mazeLayout[y][x] === 1) html += `<div class="wall" style="width:${cellSize + 1}px; height:${cellSize + 1}px; left:${x*cellSize}px; top:${y*cellSize}px;"></div>`;
+        mazeContainer.innerHTML = html;
+        const goalEl = document.createElement('div');
+        goalEl.id = 'goal'; goalEl.textContent = '🏁';
+        goalEl.style.cssText = `width:${cellSize}px; height:${cellSize}px; font-size:${cellSize*0.8}px; left:${goalPos.x*cellSize}px; top:${goalPos.y*cellSize}px;`;
+        mazeContainer.appendChild(goalEl);
+        drawItems();
+        updatePlayerPosition(playerPos.x, playerPos.y, myAvatar);
+    }
+
+    function drawItems() {
+        document.querySelectorAll('.item').forEach(el => el.remove());
+        for(const key in itemsOnMap) {
+            const item = itemsOnMap[key];
+            const itemEl = document.createElement('div');
+            itemEl.className = 'item';
+            itemEl.textContent = '🎁';
+            itemEl.id = 'item-' + key;
+            itemEl.style.cssText = `width:${cellSize}px; height:${cellSize}px; font-size:${cellSize*0.8}px; left:${item.x*cellSize}px; top:${item.y*cellSize}px;`;
+            mazeContainer.appendChild(itemEl);
+        }
+    }
+
+    function updateInventoryUI(inventory = []) {
+        inventoryContainer.innerHTML = '';
+        for (let i = 0; i < 4; i++) {
+            const slot = document.createElement('div');
+            slot.className = 'inventory-slot';
+            if (inventory[i]) {
+                slot.textContent = ITEM_TYPES[inventory[i]].emoji;
+                slot.dataset.itemType = inventory[i];
+                slot.addEventListener('click', handleItemUse);
+            }
+            inventoryContainer.appendChild(slot);
+        }
+    }
+
+    function updateHeaderUI() {
+        gameHeader.innerHTML = '';
+        const statusEl = document.createElement('div');
+        statusEl.className = 'player-status';
+        statusEl.classList.toggle('dead', playerProfile.isDead);
+        statusEl.innerHTML = `<span class="avatar">${playerProfile.avatar}</span> <span class="nickname">${playerProfile.nickname}</span>`;
+        gameHeader.appendChild(statusEl);
+    }
+
+    function updatePlayerPosition(x, y, avatar) {
+        let el = document.getElementById('player-' + myPlayerId);
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'player-' + myPlayerId;
+            el.className = 'player-avatar';
+            mazeContainer.appendChild(el);
+        }
+        if (avatar.startsWith('http')) {
+             el.innerHTML = `<img src="${avatar}" style="width:100%; height:100%; object-fit:contain;">`;
+        } else {
+            el.textContent = avatar;
+        }
+        el.style.cssText = `width: ${cellSize * 0.9}px; height: ${cellSize * 0.9}px; font-size: ${cellSize * 0.7}px; left: ${x * cellSize + (cellSize * 0.05)}px; top: ${y * cellSize + (cellSize * 0.05)}px;`;
+        el.classList.toggle('dead', isDead);
+        el.classList.toggle('ghost-pass', localPlayerEffects.hasGhostPass);
+    }
+    
+    function updateGhostPosition(ghost) {
+        if (!ghost.element) return;
+        ghost.element.style.cssText = `width:${cellSize}px; height:${cellSize}px; font-size:${cellSize*0.8}px; left:${ghost.x*cellSize}px; top:${ghost.y*cellSize}px;`;
+    }
+
+    function handleItemUse(event) {
+        const itemType = event.currentTarget.dataset.itemType;
+        if (!itemType || isDead) return;
+        
+        const removeItem = () => {
+            const i = playerProfile.inventory.indexOf(itemType);
+            if(i > -1) playerProfile.inventory.splice(i, 1); 
+            updateInventoryUI(playerProfile.inventory);
+            event.currentTarget.classList.add('used');
+        };
+
+        if (itemType === 'ghost-pass') {
+            localPlayerEffects.hasGhostPass = true;
+            removeItem();
+        }
+    }
+    
+    function bfs(start, end) {
+        const queue = [[start]], visited = new Set([`${start.x},${start.y}`]);
+        while(queue.length > 0) {
+            const path = queue.shift(), pos = path[path.length - 1];
+            if(pos.x === end.x && pos.y === end.y) return path;
+            const dirs = [[0,1], [0,-1], [1,0], [-1,0]].sort(() => Math.random() - 0.5);
+            for(const [dx, dy] of dirs) {
+                const n = {x: pos.x + dx, y: pos.y + dy};
+                if(mazeLayout[n.y]?.[n.x] !== 1 && !visited.has(`${n.x},${n.y}`)) {
+                    visited.add(`${n.x},${n.y}`);
+                    queue.push([...path, n]);
+                }
+            }
+        }
+        return null;
+    }
+
+    function moveGhosts() {
+        if (!isGameRunning) return;
+        ghosts.forEach(ghost => {
+            if (ghost.path.length === 0 || Math.random() < 0.2) {
+                const newPath = bfs({x: ghost.x, y: ghost.y}, {x: playerPos.x, y: playerPos.y});
+                if(newPath) ghost.path = newPath.slice(1);
+            }
+            if(ghost.path.length > 0) {
+                const nextMove = ghost.path.shift();
+                ghost.x = nextMove.x; ghost.y = nextMove.y;
+            } else {
+                const { x, y } = ghost;
+                const moves = [[0,1], [0,-1], [1,0], [-1,0]].filter(([dx,dy]) => mazeLayout[y+dy]?.[x+dx] !== 1);
+                if(moves.length > 0) { const [dx, dy] = moves[Math.floor(Math.random() * moves.length)]; ghost.x += dx; ghost.y += dy; }
+            }
+            updateGhostPosition(ghost); 
+        });
+        checkInteractions();
+    }
+    
+    function checkInteractions() {
+        if (isDead || !isGameRunning) return;
+        if (!localPlayerEffects.hasGhostPass) { 
+            for (const ghost of ghosts) if (ghost.x === playerPos.x && ghost.y === playerPos.y) { handleDeath(); return; } 
+        } else { 
+            for (const ghost of ghosts) if (ghost.x === playerPos.x && ghost.y === playerPos.y) { localPlayerEffects.hasGhostPass = false; break; } 
+        }
+        const itemKey = `${playerPos.x}-${playerPos.y}`;
+        if (itemsOnMap[itemKey]) {
+            itemSound.play();
+            if (playerProfile.inventory.length < 4) { 
+                playerProfile.inventory.push(itemsOnMap[itemKey].type); 
+                updateInventoryUI(playerProfile.inventory); 
+                delete itemsOnMap[itemKey]; 
+                drawItems(); 
+            }
+        }
+        if (playerPos.x === goalPos.x && playerPos.y === goalPos.y) handleWin();
+    }
+    
+    function handleDeath() {
+        isDead = true;
+    
+        playerProfile.isDead = true; 
+        updateHeaderUI(); 
+        updatePlayerPosition(playerPos.x, playerPos.y, myAvatar);
+        showGameOverScreen(false);
+    }
+
+    function handleWin() {
+        isGameRunning = false; 
+
+        showGameOverScreen(true);
+    }
+
+    function move(dx, dy) {
+        if (isDead || !isGameRunning) return;
+        const nX = playerPos.x + dx, nY = playerPos.y + dy;
+        if (mazeLayout[nY]?.[nX] !== 1) {
+            playerPos.x = nX; playerPos.y = nY; 
+            playerProfile.x = nX; playerProfile.y = nY; 
+            updatePlayerPosition(nX, nY, myAvatar); 
+            checkInteractions();
+        }
+    }
+    
+   // 기존 startMoving, stopMoving 함수를 gameLoop 로직으로 대체하므로 삭제하거나 아래 코드로 덮어씁니다.
+    function gameLoop(timestamp) {
+        if (!isGameRunning || isDead) {
+            // 게임이 실행 중이 아니어도 루프는 계속 호출되어야 재시작할 수 있습니다.
+            requestAnimationFrame(gameLoop);
+            return;
+        }
+
+        const moveSpeed = 120; // 이동 간격 (ms), 값이 작을수록 더 부드럽고 빠르게 느껴집니다.
+        if (timestamp - lastMoveTime > moveSpeed) {
+            let dx = 0, dy = 0;
+            // 동시에 눌린 키 상태를 확인하여 이동 방향을 결정합니다.
+            if (keysPressed.up) dy = -1;
+            if (keysPressed.down) dy = 1;
+            if (keysPressed.left) dx = -1;
+            if (keysPressed.right) dx = 1;
+
+            if (dx !== 0 || dy !== 0) {
+                move(dx, dy);
+                lastMoveTime = timestamp;
+            }
+        }
+        
+        // 다음 프레임에 gameLoop를 다시 호출합니다.
+        requestAnimationFrame(gameLoop);
+    }
+    
+    ['up', 'down', 'left', 'right'].forEach(direction => {
+        const button = document.getElementById(direction);
+        const start = (e) => { e.preventDefault(); keysPressed[direction] = true; };
+        const end = (e) => { e.preventDefault(); keysPressed[direction] = false; };
+        button.addEventListener('mousedown', start);
+        button.addEventListener('touchstart', start, { passive: false });
+        button.addEventListener('mouseup', end);
+        button.addEventListener('mouseleave', end);
+        button.addEventListener('touchend', end);
+    });
+   window.addEventListener('keydown', e => {
+        switch (e.key) {
+            case 'ArrowUp': keysPressed.up = true; break;
+            case 'ArrowDown': keysPressed.down = true; break;
+            case 'ArrowLeft': keysPressed.left = true; break;
+            case 'ArrowRight': keysPressed.right = true; break;
+        }
+    });
+    window.addEventListener('keyup', e => {
+        switch (e.key) {
+            case 'ArrowUp': keysPressed.up = false; break;
+            case 'ArrowDown': keysPressed.down = false; break;
+            case 'ArrowLeft': keysPressed.left = false; break;
+            case 'ArrowRight': keysPressed.right = false; break;
+        }
+    });
+    function showGameOverScreen(isWin) {
+        bgmAudio.pause();
+        if(isWin) winSound.play(); else loseSound.play();
+        isGameRunning = false;
+        if (ghostMoveInterval) clearInterval(ghostMoveInterval);
+        const message = isWin ? '🎉 도착! 🎉' : '👻 유령에게 잡혔어요! 👻';
+        const buttonsHTML = `<button id="restart-btn" class="menu-btn primary">다시 하기</button><button id="main-menu-btn" class="menu-btn secondary">메인으로</button>`;
+        gameOverOverlay.innerHTML = `<div class="modal-content"><h2 id="game-over-message">${message}</h2><div class="modal-buttons">${buttonsHTML}</div></div>`;
+        gameOverOverlay.style.display = 'flex';
+        document.getElementById('restart-btn').addEventListener('click', () => { gameOverOverlay.style.display = 'none'; startSinglePlayerCountdown(); });
+        document.getElementById('main-menu-btn').addEventListener('click', () => { sessionStorage.setItem('returnFromGame', 'true'); window.location.href = 'index.html'; });
+    }
+});
+</script>
+</body>
+</html>

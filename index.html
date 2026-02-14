@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>미니게임지옥</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#F3F7FD">
+    <link href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff" as="font" type="font/woff" crossorigin>
+    <link rel="apple-touch-icon" href="icons/icon-192x192.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="미니게임지옥">
+  <style>
+        @font-face {
+            font-family: 'GmarketSans';
+            src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff') format('woff');
+            font-weight: 500; font-style: normal;
+        }
+        @font-face {
+            font-family: 'GmarketSans';
+            src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansBold.woff') format('woff');
+            font-weight: 700; font-style: normal;
+        }
+        /* ✨ [수정] 대기실/게임방 테마 색상으로 변경 */
+        :root {
+            --bg-color: #FFFBEB; /* 따뜻한 크림색 배경 */
+            --primary-color: #FF6B6B; /* 활기찬 코랄색 */
+            --secondary-color: #4ECDC4; /* 상쾌한 틸(teal)색 */
+            --accent-color: #FFD93D; /* 밝은 노란색 */
+            --text-color-dark: #574141; /* 어두운 갈색 */
+            --text-color-light: #ffffff;
+            --danger-color: #F76363;
+            --panel-bg: #FFFFFF;
+            --panel-border: #F0EAD2; /* 연한 베이지색 테두리 */
+            --panel-shadow: #E4DCCF; /* 패널 그림자 */
+            --font-main: 'GmarketSans', sans-serif;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%; height: 100%; overflow: hidden; 
+            font-family: var(--font-main); /* ✨ [수정] */
+            background-color: var(--bg-color); /* ✨ [수정] */
+            color: var(--text-color-dark); /* ✨ [수정] */
+            -webkit-user-select: none; user-select: none; touch-action: manipulation;
+        }
+        .view {
+            width: 100%; height: 100%; display: flex; flex-direction: column;
+            justify-content: center; align-items: center; padding: 20px;
+        }
+        /* ✨ [수정] 스피너/프로그레스바 색상 자동 변경 (primary/accent) */
+        .spinner { border: 4px solid rgba(0,0,0,0.1); border-radius: 50%; border-top: 4px solid var(--primary-color); width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .loading-content { width: 90%; max-width: 400px; text-align: center; }
+        .loading-text { color: var(--text-color-dark); font-size: 1.2em; font-weight: 700; margin: 0; }
+        .progress-bar-container { width: 100%; background-color: #e0e0e0; border-radius: 20px; height: 20px; margin: 15px 0; overflow: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.1) inset; }
+        #progress-bar { width: 0%; height: 100%; background: linear-gradient(90deg, var(--accent-color), var(--primary-color)); border-radius: 20px; transition: width 0.2s linear; }
+
+        .form-container {
+            /* background: white; */ /* ✨ [삭제] 흰색 패널 제거 */
+            background-color: var(--bg-color); /* ✨ [추가] 뷰 배경과 동일하게 */
+            /* box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1); */ /* ✨ [삭제] */
+            width: 100%; text-align: center;
+            display: flex; flex-direction: column;
+            height: 100%; 
+            max-height: none;
+            border-radius: 0;
+            box-shadow: none;
+            padding: 20px;
+        }
+        .form-title { font-size: clamp(1.8rem, 6vw, 2.2rem); font-weight: 700; margin-bottom: 1rem; }
+        .form-subtitle { font-size: 1rem; color: #666; margin-bottom: 2rem; }
+        
+        /* ✨ [수정] 입력 필드 (아케이드 테마 적용) */
+        .input-field { 
+            width: 100%; padding: 1rem; 
+            border: 3px solid var(--text-color-dark); 
+            border-radius: 16px; 
+            margin-bottom: 1rem; font-size: 1em; text-align: center;
+            background-color: var(--panel-bg);
+            box-shadow: 4px 4px 0px 0px var(--panel-shadow);
+            font-family: var(--font-main);
+        }
+        .input-field:focus {
+             outline: none;
+             border-color: var(--primary-color);
+        }
+        
+        .error-message { color: var(--danger-color); min-height: 24px; font-weight: 700; margin-bottom: 1rem; }
+        
+        /* ✨ [수정] 아케이드 버튼 스타일 적용 */
+        .menu-btn {
+            width: 100%; padding: 15px; font-size: 1.2em; font-weight: 900;
+            font-family: var(--font-main);
+            border-radius: 16px; border: none; cursor: pointer;
+            transition: all 0.1s ease-out;
+            border-bottom: 5px solid; /* 3D 효과 */
+            text-shadow: 1px 1px 1px rgba(0,0,0,0.1);
+        }
+        .menu-btn:active { 
+            transform: translateY(3px); 
+            border-bottom-width: 2px;
+        }
+        .menu-btn.primary { 
+            background-color: var(--primary-color); 
+            color: var(--text-color-light); 
+            border-bottom-color: #C04A4A; /* primary 어두운 버전 */
+        }
+        .menu-btn.secondary { 
+            background-color: var(--secondary-color); /* 틸 색상 */
+            color: var(--text-color-light); 
+            border-bottom-color: #379A93; /* secondary 어두운 버전 */
+            margin-top: 10px; 
+        }
+        .menu-btn:disabled { 
+            background-color: #BDBDBD !important; 
+            color: #757575 !important;
+            border-bottom-color: #8D8D8D !important;
+            cursor: not-allowed; 
+            transform: none;
+        }
+        
+        .switch-link { margin-top: 1.5rem; color: #555; cursor: pointer; font-weight: 700; text-decoration: underline; flex-shrink: 0; }
+        
+        /* ✨ [수정] 캐릭터 선택기 (아케이드 테마 적용) */
+        #character-picker {
+            display: none;
+            flex-grow: 1;
+            overflow-y: auto;
+            margin-top: 1rem;
+            border: 3px solid var(--text-color-dark);
+            border-radius: 16px;
+            padding: 10px;
+            margin-bottom: 1rem;
+            background-color: var(--panel-bg);
+            box-shadow: 4px 4px 0px 0px var(--panel-shadow);
+        }
+
+        #character-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 5px;
+        }
+
+        .char-option {
+            aspect-ratio: 1 / 1;
+            border-radius: 12px; /* ✨ [수정] */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            border: 3px solid transparent;
+            transition: all 0.2s ease-in-out;
+            background-color: var(--bg-color); /* ✨ [수정] */
+            padding: 2px;
+        }
+
+        .char-option img {
+            width: 90%;
+            height: 90%;
+            object-fit: contain;
+        }
+        
+        .char-option.selected {
+            border-color: var(--accent-color);
+            transform: scale(1.05);
+            box-shadow: 0 0 10px var(--accent-color);
+        }
+
+        /* ✨ [수정] 모달창 (아케이드 테마 적용) */
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none; 
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: rgba(0, 0, 0, 0.6);
+            z-index: 1000;
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+        }
+        /* ✨ [신규] 모달 콘텐츠 스타일 (대기실 테마) */
+        #error-modal .modal-content {
+            background: var(--panel-bg);
+            border-radius: 24px;
+            width: 90%; max-width: 350px;
+            overflow: hidden;
+            border: 4px solid var(--text-color-dark);
+            box-shadow: 8px 8px 0px 0px var(--text-color-dark);
+        }
+        #error-modal .modal-body {
+            padding: 30px 20px 20px;
+            text-align: center;
+        }
+        #error-modal h3 {
+            font-size: 1.4em;
+            margin-bottom: 15px;
+            color: var(--danger-color);
+        }
+        #error-modal p {
+            font-size: 1em;
+            color: #333;
+        }
+        #error-modal .modal-footer {
+            display: flex;
+            padding: 20px;
+            background-color: #FFFAE0;
+            border-top: 3px solid var(--panel-border);
+        }
+        #error-modal .modal-footer .menu-btn {
+            margin: 0;
+            font-size: 1.1em;
+        }
+
+        /* [신규] PWA 설치 모달용 CSS (대기실 테마) */
+        .overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            display: none; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 200; background-color: rgba(0,0,0,0.6);
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+        }
+        .overlay.active { display: flex; }
+        
+        #pwa-install-modal .modal-content {
+            background: var(--panel-bg);
+            border-radius: 24px;
+            width: 90%; max-width: 380px;
+            overflow: hidden;
+            border: 4px solid var(--text-color-dark);
+            box-shadow: 8px 8px 0px 0px var(--text-color-dark);
+        }
+        #pwa-install-modal .modal-body {
+            padding: 30px 20px 20px; text-align: center;
+        }
+        #pwa-install-modal .modal-footer {
+            display: flex; gap: 10px; padding: 20px;
+            border-top: 3px solid var(--panel-border);
+            background-color: #FFFAE0;
+        }
+        #pwa-install-modal .modal-footer .menu-btn {
+            margin: 0; font-size: 1.1em;
+        }
+    </style>
+</head>
+<body>
+    <audio id="click-sound" src="https://blog.kakaocdn.net/dna/dC0WAE/dJMb84DsZw6/AAAAAAAAAAAAAAAAAAAAAC8XpuPuNVEsdp6Ia-d35XR-m3FCZxObUR5uFI1tk2iv/%EB%B2%84%ED%8A%BC%EC%82%AC%EC%9A%B4%EB%93%9C.mp3?credential=yqXZFxpELC7KVnFOS48ylbz2pIh7yKj8&expires=1761922799&allow_ip=&allow_referer=&signature=RdbjxdP75HLHSpBIhymVkYpUOA0%3D&attach=1&knm=tfile.mp3" preload="auto"></audio>
+    <div id="auth-view" class="view" style="display: none;">
+        <div class="form-container">
+            <p id="form-subtitle" class="form-subtitle">로그인하여 게임을 즐겨보세요.</p>
+            <p id="error-message" class="error-message"></p>
+            <div id="form-inputs">
+                <input type="text" id="nickname-input" class="input-field" placeholder="닉네임 (한글, 숫자 2~10자)" required>
+                <input type="password" id="password-input" class="input-field" placeholder="비밀번호 (6자 이상)" required>
+            </div>
+            <div id="character-picker">
+                <div id="character-grid"></div>
+            </div>
+            <button id="action-btn" class="menu-btn primary">로그인</button>
+            <p id="switch-link" class="switch-link">계정이 없으신가요? 회원가입</p>
+            <button id="install-pwa-btn" class="menu-btn secondary" style="display: none; margin-top: 15px;">📲 앱 설치</button>
+        </div>
+    </div>
+    <div id="loading-view" class="view">
+    <div class="loading-content">
+        <p class="loading-text">게임을 불러오는 중입니다...</p>
+        <div class="progress-bar-container">
+            <div id="progress-bar"></div>
+        </div>
+        <p id="progress-text" class="loading-text">0%</p>
+    </div>
+</div>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+<script src="아바타.js"></script> >
+    <div id="error-modal" class="overlay" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-body">
+                <h3 style="font-size: 1.4em; margin-bottom: 15px; color: var(--danger-color);">알림</h3>
+                <p id="error-modal-message" style="font-size: 1em; color: #333;">오류 메시지</p>
+            </div>
+            <div class="modal-footer">
+                <button id="error-modal-close-btn" class="menu-btn primary" style="width: 100%; margin: 0;">확인</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+
+            function escapeHTML(str) {
+        if (typeof str !== 'string') return '';
+        const map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        };
+        return str.replace(/[&<>"']/g, m => map[m]);
+    }
+            document.addEventListener('contextmenu', event => event.preventDefault());
+ document.addEventListener('keydown', event => {
+    if (event.key === 'F12' ||
+         (event.ctrlKey && event.shiftKey && ['I', 'J', 'C'].includes(event.key.toUpperCase())) ||
+         (event.ctrlKey && event.key.toUpperCase() === 'U')) {
+       event.preventDefault();
+     }
+ });
+ setInterval(() => { try { debugger; } catch (e) {} }, 1000);
+
+
+    document.addEventListener('DOMContentLoaded', () => {
+
+           // [신규] 1. 초대장 확인: 페이지 로드 시 URL에서 'roomId'를 확인합니다.
+            const urlParams = new URLSearchParams(window.location.search);
+            
+            // ▼▼▼ [수정] 안드로이드 카카오톡 감지 및 Chrome 강제 실행 ▼▼▼
+            try {
+                const ua = navigator.userAgent.toLowerCase();
+                const isAndroid = /android/.test(ua);
+                const isIOS = /iphone|ipad|ipod/.test(ua);
+                const isKakaotalk = /kakaotalk/.test(ua);
+
+                // 1. 안드로이드 + 카카오톡
+                if (isAndroid && isKakaotalk) {
+                    // [수정] URL 자체에 https://가 포함되어 있으므로, 
+                    // 중복되는 'scheme=https;' 파라미터를 제거합니다. (오류 수정)
+                    const intentUrl = `intent:${location.href}#Intent;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;end;`;
+                    location.href = intentUrl; // 즉시 "기본 브라우저"로 리디렉션
+                    return; // 이후 스크립트 실행 중지
+                }
+
+                // 2. iOS 인앱 브라우저 (기존 코드 유지)
+                if (isIOS && !/safari/.test(ua)) {
+                    console.log("iOS 인앱 브라우저 감지됨.");
+                    const inAppModal = document.getElementById('in-app-browser-modal');
+                    const inAppCloseBtn = document.getElementById('in-app-close-btn');
+                    
+                    if (inAppModal && inAppCloseBtn) {
+                        inAppModal.style.display = 'flex'; 
+                        inAppCloseBtn.addEventListener('click', () => {
+                            try { document.getElementById('click-sound')?.play(); } catch(e) {}
+                            inAppModal.style.display = 'none';
+                        });
+                    }
+                }
+            } catch (e) {
+                console.warn("인앱 브라우저 감지 중 오류:", e);
+            }
+            // --- [수정] 코드 추가 끝 ---
+            
+            const invitedRoomId = urlParams.get('roomId');
+
+        if (invitedRoomId) {
+            // [신규] 2. 초대장이 있으면, 로그인 후 사용할 수 있도록 sessionStorage에 저장합니다.
+            sessionStorage.setItem('invitedRoomId', invitedRoomId);
+            console.log(`초대장 발견: ${invitedRoomId} (저장됨)`);
+        }
+
+// ✨ [신규] 서비스 워커 등록 코드
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js')
+                .then((registration) => {
+                    console.log('서비스 워커 등록 성공:', registration.scope);
+                })
+                .catch((error) => {
+                    console.error('서비스 워커 등록 실패:', error);
+                });
+        }
+        
+
+         // [수정] PWA 설치 관련 로직 (모달 추가)
+        window.deferredPrompt = null; // [신규] 전역 스코프(window)에 저장
+        
+        const legacyInstallButton = document.getElementById('install-pwa-btn'); // 기존 버튼
+        const pwaModal = document.getElementById('pwa-install-modal');
+        const pwaConfirmBtn = document.getElementById('pwa-install-confirm-btn');
+        // [수정] PWA 설치 버튼을 '준비중...'으로 비활성화
+        pwaConfirmBtn.disabled = true;
+        pwaConfirmBtn.textContent = '준비중...';
+
+        // [수정] 즉시 표시 로직 제거 (beforeinstallprompt 이벤트에서만 모달 표시)
+        /*
+        const isStandalone = window.matchMedia('(display-mode: fullscreen)').matches || window.navigator.standalone || localStorage.getItem('pwaInstalled') === 'true';
+        if (!isStandalone && sessionStorage.getItem('pwaModalDismissed') !== 'true') {
+            pwaModal.classList.add('active');
+        }
+        */
+        const pwaLaterBtn = document.getElementById('pwa-install-later-btn');
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            window.deferredPrompt = e; // [수정] 이벤트를 전역에 저장
+            console.log('PWA 설치 가능(beforeinstallprompt) 감지됨.');
+
+            // [수정] 설치가 가능해졌으므로 버튼 활성화
+            pwaConfirmBtn.disabled = false;
+            pwaConfirmBtn.textContent = '설치';
+
+            // [수정] 모달이 (어떤 이유로) 닫혀있었다면 다시 띄움
+            const isStandalone = window.matchMedia('(display-mode: fullscreen)').matches || window.navigator.standalone || localStorage.getItem('pwaInstalled') === 'true';
+            if (!isStandalone && sessionStorage.getItem('pwaModalDismissed') !== 'true') {
+                pwaModal.classList.add('active');
+            }
+        });
+
+        // [신규] PWA 모달 "설치" 버튼
+        pwaConfirmBtn.addEventListener('click', async () => {
+            clickSound.play();
+            const prompt = window.deferredPrompt;
+            if (!prompt) {
+                console.log('PWA 프롬프트가 없습니다.');
+                pwaModal.classList.remove('active');
+                // [신규] 프롬프트가 없으면(오류) 그냥 대기실로 이동
+                if (auth.currentUser) window.location.replace('대기실.html');
+                return;
+            }
+            
+            prompt.prompt();
+            const { outcome } = await prompt.userChoice;
+            console.log(`PWA 설치 프롬프트 결과: ${outcome}`);
+            
+            window.deferredPrompt = null; // 프롬프트는 1회용
+            pwaModal.classList.remove('active');
+            sessionStorage.setItem('pwaModalDismissed', 'true'); // 설치했으니 다시 안 띄움
+
+            // [신규] 사용자가 설치를 '취소'한 경우(dismissed) 대기실로 이동
+            if (outcome === 'dismissed' && auth.currentUser) {
+                window.location.replace('대기실.html');
+            }
+            // 'accepted'인 경우 앱이 재시작되므로 리디렉션 불필요
+        });
+
+        // [신규] PWA 모달 "나중에" 버튼
+        pwaLaterBtn.addEventListener('click', () => {
+            clickSound.play();
+            pwaModal.classList.remove('active');
+            // [신규] 이 세션 동안 다시 묻지 않음
+            sessionStorage.setItem('pwaModalDismissed', 'true');
+            // [신규] 대신 하단의 작은 '앱 설치' 버튼을 표시
+            if (window.deferredPrompt) { // 설치 이벤트가 여전히 유효할 때만
+                legacyInstallButton.style.display = 'block';
+            }
+
+            // [신규] '나중에'를 눌렀을 때, 로그인 상태면 대기실로 이동
+            if (auth.currentUser) {
+                window.location.replace('대기실.html');
+            }
+        });
+
+        // [수정] 하단 '앱 설치' 버튼 로직 (pwaConfirmBtn 로직과 동일하게)
+        legacyInstallButton.addEventListener('click', async () => {
+            clickSound.play(); // [추가]
+            const prompt = window.deferredPrompt;
+            if (prompt) {
+                prompt.prompt();
+                const { outcome } = await prompt.userChoice;
+                console.log(`PWA 설치 프롬프트 결과: ${outcome}`);
+                window.deferredPrompt = null;
+                legacyInstallButton.style.display = 'none';
+            }
+        });
+
+        window.addEventListener('appinstalled', () => {
+            // 앱이 성공적으로 설치된 후
+            console.log('PWA 설치 완료됨.');
+            localStorage.setItem('pwaInstalled', 'true'); // [신규] 영구 설치 플래그 저장
+            window.deferredPrompt = null; // 혹시 모를 경우를 대비해 초기화
+            legacyInstallButton.style.display = 'none'; // 버튼 숨김
+            pwaModal.classList.remove('active'); // 모달 숨김
+        });
+        // [수정] PWA 설치 관련 로직 끝
+
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
+            authDomain: "goodluck-7c14b.firebaseapp.com",
+            databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com",
+            projectId: "goodluck-7c14b",
+            storageBucket: "goodluck-7c14b.appspot.com",
+            messagingSenderId: "858281658455",
+            appId: "1:858281658455:web:9131280a459be983933b12"
+        };
+
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+        const auth = firebase.auth();
+        const usersRef = db.ref('users');
+
+        const authView = document.getElementById('auth-view');
+        const loadingView = document.getElementById('loading-view');
+        const subtitle = document.getElementById('form-subtitle');
+        const nicknameInput = document.getElementById('nickname-input');
+        const passwordInput = document.getElementById('password-input');
+        const actionBtn = document.getElementById('action-btn');
+        const switchLink = document.getElementById('switch-link');
+        const errorMessage = document.getElementById('error-message');
+        const characterPicker = document.getElementById('character-picker');
+        const characterGrid = document.getElementById('character-grid');
+        const clickSound = document.getElementById('click-sound');
+        const progressBar = document.getElementById('progress-bar');
+    const progressText = document.getElementById('progress-text');
+
+    // ✨ [신규] 오류 모달 변수 추가
+        const errorModal = document.getElementById('error-modal');
+        const errorModalMessage = document.getElementById('error-modal-message');
+        const errorModalCloseBtn = document.getElementById('error-modal-close-btn');
+
+        // ✨ [신규] 오류 모달 닫기 버튼 이벤트
+        errorModalCloseBtn.addEventListener('click', () => {
+            clickSound.play();
+            errorModal.style.display = 'none';
+        });
+
+        // ✨ [신규] 오류 모달을 보여주는 헬퍼 함수
+        // ✨ [신규] 오류 모달을 보여주는 헬퍼 함수
+        function showErrorModal(message) {
+            console.log("showErrorModal 호출됨:", message); // 함수 호출 로그
+            errorMessage.textContent = ''; // 상단 텍스트는 지움
+            errorModalMessage.textContent = message;
+            errorModal.style.display = 'flex'; // 모달 표시
+            console.log("모달 display 스타일:", errorModal.style.display); // 스타일 변경 확인 로그
+        }
+
+        let isLoginMode = true;
+        let selectedAvatar = '';
+
+      
+        
+        // 페이지 로딩 시 항상 애니메이션을 먼저 시작합니다.
+        startLoadingAnimation();
+
+        // 인증 상태 변경(로그인, 로그아웃, 회원가입 성공)을 감지하는 리스너
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                // 사용자가 로그인된 상태
+                
+                // [핵심 수정] DB에서 프로필을 읽어오는 것을 "기다리지 않습니다."
+                // 로그인(인증)만 확인되면, "즉시" 대기실로 보냅니다.
+                // (대기실.html이 DB에서 프로필을 읽고 localStorage를 설정할 것입니다)
+                console.log('로그인(인증) 확인. 즉시 대기실로 이동합니다.');
+                
+                // [중요] 초대장(roomId)은 sessionStorage에 있으므로
+                // 대기실.html이 읽어서 처리할 것입니다.
+                window.location.replace('대기실.html');
+
+            } else {
+                // 사용자가 로그아웃된 상태라면, 로딩 화면을 숨기고 로그인 폼을 보여줍니다.
+                loadingView.style.display = 'none';
+                authView.style.display = 'flex';
+            }
+        });
+
+        function startLoadingAnimation() {
+            let progress = 0;
+            const interval = setInterval(() => {
+                // auth.onAuthStateChanged가 완료될 때까지 천천히 로딩
+                progress += auth.currentUser ? 5 : 1;
+                if (progress >= 100) {
+                    clearInterval(interval);
+                    // 100%가 되어도 onAuthStateChanged가 처리할 때까지 대기
+                }
+                progressBar.style.width = Math.min(progress, 100) + '%';
+                progressText.textContent = Math.min(progress, 100) + '%';
+            }, 30);
+        }
+
+        function setupCharacterPicker() {
+            characterGrid.innerHTML = '';
+            // [수정] window.characters 사용 (|| [] 는 아바타.js 로드 실패 대비)
+            (window.characters || []).forEach(char => { 
+                const charOption = document.createElement('div');
+                charOption.classList.add('char-option');
+                charOption.dataset.avatarUrl = char.url;
+                
+                const img = document.createElement('img');
+                img.src = char.url;
+                img.alt = char.name;
+                
+                charOption.appendChild(img);
+                
+                charOption.addEventListener('click', () => {
+                    clickSound.play();
+                    document.querySelectorAll('.char-option').forEach(opt => opt.classList.remove('selected'));
+                    charOption.classList.add('selected');
+                    selectedAvatar = char.url;
+                });
+                
+                characterGrid.appendChild(charOption);
+            });
+        }
+        
+        function toggleMode() {
+            clickSound.play();
+            isLoginMode = !isLoginMode;
+            subtitle.textContent = isLoginMode ? '로그인하여 게임을 즐겨보세요.' : '대표 캐릭터를 선택하고 계정을 만드세요.';
+            actionBtn.textContent = isLoginMode ? '로그인' : '회원가입';
+            switchLink.textContent = isLoginMode ? '계정이 없으신가요? 회원가입' : '이미 계정이 있으신가요? 로그인';
+            errorMessage.textContent = '';
+            characterPicker.style.display = isLoginMode ? 'none' : 'block';
+            
+            if (!isLoginMode && characterGrid.children.length === 0) {
+                setupCharacterPicker();
+            }
+        }
+
+        switchLink.addEventListener('click', toggleMode);
+        actionBtn.addEventListener('click', handleAuthAction);
+        function handleEnter(event) {
+        // 버튼이 비활성화 상태가 아닐 때만 Enter 키로 동작
+        if (event.key === 'Enter' && !actionBtn.disabled) {
+            actionBtn.click(); // actionBtn 클릭을 실행하여 기존 로직 재사용
+        }
+    }
+    nicknameInput.addEventListener('keydown', handleEnter);
+    passwordInput.addEventListener('keydown', handleEnter);
+
+        function handleAuthAction() {
+            clickSound.play();
+            const nickname = nicknameInput.value.trim();
+            const password = passwordInput.value;
+
+            // 유효성 검사 (ShowErrorModal 호출)
+            if (nickname.length < 2 || nickname.length > 10 || !/^[가-힣0-9]+$/.test(nickname)) {
+                showErrorModal('닉네임은 한글, 숫자로 2~10자 입니다.'); return;
+            }
+            if (password.length < 6) {
+                showErrorModal('비밀번호는 6자 이상이어야 합니다.'); return;
+            }
+            if (!isLoginMode && !selectedAvatar) {
+                showErrorModal('대표 캐릭터를 선택해주세요.'); return;
+            }
+
+            setLoading(true); // 로딩 시작 (버튼 비활성화)
+            errorMessage.textContent = ''; // 기존 텍스트 에러 메시지 초기화
+
+            const email = `${nickname}@kidsgame.com`;
+
+            if (isLoginMode) {
+                // --- 로그인 시도 ---
+                auth.signInWithEmailAndPassword(email, password)
+                    .then(userCredential => {
+                        // 로그인 성공 시 onAuthStateChanged 리스너가 처리하므로 여기서는 별도 처리 X
+                        // setLoading(false) 호출 안 함 (페이지 전환됨)
+                        console.log("로그인 성공");
+                    })
+                    .catch(error => {
+                        // --- 로그인 실패 시 ---
+                        console.error("로그인 실패:", error.code, error.message); // 어떤 에러인지 콘솔에 출력
+                        // ✨ [수정] showErrorModal 호출 확인
+                        showErrorModal('닉네임 또는 비밀번호가 일치하지 않습니다.');
+                        setLoading(false); // 로딩 종료 (버튼 활성화)
+                    });
+            } else {
+                // --- 회원가입 시도 ---
+                auth.createUserWithEmailAndPassword(email, password)
+                    .then(userCredential => {
+                        // 신규 사용자 정보 DB에 저장
+                        const userId = userCredential.user.uid;
+                        usersRef.child(userId).set({
+                            profile: {
+                                nickname: nickname,
+                                avatar: selectedAvatar,
+                                level: 1,
+                                exp: 0,
+                                points: 1000,
+                                createdAt: firebase.database.ServerValue.TIMESTAMP
+                            }
+                            // gameStats는 게임 플레이 시 생성됨
+                        })
+                        .then(() => {
+                            // 회원가입 성공 시 onAuthStateChanged 리스너가 처리
+                            // setLoading(false) 호출 안 함 (페이지 전환됨)
+                            console.log("회원가입 및 DB 저장 성공");
+                        })
+                        .catch(dbError => {
+                             console.error("DB 저장 실패:", dbError);
+                             showErrorModal('사용자 정보 저장 중 오류가 발생했습니다.');
+                             setLoading(false); // 로딩 종료
+                        });
+                    })
+                    .catch(error => {
+                        // --- 회원가입 실패 시 ---
+                        console.error("회원가입 실패:", error.code, error.message); // 어떤 에러인지 콘솔에 출력
+                        const msg = error.code === 'auth/email-already-in-use'
+                            ? '이미 사용중인 닉네임입니다.'
+                            : '회원가입 중 오류가 발생했습니다: ' + error.message;
+                        // ✨ [수정] showErrorModal 호출 확인
+                        showErrorModal(msg);
+                        setLoading(false); // 로딩 종료
+                    });
+            }
+        }
+
+        function setLoading(isLoading) {
+            actionBtn.disabled = isLoading;
+            actionBtn.textContent = isLoading ? '처리중...' : (isLoginMode ? '로그인' : '회원가입');
+            errorMessage.textContent = ''; // (이 줄은 유지해도 괜찮습니다)
+        }
+    });
+   </script>
+    <div id="in-app-browser-modal" class="overlay" style="display: none; z-index: 2000;">
+        <div class="modal-content" style="max-width: 380px;">
+            <div class="modal-body" style="padding: 30px 20px 20px; text-align: center;">
+                <h3 style="font-size: 1.4em; margin-bottom: 15px; color: var(--text-color-dark);">
+                    🔔 앱 환경 안내
+                </h3>
+                <p style="font-size: 1em; color: #333; line-height: 1.5;">
+                    현재 인앱 브라우저(카카오톡 등)로 접속하셨습니다.<br>
+                    원활한 게임 플레이와 앱 설치(PWA)를 위해<br>
+                    <strong style="color: var(--primary-color);">Safari(사파리)에서 열기</strong>를 권장합니다.
+                </p>
+            </div>
+            <div class="modal-footer" style="padding: 20px;">
+                <button id="in-app-close-btn" class="menu-btn secondary" style="width: 100%; margin: 0;">
+                    그대로 진행
+                </button>
+            </div>
+        </div>
+    </div> <div id="pwa-install-modal" class="overlay">
+        <div class="modal-content">
+            <div class="modal-body">
+                <h3 style="font-size: 1.4em; margin-bottom: 15px;">📲 앱(App) 설치</h3>
+                <p style="font-size: 1em; color: #333; line-height: 1.5;">
+                    홈 화면에 앱을 설치하여<br>더 빠르고 쾌적하게 접속하세요!
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button id="pwa-install-later-btn" class="menu-btn secondary">나중에</button>
+                <button id="pwa-install-confirm-btn" class="menu-btn primary">설치</button>
+            </div>
+        </div>
+    </div>
+
+    </body>
+</html>

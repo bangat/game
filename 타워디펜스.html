@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>타워 디펜스: 영웅의 시대 (v5.2 - UI/밸런스 조정)</title>
+    <style>
+        :root{
+            --bg:#0e0e10;
+            --header-height: 60px;
+            --nav-height: 88px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+        *{box-sizing:border-box; margin:0; padding:0; user-select: none;}
+        html,body{height:100%; width:100%; background:var(--bg); color:#fff; overflow:hidden;}
+        
+        /* --- 상단/하단 UI --- */
+        .overlay-ui {
+            position:fixed; left:0; right:0; display:flex; align-items:center;
+            padding:0 16px; z-index:120; backdrop-filter: blur(8px);
+            background: rgba(14, 14, 16, 0.7); border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+        header#topbar{ top:0; height:var(--header-height); }
+        nav#bottom-shop{ bottom:0; height:var(--nav-height); border-bottom:0; border-top:1px solid rgba(255,255,255,0.06); }
+        #branding h1 { font-size:1.05rem; color:#33ff99; }
+        #stats { display:flex; gap:10px; margin-left:auto; align-items:center; font-weight:700; }
+        .stat { padding:6px 10px; background:rgba(255,255,255,0.05); border-radius:8px; font-size:0.95rem; color:#fff; }
+       
+        #game-wrap { position:absolute; inset:var(--header-height) 0 var(--nav-height) 0; }
+        canvas#game-canvas{ width:100%; height:100%; display:block; background:var(--bg); cursor:crosshair; }
+        
+        .shop-grid { display:flex; gap:12px; justify-content:center; align-items:center; width: 100%; }
+        .control-button {
+            background: rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.08); padding:8px 10px; border-radius:10px;
+            display:flex; flex:1; max-width: 150px; gap:10px; align-items:center; cursor:pointer; transition:all .12s; color:#fff;
+            position: relative; overflow: hidden;
+        }
+        .control-button .hero-emoji { font-size: 32px; line-height: 1; }
+        .cooldown-overlay {
+            position: absolute; bottom: 0; left: 0; right: 0;
+            background: rgba(0,0,0,0.7); color: white;
+            display: flex; justify-content: center; align-items: center;
+            font-size: 1rem; font-weight: bold; text-shadow: 0 0 5px black;
+            pointer-events: none; transition: height 0.1s linear;
+        }
+        .control-button:hover { background: rgba(255,255,255,0.05); }
+        .control-button.selected { border-color: #33ff99; transform:scale(1.02); background: rgba(51,255,153,0.05); }
+        .control-button img { width:38px; height:38px; object-fit:contain; }
+        .control-button .meta { text-align:left; }
+        .control-button strong { display:block; font-size:0.9rem; }
+        .control-button small { color:#9aa0a6; font-size:0.8rem; }
+       
+        #hero-selection-modal {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 1000;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            backdrop-filter: blur(5px); transition: opacity 0.3s;
+        }
+        #hero-selection-modal h2 { margin-bottom: 24px; color: #33ff99; }
+        .hero-choices { display: flex; gap: 20px; }
+        .hero-card {
+            background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+            padding: 16px; border-radius: 12px; text-align: center; cursor: pointer; transition: all 0.2s;
+        }
+        .hero-card:hover { transform: translateY(-10px); background: rgba(255,255,255,0.1); }
+        .hero-card .emoji { font-size: 60px; margin-bottom: 12px; }
+        .hero-card h3 { color: #33ff99; margin-bottom: 8px; }
+        .hero-card p { font-size: 0.85rem; max-width: 200px; color: #ccc; }
+
+        @media (max-width:720px){
+            :root { --header-height: 56px; --nav-height: 80px; }
+            #branding h1 { display: none; }
+            .shop-grid { gap: 8px; }
+            .control-button { flex-direction: column; min-width: 60px; gap: 2px; padding: 6px 4px; text-align:center;}
+            .control-button .meta { text-align: center; }
+            .control-button strong { font-size: 0.7rem; white-space: nowrap; } /* UI 조정 */
+            .control-button small { font-size: 0.65rem; } /* UI 조정 */
+            .cooldown-overlay { font-size: 0.9rem; } /* UI 조정 */
+            .control-button img, .control-button .hero-emoji { width:30px; height:30px; font-size: 28px; display:flex; align-items: center; justify-content:center; }
+            .hero-choices { flex-direction: column; gap: 15px;}
+        }
+    </style>
+</head>
+<body>
+    <div id="hero-selection-modal">
+        <h2>영웅을 선택하세요</h2>
+        <div class="hero-choices">
+            <div class="hero-card" data-hero="commander"><div class="emoji">🧑‍✈️</div><h3>커맨더</h3><p>10초간 모든 타워의 공격 속도를 대폭 증가시킵니다.</p></div>
+            <div class="hero-card" data-hero="psionic"><div class="emoji">🧙</div><h3>사이오닉</h3><p>맵 전체의 적들에게 강력한 사이오닉 폭풍을 일으켜 피해를 줍니다.</p></div>
+            <div class="hero-card" data-hero="ghost"><div class="emoji">🕵️</div><h3>고스트</h3><p>가장 체력이 높은 적 하나를 저격하여 엄청난 피해를 입힙니다.</p></div>
+        </div>
+    </div>
+
+    <header id="topbar" class="overlay-ui">
+        <div id="branding" style="gap:12px;"><button id="recipe-toggle" style="padding:6px 12px; border-radius:8px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:#fff; cursor:pointer;">조합법</button><h1>타워디펜스</h1></div>
+        <div id="stats" aria-live="polite"><div id="round-stat" class="stat">R 0</div> <div id="lives-stat" class="stat">❤️ 20</div> <div id="gold-stat" class="stat">💰 250</div></div>
+    </header>
+    
+    <div id="game-wrap"><canvas id="game-canvas"></canvas></div>
+
+    <nav id="bottom-shop" class="overlay-ui"><div class="shop-grid" id="shop-grid"></div></nav>
+    <div id="recipe-modal" style="display:none; z-index: 1001; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); min-width:280px; background:rgba(25,25,28,0.8); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px 20px; backdrop-filter:blur(8px); color:#eee; font-size:0.9rem;">
+        <strong style="color:#33ff99; display:block; margin-bottom:8px;">조합법</strong>
+        <div>• 같은 1티어 타워 3개 → 2티어 타워<br>• 2티어 + 2티어 → 특수 타워 (준비중)<br>• 전설: 타워 건설 시 2% 확률로 등장</div>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', ()=> {
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d', { alpha: true });
+        
+        const COLORS = {
+            grass: '#345234', path: '#2a2a2a', danger: '#e53935',
+            warning: '#ffb300', info: '#039be5', upgrade: '#43a047'
+        };
+
+        let localGameState = { round: 0, lives: 20, gold: 250, heroType: null, gameStarted: false };
+        let towers = [], hero = null, enemies = [], projectiles = [], specialEffects = [], splashEffects = [];
+        let lastTime = 0, animId = null, roundInProgress = false, timeToNextWave = 4000;
+        let selectedTowerForPlacement = null, selectedUnit = null, unitIsMoving = false;
+        let placementArea = { x:0,y:0,w:0,h:0, cols:10, rows:8, cellW:0, cellH:0, cells:[] };
+
+        const towerImages = {
+            basic: loadImg('img/기본타워.png'), splash: loadImg('img/광역타워.png'),
+            slow: loadImg('img/슬로우타워.png'), sniper: loadImg('img/저격타워.png'),
+            legendary_basic: loadImg('img/기본전설타워.png'), legendary_splash: loadImg('img/전설광역타워.png'),
+            legendary_slow: loadImg('img/전설슬로우타워.png'), legendary_sniper: loadImg('img/전설저격타워.png'),
+            gatling: loadImg('img/기본타워.png'), cluster: loadImg('img/광역타워.png'),
+            blizzard: loadImg('img/슬로우타워.png'), railgun: loadImg('img/저격타워.png'),
+        };
+        function loadImg(src){ const i = new Image(); i.src = src; return i; }
+
+        const heroSelectionModal = document.getElementById('hero-selection-modal');
+        document.querySelectorAll('.hero-card').forEach(card => {
+            card.addEventListener('click', () => {
+                localGameState.heroType = card.dataset.hero;
+                heroSelectionModal.style.opacity = '0';
+                setTimeout(() => heroSelectionModal.style.display = 'none', 300);
+                initializeGame();
+            });
+        });
+        
+        function initializeGame() {
+            localGameState.gameStarted = true;
+            resize(); 
+            buildBottomUI();
+            startGame();
+        }
+
+        function buildBottomUI() {
+            const shopGrid = document.getElementById('shop-grid');
+            const heroConfig = getHeroConfig(localGameState.heroType);
+            shopGrid.innerHTML = `
+                <button id="hero-skill-btn" class="control-button">
+                    <div class="hero-emoji">${heroConfig.emoji}</div>
+                    <div class="meta"><strong>영웅 스킬</strong><small>${heroConfig.skillName}</small></div>
+                    <div id="hero-cooldown" class="cooldown-overlay" style="height: 100%;"><span>180</span></div>
+                </button>
+                <button class="control-button" data-type="basic" data-cost="50"><img src="${towerImages.basic.src}" alt="기본"><div class="meta"><strong>기본</strong><small>50 G</small></div></button>
+                <button class="control-button" data-type="splash" data-cost="120"><img src="${towerImages.splash.src}" alt="광역"><div class="meta"><strong>광역</strong><small>120 G</small></div></button>
+                <button class="control-button" data-type="slow" data-cost="80"><img src="${towerImages.slow.src}" alt="슬로우"><div class="meta"><strong>슬로우</strong><small>80 G</small></div></button>
+                <button class="control-button" data-type="sniper" data-cost="150"><img src="${towerImages.sniper.src}" alt="저격"><div class="meta"><strong>저격</strong><small>150 G</small></div></button>
+            `;
+            document.getElementById('hero-skill-btn').onclick = () => useHeroSkill();
+            document.querySelectorAll('.control-button[data-type]').forEach(btn => {
+                btn.onclick = () => {
+                    cancelSelections();
+                    btn.classList.add('selected');
+                    selectedTowerForPlacement = { type: btn.dataset.type, cost: parseInt(btn.dataset.cost) };
+                }
+            });
+        }
+        
+        function resize() {
+            const wrap = document.getElementById('game-wrap');
+            const rect = wrap.getBoundingClientRect();
+            canvas.width = rect.width; canvas.height = rect.height;
+            
+            // --- UI 조정: 모바일에서 컬럼 수를 줄여 셀(타워) 크기 키우기 ---
+            placementArea.cols = canvas.width < 600 ? 7 : 10;
+            
+            const pathMargin = 30;
+            placementArea.x = pathMargin; placementArea.y = pathMargin;
+            placementArea.w = canvas.width - pathMargin * 2;
+            placementArea.h = canvas.height - pathMargin * 2;
+            if (placementArea.w <= 0 || placementArea.h <= 0) return;
+            placementArea.rows = Math.round(placementArea.h / (placementArea.w / placementArea.cols));
+            placementArea.cellW = placementArea.w / placementArea.cols;
+            placementArea.cellH = placementArea.h / placementArea.rows;
+            placementArea.cells = [];
+            for(let r=0; r<placementArea.rows; r++){
+                for(let c=0; c<placementArea.cols; c++){
+                    placementArea.cells.push({
+                        r,c, x: placementArea.x + c*placementArea.cellW, y: placementArea.y + r*placementArea.cellH,
+                        cx: placementArea.x + c*placementArea.cellW + placementArea.cellW/2,
+                        cy: placementArea.y + r*placementArea.cellH + placementArea.cellH/2, occupied: false
+                    });
+                }
+            }
+            towers.forEach(t => { 
+                const cell = findCellAt(t.x, t.y);
+                if(cell) {
+                   t.x = cell.cx; t.y = cell.cy; // 위치 보정
+                   cell.occupied = true;
+                }
+            });
+        }
+
+        function startGame(){
+            localGameState.round = 0; localGameState.lives = 20; localGameState.gold = 250;
+            towers = []; enemies = []; projectiles = []; specialEffects = []; splashEffects = [];
+            
+            hero = { ...getHeroConfig(localGameState.heroType), isHero: true, cooldown: 180000, x: -100, y: -100, damageLevel:1, rangeLevel:1, totalSpent:0, id:'HERO' };
+            const startCell = placementArea.cells[Math.floor(placementArea.cells.length / 2) - Math.floor(placementArea.cols/2)];
+            if (startCell) {
+                hero.x = startCell.cx; hero.y = startCell.cy;
+                startCell.occupied = true;
+            }
+            towers.push(hero);
+            
+            roundInProgress = false; timeToNextWave = 3000; lastTime = 0;
+            cancelSelections(); updateUI(); 
+            if(animId) cancelAnimationFrame(animId);
+            animId = requestAnimationFrame(loop);
+        }
+
+        function loop(ts){ if(!lastTime) lastTime = ts; const dt = ts - lastTime; update(dt); draw(); lastTime = ts; animId = requestAnimationFrame(loop); }
+        
+        function update(deltaTime) {
+            if (!localGameState.gameStarted || !animId) return;
+            if(!roundInProgress) timeToNextWave -= deltaTime;
+            if(timeToNextWave <= 0 && !roundInProgress){
+                localGameState.round++; spawnWave(localGameState.round); roundInProgress = true; updateUI();
+            }
+            
+            if(hero.cooldown > 0) hero.cooldown -= deltaTime;
+            towers.forEach(t => { if (t.skill?.currentCooldown > 0) t.skill.currentCooldown -= deltaTime; });
+            updateCooldownUI();
+
+            const path = defaultPath();
+            enemies.forEach((enemy,i)=>{
+                if (enemy.slowTimer > 0) { enemy.slowTimer -= deltaTime; if (enemy.slowTimer <= 0) { enemy.speed = enemy.originalSpeed; } }
+                if(enemy.pathIndex >= path.length){
+                    enemies.splice(i,1); localGameState.lives--;
+                    if(localGameState.lives <= 0) endGame("기지가 파괴되었습니다.");
+                    updateUI(); return;
+                }
+                const target = path[enemy.pathIndex]; const mv = enemy.speed * (deltaTime / 16.67);
+                const dist = Math.hypot(target.x - enemy.x, target.y - enemy.y);
+                if(dist < mv){ enemy.x = target.x; enemy.y = target.y; enemy.pathIndex++; }
+                else { enemy.x += (target.x-enemy.x)/dist*mv; enemy.y += (target.y-enemy.y)/dist*mv; }
+            });
+
+            towers.forEach(t=>{
+                t.cooldown -= deltaTime;
+                if(t.cooldown <= 0){ 
+                    const target = findTarget(t); 
+                    if(target){ 
+                        const p = { 
+                            x:t.x, y:t.y, target, damage:t.damage, splashRadius:t.splashRadius, 
+                            slowEffect:t.slowEffect, projectileType: t.projectileType, angle: Math.atan2(target.y - t.y, target.x - t.x),
+                            isCrit: false
+                        };
+                        if (t.skill?.ready) {
+                           if(t.skill.effect) t.skill.effect(p, enemies);
+                            t.skill.ready = false;
+                            t.skill.currentCooldown = t.skill.cooldown;
+                        }
+                        projectiles.push(p); 
+                        t.cooldown = t.fireRate; 
+                    } 
+                }
+                if (t.skill && t.skill.currentCooldown <= 0 && !t.skill.ready) {
+                    t.skill.ready = true;
+                }
+            });
+
+            for(let i=projectiles.length-1;i>=0;i--){
+                const p = projectiles[i]; if(!p.target || p.target.health <= 0){ projectiles.splice(i,1); continue; }
+                const sp = 20 * (deltaTime/16.67); const dist = Math.hypot(p.target.x - p.x, p.target.y - p.y);
+                if(dist < sp){ hitTarget(p, p.target); projectiles.splice(i,1); }
+                else { p.x += (p.target.x - p.x)/dist*sp; p.y += (p.target.y - p.y)/dist*sp; }
+            }
+            
+            for(let i=specialEffects.length-1;i>=0;i--){ if((specialEffects[i].life -= deltaTime) <=0) specialEffects.splice(i,1); }
+            for(let i=splashEffects.length-1;i>=0;i--){ if((splashEffects[i].life -= deltaTime) <=0) splashEffects.splice(i,1); }
+
+            if(roundInProgress && enemies.length === 0){
+                roundInProgress = false; timeToNextWave = 3000; const bonus = 40 + localGameState.round * 6;
+                localGameState.gold += bonus; flashMsg(`${localGameState.round} 라운드 클리어! +${bonus}G`); updateUI();
+            }
+        }
+
+        function draw(){
+            if (!localGameState.gameStarted) return;
+            ctx.clearRect(0,0,canvas.width,canvas.height);
+            ctx.fillStyle = COLORS.grass;
+            ctx.fillRect(placementArea.x, placementArea.y, placementArea.w, placementArea.h);
+            ctx.fillStyle = 'rgba(0,0,0,0.1)';
+            for(let i=0; i < (placementArea.w * placementArea.h / 50); i++){ ctx.fillRect(placementArea.x + Math.random() * placementArea.w, placementArea.y + Math.random() * placementArea.h, 2, 2); }
+            
+            const path = defaultPath();
+            if (path.length > 0) {
+                ctx.strokeStyle = COLORS.path;
+                ctx.lineWidth = placementArea.cellH * 0.9; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+                ctx.beginPath(); ctx.moveTo(path[0].x, path[0].y); path.forEach(p=>ctx.lineTo(p.x, p.y)); ctx.stroke();
+                ctx.strokeStyle = 'rgba(0,0,0,0.2)'; ctx.lineWidth = 1;
+                ctx.strokeRect(placementArea.x, placementArea.y, placementArea.w, placementArea.h);
+            }
+
+            towers.forEach(t=>{ 
+                // --- UI 조정: 타워 크기 키우기 ---
+                const size = placementArea.cellW * 1.1; 
+                if (t.isHero) {
+                    ctx.font = `${size * 0.9}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                    ctx.fillText(t.emoji, t.x, t.y);
+                } else {
+                    if(t.img?.complete && t.img.naturalHeight !== 0) ctx.drawImage(t.img, t.x - size/2, t.y - size/2, size, size);
+                    else { ctx.fillStyle = '#ccc'; ctx.fillRect(t.x - size/2, t.y - size/2, size, size); }
+                }
+            });
+            
+            if(selectedUnit) {
+                ctx.strokeStyle = unitIsMoving ? COLORS.info : COLORS.warning;
+                ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(selectedUnit.x, selectedUnit.y, placementArea.cellW * 0.6, 0, Math.PI * 2); ctx.stroke();
+            }
+
+            enemies.forEach(e=>{
+                // --- UI 조정: 적 크기 줄이기 ---
+                ctx.font = `${placementArea.cellH * 0.7}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillText(e.emoji || '👾', e.x, e.y);
+                const hpRatio = Math.max(0, e.health / e.maxHealth), barW = placementArea.cellW * 0.8, barY = e.y - placementArea.cellH*0.7;
+                ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(e.x - barW/2, barY, barW, 6);
+                ctx.fillStyle = hpRatio > 0.5 ? '#4caf50' : '#ffc107'; ctx.fillRect(e.x - barW/2, barY, barW*hpRatio, 6);
+            });
+
+            projectiles.forEach(p => {
+                ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.angle);
+                switch(p.projectileType) {
+                    case 'laser': ctx.fillStyle = '#ff3399'; ctx.shadowColor = '#ff3399'; ctx.shadowBlur = 10; ctx.fillRect(0, -2, 25, 4); break;
+                    case 'rocket': ctx.fillStyle = '#cccccc'; ctx.fillRect(0, -4, 18, 8); ctx.fillStyle = '#ff6600'; ctx.beginPath(); ctx.moveTo(-2, 0); ctx.lineTo(-10, -5); ctx.lineTo(-10, 5); ctx.closePath(); ctx.fill(); break;
+                    case 'railgun': ctx.fillStyle = '#33ccff'; ctx.shadowColor = '#33ccff'; ctx.shadowBlur = 15; ctx.fillRect(0, -3, 35, 6); break;
+                    default: ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(0, 0, 5, 0, Math.PI * 2); ctx.fill();
+                }
+                ctx.restore();
+            });
+            splashEffects.forEach(s=>{ ctx.fillStyle = `rgba(255, 180, 50, ${s.life/300 * 0.7})`; ctx.beginPath(); ctx.arc(s.x, s.y, s.radius, 0, Math.PI*2); ctx.fill(); });
+            
+            if(selectedUnit) {
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)'; ctx.lineWidth = 2; ctx.setLineDash([8, 4]);
+                ctx.beginPath(); ctx.arc(selectedUnit.x, selectedUnit.y, selectedUnit.range, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+                drawUpgradeUI(selectedUnit);
+            }
+        }
+        
+        // --- 전체 헬퍼 함수 ---
+        function cancelSelections() {
+            selectedTowerForPlacement = null;
+            selectedUnit = null;
+            unitIsMoving = false;
+            document.querySelectorAll('.control-button.selected').forEach(b => b.classList.remove('selected'));
+        }
+
+        function findCellAt(x, y) {
+            if (!placementArea || !placementArea.cells) return null;
+            return placementArea.cells.find(cell =>
+                x >= cell.x && x < cell.x + placementArea.cellW &&
+                y >= cell.y && y < cell.y + placementArea.cellH
+            );
+        }
+
+        function endGame(message) {
+            if (animId) cancelAnimationFrame(animId);
+            animId = null;
+            localGameState.gameStarted = false;
+            setTimeout(() => alert(message + "\n새 게임을 시작하려면 새로고침하세요."), 100);
+        }
+
+        function useHeroSkill() {
+            if (hero.cooldown > 0) {
+                flashMsg(`스킬 재사용 대기 중: ${Math.ceil(hero.cooldown/1000)}초`); return;
+            }
+            hero.cooldown = hero.skillCooldown;
+            switch(hero.type) {
+                case 'commander':
+                    towers.forEach(t => {
+                        if (t.isHero) return;
+                        const originalFireRate = t.originalFireRate || t.fireRate;
+                        t.originalFireRate = originalFireRate;
+                        t.fireRate = originalFireRate * 0.5;
+                        setTimeout(() => { if(t) t.fireRate = originalFireRate; }, 10000);
+                    });
+                    specialEffects.push({ type: 'buff_aura', x: hero.x, y: hero.y, life: 500, maxLife: 500 });
+                    flashMsg('🚀 전투 자극제 활성화!');
+                    break;
+                case 'psionic':
+                    enemies.forEach(e => e.health -= hero.skillValue);
+                    specialEffects.push({ type: 'psi_storm', life: 1000, maxLife: 1000 });
+                     flashMsg('⚡️ 사이오닉 폭풍 발동!');
+                    break;
+                case 'ghost':
+                    const strongestEnemy = [...enemies].sort((a,b) => b.health - a.health)[0];
+                    if (strongestEnemy) {
+                        strongestEnemy.health -= hero.skillValue;
+                        specialEffects.push({ type: 'nuke', x: strongestEnemy.x, y: strongestEnemy.y, life: 1500, maxLife: 1500 });
+                        flashMsg('💥 적 중요 유닛 저격 완료!');
+                    }
+                    break;
+            }
+            updateUI();
+        }
+
+        function handleUnitAction(unit, action) {
+            if (action.disabled) return;
+            
+            switch(action.type) {
+                case 'move':
+                    unitIsMoving = true;
+                    selectedUnit = unit;
+                    return;
+                case 'sell':
+                    localGameState.gold += action.value; towers = towers.filter(t => t.id !== unit.id);
+                    const cell = findCellAt(unit.x, unit.y); if (cell) cell.occupied = false;
+                    break;
+                case 'upgrade_damage': case 'upgrade_range':
+                    localGameState.gold -= action.cost; unit.totalSpent += action.cost;
+                    const stat = action.type.split('_')[1];
+                    if (stat === 'damage') { unit.damageLevel++; unit.damage = Math.floor(unit.baseDamage * Math.pow(1.4, unit.damageLevel - 1)); }
+                    else { unit.rangeLevel++; unit.range = Math.floor(unit.baseRange * Math.pow(1.2, unit.rangeLevel - 1)); }
+                    return;
+                case 'combine':
+                     const towersToCombine = towers.filter(t => t.type === unit.type).slice(0, 3);
+                     if (towersToCombine.length >= 3) {
+                        towers = towers.filter(t => !towersToCombine.some(ttc => ttc.id === t.id));
+                        towersToCombine.forEach(t => { const c = findCellAt(t.x, t.y); if(c) c.occupied = false; });
+                        const newPosCell = findCellAt(unit.x, unit.y);
+                        const newConfig = getTowerConfig(unit.combineTo);
+                        const newTower = { ...newConfig, id: 'T' + Date.now(), x: newPosCell.cx, y: newPosCell.cy, type: unit.combineTo, cooldown: 0, damageLevel: 1, rangeLevel: 1, totalSpent: unit.totalSpent * 3 };
+                        towers.push(newTower);
+                        newPosCell.occupied = true; flashMsg(`${newConfig.name} 조합 성공!`);
+                        selectedUnit = newTower;
+                        return;
+                    } break;
+                case 'use_skill':
+                    if (unit.skill.currentCooldown > 0 || !unit.skill.ready) return;
+                    unit.skill.ready = true;
+                    flashMsg(`${unit.name} 스킬 활성화!`);
+                    return;
+            }
+            cancelSelections();
+            updateUI();
+        }
+        
+        function hitTarget(projectile, target){
+            const { damage, splashRadius, slowEffect, isCrit } = projectile;
+            const finalDamage = isCrit ? damage * 3 : damage;
+            const x = target.x, y = target.y;
+            if(splashRadius > 0){
+                splashEffects.push({x, y, radius:splashRadius, life:300});
+                enemies.forEach(e => {
+                    if (Math.hypot(e.x - x, e.y - y) <= splashRadius) {
+                        e.health -= finalDamage;
+                        if(slowEffect) applySlow(e, slowEffect);
+                    }
+                });
+            } else {
+                target.health -= finalDamage;
+                if(slowEffect) applySlow(target, slowEffect);
+            }
+            
+            let shouldUpdateUI = false;
+            for(let i=enemies.length-1;i>=0;i--){ 
+                if(enemies[i].health <= 0){ 
+                    localGameState.gold += getEnemyConfig(enemies[i].type).gold; 
+                    enemies.splice(i,1); 
+                    shouldUpdateUI = true; 
+                } 
+            }
+            if(shouldUpdateUI) updateUI();
+        }
+        function applySlow(enemy, slowEffect) {
+            if(!enemy.originalSpeed) enemy.originalSpeed = enemy.speed;
+            enemy.speed = enemy.originalSpeed * (1 - slowEffect.power);
+            enemy.slowTimer = slowEffect.duration;
+        }
+        function defaultPath(){
+            const pa = placementArea; const m = pa.cellH/2;
+            if (!pa || !pa.h) return [];
+            return [ {x: -20, y: pa.y + m}, {x: pa.x + pa.w + m, y: pa.y + m}, {x: pa.x + pa.w + m, y: pa.y + pa.h - m}, {x: pa.x - m, y: pa.y + pa.h - m}, {x: pa.x - m, y: -20} ];
+        }
+        function spawnWave(round){
+            let eType = (round > 10) ? 'fast' : 'normal';
+            if(round > 0 && round % 10 === 0){ const c = getEnemyConfig('mega_boss'); enemies.push({...c, maxHealth: c.health, x: defaultPath()[0].x, y: defaultPath()[0].y, pathIndex:1}); flashMsg("🚨 보스 출현!"); }
+            else if(round > 0 && round % 5 === 0){ const cnt = Math.min(12 + round, 30); for(let i=0;i<cnt;i++) setTimeout(()=> spawnEnemy('fast'), i*220); }
+            else { const cnt = Math.min(6 + round*2, 40); for(let i=0;i<cnt;i++) setTimeout(()=> spawnEnemy(eType), i*140); }
+        }
+        function spawnEnemy(type){ const p = defaultPath()[0]; const c = getEnemyConfig(type); if(p) enemies.push({...c, maxHealth: c.health, x:p.x, y:p.y, pathIndex:1}); }
+        function findTarget(tower){
+            let closest = null, minD = tower.range;
+            enemies.forEach(e=>{ const d = Math.hypot(e.x - tower.x, e.y - tower.y); if(d < minD){ minD = d; closest = e; } });
+            return closest;
+        }
+        function drawUpgradeUI(unit) {
+            const btns = getUpgradeButtons(unit);
+            const btnW = placementArea.cellW * 1.2, btnH = placementArea.cellH * 0.6, gap = 6; // UI 조정
+            const barW = (btnW + gap) * btns.length - gap, barH = btnH + placementArea.cellH * 0.5; // UI 조정
+            let barX = unit.x - barW / 2, barY = unit.y - placementArea.cellH / 2 - barH - 10;
+            if (barY < 0) barY = unit.y + placementArea.cellH / 2 + 10;
+            if (barX < 0) barX = 5; if (barX + barW > canvas.width) barX = canvas.width - barW - 5;
+            
+            ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.beginPath(); ctx.roundRect(barX, barY, barW, barH, 8); ctx.fill();
+            unit.ui = { buttons: [] };
+            btns.forEach((btn, i) => {
+                const btnX = barX + (btnW + gap) * i; const btnY = barY + barH - btnH - 5;
+                unit.ui.buttons.push({ ...btn, x: btnX, y: btnY, w: btnW, h: btnH });
+                ctx.fillStyle = btn.action.disabled ? '#555' : btn.color;
+                ctx.beginPath(); ctx.roundRect(btnX, btnY, btnW, btnH, 5); ctx.fill();
+                ctx.fillStyle = '#fff'; 
+                // --- UI 조정: 업그레이드 버튼 폰트 크기 키우기 ---
+                ctx.font = `bold ${btnH*0.45}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillText(btn.text, btnX + btnW/2, btnY + btnH/2 - btnH*0.1);
+                ctx.font = `${btnH*0.35}px sans-serif`;
+                ctx.fillText(btn.subtext, btnX + btnW/2, btnY + btnH/2 + btnH*0.25);
+            });
+            ctx.fillStyle = '#fff'; ctx.font = `bold ${barH*0.22}px sans-serif`; ctx.textAlign = 'left';
+            ctx.fillText(`${unit.name} | 💥${unit.damage} | Lv.${unit.damageLevel}/${unit.rangeLevel}`, barX + 8, barY + barH*0.2);
+        }
+        function getUpgradeButtons(unit) {
+            const btns = [];
+            if (unit.isHero) {
+                 btns.push({ text: '이동', subtext: ``, color: COLORS.info, action: { type: 'move' } });
+            }
+            const dmgCost = Math.floor(unit.damageCost * Math.pow(1.5, unit.damageLevel - 1));
+            const rangeCost = Math.floor(unit.rangeCost * Math.pow(1.6, unit.rangeLevel - 1));
+            btns.push({ text: '공격', subtext: `${dmgCost}G`, color: COLORS.upgrade, action: { type: 'upgrade_damage', cost: dmgCost, disabled: localGameState.gold < dmgCost } });
+            btns.push({ text: '사거리', subtext: `${rangeCost}G`, color: COLORS.info, action: { type: 'upgrade_range', cost: rangeCost, disabled: localGameState.gold < rangeCost } });
+            
+            if (!unit.isHero) {
+                if (unit.tier === 1) {
+                    const sameTypeCount = towers.filter(t => t.type === unit.type).length;
+                    btns.push({ text: '조합', subtext: `${sameTypeCount}/3`, color: COLORS.warning, action: { type: 'combine', disabled: sameTypeCount < 3 } });
+                }
+                if (unit.skill) {
+                    const cooldownText = unit.skill.currentCooldown > 0 ? `${Math.ceil(unit.skill.currentCooldown/1000)}초` : (unit.skill.ready ? '활성' : '준비');
+                    btns.push({ text: '스킬', subtext: cooldownText, color: '#9c27b0', action: { type: 'use_skill', disabled: unit.skill.currentCooldown > 0 || unit.skill.ready } });
+                }
+                const sellValue = Math.floor(unit.totalSpent * 0.7);
+                btns.push({ text: '판매', subtext: `${sellValue}G`, color: COLORS.danger, action: { type: 'sell', value: sellValue } });
+            }
+            return btns;
+        }
+        function getHeroConfig(type) {
+             const configs = {
+                commander: { type: 'commander', name: '커맨더', emoji: '🧑‍✈️', skillName: '전투 자극제', skillCooldown: 180000, range: (placementArea.cellW || 40) * 4, fireRate: 1000, damage: 20, projectileType: 'bullet', cost: 0, baseDamage: 20, baseRange: (placementArea.cellW || 40) * 4, damageCost: 100, rangeCost: 100},
+                psionic: { type: 'psionic', name: '사이오닉', emoji: '🧙', skillName: '사이오닉 폭풍', skillValue: 500, skillCooldown: 180000, range: (placementArea.cellW || 40) * 3, fireRate: 1500, damage: 10, projectileType: 'bullet', splashRadius: (placementArea.cellW || 40), cost: 0, baseDamage: 10, baseRange: (placementArea.cellW || 40) * 3, damageCost: 100, rangeCost: 100},
+                ghost: { type: 'ghost', name: '고스트', emoji: '🕵️', skillName: '저격', skillValue: 8000, skillCooldown: 180000, range: (placementArea.cellW || 40) * 7, fireRate: 2000, damage: 100, projectileType: 'railgun', cost: 0, baseDamage: 100, baseRange: (placementArea.cellW || 40) * 7, damageCost: 100, rangeCost: 100}
+            };
+            return configs[type];
+        }
+        function getTowerConfig(type){
+            const cellAvg = placementArea.cellW || 40;
+            const configs = {
+                // 1티어 타워
+                basic: { name:'기본', cost: 50, projectileType:'bullet', damage: 35, range: cellAvg * 3.5, fireRate: 700, damageCost:30, rangeCost:40, tier:1, combineTo:'gatling' },
+                splash: { name:'광역', cost: 120, projectileType:'rocket', damage: 40, splashRadius: cellAvg * 1.5, range: cellAvg * 3.2, fireRate: 1500, damageCost:80, rangeCost:100, tier:1, combineTo:'cluster' },
+                slow: { name:'슬로우', cost: 80, projectileType:'bullet', damage: 10, range: cellAvg * 3.4, fireRate: 1000, slowEffect:{power:0.3,duration:2200}, damageCost:60, rangeCost:70, tier:1, combineTo:'blizzard' },
+                sniper: { name:'저격', cost: 150, projectileType:'railgun', damage:150, range: cellAvg * 6.2, fireRate:1800, damageCost:120, rangeCost:150, tier:1, combineTo:'railgun' },
+                
+                // --- 밸런스 조정: 2티어 타워 하향 ---
+                gatling: { name:'개틀링', cost: 150, projectileType:'laser', damage: 45, range: cellAvg * 4.0, fireRate: 180, damageCost:150, rangeCost:200, tier:2 },
+                cluster: { name:'클러스터', cost: 360, projectileType:'rocket', damage: 100, splashRadius: cellAvg * 2.5, range: cellAvg * 3.8, fireRate:1400, damageCost:300, rangeCost:350, tier:2 },
+                blizzard: { name:'블리자드', cost: 240, projectileType:'bullet', damage: 25, range: cellAvg * 4.2, fireRate:900, splashRadius: cellAvg * 1.8, slowEffect:{power:0.5,duration:2500}, damageCost:250, rangeCost:300, tier:2 },
+                railgun: { name:'레일건', cost: 450, projectileType:'railgun', damage: 750, range: cellAvg * 8.5, fireRate:1700, damageCost:320, rangeCost:380, tier:2 },
+
+                // --- 밸런스 조정: 전설 타워 상향 ---
+                legendary_basic: { name:'전설-개틀링', projectileType:'laser', damage:220, range: cellAvg * 5.0, fireRate: 80, tier:99, cost:0, damageCost:500, rangeCost:500, skill: { name: '과부하', cooldown: 20000, currentCooldown: 0, effect: (p) => p.isCrit = true } },
+                legendary_splash: { name:'전설-클러스터', projectileType:'rocket', damage:350, range: cellAvg * 4.5, fireRate:1200, splashRadius: cellAvg * 4.0, tier:99, cost:0, damageCost:600, rangeCost:600, skill: { name: '네이팜탄', cooldown: 20000, currentCooldown: 0, effect: (p) => {} } },
+                legendary_slow: { name:'전설-블리자드', projectileType:'bullet', damage:160, range: cellAvg * 5.5, fireRate:800, splashRadius: cellAvg * 3.0, slowEffect:{power:0.7,duration:3000}, tier:99, cost:0, damageCost:700, rangeCost:700, skill: { name: '영구 동토', cooldown: 25000, currentCooldown: 0, effect: (p) => {} } },
+                legendary_sniper: { name:'전설-레일건', projectileType:'railgun', damage:2200, range: cellAvg * 12.0, fireRate:1800, tier:99, cost:0, damageCost:800, rangeCost:800, skill: { name: '약점 조준', cooldown: 15000, currentCooldown: 0, effect: (p) => p.isCrit = true } },
+            };
+            if (!configs[type]) return null;
+            const config = { ...configs[type] };
+            config.baseDamage = config.damage; config.baseRange = config.range;
+            config.img = towerImages[type] || towerImages.basic;
+            return config;
+        }
+        function getEnemyConfig(type){
+            return {
+                normal: { type:'normal', emoji:'👽', health: 80, speed:1.2, gold:5 },
+                fast: { type:'fast', emoji:'👹', health: 100, speed:2.2, gold:8 },
+                mega_boss: { type:'mega_boss', emoji:'👑', health: 15000, speed:0.8, gold:500 }
+            }[type] || { type:'normal', emoji:'?', health:80, speed:1.2, gold:5 };
+        }
+        function updateCooldownUI(){
+            const cooldownEl = document.getElementById('hero-cooldown');
+            if(cooldownEl) {
+                const cooldownPercent = hero.cooldown > 0 ? hero.cooldown / hero.skillCooldown * 100 : 0;
+                cooldownEl.style.height = `${cooldownPercent}%`;
+                const secondsLeft = cooldownEl.querySelector('span');
+                if (secondsLeft) secondsLeft.textContent = hero.cooldown > 0 ? Math.ceil(hero.cooldown/1000) : '';
+            }
+        }
+        function updateUI(){
+            document.getElementById('round-stat').textContent = `R ${localGameState.round||0}`;
+            document.getElementById('lives-stat').textContent = `❤️ ${localGameState.lives||0}`;
+            document.getElementById('gold-stat').textContent = `💰 ${localGameState.gold||0}`;
+        }
+        let msgTimer = null;
+        function flashMsg(m, duration = 2000){
+            let el = document.getElementById('msg-overlay');
+            if (!el) {
+                el = document.createElement('div'); el.id = 'msg-overlay';
+                Object.assign(el.style, {
+                    position: 'fixed', top: '78px', left: '50%', padding: '8px 14px', borderRadius: '10px',
+                    background: 'rgba(20,20,20,0.8)', backdropFilter: 'blur(4px)', color: '#ffd', zIndex: '200', fontWeight: '700', 
+                    transition: 'opacity 0.5s, transform 0.5s', opacity: '0', transform: 'translateX(-50%) translateY(-20px)'
+                });
+                document.body.appendChild(el);
+            }
+            el.textContent = m; el.style.opacity = '1'; el.style.transform = 'translateX(-50%) translateY(0)';
+            if(msgTimer) clearTimeout(msgTimer);
+            msgTimer = setTimeout(()=>{ el.style.opacity = '0'; el.style.transform = 'translateX(-50%) translateY(-20px)'; }, duration);
+        }
+
+        canvas.addEventListener('mousedown', e => {
+            if (!localGameState.gameStarted) return;
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            if (selectedUnit && selectedUnit.ui && selectedUnit.ui.buttons) {
+                for (const btn of selectedUnit.ui.buttons) {
+                    if (mouseX >= btn.x && mouseX <= btn.x + btn.w && mouseY >= btn.y && mouseY <= btn.y + btn.h) {
+                        handleUnitAction(selectedUnit, btn.action);
+                        return;
+                    }
+                }
+            }
+
+            const clickedCell = findCellAt(mouseX, mouseY);
+
+            if (unitIsMoving && selectedUnit && clickedCell && !clickedCell.occupied) {
+                const oldCell = findCellAt(selectedUnit.x, selectedUnit.y);
+                if (oldCell) oldCell.occupied = false;
+                selectedUnit.x = clickedCell.cx;
+                selectedUnit.y = clickedCell.cy;
+                clickedCell.occupied = true;
+                unitIsMoving = false;
+                return; 
+            }
+
+            if (selectedTowerForPlacement && clickedCell && !clickedCell.occupied) {
+                if (localGameState.gold >= selectedTowerForPlacement.cost) {
+                    localGameState.gold -= selectedTowerForPlacement.cost;
+                    
+                    let towerType = selectedTowerForPlacement.type;
+                    if (Math.random() < 0.02) {
+                        const legendaryType = 'legendary_' + towerType;
+                        if (getTowerConfig(legendaryType)) {
+                           towerType = legendaryType;
+                           flashMsg("🌟 전설 타워 등장! 🌟");
+                        }
+                    }
+                    const config = getTowerConfig(towerType);
+
+                    const newTower = {
+                        ...config, id: 'T' + Date.now() + Math.random(),
+                        x: clickedCell.cx, y: clickedCell.cy,
+                        type: towerType, cooldown: 0, damageLevel: 1, rangeLevel: 1,
+                        totalSpent: selectedTowerForPlacement.cost,
+                    };
+                    towers.push(newTower);
+                    clickedCell.occupied = true;
+                    updateUI();
+                } else {
+                    flashMsg("골드가 부족합니다.");
+                }
+                cancelSelections();
+                return;
+            }
+
+            cancelSelections();
+            for (const tower of towers) {
+                if (Math.hypot(mouseX - tower.x, mouseY - tower.y) < placementArea.cellW / 2) {
+                    selectedUnit = tower;
+                    return;
+                }
+            }
+        });
+
+        const recipeBtn = document.getElementById('recipe-toggle'), recipeModal = document.getElementById('recipe-modal');
+        recipeBtn.addEventListener('click', () => { recipeModal.style.display = recipeModal.style.display === 'none' ? 'block' : 'none'; });
+        window.addEventListener('keydown', e => { 
+            if(e.key === 'Escape') {
+                recipeModal.style.display = 'none';
+                cancelSelections();
+            }
+        });
+
+        resize();
+        window.addEventListener('resize', resize);
+    });
+    </script>
+</body>
+</html>
