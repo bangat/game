@@ -13,7 +13,6 @@ SetWorkingDir, %A_ScriptDir%
 global Telegram_chatid := "8250858259"
 global Telegram_Token := "6253877113:AAEyEqwqf5m0A5YB5Ag6vpez3ceCfIasKj0"
 global TeleCheckInterval := 1500
-global UiRefreshInterval := 1200
 global LastUpdateID := 0
 global TeleCmdBusy := 0
 global UseTele := 1
@@ -29,8 +28,6 @@ global FocusClickY := 930         ; VSCode 창 기준 Y
 LoadConfig()
 EnsureFixedTelegramToken()
 StartTeleControl()
-InitMonitorUI()
-SetTimer, RefreshMonitorUI, %UiRefreshInterval%
 SendTele("✅ 텔레통신 시작됨")
 AddLog("텔레통신 시작")
 return
@@ -39,11 +36,7 @@ return
 ; [수동 제어]
 ; ------------------------------------------------------------------------------
 F6::
-    Gui, TeleMon:+LastFoundExist
-    if WinExist()
-        Gui, TeleMon:Hide
-    else
-        Gui, TeleMon:Show
+    ; UI 모니터 비활성(통신 전용 모드)
 return
 
 F8::Reload
@@ -178,30 +171,6 @@ CheckTeleCommand_Cleanup:
     rawMsg := ""
     cleanMsg := ""
     TeleCmdBusy := 0
-return
-
-RefreshMonitorUI:
-    UpdateMonitorUI()
-return
-
-UiReload:
-    Reload
-return
-
-UiClearLog:
-    logPath := A_ScriptDir . "\텔레통신.log"
-    FileDelete, %logPath%
-    FileAppend,, %logPath%
-    AddLog("로그 파일 초기화")
-return
-
-UiOpenConfig:
-    Run, notepad.exe "%A_ScriptDir%\tele_config.ini"
-return
-
-TeleMonGuiClose:
-TeleMonGuiEscape:
-    Gui, TeleMon:Hide
 return
 
 ; ------------------------------------------------------------------------------
@@ -412,42 +381,6 @@ EnsureFixedTelegramToken() {
     cfg := A_ScriptDir . "\tele_config.ini"
     IniWrite, %Telegram_Token%, %cfg%, Telegram, Token
     AddLog("토큰 고정값 적용")
-}
-
-InitMonitorUI() {
-    Gui, TeleMon:New, +AlwaysOnTop +Resize +MinSize520x320, 텔레통신 모니터
-    Gui, TeleMon:Font, s10, Malgun Gothic
-    Gui, TeleMon:Add, Text, x10 y10 w760 h20 vUiStatusText, 상태 준비중...
-    Gui, TeleMon:Add, Edit, x10 y38 w760 h330 vUiLogView ReadOnly
-    Gui, TeleMon:Add, Button, x10 y376 w110 h28 gUiReload, 스크립트 재시작
-    Gui, TeleMon:Add, Button, x130 y376 w110 h28 gUiClearLog, 로그 초기화
-    Gui, TeleMon:Add, Button, x250 y376 w90 h28 gUiOpenConfig, 설정 열기
-    Gui, TeleMon:Add, Text, x360 y382 w410 h20, F6:창 숨김/표시 | F7:좌표 저장 | F8:리로드
-    Gui, TeleMon:Show, w780 h420
-}
-
-UpdateMonitorUI() {
-    global UseTele, LastUpdateID, Telegram_chatid, Telegram_Token, UseClickFocus, FocusClickX, FocusClickY
-    global ChatFocusHotkey
-
-    state := UseTele ? "수신중" : "중지"
-    focusMode := UseClickFocus ? ("클릭(" . FocusClickX . "," . FocusClickY . ")") : ("핫키(" . ChatFocusHotkey . ")")
-    tokenTail := Telegram_Token
-    if (StrLen(tokenTail) > 10)
-        tokenTail := "..." . SubStr(tokenTail, -8)
-    status := "상태: " . state . " | ChatID: " . Telegram_chatid . " | Token: " . tokenTail . " | Offset: " . LastUpdateID . " | 포커스: " . focusMode
-    GuiControl, TeleMon:, UiStatusText, %status%
-
-    logText := ""
-    logPath := A_ScriptDir . "\텔레통신.log"
-    if (FileExist(logPath)) {
-        FileRead, logText, %logPath%
-        if (StrLen(logText) > 16000)
-            logText := SubStr(logText, StrLen(logText) - 16000)
-    } else {
-        logText := "(로그 파일 없음)"
-    }
-    GuiControl, TeleMon:, UiLogView, %logText%
 }
 
 ; ------------------------------------------------------------------------------
