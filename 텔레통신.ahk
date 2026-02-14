@@ -13,6 +13,7 @@ SetWorkingDir, %A_ScriptDir%
 global Telegram_chatid := "8250858259"
 global Telegram_Token := "6253877113:AAEyEqwqf5m0A5YB5Ag6vpez3ceCfIasKj0"
 global TeleCheckInterval := 1500
+global AutoBindChatID := 1
 global LastUpdateID := 0
 global TeleCmdBusy := 0
 global UseTele := 1
@@ -116,7 +117,7 @@ StartTeleControl() {
 ; [메인 루프] 텔레그램 명령 수신
 ; ------------------------------------------------------------------------------
 CheckTeleCommand:
-    global TeleCmdBusy, Telegram_Token, Telegram_chatid, LastUpdateID, UseTele
+    global TeleCmdBusy, Telegram_Token, Telegram_chatid, LastUpdateID, UseTele, AutoBindChatID
     if (!UseTele)
         return
     if (TeleCmdBusy)
@@ -148,8 +149,21 @@ CheckTeleCommand:
 
         ; 개인 채팅(+), 그룹(-) 모두 대응
         RegExMatch(Response, """chat"":\{""id"":(-?\d+)", matchChatID)
-        if (matchChatID1 != Telegram_chatid)
+        incomingChatID := matchChatID1
+        if (incomingChatID = "")
             goto, CheckTeleCommand_Cleanup
+
+        if (incomingChatID != Telegram_chatid) {
+            AddLog("다른 ChatID 수신: " . incomingChatID)
+            if (AutoBindChatID) {
+                Telegram_chatid := incomingChatID
+                cfg := A_ScriptDir . "\tele_config.ini"
+                IniWrite, %Telegram_chatid%, %cfg%, Telegram, ChatID
+                AddLog("ChatID 자동연결 완료: " . Telegram_chatid)
+            } else {
+                goto, CheckTeleCommand_Cleanup
+            }
+        }
 
         RegExMatch(Response, """text"":""(.*?)""", matchText)
         rawMsg := matchText1
@@ -329,7 +343,7 @@ SendTele(msg) {
 ; [설정] tele_config.ini 로드/생성
 ; ------------------------------------------------------------------------------
 LoadConfig() {
-    global Telegram_chatid, Telegram_Token, TeleCheckInterval
+    global Telegram_chatid, Telegram_Token, TeleCheckInterval, AutoBindChatID
     global VscodeWinTitle, ChatFocusHotkey, AutoSendEnter, RequirePrefix, UseClickFocus, FocusClickX, FocusClickY
 
     cfg := A_ScriptDir . "\tele_config.ini"
@@ -337,6 +351,7 @@ LoadConfig() {
         IniWrite, %Telegram_chatid%, %cfg%, Telegram, ChatID
         IniWrite, %Telegram_Token%, %cfg%, Telegram, Token
         IniWrite, %TeleCheckInterval%, %cfg%, Telegram, CheckIntervalMs
+        IniWrite, %AutoBindChatID%, %cfg%, Telegram, AutoBindChatID
         IniWrite, %VscodeWinTitle%, %cfg%, VSCode, WinTitle
         IniWrite, %ChatFocusHotkey%, %cfg%, VSCode, FocusHotkey
         IniWrite, %AutoSendEnter%, %cfg%, VSCode, AutoSendEnter
@@ -351,6 +366,7 @@ LoadConfig() {
     IniRead, val1, %cfg%, Telegram, ChatID, %Telegram_chatid%
     IniRead, val2, %cfg%, Telegram, Token, %Telegram_Token%
     IniRead, val3, %cfg%, Telegram, CheckIntervalMs, %TeleCheckInterval%
+    IniRead, val11, %cfg%, Telegram, AutoBindChatID, %AutoBindChatID%
     IniRead, val4, %cfg%, VSCode, WinTitle, %VscodeWinTitle%
     IniRead, val5, %cfg%, VSCode, FocusHotkey, %ChatFocusHotkey%
     IniRead, val6, %cfg%, VSCode, AutoSendEnter, %AutoSendEnter%
@@ -362,6 +378,7 @@ LoadConfig() {
     Telegram_chatid := val1
     Telegram_Token := val2
     TeleCheckInterval := val3 + 0
+    AutoBindChatID := val11 + 0
     VscodeWinTitle := val4
     ChatFocusHotkey := val5
     AutoSendEnter := val6 + 0
