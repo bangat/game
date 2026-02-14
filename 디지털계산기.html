@@ -1,0 +1,358 @@
+﻿<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Digital Calculator</title>
+  <style>
+    :root {
+      --bg: radial-gradient(circle at 20% 10%, #24324a 0%, #0b101a 45%, #05070b 100%);
+      --panel: #121826;
+      --panel-2: #1a2233;
+      --text: #e8f0ff;
+      --muted: #8ea2c5;
+      --digit: #273047;
+      --op: #3e63dd;
+      --op-2: #f59f00;
+      --danger: #e03131;
+      --ok: #12b886;
+      --shadow: 0 14px 35px rgba(0, 0, 0, 0.45);
+      --radius: 18px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      color: var(--text);
+      background: var(--bg);
+      font-family: "JetBrains Mono", "Consolas", monospace;
+    }
+
+    body {
+      display: grid;
+      place-items: center;
+      padding: 16px;
+    }
+
+    .calc {
+      width: min(95vw, 420px);
+      border-radius: var(--radius);
+      background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01));
+      border: 1px solid rgba(255,255,255,0.12);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      backdrop-filter: blur(6px);
+    }
+
+    .top {
+      padding: 14px;
+      background: linear-gradient(180deg, #0f1728 0%, #121826 100%);
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .label {
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    .display {
+      border-radius: 12px;
+      padding: 10px 12px;
+      min-height: 92px;
+      background: #04070d;
+      border: 1px solid rgba(44, 255, 173, 0.25);
+      box-shadow: inset 0 0 20px rgba(12, 184, 134, 0.15);
+    }
+
+    .prev {
+      min-height: 20px;
+      text-align: right;
+      color: #7ddcc1;
+      opacity: 0.8;
+      font-size: 14px;
+      word-break: break-all;
+    }
+
+    .curr {
+      text-align: right;
+      margin-top: 6px;
+      font-size: clamp(28px, 7vw, 42px);
+      line-height: 1.15;
+      color: #d5ffe6;
+      text-shadow: 0 0 12px rgba(18, 184, 134, 0.4);
+      word-break: break-all;
+    }
+
+    .keys {
+      padding: 12px;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      background: linear-gradient(180deg, #131c2b 0%, #0f1623 100%);
+    }
+
+    button {
+      appearance: none;
+      border: 0;
+      border-radius: 12px;
+      height: clamp(52px, 12vw, 64px);
+      color: var(--text);
+      background: var(--digit);
+      font-size: clamp(18px, 4.5vw, 24px);
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      cursor: pointer;
+      transition: transform 0.06s ease, filter 0.12s ease;
+      box-shadow: inset 0 -3px 0 rgba(0,0,0,0.25);
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    button:active {
+      transform: translateY(1px) scale(0.99);
+      filter: brightness(1.08);
+    }
+
+    .op { background: var(--op); }
+    .op2 { background: var(--op-2); color: #0e1220; }
+    .danger { background: var(--danger); }
+    .ok { background: var(--ok); color: #06261c; }
+    .span-2 { grid-column: span 2; }
+
+    .hint {
+      margin: 0;
+      text-align: center;
+      font-size: 12px;
+      color: var(--muted);
+      padding: 10px 10px 14px;
+      background: #0f1623;
+      border-top: 1px solid rgba(255,255,255,0.06);
+    }
+  </style>
+</head>
+<body>
+  <main class="calc" aria-label="Digital Calculator">
+    <section class="top">
+      <div class="label">Digital Calculator</div>
+      <div class="display" role="status" aria-live="polite">
+        <div id="prev" class="prev"></div>
+        <div id="curr" class="curr">0</div>
+      </div>
+    </section>
+
+    <section class="keys">
+      <button class="danger" data-action="clear">AC</button>
+      <button data-action="delete">DEL</button>
+      <button data-action="percent">%</button>
+      <button class="op" data-op="/">÷</button>
+
+      <button data-num="7">7</button>
+      <button data-num="8">8</button>
+      <button data-num="9">9</button>
+      <button class="op" data-op="*">×</button>
+
+      <button data-num="4">4</button>
+      <button data-num="5">5</button>
+      <button data-num="6">6</button>
+      <button class="op" data-op="-">−</button>
+
+      <button data-num="1">1</button>
+      <button data-num="2">2</button>
+      <button data-num="3">3</button>
+      <button class="op" data-op="+">+</button>
+
+      <button data-action="sign">±</button>
+      <button class="span-2" data-num="0">0</button>
+      <button data-num=".">.</button>
+      <button class="ok" data-action="equals">=</button>
+    </section>
+
+    <p class="hint">Keyboard: 0-9, + - * /, Enter, Backspace, Esc</p>
+  </main>
+
+  <script>
+    (() => {
+      const prevEl = document.getElementById("prev");
+      const currEl = document.getElementById("curr");
+      const keys = document.querySelector(".keys");
+
+      const state = {
+        current: "0",
+        previous: "",
+        operator: "",
+        overwrite: false,
+      };
+
+      const clampLength = (value, max = 16) => {
+        if (value.length <= max) return value;
+        return Number(value).toExponential(6);
+      };
+
+      const pretty = (value) => {
+        if (value === "") return "";
+        if (value === "Error") return value;
+        const n = Number(value);
+        if (!Number.isFinite(n)) return "Error";
+
+        if (Math.abs(n) >= 1e15 || (Math.abs(n) > 0 && Math.abs(n) < 1e-8)) {
+          return n.toExponential(8).replace("+", "");
+        }
+
+        const [intPart, decPart] = String(value).split(".");
+        const sign = intPart.startsWith("-") ? "-" : "";
+        const absInt = sign ? intPart.slice(1) : intPart;
+        const withComma = absInt.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+        return decPart != null ? `${sign}${withComma}.${decPart}` : `${sign}${withComma}`;
+      };
+
+      const applyOp = (a, b, op) => {
+        const x = Number(a);
+        const y = Number(b);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return "Error";
+        switch (op) {
+          case "+": return String(x + y);
+          case "-": return String(x - y);
+          case "*": return y === 0 && !Number.isFinite(x / y) ? "Error" : String(x * y);
+          case "/": return y === 0 ? "Error" : String(x / y);
+          default: return b;
+        }
+      };
+
+      const resetIfError = () => {
+        if (state.current === "Error") {
+          state.current = "0";
+          state.previous = "";
+          state.operator = "";
+          state.overwrite = true;
+        }
+      };
+
+      const update = () => {
+        const opSymbol = state.operator === "*" ? "×" : state.operator === "/" ? "÷" : state.operator;
+        prevEl.textContent = state.previous ? `${pretty(state.previous)} ${opSymbol}` : "";
+        currEl.textContent = pretty(clampLength(state.current));
+      };
+
+      const inputNum = (n) => {
+        resetIfError();
+        if (state.overwrite) {
+          state.current = n === "." ? "0." : n;
+          state.overwrite = false;
+          update();
+          return;
+        }
+
+        if (n === ".") {
+          if (state.current.includes(".")) return;
+          state.current += ".";
+          update();
+          return;
+        }
+
+        if (state.current === "0") {
+          state.current = n;
+        } else if (state.current === "-0") {
+          state.current = `-${n}`;
+        } else {
+          state.current += n;
+        }
+        update();
+      };
+
+      const chooseOp = (op) => {
+        resetIfError();
+        if (state.operator && !state.overwrite) {
+          state.current = applyOp(state.previous, state.current, state.operator);
+          state.previous = state.current;
+        } else {
+          state.previous = state.current;
+        }
+        state.operator = op;
+        state.overwrite = true;
+        update();
+      };
+
+      const runEquals = () => {
+        resetIfError();
+        if (!state.operator || state.previous === "") return;
+        state.current = applyOp(state.previous, state.current, state.operator);
+        state.previous = "";
+        state.operator = "";
+        state.overwrite = true;
+        update();
+      };
+
+      const doPercent = () => {
+        resetIfError();
+        state.current = String(Number(state.current) / 100);
+        state.overwrite = false;
+        update();
+      };
+
+      const toggleSign = () => {
+        resetIfError();
+        if (state.current === "0") return;
+        state.current = state.current.startsWith("-") ? state.current.slice(1) : `-${state.current}`;
+        update();
+      };
+
+      const clearAll = () => {
+        state.current = "0";
+        state.previous = "";
+        state.operator = "";
+        state.overwrite = false;
+        update();
+      };
+
+      const doDelete = () => {
+        resetIfError();
+        if (state.overwrite) return;
+        if (state.current.length <= 1 || (state.current.length === 2 && state.current.startsWith("-"))) {
+          state.current = "0";
+        } else {
+          state.current = state.current.slice(0, -1);
+        }
+        update();
+      };
+
+      keys.addEventListener("click", (e) => {
+        const btn = e.target.closest("button");
+        if (!btn) return;
+
+        const num = btn.dataset.num;
+        const op = btn.dataset.op;
+        const action = btn.dataset.action;
+
+        if (num != null) inputNum(num);
+        if (op) chooseOp(op);
+        if (action === "equals") runEquals();
+        if (action === "clear") clearAll();
+        if (action === "delete") doDelete();
+        if (action === "percent") doPercent();
+        if (action === "sign") toggleSign();
+      });
+
+      window.addEventListener("keydown", (e) => {
+        const k = e.key;
+        if (/^[0-9]$/.test(k)) inputNum(k);
+        if (k === ".") inputNum(".");
+        if (["+", "-", "*", "/"].includes(k)) chooseOp(k);
+        if (k === "Enter" || k === "=") {
+          e.preventDefault();
+          runEquals();
+        }
+        if (k === "Backspace") doDelete();
+        if (k === "Escape") clearAll();
+        if (k === "%") doPercent();
+      });
+
+      update();
+    })();
+  </script>
+</body>
+</html>
