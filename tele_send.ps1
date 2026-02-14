@@ -11,17 +11,29 @@ $ErrorActionPreference = 'Stop'
 function Get-IniValue {
     param(
         [string]$Path,
+        [string]$Section,
         [string]$Key
     )
     if (-not (Test-Path $Path)) { return $null }
-    $line = Get-Content -Path $Path | Where-Object { $_ -match ("^{0}=" -f [regex]::Escape($Key)) } | Select-Object -First 1
-    if (-not $line) { return $null }
-    return ($line -split '=', 2)[1].Trim()
+    $value = $null
+    $inSection = $false
+    foreach ($line in (Get-Content -Path $Path)) {
+        $trim = $line.Trim()
+        if ($trim -match '^\[(.+)\]$') {
+            $inSection = ($Matches[1] -eq $Section)
+            continue
+        }
+        if (-not $inSection) { continue }
+        if ($trim -match ("^{0}=(.*)$" -f [regex]::Escape($Key))) {
+            $value = $Matches[1].Trim()
+        }
+    }
+    return $value
 }
 
 $cfg = Join-Path $PSScriptRoot 'tele_config.ini'
-if ([string]::IsNullOrWhiteSpace($Token)) { $Token = Get-IniValue -Path $cfg -Key 'Token' }
-if ([string]::IsNullOrWhiteSpace($ChatID)) { $ChatID = Get-IniValue -Path $cfg -Key 'ChatID' }
+if ([string]::IsNullOrWhiteSpace($Token)) { $Token = Get-IniValue -Path $cfg -Section 'Telegram' -Key 'Token' }
+if ([string]::IsNullOrWhiteSpace($ChatID)) { $ChatID = Get-IniValue -Path $cfg -Section 'Telegram' -Key 'ChatID' }
 if ([string]::IsNullOrWhiteSpace($Token)) { $Token = $env:TELEGRAM_BOT_TOKEN }
 if ([string]::IsNullOrWhiteSpace($ChatID)) { $ChatID = $env:TELEGRAM_CHAT_ID }
 
