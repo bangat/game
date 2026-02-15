@@ -165,7 +165,8 @@ CheckTeleCommand:
             }
         }
 
-        RegExMatch(Response, """text"":""(.*?)""", matchText)
+        ; JSON 문자열 내 이스케이프(\" \\n 등)까지 고려해서 text 값을 안전하게 추출
+        RegExMatch(Response, """text"":""((?:\\.|[^""])*)""", matchText)
         rawMsg := matchText1
         cleanMsg := UnEscapeUnicode(rawMsg)
         cleanMsg := Trim(cleanMsg)
@@ -253,7 +254,7 @@ HandleTeleCommand(cleanMsg) {
     ok := InputToVSCode(payload, sendEnter)
     if (ok) {
         if (sendEnter)
-            SendTele("✅ 전달 완료: VSCode 채팅으로 전송됨")
+            SendTele("✅VSCode 채팅으로 전송됨")
         else
             SendTele("✅ 전달 완료: VSCode 채팅 입력칸에 붙여넣기만 수행")
     } else {
@@ -407,6 +408,11 @@ UnEscapeUnicode(str) {
     if (str = "")
         return ""
 
+    ; Telegram getUpdates JSON은 메시지 텍스트 내 '\'를 '\\'로 이스케이프해서 내려줍니다.
+    ; 먼저 '\\' -> '\'로 풀어준 뒤(사용자가 '\n'처럼 입력한 케이스 포함),
+    ; 그 다음 일반적인 이스케이프와 \uXXXX를 처리합니다.
+    str := StrReplace(str, "\\", "\")
+
     pos := 1
     while (pos := RegExMatch(str, "\\u([0-9a-fA-F]{4})", m, pos)) {
         char := Chr("0x" . m1)
@@ -414,7 +420,9 @@ UnEscapeUnicode(str) {
         pos += 1
     }
     str := StrReplace(str, "\/", "/")
+    str := StrReplace(str, "\r", "`r")
     str := StrReplace(str, "\n", "`n")
+    str := StrReplace(str, "\t", "`t")
     str := StrReplace(str, "\""", """")
     return str
 }

@@ -16,10 +16,36 @@ function Resolve-GitPath {
 function Send-TelegramMessage {
     param([string]$Text)
 
-    $token = $env:TELEGRAM_BOT_TOKEN
-    $chatId = $env:TELEGRAM_CHAT_ID
+    function Get-IniValue {
+        param(
+            [string]$Path,
+            [string]$Section,
+            [string]$Key
+        )
+        if (-not (Test-Path $Path)) { return $null }
+        $value = $null
+        $inSection = $false
+        foreach ($line in (Get-Content -Path $Path)) {
+            $trim = $line.Trim()
+            if ($trim -match '^\[(.+)\]$') {
+                $inSection = ($Matches[1] -eq $Section)
+                continue
+            }
+            if (-not $inSection) { continue }
+            if ($trim -match ("^{0}=(.*)$" -f [regex]::Escape($Key))) {
+                $value = $Matches[1].Trim()
+            }
+        }
+        return $value
+    }
+
+    $cfg = Join-Path $repoRoot 'tele_config.ini'
+    $token = (Get-IniValue -Path $cfg -Section 'Telegram' -Key 'Token')
+    $chatId = (Get-IniValue -Path $cfg -Section 'Telegram' -Key 'ChatID')
+    if ([string]::IsNullOrWhiteSpace($token)) { $token = $env:TELEGRAM_BOT_TOKEN }
+    if ([string]::IsNullOrWhiteSpace($chatId)) { $chatId = $env:TELEGRAM_CHAT_ID }
     if ([string]::IsNullOrWhiteSpace($token) -or [string]::IsNullOrWhiteSpace($chatId)) {
-        Write-Host "텔레그램 건너뜀: TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID 미설정"
+        Write-Host "텔레그램 건너뜀: tele_config.ini 또는 TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID 미설정"
         return
     }
 
