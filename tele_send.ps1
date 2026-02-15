@@ -3,10 +3,27 @@ param(
     [string]$Text,
     [string[]]$Files,
     [string]$Token,
-    [string]$ChatID
+    [string]$ChatID,
+    [switch]$NoInterpretEscapes
 )
 
 $ErrorActionPreference = 'Stop'
+
+function Interpret-TelegramEscapes {
+    param([string]$s)
+    if ([string]::IsNullOrEmpty($s)) { return $s }
+
+    # Allow callers to type '\n' etc. and get real newlines in Telegram.
+    # Keep '\\n' as a literal '\n'.
+    $placeholder = "__BSLASH__" + [Guid]::NewGuid().ToString("N") + "__"
+    $s = $s -replace '\\\\', $placeholder
+    $s = $s -replace '\\r\\n', "`r`n"
+    $s = $s -replace '\\n', "`n"
+    $s = $s -replace '\\r', "`r"
+    $s = $s -replace '\\t', "`t"
+    $s = $s -replace [regex]::Escape($placeholder), '\'
+    return $s
+}
 
 function Get-IniValue {
     param(
@@ -41,10 +58,12 @@ if ([string]::IsNullOrWhiteSpace($Token) -or [string]::IsNullOrWhiteSpace($ChatI
     throw "텔레그램 Token/ChatID를 찾지 못했습니다."
 }
 
+$finalText = if ($NoInterpretEscapes) { $Text } else { Interpret-TelegramEscapes $Text }
+
 $msgUri = "https://api.telegram.org/bot$Token/sendMessage"
 $body = @{
     chat_id = $ChatID
-    text = $Text
+    text = $finalText
     disable_web_page_preview = "true"
 }
 
