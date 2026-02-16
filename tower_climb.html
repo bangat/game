@@ -2,621 +2,739 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>미니 타워 클라임</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+  <title>Christmas Tower Climb</title>
   <style>
     :root{
-      --bg:#0a1328;
-      --bg2:#111f40;
-      --ink:#eef3ff;
-      --muted:#afbad2;
-      --line:rgba(255,255,255,.14);
-      --ok:#54f0a9;
-      --warn:#ffd86a;
-      --bad:#ff6363;
-      --acc:#65a0ff;
+      --bg0:#081126;
+      --bg1:#112347;
+      --ink:#eef4ff;
+      --muted:#b7c2d9;
+      --line:rgba(255,255,255,.16);
+      --panel:rgba(7,12,26,.68);
+      --good:#54f2ac;
+      --bad:#ff6666;
+      --btn: clamp(50px, 10vw, 74px);
+      --gap: clamp(8px, 1.8vw, 12px);
     }
-    *{box-sizing:border-box}
-    html,body{height:100%}
-    body{
+    *{ box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
+    html,body{
+      width:100%;
+      height:100%;
       margin:0;
       overflow:hidden;
-      background:
-        radial-gradient(1200px 640px at 20% 5%, rgba(101,160,255,.18), transparent 60%),
-        radial-gradient(1000px 620px at 80% 20%, rgba(84,240,169,.14), transparent 60%),
-        linear-gradient(180deg, var(--bg), var(--bg2));
+      touch-action:none;
+      user-select:none;
       color:var(--ink);
-      font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+      font-family:"Pretendard","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+      background:
+        radial-gradient(1200px 700px at 20% 5%, rgba(84,242,172,.15), transparent 55%),
+        radial-gradient(1100px 700px at 80% 15%, rgba(101,161,255,.22), transparent 55%),
+        linear-gradient(180deg, var(--bg0), var(--bg1));
     }
     #app{
       position:fixed;
       inset:0;
     }
+    canvas{
+      display:block;
+      width:100%;
+      height:100%;
+    }
+
     #hud{
       position:fixed;
-      top:10px;
-      left:10px;
-      right:10px;
+      top: calc(env(safe-area-inset-top, 0px) + 8px);
+      left: calc(env(safe-area-inset-left, 0px) + 8px);
+      right: calc(env(safe-area-inset-right, 0px) + 8px);
+      z-index:20;
       display:flex;
-      gap:10px;
       flex-wrap:wrap;
+      gap:8px;
       align-items:flex-start;
       justify-content:space-between;
       pointer-events:none;
-      z-index:20;
     }
     .panel{
       pointer-events:auto;
       border:1px solid var(--line);
-      background:rgba(9,14,30,.66);
+      background:var(--panel);
       backdrop-filter: blur(10px);
       border-radius:14px;
-      padding:10px 12px;
-      box-shadow: 0 14px 40px rgba(0,0,0,.28);
+      padding:8px 10px;
+      box-shadow:0 12px 34px rgba(0,0,0,.32);
     }
-    .title{
-      font-size:14px;
-      font-weight:900;
-      letter-spacing:.2px;
-      margin:0 0 8px;
+    .metrics{
+      display:grid;
+      grid-template-columns:repeat(3,minmax(72px,1fr));
+      gap:8px;
+      min-width:min(96vw, 430px);
     }
-    .row{
-      display:flex;
-      flex-wrap:wrap;
-      gap:10px;
-      align-items:center;
-      font-size:13px;
+    .metric{
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:10px;
+      background:rgba(255,255,255,.03);
+      padding:6px 8px;
+      line-height:1.15;
+    }
+    .metric .k{
+      font-size:11px;
+      font-weight:800;
       color:var(--muted);
-      font-weight:700;
+      margin-bottom:4px;
+      letter-spacing:.2px;
     }
-    .row b{
-      color:var(--ink);
-      font-weight:900;
+    .metric .v{
+      font-size:15px;
+      font-weight:950;
+    }
+    .btnRow{
+      display:flex;
+      gap:8px;
     }
     .btn{
       border:1px solid var(--line);
-      background:linear-gradient(180deg, rgba(255,255,255,.15), rgba(255,255,255,.06));
+      background:linear-gradient(180deg, rgba(255,255,255,.15), rgba(255,255,255,.05));
       color:var(--ink);
       border-radius:10px;
+      font-size:12px;
+      font-weight:950;
       padding:8px 10px;
-      font-weight:900;
       cursor:pointer;
-      user-select:none;
+      white-space:nowrap;
     }
     .btn:active{ transform:translateY(1px); }
-    .hint{
-      position:fixed;
-      right:10px;
-      bottom:138px;
-      width:min(280px, calc(100vw - 20px));
-      border:1px solid var(--line);
-      background:rgba(9,14,30,.66);
-      border-radius:14px;
-      padding:10px 12px;
-      font-size:12px;
-      line-height:1.45;
-      color:var(--muted);
-      z-index:20;
-      pointer-events:none;
-    }
-    .hint b{ color:var(--ink); }
 
-    #mobile{
+    #controls{
       position:fixed;
-      inset:auto 0 0 0;
-      height:128px;
+      left: calc(env(safe-area-inset-left, 0px) + 10px);
+      right: calc(env(safe-area-inset-right, 0px) + 10px);
+      bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
+      z-index:30;
       display:flex;
       justify-content:space-between;
-      padding:0 12px 12px;
+      align-items:flex-end;
       pointer-events:none;
-      z-index:20;
-    }
-    .pad,.act{
-      pointer-events:auto;
-      display:grid;
-      gap:8px;
     }
     .pad{
-      grid-template-columns:56px 56px 56px;
-      grid-template-rows:56px 56px;
+      pointer-events:auto;
+      display:grid;
+      grid-template-columns:var(--btn) var(--btn) var(--btn);
+      grid-template-rows:var(--btn) var(--btn);
+      gap:var(--gap);
       grid-template-areas:
         ". up ."
         "left down right";
     }
     .act{
-      align-content:end;
+      pointer-events:auto;
+      display:grid;
+      gap:var(--gap);
     }
-    .mBtn{
+    .ctrl-btn{
+      width:var(--btn);
+      height:var(--btn);
       border:1px solid var(--line);
-      background:rgba(9,14,30,.55);
+      border-radius:16px;
+      background:rgba(7,12,26,.58);
+      backdrop-filter:blur(8px);
       color:var(--ink);
-      border-radius:14px;
-      width:56px;
-      height:56px;
       display:flex;
       align-items:center;
       justify-content:center;
-      font-weight:900;
-      user-select:none;
+      font-size:22px;
+      font-weight:950;
       touch-action:manipulation;
+      pointer-events:auto;
     }
-    .mBtn:active{ transform:translateY(1px); background:rgba(9,14,30,.8); }
-    .up{ grid-area:up; }
-    .left{ grid-area:left; }
-    .right{ grid-area:right; }
-    .down{ grid-area:down; }
+    .ctrl-btn:active{ transform:translateY(1px); background:rgba(7,12,26,.9); }
+    .up{grid-area:up}
+    .left{grid-area:left}
+    .down{grid-area:down}
+    .right{grid-area:right}
+    .jump{ font-size:14px; letter-spacing:.2px; }
+
     #toast{
       position:fixed;
       left:50%;
-      top:14px;
+      top: calc(env(safe-area-inset-top, 0px) + 10px);
       transform:translateX(-50%);
+      z-index:40;
       border:1px solid var(--line);
-      background:rgba(9,14,30,.8);
+      background:rgba(7,12,26,.88);
       color:var(--ink);
       border-radius:12px;
-      padding:8px 12px;
       font-size:13px;
-      font-weight:900;
+      font-weight:950;
+      padding:7px 11px;
       display:none;
-      z-index:30;
+      pointer-events:none;
     }
-    @media (min-width: 940px){
-      #mobile{ opacity:.9 }
+
+    @media (orientation: landscape){
+      :root{
+        --btn: clamp(44px, 7.2vh, 66px);
+      }
+      #controls{
+        bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
+      }
+      .metrics{
+        grid-template-columns:repeat(6,minmax(66px,1fr));
+        min-width:min(98vw, 700px);
+      }
     }
   </style>
 </head>
 <body>
   <div id="app"></div>
   <div id="toast"></div>
+
   <div id="hud">
-    <div class="panel">
-      <h1 class="title">미니 타워 클라임</h1>
-      <div class="row">
-        <span>스테이지 <b id="stageTxt">1 / 40</b></span>
-        <span>높이 <b id="heightTxt">0m</b></span>
-        <span>시간 <b id="timeTxt">0.0s</b></span>
-      </div>
-      <div class="row" style="margin-top:6px">
-        <span>리스폰 <b id="deathTxt">0</b></span>
-        <span>체크포인트 <b id="cpTxt">0</b></span>
-        <span>베스트 <b id="bestTxt">-</b></span>
-      </div>
+    <div class="panel metrics">
+      <div class="metric"><div class="k">STAGE</div><div class="v" id="uiStage">1/72</div></div>
+      <div class="metric"><div class="k">HEIGHT</div><div class="v" id="uiHeight">0m</div></div>
+      <div class="metric"><div class="k">TIME</div><div class="v" id="uiTime">0.0s</div></div>
+      <div class="metric"><div class="k">RESPAWN</div><div class="v" id="uiDeath">0</div></div>
+      <div class="metric"><div class="k">CHECK</div><div class="v" id="uiCp">0</div></div>
+      <div class="metric"><div class="k">BEST</div><div class="v" id="uiBest">-</div></div>
     </div>
-    <div class="panel">
-      <div class="row">
-        <button id="resetBtn" class="btn" type="button">리셋</button>
-        <button id="topBtn" class="btn" type="button">최근 체크포인트로</button>
-      </div>
+    <div class="panel btnRow">
+      <button class="btn" id="btnRespawn" type="button">체크포인트</button>
+      <button class="btn" id="btnReset" type="button">리셋</button>
     </div>
   </div>
 
-  <div class="hint">
-    <b>조작</b><br/>
-    PC: `WASD` 이동, `Space` 점프, 드래그로 시점<br/>
-    모바일: 하단 버튼 이동/점프, 화면 드래그로 시점<br/>
-    빨간 발판은 함정, 초록 링을 밟으면 체크포인트 저장
-  </div>
-
-  <div id="mobile">
+  <div id="controls">
     <div class="pad">
-      <div class="mBtn up" data-key="up">▲</div>
-      <div class="mBtn left" data-key="left">◀</div>
-      <div class="mBtn down" data-key="down">▼</div>
-      <div class="mBtn right" data-key="right">▶</div>
+      <button class="ctrl-btn up" data-key="up" type="button">▲</button>
+      <button class="ctrl-btn left" data-key="left" type="button">◀</button>
+      <button class="ctrl-btn down" data-key="down" type="button">▼</button>
+      <button class="ctrl-btn right" data-key="right" type="button">▶</button>
     </div>
     <div class="act">
-      <div class="mBtn" data-key="jump">점프</div>
+      <button class="ctrl-btn jump" data-key="jump" type="button">JUMP</button>
     </div>
   </div>
 
   <script type="module">
     import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 
-    const app = document.getElementById("app");
+    const STAGES = 72;
+    const STEP_Y = 1.22;
+    const PATH_R = 8.2;
+    const BEST_KEY = "tower_christmas_best_v1";
+
     const ui = {
-      stage: document.getElementById("stageTxt"),
-      height: document.getElementById("heightTxt"),
-      time: document.getElementById("timeTxt"),
-      death: document.getElementById("deathTxt"),
-      cp: document.getElementById("cpTxt"),
-      best: document.getElementById("bestTxt"),
+      stage: document.getElementById("uiStage"),
+      height: document.getElementById("uiHeight"),
+      time: document.getElementById("uiTime"),
+      death: document.getElementById("uiDeath"),
+      cp: document.getElementById("uiCp"),
+      best: document.getElementById("uiBest"),
       toast: document.getElementById("toast")
     };
 
-    const LS_BEST = "tower_climb.best.v1";
-    const STAGE_COUNT = 40;
-    const STAGE_STEP = 4;
-    const TOWER_RADIUS = 7.5;
-
+    const app = document.getElementById("app");
     const scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(0x0d1a37, 0.02);
+    scene.fog = new THREE.FogExp2(0x0d1f43, 0.014);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     renderer.setSize(innerWidth, innerHeight);
     renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     app.appendChild(renderer.domElement);
 
-    const camera = new THREE.PerspectiveCamera(68, innerWidth / innerHeight, 0.1, 1500);
-    camera.position.set(0, 3.2, 7.8);
+    const camera = new THREE.PerspectiveCamera(68, innerWidth / innerHeight, 0.1, 1200);
+    camera.position.set(0, 4.6, 8.8);
 
-    const hemi = new THREE.HemisphereLight(0xbad1ff, 0x23324f, 0.95);
-    scene.add(hemi);
-    const sun = new THREE.DirectionalLight(0xffffff, 0.95);
-    sun.position.set(8, 20, 5);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(1024, 1024);
-    scene.add(sun);
+    scene.add(new THREE.HemisphereLight(0xaecbff, 0x203458, 1.0));
+    const dir = new THREE.DirectionalLight(0xffffff, 1.0);
+    dir.position.set(14, 26, 8);
+    dir.castShadow = true;
+    dir.shadow.mapSize.set(1024, 1024);
+    scene.add(dir);
 
-    const towerCore = new THREE.Mesh(
-      new THREE.CylinderGeometry(2.4, 2.8, STAGE_COUNT * STAGE_STEP + 20, 16, 1, true),
-      new THREE.MeshStandardMaterial({ color: 0x1b2e52, roughness: 0.8, metalness: 0.1, transparent: true, opacity: 0.65 })
+    // Ground and tower core
+    const base = new THREE.Mesh(
+      new THREE.CircleGeometry(30, 60),
+      new THREE.MeshStandardMaterial({ color: 0x17315d, roughness: 0.95 })
     );
-    towerCore.position.y = (STAGE_COUNT * STAGE_STEP) * 0.5;
-    scene.add(towerCore);
+    base.rotation.x = -Math.PI / 2;
+    base.receiveShadow = true;
+    scene.add(base);
 
-    const floor = new THREE.Mesh(
-      new THREE.CircleGeometry(22, 50),
-      new THREE.MeshStandardMaterial({ color: 0x15284c, roughness: 0.9 })
+    const core = new THREE.Mesh(
+      new THREE.CylinderGeometry(2.6, 3.0, STAGES * STEP_Y + 28, 22, 1, true),
+      new THREE.MeshStandardMaterial({ color: 0x203b70, transparent: true, opacity: 0.62, roughness: 0.85 })
     );
-    floor.rotation.x = -Math.PI / 2;
-    floor.receiveShadow = true;
-    scene.add(floor);
+    core.position.y = (STAGES * STEP_Y) * 0.5 + 4;
+    scene.add(core);
 
-    const grid = new THREE.GridHelper(48, 48, 0x243d6c, 0x1a2d50);
-    grid.position.y = 0.01;
+    const grid = new THREE.GridHelper(64, 64, 0x2a4b82, 0x1d3564);
+    grid.position.y = 0.02;
     scene.add(grid);
 
-    const platforms = [];
-    const checkpoints = [];
-    let goalY = 0;
-
-    function addPlatform({ x, y, z, sx, sy, sz, danger = false, moving = false, axis = "x", amp = 0, speed = 0 }) {
-      const m = new THREE.Mesh(
-        new THREE.BoxGeometry(sx, sy, sz),
-        new THREE.MeshStandardMaterial({
-          color: danger ? 0xa42d3f : 0x3e7ae6,
-          emissive: danger ? 0x30070e : 0x0c1c36,
-          roughness: 0.6,
-          metalness: 0.1
-        })
-      );
-      m.position.set(x, y, z);
-      m.castShadow = true;
-      m.receiveShadow = true;
-      m.userData = {
-        sx, sy, sz, danger,
-        moving, axis, amp, speed,
-        baseX: x, baseY: y, baseZ: z
-      };
-      scene.add(m);
-      platforms.push(m);
-      return m;
-    }
-
-    function addCheckpoint(x, y, z, stageIndex) {
+    // decorative garland rings
+    for (let i = 0; i < 11; i++) {
+      const ry = 3 + i * 8.5;
       const ring = new THREE.Mesh(
-        new THREE.TorusGeometry(1.2, 0.18, 10, 24),
-        new THREE.MeshStandardMaterial({ color: 0x4ff0a8, emissive: 0x0f3f29, roughness: 0.4, metalness: 0.2 })
+        new THREE.TorusGeometry(4.7 + (i % 2) * 0.25, 0.09, 8, 44),
+        new THREE.MeshStandardMaterial({ color: i % 2 ? 0xff5555 : 0x57f1ad, emissive: 0x162236, roughness: 0.4 })
       );
       ring.rotation.x = Math.PI / 2;
-      ring.position.set(x, y + 0.7, z);
+      ring.position.y = ry;
       scene.add(ring);
-      checkpoints.push({ mesh: ring, x, y, z, stageIndex, active: false });
     }
 
-    function buildTower() {
-      const rng = (seed => () => (seed = (seed * 1664525 + 1013904223) >>> 0, seed / 4294967296))(71231);
-      for (let i = 0; i < STAGE_COUNT; i++) {
-        const y = 1.2 + i * STAGE_STEP;
-        const angle = i * 0.83 + (rng() - 0.5) * 1.4;
-        const radius = TOWER_RADIUS + (rng() - 0.5) * 1.8;
-        const x = Math.cos(angle) * radius;
-        const z = Math.sin(angle) * radius;
-        const sx = 3.1 + rng() * 1.8;
-        const sy = 0.8;
-        const sz = 2.4 + rng() * 1.7;
-        const danger = (i % 9 === 4 || i % 11 === 7);
-        const moving = i > 3 && i % 6 === 0;
-        const axis = rng() > 0.5 ? "x" : "z";
-        const amp = moving ? 1.2 + rng() * 1.2 : 0;
-        const speed = moving ? 0.8 + rng() * 1.2 : 0;
-        addPlatform({ x, y, z, sx, sy, sz, danger, moving, axis, amp, speed });
+    const floors = [];
+    const hazards = [];
+    const checkpoints = [];
+    let finishY = 0;
 
-        if (i % 5 === 0) {
-          addCheckpoint(x, y + 0.2, z, i);
+    function addFloor(opts) {
+      const { x, y, z, sx, sy, sz, color = 0x3f7ded, moving = false, axis = "x", amp = 0, speed = 0, phase = 0, stage = 0 } = opts;
+      const mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(sx, sy, sz),
+        new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.08 })
+      );
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.position.set(x, y, z);
+      mesh.userData = { sx, sy, sz, moving, axis, amp, speed, phase, baseX: x, baseZ: z, prevX: x, prevZ: z, stage };
+      scene.add(mesh);
+      floors.push(mesh);
+      return mesh;
+    }
+
+    function addHazard(opts) {
+      const { x, y, z, sx, sy, sz } = opts;
+      const mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(sx, sy, sz),
+        new THREE.MeshStandardMaterial({ color: 0xc93f53, emissive: 0x380d16, roughness: 0.5 })
+      );
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.position.set(x, y, z);
+      mesh.userData = { sx, sy, sz };
+      scene.add(mesh);
+      hazards.push(mesh);
+      return mesh;
+    }
+
+    function addCheckpoint(x, y, z, stage) {
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(1.05, 0.13, 10, 26),
+        new THREE.MeshStandardMaterial({ color: 0x54f2ac, emissive: 0x113a2b, roughness: 0.4 })
+      );
+      ring.rotation.x = Math.PI / 2;
+      ring.position.set(x, y + 0.56, z);
+      ring.userData.stage = stage;
+      ring.userData.active = false;
+      scene.add(ring);
+      checkpoints.push(ring);
+    }
+
+    function buildCourse() {
+      // spawn
+      addFloor({ x: 0, y: 0.4, z: 0, sx: 7.4, sy: 0.8, sz: 7.4, color: 0x5f87ff, stage: 0 });
+      addCheckpoint(0, 0.4, 0, 0);
+
+      let prevA = 0;
+      for (let i = 1; i <= STAGES; i++) {
+        const y = 0.95 + i * STEP_Y;
+        const a = prevA + 0.55 + (i % 3 === 0 ? 0.08 : 0);
+        prevA = a;
+        const x = Math.cos(a) * PATH_R;
+        const z = Math.sin(a) * PATH_R;
+
+        const moving = i % 13 === 8 || i % 17 === 12;
+        const dangerStage = i % 7 === 4 || i % 11 === 6;
+        const color = moving ? 0x7f86ff : (dangerStage ? 0x4e8aff : 0x4e8aff);
+
+        const floor = addFloor({
+          x, y, z,
+          sx: moving ? 3.0 : 3.6,
+          sy: 0.7,
+          sz: moving ? 3.0 : 3.6,
+          color,
+          moving,
+          axis: i % 2 ? "x" : "z",
+          amp: moving ? 1.15 : 0,
+          speed: moving ? 1.0 + (i % 5) * 0.12 : 0,
+          phase: i * 0.33,
+          stage: i
+        });
+
+        if (dangerStage) {
+          // small jump bar on platform
+          const dirX = Math.cos(a + Math.PI * 0.5);
+          const dirZ = Math.sin(a + Math.PI * 0.5);
+          addHazard({
+            x: floor.position.x + dirX * 0.2,
+            y: floor.position.y + 0.58,
+            z: floor.position.z + dirZ * 0.2,
+            sx: 2.2,
+            sy: 0.55,
+            sz: 0.45
+          });
+        }
+
+        if (i % 8 === 0) {
+          addCheckpoint(x, y, z, i);
         }
       }
-      goalY = 1.2 + (STAGE_COUNT - 1) * STAGE_STEP + 4;
-      const goal = new THREE.Mesh(
-        new THREE.ConeGeometry(1.6, 2.2, 5),
-        new THREE.MeshStandardMaterial({ color: 0xffd86a, emissive: 0x3e2e08, roughness: 0.5 })
-      );
-      goal.position.set(0, goalY, 0);
-      scene.add(goal);
-    }
-    buildTower();
 
+      finishY = 0.95 + STAGES * STEP_Y + 1.8;
+      const fin = new THREE.Mesh(
+        new THREE.CylinderGeometry(2.2, 2.2, 0.4, 32),
+        new THREE.MeshStandardMaterial({ color: 0xffde73, emissive: 0x3b2c08 })
+      );
+      fin.position.set(0, finishY, 0);
+      fin.receiveShadow = true;
+      fin.castShadow = true;
+      scene.add(fin);
+    }
+    buildCourse();
+
+    // Player physics
     const player = {
-      pos: new THREE.Vector3(0, 2.6, 0),
-      vel: new THREE.Vector3(),
-      radius: 0.45,
-      height: 1.7,
-      grounded: false
+      pos: new THREE.Vector3(0, 2.1, 0),
+      vel: new THREE.Vector3(0, 0, 0),
+      radius: 0.34,
+      height: 1.78,
+      grounded: false,
+      onFloor: null
+    };
+    const halfH = player.height * 0.5;
+
+    // Character (blocky style)
+    const avatar = new THREE.Group();
+    const matBody = new THREE.MeshStandardMaterial({ color: 0xf4f8ff, roughness: 0.35 });
+    const matTrim = new THREE.MeshStandardMaterial({ color: 0xe2464e, roughness: 0.4 });
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.78, 0.4), matBody);
+    torso.position.y = 0.92;
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 18, 14), matBody);
+    head.position.y = 1.52;
+    const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.3, 12), matTrim);
+    hat.position.y = 1.78;
+    const legL = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.42, 0.18), matTrim);
+    legL.position.set(-0.14, 0.23, 0);
+    const legR = legL.clone();
+    legR.position.x = 0.14;
+    const armL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.48, 0.14), matTrim);
+    armL.position.set(-0.42, 0.94, 0);
+    const armR = armL.clone();
+    armR.position.x = 0.42;
+    avatar.add(torso, head, hat, legL, legR, armL, armR);
+    avatar.castShadow = true;
+    scene.add(avatar);
+
+    // Camera orbit state
+    const cam = {
+      yaw: Math.PI,
+      pitch: -0.28,
+      dist: 6.8,
+      dragId: -1,
+      lastX: 0,
+      lastY: 0
     };
 
-    const playerMesh = new THREE.Mesh(
-      new THREE.CapsuleGeometry(player.radius, player.height - player.radius * 2, 4, 8),
-      new THREE.MeshStandardMaterial({ color: 0xf5f7ff, roughness: 0.35, metalness: 0.1 })
-    );
-    playerMesh.castShadow = true;
-    scene.add(playerMesh);
-
-    const input = { up: false, down: false, left: false, right: false, jump: false };
-    const cameraState = { yaw: Math.PI, pitch: -0.32, dragging: false, lx: 0, ly: 0 };
+    const keys = { up: false, down: false, left: false, right: false, jump: false };
     let timerStart = 0;
-    let timerDone = false;
     let deaths = 0;
-    let currentStage = 0;
-    let checkpoint = { x: 0, y: 2.6, z: 0, stage: 0 };
     let won = false;
+    let cp = { x: 0, y: 2.1, z: 0, stage: 0 };
+    let topStage = 0;
 
-    function showToast(text, ms = 1100) {
-      ui.toast.textContent = text;
+    function fmtSec(ms) { return (ms / 1000).toFixed(1) + "s"; }
+    function getBest() {
+      const v = Number(localStorage.getItem(BEST_KEY) || 0);
+      return Number.isFinite(v) && v > 0 ? v : 0;
+    }
+    function setBest(v) { localStorage.setItem(BEST_KEY, String(v)); }
+    function syncBest() { ui.best.textContent = getBest() ? fmtSec(getBest()) : "-"; }
+    syncBest();
+
+    function toast(msg, ms = 1050) {
+      ui.toast.textContent = msg;
       ui.toast.style.display = "block";
-      clearTimeout(showToast.tid);
-      showToast.tid = setTimeout(() => (ui.toast.style.display = "none"), ms);
-    }
-
-    function setCheckpoint(cp) {
-      checkpoint = { x: cp.x, y: cp.y + 1.8, z: cp.z, stage: cp.stageIndex };
-      currentStage = Math.max(currentStage, cp.stageIndex);
-      ui.cp.textContent = `${Math.floor(currentStage / 5)}`;
-      checkpoints.forEach(x => (x.active = false));
-      cp.active = true;
-      cp.mesh.material.color.setHex(0x8cffb5);
-      showToast(`체크포인트 저장 (${cp.stageIndex + 1}층)`);
-    }
-
-    function respawn(reason = "") {
-      player.pos.set(checkpoint.x, checkpoint.y, checkpoint.z);
-      player.vel.set(0, 0, 0);
-      player.grounded = false;
-      deaths++;
-      ui.death.textContent = String(deaths);
-      if (reason) showToast(reason);
+      clearTimeout(toast.tid);
+      toast.tid = setTimeout(() => ui.toast.style.display = "none", ms);
     }
 
     function hardReset() {
-      checkpoint = { x: 0, y: 2.6, z: 0, stage: 0 };
-      currentStage = 0;
+      cp = { x: 0, y: 2.1, z: 0, stage: 0 };
+      topStage = 0;
       deaths = 0;
+      won = false;
+      player.pos.set(cp.x, cp.y, cp.z);
+      player.vel.set(0, 0, 0);
+      player.grounded = false;
+      player.onFloor = null;
+      timerStart = performance.now();
       ui.death.textContent = "0";
       ui.cp.textContent = "0";
-      timerStart = performance.now();
-      timerDone = false;
-      won = false;
-      checkpoints.forEach(cp => {
-        cp.active = false;
-        cp.mesh.material.color.setHex(0x4ff0a8);
+      checkpoints.forEach(r => {
+        r.userData.active = false;
+        r.material.color.setHex(0x54f2ac);
       });
-      player.pos.set(0, 2.6, 0);
+    }
+
+    function respawn(msg = "") {
+      player.pos.set(cp.x, cp.y, cp.z);
       player.vel.set(0, 0, 0);
-      showToast("리셋 완료");
+      player.grounded = false;
+      player.onFloor = null;
+      deaths++;
+      ui.death.textContent = String(deaths);
+      if (msg) toast(msg);
     }
 
-    function getBest() {
-      const v = Number(localStorage.getItem(LS_BEST) || 0);
-      return Number.isFinite(v) && v > 0 ? v : 0;
-    }
-    function setBest(ms) {
-      localStorage.setItem(LS_BEST, String(ms));
-    }
-    function fmtSec(ms) {
-      return (ms / 1000).toFixed(1) + "s";
-    }
-    function updateBestUI() {
-      const b = getBest();
-      ui.best.textContent = b ? fmtSec(b) : "-";
-    }
-    updateBestUI();
-
-    function moveCamera() {
-      const dist = 6.4;
-      const h = 2.1;
-      const tx = player.pos.x + Math.sin(cameraState.yaw) * Math.cos(cameraState.pitch) * dist;
-      const ty = player.pos.y + h + Math.sin(cameraState.pitch) * dist;
-      const tz = player.pos.z + Math.cos(cameraState.yaw) * Math.cos(cameraState.pitch) * dist;
-      camera.position.lerp(new THREE.Vector3(tx, ty, tz), 0.18);
-      camera.lookAt(player.pos.x, player.pos.y + 0.8, player.pos.z);
+    function setCheckpoint(ring) {
+      cp = { x: ring.position.x, y: ring.position.y + 1.2, z: ring.position.z, stage: ring.userData.stage };
+      topStage = Math.max(topStage, cp.stage);
+      ui.cp.textContent = String(Math.floor(topStage / 8));
+      checkpoints.forEach(r => { r.userData.active = false; r.material.color.setHex(0x54f2ac); });
+      ring.userData.active = true;
+      ring.material.color.setHex(0x9dffcb);
+      toast(`CHECK ${cp.stage}`);
     }
 
-    function handleLookPointer(x, y) {
-      if (!cameraState.dragging) return;
-      const dx = x - cameraState.lx;
-      const dy = y - cameraState.ly;
-      cameraState.lx = x;
-      cameraState.ly = y;
-      cameraState.yaw -= dx * 0.005;
-      cameraState.pitch -= dy * 0.004;
-      cameraState.pitch = Math.max(-1.2, Math.min(0.4, cameraState.pitch));
+    function carryByMovingPlatform() {
+      const f = player.onFloor;
+      if (!f || !f.userData.moving || !player.grounded) return;
+      const dx = f.position.x - f.userData.prevX;
+      const dz = f.position.z - f.userData.prevZ;
+      player.pos.x += dx;
+      player.pos.z += dz;
     }
 
-    function controlsToDir() {
-      let dx = 0, dz = 0;
-      if (input.up) dz -= 1;
-      if (input.down) dz += 1;
-      if (input.left) dx -= 1;
-      if (input.right) dx += 1;
-      const l = Math.hypot(dx, dz) || 1;
-      dx /= l; dz /= l;
-      const s = Math.sin(cameraState.yaw);
-      const c = Math.cos(cameraState.yaw);
-      return new THREE.Vector3(dx * c - dz * s, 0, dx * s + dz * c);
-    }
-
-    function updatePlatformMotion(t) {
-      for (const p of platforms) {
-        if (!p.userData.moving) continue;
-        const u = p.userData;
-        const wave = Math.sin(t * u.speed) * u.amp;
-        if (u.axis === "x") p.position.x = u.baseX + wave;
-        else p.position.z = u.baseZ + wave;
+    function updateMovers(timeSec) {
+      for (const f of floors) {
+        f.userData.prevX = f.position.x;
+        f.userData.prevZ = f.position.z;
+        if (!f.userData.moving) continue;
+        const u = f.userData;
+        const w = Math.sin(timeSec * u.speed + u.phase) * u.amp;
+        if (u.axis === "x") f.position.x = u.baseX + w;
+        else f.position.z = u.baseZ + w;
       }
     }
 
-    function aabbTopHit(p, footYPrev, footYNow) {
-      const u = p.userData;
-      const minX = p.position.x - u.sx * 0.5 - player.radius;
-      const maxX = p.position.x + u.sx * 0.5 + player.radius;
-      const minZ = p.position.z - u.sz * 0.5 - player.radius;
-      const maxZ = p.position.z + u.sz * 0.5 + player.radius;
-      if (player.pos.x < minX || player.pos.x > maxX || player.pos.z < minZ || player.pos.z > maxZ) return null;
-      const top = p.position.y + u.sy * 0.5 + player.radius;
-      if (footYPrev >= top - 0.08 && footYNow <= top + 0.06 && player.vel.y <= 0) return top;
-      return null;
+    function getMoveDir() {
+      let x = 0, z = 0;
+      if (keys.up) z -= 1;
+      if (keys.down) z += 1;
+      if (keys.left) x -= 1;
+      if (keys.right) x += 1;
+      if (!x && !z) return new THREE.Vector3();
+      const len = Math.hypot(x, z) || 1;
+      x /= len; z /= len;
+      const s = Math.sin(cam.yaw), c = Math.cos(cam.yaw);
+      return new THREE.Vector3(x * c - z * s, 0, x * s + z * c);
     }
 
-    function update(dt, tNow) {
-      if (!timerStart) timerStart = tNow;
+    function overlapHazard(h) {
+      const u = h.userData;
+      return (
+        Math.abs(player.pos.x - h.position.x) <= (u.sx * 0.5 + player.radius) &&
+        Math.abs(player.pos.z - h.position.z) <= (u.sz * 0.5 + player.radius) &&
+        Math.abs(player.pos.y - h.position.y) <= (u.sy * 0.5 + halfH * 0.72)
+      );
+    }
 
-      updatePlatformMotion(tNow * 0.001);
+    function tryLand(f, footPrev, footNow) {
+      const u = f.userData;
+      if (
+        Math.abs(player.pos.x - f.position.x) > (u.sx * 0.5 + player.radius) ||
+        Math.abs(player.pos.z - f.position.z) > (u.sz * 0.5 + player.radius)
+      ) return false;
+      const top = f.position.y + u.sy * 0.5 + player.radius;
+      if (footPrev >= top - 0.2 && footNow <= top + 0.08 && player.vel.y <= 0) {
+        player.pos.y = top + halfH - player.radius;
+        player.vel.y = 0;
+        player.grounded = true;
+        player.onFloor = f;
+        return true;
+      }
+      return false;
+    }
 
-      const moveDir = controlsToDir();
-      const accel = player.grounded ? 18 : 8;
-      const maxSpeed = player.grounded ? 8.2 : 7.2;
-      player.vel.x += moveDir.x * accel * dt;
-      player.vel.z += moveDir.z * accel * dt;
+    function update(dt, now) {
+      if (!timerStart) timerStart = now;
+
+      const t = now * 0.001;
+      updateMovers(t);
+      carryByMovingPlatform();
+
+      const dirMove = getMoveDir();
+      const accel = player.grounded ? 19 : 8.8;
+      const max = player.grounded ? 8.4 : 7.4;
+      player.vel.x += dirMove.x * accel * dt;
+      player.vel.z += dirMove.z * accel * dt;
       const damp = player.grounded ? 0.80 : 0.93;
       player.vel.x *= Math.pow(damp, dt * 60);
       player.vel.z *= Math.pow(damp, dt * 60);
       const flat = Math.hypot(player.vel.x, player.vel.z);
-      if (flat > maxSpeed) {
-        player.vel.x = (player.vel.x / flat) * maxSpeed;
-        player.vel.z = (player.vel.z / flat) * maxSpeed;
+      if (flat > max) {
+        player.vel.x = (player.vel.x / flat) * max;
+        player.vel.z = (player.vel.z / flat) * max;
       }
 
-      if (input.jump && player.grounded) {
-        player.vel.y = 8.8;
+      if (keys.jump && player.grounded) {
+        player.vel.y = 7.9;
         player.grounded = false;
+        player.onFloor = null;
       }
-      input.jump = false;
+      keys.jump = false;
 
       player.vel.y -= 22 * dt;
-
       const prevY = player.pos.y;
       player.pos.addScaledVector(player.vel, dt);
       player.grounded = false;
+      player.onFloor = null;
 
-      const footPrev = prevY - player.height * 0.5 + player.radius;
-      const footNow = player.pos.y - player.height * 0.5 + player.radius;
+      const footPrev = prevY - halfH + player.radius;
+      const footNow = player.pos.y - halfH + player.radius;
+      for (const f of floors) {
+        if (tryLand(f, footPrev, footNow)) break;
+      }
 
-      for (const p of platforms) {
-        const hitY = aabbTopHit(p, footPrev, footNow);
-        if (hitY == null) continue;
-        player.pos.y = hitY + player.height * 0.5 - player.radius;
-        player.vel.y = 0;
-        player.grounded = true;
-        if (p.userData.danger) {
-          respawn("함정 발판!");
+      for (const h of hazards) {
+        if (overlapHazard(h)) {
+          respawn("HIT");
           return;
         }
       }
 
-      if (player.pos.y < -12) {
-        respawn("낙하!");
+      if (player.pos.y < -8) {
+        respawn("FALL");
         return;
       }
 
-      for (const cp of checkpoints) {
-        const dx = player.pos.x - cp.x;
-        const dz = player.pos.z - cp.z;
-        const dy = Math.abs(player.pos.y - (cp.y + 1.2));
-        if (dx * dx + dz * dz < 2.0 * 2.0 && dy < 1.6 && cp.stageIndex > checkpoint.stage) {
-          setCheckpoint(cp);
-        }
+      for (const r of checkpoints) {
+        if (r.userData.stage <= cp.stage) continue;
+        const dx = player.pos.x - r.position.x;
+        const dz = player.pos.z - r.position.z;
+        const dy = Math.abs(player.pos.y - (r.position.y + 0.8));
+        if (dx * dx + dz * dz < 1.8 * 1.8 && dy < 1.5) setCheckpoint(r);
       }
 
-      currentStage = Math.max(currentStage, Math.floor(player.pos.y / STAGE_STEP));
-      ui.stage.textContent = `${Math.max(1, currentStage + 1)} / ${STAGE_COUNT}`;
+      topStage = Math.max(topStage, Math.max(0, Math.floor((player.pos.y - 0.9) / STEP_Y)));
+      ui.stage.textContent = `${Math.min(STAGES, Math.max(1, topStage))}/${STAGES}`;
       ui.height.textContent = `${Math.max(0, Math.floor(player.pos.y))}m`;
-
-      const elapsed = tNow - timerStart;
+      const elapsed = now - timerStart;
       ui.time.textContent = fmtSec(elapsed);
 
-      if (!won && player.pos.y > goalY - 1.0) {
+      if (!won && player.pos.y > finishY) {
         won = true;
-        timerDone = true;
-        const b = getBest();
-        if (!b || elapsed < b) {
+        const best = getBest();
+        if (!best || elapsed < best) {
           setBest(elapsed);
-          updateBestUI();
-          showToast(`클리어! 신기록 ${fmtSec(elapsed)}`, 2000);
+          syncBest();
+          toast(`CLEAR ${fmtSec(elapsed)} NEW`, 1800);
         } else {
-          showToast(`클리어! 기록 ${fmtSec(elapsed)}`, 2000);
+          toast(`CLEAR ${fmtSec(elapsed)}`, 1800);
         }
       }
 
-      playerMesh.position.copy(player.pos);
+      // avatar pose
+      const spd = Math.hypot(player.vel.x, player.vel.z);
+      const cycle = now * 0.012;
+      legL.rotation.x = Math.sin(cycle) * 0.42 * Math.min(1, spd / 4);
+      legR.rotation.x = Math.sin(cycle + Math.PI) * 0.42 * Math.min(1, spd / 4);
+      armL.rotation.x = Math.sin(cycle + Math.PI) * 0.22 * Math.min(1, spd / 4);
+      armR.rotation.x = Math.sin(cycle) * 0.22 * Math.min(1, spd / 4);
+      avatar.position.set(player.pos.x, player.pos.y - halfH, player.pos.z);
+      if (spd > 0.08) {
+        const tyaw = Math.atan2(player.vel.x, player.vel.z);
+        avatar.rotation.y += (tyaw - avatar.rotation.y) * 0.2;
+      }
+    }
+
+    function updateCamera() {
+      const dist = innerWidth > innerHeight ? 7.1 : 6.5;
+      cam.dist += (dist - cam.dist) * 0.08;
+      const tx = player.pos.x + Math.sin(cam.yaw) * Math.cos(cam.pitch) * cam.dist;
+      const ty = player.pos.y + 2.0 + Math.sin(cam.pitch) * cam.dist;
+      const tz = player.pos.z + Math.cos(cam.yaw) * Math.cos(cam.pitch) * cam.dist;
+      camera.position.lerp(new THREE.Vector3(tx, ty, tz), 0.18);
+      camera.lookAt(player.pos.x, player.pos.y + 0.95, player.pos.z);
     }
 
     function loop(now) {
-      const dt = Math.min((now - (loop.prev || now)) / 1000, 0.033);
+      const dt = Math.min(((now - (loop.prev || now)) / 1000), 0.033);
       loop.prev = now;
       update(dt, now);
-      moveCamera();
+      updateCamera();
       renderer.render(scene, camera);
       requestAnimationFrame(loop);
     }
 
-    function bindKeys() {
-      addEventListener("keydown", (e) => {
-        if (e.code === "KeyW") input.up = true;
-        if (e.code === "KeyS") input.down = true;
-        if (e.code === "KeyA") input.left = true;
-        if (e.code === "KeyD") input.right = true;
-        if (e.code === "Space") { input.jump = true; e.preventDefault(); }
-      }, { passive: false });
-      addEventListener("keyup", (e) => {
-        if (e.code === "KeyW") input.up = false;
-        if (e.code === "KeyS") input.down = false;
-        if (e.code === "KeyA") input.left = false;
-        if (e.code === "KeyD") input.right = false;
-      });
+    function handlePointerDown(e) {
+      if (e.target.closest(".ctrl-btn")) return;
+      if (cam.dragId !== -1) return;
+      cam.dragId = e.pointerId;
+      cam.lastX = e.clientX;
+      cam.lastY = e.clientY;
+    }
+    function handlePointerMove(e) {
+      if (cam.dragId !== e.pointerId) return;
+      const dx = e.clientX - cam.lastX;
+      const dy = e.clientY - cam.lastY;
+      cam.lastX = e.clientX;
+      cam.lastY = e.clientY;
+      cam.yaw -= dx * 0.0053;
+      cam.pitch -= dy * 0.0044;
+      cam.pitch = Math.max(-1.18, Math.min(0.42, cam.pitch));
+    }
+    function handlePointerUp(e) {
+      if (cam.dragId === e.pointerId) cam.dragId = -1;
     }
 
-    function bindMouseLook() {
-      renderer.domElement.addEventListener("pointerdown", (e) => {
-        cameraState.dragging = true;
-        cameraState.lx = e.clientX;
-        cameraState.ly = e.clientY;
+    function bindKeyboard() {
+      addEventListener("keydown", (e) => {
+        if (e.code === "KeyW" || e.code === "ArrowUp") keys.up = true;
+        if (e.code === "KeyS" || e.code === "ArrowDown") keys.down = true;
+        if (e.code === "KeyA" || e.code === "ArrowLeft") keys.left = true;
+        if (e.code === "KeyD" || e.code === "ArrowRight") keys.right = true;
+        if (e.code === "Space") { keys.jump = true; e.preventDefault(); }
+      }, { passive: false });
+      addEventListener("keyup", (e) => {
+        if (e.code === "KeyW" || e.code === "ArrowUp") keys.up = false;
+        if (e.code === "KeyS" || e.code === "ArrowDown") keys.down = false;
+        if (e.code === "KeyA" || e.code === "ArrowLeft") keys.left = false;
+        if (e.code === "KeyD" || e.code === "ArrowRight") keys.right = false;
       });
-      addEventListener("pointermove", (e) => handleLookPointer(e.clientX, e.clientY));
-      addEventListener("pointerup", () => (cameraState.dragging = false));
-      addEventListener("pointercancel", () => (cameraState.dragging = false));
     }
 
     function bindMobileButtons() {
-      document.querySelectorAll(".mBtn[data-key]").forEach((btn) => {
-        const key = btn.getAttribute("data-key");
+      document.querySelectorAll(".ctrl-btn[data-key]").forEach((btn) => {
+        const k = btn.getAttribute("data-key");
         const down = (e) => {
           e.preventDefault();
-          if (key === "jump") input.jump = true;
-          else input[key] = true;
+          if (k === "jump") keys.jump = true;
+          else keys[k] = true;
         };
         const up = (e) => {
           e.preventDefault();
-          if (key !== "jump") input[key] = false;
+          if (k !== "jump") keys[k] = false;
         };
         btn.addEventListener("pointerdown", down, { passive: false });
         btn.addEventListener("pointerup", up, { passive: false });
-        btn.addEventListener("pointerleave", up, { passive: false });
         btn.addEventListener("pointercancel", up, { passive: false });
+        btn.addEventListener("pointerleave", up, { passive: false });
       });
     }
 
-    document.getElementById("resetBtn").addEventListener("click", hardReset);
-    document.getElementById("topBtn").addEventListener("click", () => respawn("체크포인트 복귀"));
+    renderer.domElement.addEventListener("pointerdown", handlePointerDown);
+    addEventListener("pointermove", handlePointerMove, { passive: true });
+    addEventListener("pointerup", handlePointerUp, { passive: true });
+    addEventListener("pointercancel", handlePointerUp, { passive: true });
+
+    document.getElementById("btnRespawn").addEventListener("click", () => respawn("GO CHECK"));
+    document.getElementById("btnReset").addEventListener("click", hardReset);
 
     addEventListener("resize", () => {
       camera.aspect = innerWidth / innerHeight;
@@ -624,8 +742,7 @@
       renderer.setSize(innerWidth, innerHeight);
     });
 
-    bindKeys();
-    bindMouseLook();
+    bindKeyboard();
     bindMobileButtons();
     hardReset();
     requestAnimationFrame(loop);
