@@ -1,0 +1,635 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>미니 타워 클라임</title>
+  <style>
+    :root{
+      --bg:#0a1328;
+      --bg2:#111f40;
+      --ink:#eef3ff;
+      --muted:#afbad2;
+      --line:rgba(255,255,255,.14);
+      --ok:#54f0a9;
+      --warn:#ffd86a;
+      --bad:#ff6363;
+      --acc:#65a0ff;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      overflow:hidden;
+      background:
+        radial-gradient(1200px 640px at 20% 5%, rgba(101,160,255,.18), transparent 60%),
+        radial-gradient(1000px 620px at 80% 20%, rgba(84,240,169,.14), transparent 60%),
+        linear-gradient(180deg, var(--bg), var(--bg2));
+      color:var(--ink);
+      font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+    }
+    #app{
+      position:fixed;
+      inset:0;
+    }
+    #hud{
+      position:fixed;
+      top:10px;
+      left:10px;
+      right:10px;
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      align-items:flex-start;
+      justify-content:space-between;
+      pointer-events:none;
+      z-index:20;
+    }
+    .panel{
+      pointer-events:auto;
+      border:1px solid var(--line);
+      background:rgba(9,14,30,.66);
+      backdrop-filter: blur(10px);
+      border-radius:14px;
+      padding:10px 12px;
+      box-shadow: 0 14px 40px rgba(0,0,0,.28);
+    }
+    .title{
+      font-size:14px;
+      font-weight:900;
+      letter-spacing:.2px;
+      margin:0 0 8px;
+    }
+    .row{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+      align-items:center;
+      font-size:13px;
+      color:var(--muted);
+      font-weight:700;
+    }
+    .row b{
+      color:var(--ink);
+      font-weight:900;
+    }
+    .btn{
+      border:1px solid var(--line);
+      background:linear-gradient(180deg, rgba(255,255,255,.15), rgba(255,255,255,.06));
+      color:var(--ink);
+      border-radius:10px;
+      padding:8px 10px;
+      font-weight:900;
+      cursor:pointer;
+      user-select:none;
+    }
+    .btn:active{ transform:translateY(1px); }
+    .hint{
+      position:fixed;
+      right:10px;
+      bottom:138px;
+      width:min(280px, calc(100vw - 20px));
+      border:1px solid var(--line);
+      background:rgba(9,14,30,.66);
+      border-radius:14px;
+      padding:10px 12px;
+      font-size:12px;
+      line-height:1.45;
+      color:var(--muted);
+      z-index:20;
+      pointer-events:none;
+    }
+    .hint b{ color:var(--ink); }
+
+    #mobile{
+      position:fixed;
+      inset:auto 0 0 0;
+      height:128px;
+      display:flex;
+      justify-content:space-between;
+      padding:0 12px 12px;
+      pointer-events:none;
+      z-index:20;
+    }
+    .pad,.act{
+      pointer-events:auto;
+      display:grid;
+      gap:8px;
+    }
+    .pad{
+      grid-template-columns:56px 56px 56px;
+      grid-template-rows:56px 56px;
+      grid-template-areas:
+        ". up ."
+        "left down right";
+    }
+    .act{
+      align-content:end;
+    }
+    .mBtn{
+      border:1px solid var(--line);
+      background:rgba(9,14,30,.55);
+      color:var(--ink);
+      border-radius:14px;
+      width:56px;
+      height:56px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-weight:900;
+      user-select:none;
+      touch-action:manipulation;
+    }
+    .mBtn:active{ transform:translateY(1px); background:rgba(9,14,30,.8); }
+    .up{ grid-area:up; }
+    .left{ grid-area:left; }
+    .right{ grid-area:right; }
+    .down{ grid-area:down; }
+    #toast{
+      position:fixed;
+      left:50%;
+      top:14px;
+      transform:translateX(-50%);
+      border:1px solid var(--line);
+      background:rgba(9,14,30,.8);
+      color:var(--ink);
+      border-radius:12px;
+      padding:8px 12px;
+      font-size:13px;
+      font-weight:900;
+      display:none;
+      z-index:30;
+    }
+    @media (min-width: 940px){
+      #mobile{ opacity:.9 }
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <div id="toast"></div>
+  <div id="hud">
+    <div class="panel">
+      <h1 class="title">미니 타워 클라임</h1>
+      <div class="row">
+        <span>스테이지 <b id="stageTxt">1 / 40</b></span>
+        <span>높이 <b id="heightTxt">0m</b></span>
+        <span>시간 <b id="timeTxt">0.0s</b></span>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <span>리스폰 <b id="deathTxt">0</b></span>
+        <span>체크포인트 <b id="cpTxt">0</b></span>
+        <span>베스트 <b id="bestTxt">-</b></span>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="row">
+        <button id="resetBtn" class="btn" type="button">리셋</button>
+        <button id="topBtn" class="btn" type="button">최근 체크포인트로</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="hint">
+    <b>조작</b><br/>
+    PC: `WASD` 이동, `Space` 점프, 드래그로 시점<br/>
+    모바일: 하단 버튼 이동/점프, 화면 드래그로 시점<br/>
+    빨간 발판은 함정, 초록 링을 밟으면 체크포인트 저장
+  </div>
+
+  <div id="mobile">
+    <div class="pad">
+      <div class="mBtn up" data-key="up">▲</div>
+      <div class="mBtn left" data-key="left">◀</div>
+      <div class="mBtn down" data-key="down">▼</div>
+      <div class="mBtn right" data-key="right">▶</div>
+    </div>
+    <div class="act">
+      <div class="mBtn" data-key="jump">점프</div>
+    </div>
+  </div>
+
+  <script type="module">
+    import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+
+    const app = document.getElementById("app");
+    const ui = {
+      stage: document.getElementById("stageTxt"),
+      height: document.getElementById("heightTxt"),
+      time: document.getElementById("timeTxt"),
+      death: document.getElementById("deathTxt"),
+      cp: document.getElementById("cpTxt"),
+      best: document.getElementById("bestTxt"),
+      toast: document.getElementById("toast")
+    };
+
+    const LS_BEST = "tower_climb.best.v1";
+    const STAGE_COUNT = 40;
+    const STAGE_STEP = 4;
+    const TOWER_RADIUS = 7.5;
+
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x0d1a37, 0.02);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.shadowMap.enabled = true;
+    app.appendChild(renderer.domElement);
+
+    const camera = new THREE.PerspectiveCamera(68, innerWidth / innerHeight, 0.1, 1500);
+    camera.position.set(0, 3.2, 7.8);
+
+    const hemi = new THREE.HemisphereLight(0xbad1ff, 0x23324f, 0.95);
+    scene.add(hemi);
+    const sun = new THREE.DirectionalLight(0xffffff, 0.95);
+    sun.position.set(8, 20, 5);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(1024, 1024);
+    scene.add(sun);
+
+    const towerCore = new THREE.Mesh(
+      new THREE.CylinderGeometry(2.4, 2.8, STAGE_COUNT * STAGE_STEP + 20, 16, 1, true),
+      new THREE.MeshStandardMaterial({ color: 0x1b2e52, roughness: 0.8, metalness: 0.1, transparent: true, opacity: 0.65 })
+    );
+    towerCore.position.y = (STAGE_COUNT * STAGE_STEP) * 0.5;
+    scene.add(towerCore);
+
+    const floor = new THREE.Mesh(
+      new THREE.CircleGeometry(22, 50),
+      new THREE.MeshStandardMaterial({ color: 0x15284c, roughness: 0.9 })
+    );
+    floor.rotation.x = -Math.PI / 2;
+    floor.receiveShadow = true;
+    scene.add(floor);
+
+    const grid = new THREE.GridHelper(48, 48, 0x243d6c, 0x1a2d50);
+    grid.position.y = 0.01;
+    scene.add(grid);
+
+    const platforms = [];
+    const checkpoints = [];
+    let goalY = 0;
+
+    function addPlatform({ x, y, z, sx, sy, sz, danger = false, moving = false, axis = "x", amp = 0, speed = 0 }) {
+      const m = new THREE.Mesh(
+        new THREE.BoxGeometry(sx, sy, sz),
+        new THREE.MeshStandardMaterial({
+          color: danger ? 0xa42d3f : 0x3e7ae6,
+          emissive: danger ? 0x30070e : 0x0c1c36,
+          roughness: 0.6,
+          metalness: 0.1
+        })
+      );
+      m.position.set(x, y, z);
+      m.castShadow = true;
+      m.receiveShadow = true;
+      m.userData = {
+        sx, sy, sz, danger,
+        moving, axis, amp, speed,
+        baseX: x, baseY: y, baseZ: z
+      };
+      scene.add(m);
+      platforms.push(m);
+      return m;
+    }
+
+    function addCheckpoint(x, y, z, stageIndex) {
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(1.2, 0.18, 10, 24),
+        new THREE.MeshStandardMaterial({ color: 0x4ff0a8, emissive: 0x0f3f29, roughness: 0.4, metalness: 0.2 })
+      );
+      ring.rotation.x = Math.PI / 2;
+      ring.position.set(x, y + 0.7, z);
+      scene.add(ring);
+      checkpoints.push({ mesh: ring, x, y, z, stageIndex, active: false });
+    }
+
+    function buildTower() {
+      const rng = (seed => () => (seed = (seed * 1664525 + 1013904223) >>> 0, seed / 4294967296))(71231);
+      for (let i = 0; i < STAGE_COUNT; i++) {
+        const y = 1.2 + i * STAGE_STEP;
+        const angle = i * 0.83 + (rng() - 0.5) * 1.4;
+        const radius = TOWER_RADIUS + (rng() - 0.5) * 1.8;
+        const x = Math.cos(angle) * radius;
+        const z = Math.sin(angle) * radius;
+        const sx = 3.1 + rng() * 1.8;
+        const sy = 0.8;
+        const sz = 2.4 + rng() * 1.7;
+        const danger = (i % 9 === 4 || i % 11 === 7);
+        const moving = i > 3 && i % 6 === 0;
+        const axis = rng() > 0.5 ? "x" : "z";
+        const amp = moving ? 1.2 + rng() * 1.2 : 0;
+        const speed = moving ? 0.8 + rng() * 1.2 : 0;
+        addPlatform({ x, y, z, sx, sy, sz, danger, moving, axis, amp, speed });
+
+        if (i % 5 === 0) {
+          addCheckpoint(x, y + 0.2, z, i);
+        }
+      }
+      goalY = 1.2 + (STAGE_COUNT - 1) * STAGE_STEP + 4;
+      const goal = new THREE.Mesh(
+        new THREE.ConeGeometry(1.6, 2.2, 5),
+        new THREE.MeshStandardMaterial({ color: 0xffd86a, emissive: 0x3e2e08, roughness: 0.5 })
+      );
+      goal.position.set(0, goalY, 0);
+      scene.add(goal);
+    }
+    buildTower();
+
+    const player = {
+      pos: new THREE.Vector3(0, 2.6, 0),
+      vel: new THREE.Vector3(),
+      radius: 0.45,
+      height: 1.7,
+      grounded: false
+    };
+
+    const playerMesh = new THREE.Mesh(
+      new THREE.CapsuleGeometry(player.radius, player.height - player.radius * 2, 4, 8),
+      new THREE.MeshStandardMaterial({ color: 0xf5f7ff, roughness: 0.35, metalness: 0.1 })
+    );
+    playerMesh.castShadow = true;
+    scene.add(playerMesh);
+
+    const input = { up: false, down: false, left: false, right: false, jump: false };
+    const cameraState = { yaw: Math.PI, pitch: -0.32, dragging: false, lx: 0, ly: 0 };
+    let timerStart = 0;
+    let timerDone = false;
+    let deaths = 0;
+    let currentStage = 0;
+    let checkpoint = { x: 0, y: 2.6, z: 0, stage: 0 };
+    let won = false;
+
+    function showToast(text, ms = 1100) {
+      ui.toast.textContent = text;
+      ui.toast.style.display = "block";
+      clearTimeout(showToast.tid);
+      showToast.tid = setTimeout(() => (ui.toast.style.display = "none"), ms);
+    }
+
+    function setCheckpoint(cp) {
+      checkpoint = { x: cp.x, y: cp.y + 1.8, z: cp.z, stage: cp.stageIndex };
+      currentStage = Math.max(currentStage, cp.stageIndex);
+      ui.cp.textContent = `${Math.floor(currentStage / 5)}`;
+      checkpoints.forEach(x => (x.active = false));
+      cp.active = true;
+      cp.mesh.material.color.setHex(0x8cffb5);
+      showToast(`체크포인트 저장 (${cp.stageIndex + 1}층)`);
+    }
+
+    function respawn(reason = "") {
+      player.pos.set(checkpoint.x, checkpoint.y, checkpoint.z);
+      player.vel.set(0, 0, 0);
+      player.grounded = false;
+      deaths++;
+      ui.death.textContent = String(deaths);
+      if (reason) showToast(reason);
+    }
+
+    function hardReset() {
+      checkpoint = { x: 0, y: 2.6, z: 0, stage: 0 };
+      currentStage = 0;
+      deaths = 0;
+      ui.death.textContent = "0";
+      ui.cp.textContent = "0";
+      timerStart = performance.now();
+      timerDone = false;
+      won = false;
+      checkpoints.forEach(cp => {
+        cp.active = false;
+        cp.mesh.material.color.setHex(0x4ff0a8);
+      });
+      player.pos.set(0, 2.6, 0);
+      player.vel.set(0, 0, 0);
+      showToast("리셋 완료");
+    }
+
+    function getBest() {
+      const v = Number(localStorage.getItem(LS_BEST) || 0);
+      return Number.isFinite(v) && v > 0 ? v : 0;
+    }
+    function setBest(ms) {
+      localStorage.setItem(LS_BEST, String(ms));
+    }
+    function fmtSec(ms) {
+      return (ms / 1000).toFixed(1) + "s";
+    }
+    function updateBestUI() {
+      const b = getBest();
+      ui.best.textContent = b ? fmtSec(b) : "-";
+    }
+    updateBestUI();
+
+    function moveCamera() {
+      const dist = 6.4;
+      const h = 2.1;
+      const tx = player.pos.x + Math.sin(cameraState.yaw) * Math.cos(cameraState.pitch) * dist;
+      const ty = player.pos.y + h + Math.sin(cameraState.pitch) * dist;
+      const tz = player.pos.z + Math.cos(cameraState.yaw) * Math.cos(cameraState.pitch) * dist;
+      camera.position.lerp(new THREE.Vector3(tx, ty, tz), 0.18);
+      camera.lookAt(player.pos.x, player.pos.y + 0.8, player.pos.z);
+    }
+
+    function handleLookPointer(x, y) {
+      if (!cameraState.dragging) return;
+      const dx = x - cameraState.lx;
+      const dy = y - cameraState.ly;
+      cameraState.lx = x;
+      cameraState.ly = y;
+      cameraState.yaw -= dx * 0.005;
+      cameraState.pitch -= dy * 0.004;
+      cameraState.pitch = Math.max(-1.2, Math.min(0.4, cameraState.pitch));
+    }
+
+    function controlsToDir() {
+      let dx = 0, dz = 0;
+      if (input.up) dz -= 1;
+      if (input.down) dz += 1;
+      if (input.left) dx -= 1;
+      if (input.right) dx += 1;
+      const l = Math.hypot(dx, dz) || 1;
+      dx /= l; dz /= l;
+      const s = Math.sin(cameraState.yaw);
+      const c = Math.cos(cameraState.yaw);
+      return new THREE.Vector3(dx * c - dz * s, 0, dx * s + dz * c);
+    }
+
+    function updatePlatformMotion(t) {
+      for (const p of platforms) {
+        if (!p.userData.moving) continue;
+        const u = p.userData;
+        const wave = Math.sin(t * u.speed) * u.amp;
+        if (u.axis === "x") p.position.x = u.baseX + wave;
+        else p.position.z = u.baseZ + wave;
+      }
+    }
+
+    function aabbTopHit(p, footYPrev, footYNow) {
+      const u = p.userData;
+      const minX = p.position.x - u.sx * 0.5 - player.radius;
+      const maxX = p.position.x + u.sx * 0.5 + player.radius;
+      const minZ = p.position.z - u.sz * 0.5 - player.radius;
+      const maxZ = p.position.z + u.sz * 0.5 + player.radius;
+      if (player.pos.x < minX || player.pos.x > maxX || player.pos.z < minZ || player.pos.z > maxZ) return null;
+      const top = p.position.y + u.sy * 0.5 + player.radius;
+      if (footYPrev >= top - 0.08 && footYNow <= top + 0.06 && player.vel.y <= 0) return top;
+      return null;
+    }
+
+    function update(dt, tNow) {
+      if (!timerStart) timerStart = tNow;
+
+      updatePlatformMotion(tNow * 0.001);
+
+      const moveDir = controlsToDir();
+      const accel = player.grounded ? 18 : 8;
+      const maxSpeed = player.grounded ? 8.2 : 7.2;
+      player.vel.x += moveDir.x * accel * dt;
+      player.vel.z += moveDir.z * accel * dt;
+      const damp = player.grounded ? 0.80 : 0.93;
+      player.vel.x *= Math.pow(damp, dt * 60);
+      player.vel.z *= Math.pow(damp, dt * 60);
+      const flat = Math.hypot(player.vel.x, player.vel.z);
+      if (flat > maxSpeed) {
+        player.vel.x = (player.vel.x / flat) * maxSpeed;
+        player.vel.z = (player.vel.z / flat) * maxSpeed;
+      }
+
+      if (input.jump && player.grounded) {
+        player.vel.y = 8.8;
+        player.grounded = false;
+      }
+      input.jump = false;
+
+      player.vel.y -= 22 * dt;
+
+      const prevY = player.pos.y;
+      player.pos.addScaledVector(player.vel, dt);
+      player.grounded = false;
+
+      const footPrev = prevY - player.height * 0.5 + player.radius;
+      const footNow = player.pos.y - player.height * 0.5 + player.radius;
+
+      for (const p of platforms) {
+        const hitY = aabbTopHit(p, footPrev, footNow);
+        if (hitY == null) continue;
+        player.pos.y = hitY + player.height * 0.5 - player.radius;
+        player.vel.y = 0;
+        player.grounded = true;
+        if (p.userData.danger) {
+          respawn("함정 발판!");
+          return;
+        }
+      }
+
+      if (player.pos.y < -12) {
+        respawn("낙하!");
+        return;
+      }
+
+      for (const cp of checkpoints) {
+        const dx = player.pos.x - cp.x;
+        const dz = player.pos.z - cp.z;
+        const dy = Math.abs(player.pos.y - (cp.y + 1.2));
+        if (dx * dx + dz * dz < 2.0 * 2.0 && dy < 1.6 && cp.stageIndex > checkpoint.stage) {
+          setCheckpoint(cp);
+        }
+      }
+
+      currentStage = Math.max(currentStage, Math.floor(player.pos.y / STAGE_STEP));
+      ui.stage.textContent = `${Math.max(1, currentStage + 1)} / ${STAGE_COUNT}`;
+      ui.height.textContent = `${Math.max(0, Math.floor(player.pos.y))}m`;
+
+      const elapsed = tNow - timerStart;
+      ui.time.textContent = fmtSec(elapsed);
+
+      if (!won && player.pos.y > goalY - 1.0) {
+        won = true;
+        timerDone = true;
+        const b = getBest();
+        if (!b || elapsed < b) {
+          setBest(elapsed);
+          updateBestUI();
+          showToast(`클리어! 신기록 ${fmtSec(elapsed)}`, 2000);
+        } else {
+          showToast(`클리어! 기록 ${fmtSec(elapsed)}`, 2000);
+        }
+      }
+
+      playerMesh.position.copy(player.pos);
+    }
+
+    function loop(now) {
+      const dt = Math.min((now - (loop.prev || now)) / 1000, 0.033);
+      loop.prev = now;
+      update(dt, now);
+      moveCamera();
+      renderer.render(scene, camera);
+      requestAnimationFrame(loop);
+    }
+
+    function bindKeys() {
+      addEventListener("keydown", (e) => {
+        if (e.code === "KeyW") input.up = true;
+        if (e.code === "KeyS") input.down = true;
+        if (e.code === "KeyA") input.left = true;
+        if (e.code === "KeyD") input.right = true;
+        if (e.code === "Space") { input.jump = true; e.preventDefault(); }
+      }, { passive: false });
+      addEventListener("keyup", (e) => {
+        if (e.code === "KeyW") input.up = false;
+        if (e.code === "KeyS") input.down = false;
+        if (e.code === "KeyA") input.left = false;
+        if (e.code === "KeyD") input.right = false;
+      });
+    }
+
+    function bindMouseLook() {
+      renderer.domElement.addEventListener("pointerdown", (e) => {
+        cameraState.dragging = true;
+        cameraState.lx = e.clientX;
+        cameraState.ly = e.clientY;
+      });
+      addEventListener("pointermove", (e) => handleLookPointer(e.clientX, e.clientY));
+      addEventListener("pointerup", () => (cameraState.dragging = false));
+      addEventListener("pointercancel", () => (cameraState.dragging = false));
+    }
+
+    function bindMobileButtons() {
+      document.querySelectorAll(".mBtn[data-key]").forEach((btn) => {
+        const key = btn.getAttribute("data-key");
+        const down = (e) => {
+          e.preventDefault();
+          if (key === "jump") input.jump = true;
+          else input[key] = true;
+        };
+        const up = (e) => {
+          e.preventDefault();
+          if (key !== "jump") input[key] = false;
+        };
+        btn.addEventListener("pointerdown", down, { passive: false });
+        btn.addEventListener("pointerup", up, { passive: false });
+        btn.addEventListener("pointerleave", up, { passive: false });
+        btn.addEventListener("pointercancel", up, { passive: false });
+      });
+    }
+
+    document.getElementById("resetBtn").addEventListener("click", hardReset);
+    document.getElementById("topBtn").addEventListener("click", () => respawn("체크포인트 복귀"));
+
+    addEventListener("resize", () => {
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+    });
+
+    bindKeys();
+    bindMouseLook();
+    bindMobileButtons();
+    hardReset();
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>
+
