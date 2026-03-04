@@ -1625,6 +1625,7 @@ const inviteSound = document.getElementById('invite-sound');
             let myFriendIds = {};
             let isLobbyChatListening = false;
             let notificationsListeningUid = '';
+            let profileReadFailureNotified = false;
             
             // [수정] 알림 통합 관리를 위한 변수
             let friendRequestRef, messageInboxRef;
@@ -1738,20 +1739,16 @@ const inviteSound = document.getElementById('invite-sound');
                     currentUser = user;
                     cleanupMyGhostRooms(user.uid);
                     if (!roomListener) listenToRooms();
-                    usersRef.child(user.uid).on('value', snapshot => {
+                    usersRef.child(user.uid).on('value', async snapshot => {
                         if (snapshot.exists()) {
                             currentUserData = snapshot.val() || {};
                             myFriendIds = currentUserData.friends || {};
 
-                            const profile = currentUserData.profile || {};
-                            const safeNickname = String(profile.nickname || localStorage.getItem('userNickname') || '플레이어');
-                            const safeAvatar = String(profile.avatar || localStorage.getItem('userAvatar') || '🙂');
-                            currentUserData.profile = { ...profile, nickname: safeNickname, avatar: safeAvatar };
+                            await ensureProfileBootstrap(currentUserData.profile || {});
+                            profileReadFailureNotified = false;
 
                             // [신규] localStorage 설정 (index.html에서 이동)
-                            localStorage.setItem('myPlayerId', user.uid);
-                            localStorage.setItem('userNickname', safeNickname);
-                            localStorage.setItem('userAvatar', safeAvatar);
+                            try { localStorage.setItem('myPlayerId', user.uid); } catch (error) { console.warn('myPlayerId 저장 실패:', error); }
                             
                             updateLobbyUI();
                             checkDailyLogin(user.uid, currentUserData.profile);
@@ -1766,16 +1763,25 @@ const inviteSound = document.getElementById('invite-sound');
                                 notificationsListeningUid = user.uid;
                             }
                         } else {
-                            // [신규] DB에 프로필이 없는 비정상적 상황
-                            console.error("인증은 되었으나 DB에 프로필이 없습니다. 로그아웃합니다.");
-                            auth.signOut(); // (auth.signOut()은 onAuthStateChanged를 다시 호출)
+                            console.warn("DB에 프로필이 없어 기본 프로필을 생성합니다.");
+                            currentUserData = currentUserData || {};
+                            currentUserData.friends = currentUserData.friends || {};
+                            myFriendIds = currentUserData.friends;
+                            await ensureProfileBootstrap();
+
+                            updateLobbyUI();
+                            if (!isLobbyChatListening) {
+                                listenToLobbyChat();
+                                isLobbyChatListening = true;
+                            }
+                            if (notificationsListeningUid !== user.uid) {
+                                listenToNotifications(user.uid);
+                                notificationsListeningUid = user.uid;
+                            }
                         }
-                    }, error => {
+                    }, async error => {
                         console.error('유저 프로필 로드 실패:', error);
-                        const fallbackNickname = String(localStorage.getItem('userNickname') || '플레이어');
-                        const fallbackAvatar = String(localStorage.getItem('userAvatar') || '🙂');
-                        currentUserData = currentUserData || {};
-                        currentUserData.profile = { ...(currentUserData.profile || {}), nickname: fallbackNickname, avatar: fallbackAvatar };
+                        await ensureProfileBootstrap();
                         updateLobbyUI();
                         if (!isLobbyChatListening) {
                             listenToLobbyChat();
@@ -1785,7 +1791,10 @@ const inviteSound = document.getElementById('invite-sound');
                             listenToNotifications(user.uid);
                             notificationsListeningUid = user.uid;
                         }
-                        showToast('프로필을 불러오지 못해 기본 정보로 시작합니다.');
+                        if (!profileReadFailureNotified) {
+                            profileReadFailureNotified = true;
+                            showToast('프로필을 불러오지 못해 기본 정보로 시작합니다.');
+                        }
                     });
                 } else {
                     window.location.replace('index.html');
@@ -2205,40 +2214,70 @@ const inviteSound = document.getElementById('invite-sound');
                 });
             }
 
-            async function getSafeCurrentProfile() {
-                const fallbackNickname = String(localStorage.getItem('userNickname') || '플레이어');
-                const fallbackAvatar = String(localStorage.getItem('userAvatar') || '🙂');
+            function getFallbackProfile() {
+                return {
+                    nickname: String(localStorage.getItem('userNickname') || '플레이어'),
+                    avatar: String(localStorage.getItem('userAvatar') || '🙂')
+                };
+            }
 
-                if (currentUserData && currentUserData.profile) {
-                    const cachedNickname = String(currentUserData.profile.nickname || fallbackNickname);
-                    const cachedAvatar = String(currentUserData.profile.avatar || fallbackAvatar);
-                    currentUserData.profile = { ...currentUserData.profile, nickname: cachedNickname, avatar: cachedAvatar };
-                    return currentUserData.profile;
+            async function ensureProfileBootstrap(profileInput = null) {
+                const fallback = getFallbackProfile();
+                const sourceProfile = profileInput || (currentUserData && currentUserData.profile) || {};
+                const safeProfile = {
+                    ...sourceProfile,
+                    nickname: String(sourceProfile.nickname || fallback.nickname),
+                    avatar: String(sourceProfile.avatar || fallback.avatar)
+                };
+                const shouldWriteProfile =
+                    !sourceProfile.nickname ||
+                    !sourceProfile.avatar ||
+                    String(sourceProfile.nickname) !== safeProfile.nickname ||
+                    String(sourceProfile.avatar) !== safeProfile.avatar;
+
+                currentUserData = currentUserData || {};
+                currentUserData.profile = safeProfile;
+
+                try {
+                    localStorage.setItem('userNickname', safeProfile.nickname);
+                    localStorage.setItem('userAvatar', safeProfile.avatar);
+                } catch (error) {
+                    console.warn('localStorage 저장 실패:', error);
+                }
+
+                if (!currentUser || !currentUser.uid || !shouldWriteProfile) return safeProfile;
+
+                try {
+                    await usersRef.child(currentUser.uid).child('profile').update({
+                        nickname: safeProfile.nickname,
+                        avatar: safeProfile.avatar
+                    });
+                } catch (error) {
+                    console.error('프로필 복구 저장 실패:', error);
+                }
+
+                return safeProfile;
+            }
+
+            async function getSafeCurrentProfile() {
+                if (currentUserData && currentUserData.profile && currentUserData.profile.nickname) {
+                    return ensureProfileBootstrap(currentUserData.profile);
                 }
 
                 if (!currentUser || !currentUser.uid) {
-                    return { nickname: fallbackNickname, avatar: fallbackAvatar };
+                    return ensureProfileBootstrap();
                 }
 
                 try {
                     const profileSnap = await usersRef.child(currentUser.uid).child('profile').once('value');
                     if (profileSnap.exists()) {
-                        const profile = profileSnap.val() || {};
-                        const safeNickname = String(profile.nickname || fallbackNickname);
-                        const safeAvatar = String(profile.avatar || fallbackAvatar);
-                        currentUserData = currentUserData || {};
-                        currentUserData.profile = { ...profile, nickname: safeNickname, avatar: safeAvatar };
-                        localStorage.setItem('userNickname', safeNickname);
-                        localStorage.setItem('userAvatar', safeAvatar);
-                        return currentUserData.profile;
+                        return ensureProfileBootstrap(profileSnap.val() || {});
                     }
                 } catch (error) {
                     console.error('프로필 재조회 실패:', error);
                 }
 
-                currentUserData = currentUserData || {};
-                currentUserData.profile = { nickname: fallbackNickname, avatar: fallbackAvatar };
-                return currentUserData.profile;
+                return ensureProfileBootstrap();
             }
 
             async function createNewRoom(gameId) {
@@ -2251,7 +2290,7 @@ const inviteSound = document.getElementById('invite-sound');
                     const profile = await getSafeCurrentProfile();
                     const roomName = `${profile.nickname}의 방`;
                     const newRoomRef = roomsRef.push();
-                    await newRoomRef.set({
+                    const roomPayload = {
                         roomName,
                         hostId: currentUser.uid,
                         gameType: gameId,
@@ -2264,11 +2303,32 @@ const inviteSound = document.getElementById('invite-sound');
                                 isHost: true
                             }
                         }
-                    });
+                    };
+
+                    try {
+                        await newRoomRef.set(roomPayload);
+                    } catch (error) {
+                        const errCode = String((error && error.code) || '');
+                        const errMessage = String((error && error.message) || '');
+                        const isPermissionDenied =
+                            errCode.toLowerCase().includes('permission_denied') ||
+                            errMessage.toLowerCase().includes('permission denied') ||
+                            errMessage.toLowerCase().includes('permission_denied');
+
+                        if (!isPermissionDenied) throw error;
+
+                        // 프로필 누락으로 룸 쓰기가 막히는 경우를 대비해 1회 복구 후 재시도
+                        await ensureProfileBootstrap(profile);
+                        await newRoomRef.set(roomPayload);
+                    }
+
                     window.location.href = `게임방.html?roomId=${newRoomRef.key}`;
                 } catch (error) {
                     console.error('방 만들기 실패:', error);
-                    showToast('방 만들기에 실패했습니다. 잠시 후 다시 시도해주세요.');
+                    const errCode = String((error && error.code) || '');
+                    const errMessage = String((error && error.message) || '');
+                    const reason = errCode || errMessage || '알 수 없는 오류';
+                    showToast(`방 만들기 실패: ${reason}`);
                 }
             }
             
