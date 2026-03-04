@@ -1767,7 +1767,7 @@ const inviteSound = document.getElementById('invite-sound');
                             currentUserData = currentUserData || {};
                             currentUserData.friends = currentUserData.friends || {};
                             myFriendIds = currentUserData.friends;
-                            await ensureProfileBootstrap();
+                            await ensureProfileBootstrap(null, { persist: true });
 
                             updateLobbyUI();
                             if (!isLobbyChatListening) {
@@ -1781,7 +1781,7 @@ const inviteSound = document.getElementById('invite-sound');
                         }
                     }, async error => {
                         console.error('유저 프로필 로드 실패:', error);
-                        await ensureProfileBootstrap();
+                        await ensureProfileBootstrap(null, { persist: true });
                         updateLobbyUI();
                         if (!isLobbyChatListening) {
                             listenToLobbyChat();
@@ -2221,7 +2221,8 @@ const inviteSound = document.getElementById('invite-sound');
                 };
             }
 
-            async function ensureProfileBootstrap(profileInput = null) {
+            async function ensureProfileBootstrap(profileInput = null, options = {}) {
+                const persist = !!options.persist;
                 const fallback = getFallbackProfile();
                 const sourceProfile = profileInput || (currentUserData && currentUserData.profile) || {};
                 const safeProfile = {
@@ -2252,7 +2253,7 @@ const inviteSound = document.getElementById('invite-sound');
                     console.warn('localStorage 저장 실패:', error);
                 }
 
-                if (!currentUser || !currentUser.uid || !shouldWriteProfile) return safeProfile;
+                if (!currentUser || !currentUser.uid || !persist || !shouldWriteProfile) return safeProfile;
 
                 try {
                     await usersRef.child(currentUser.uid).child('profile').update({
@@ -2290,6 +2291,46 @@ const inviteSound = document.getElementById('invite-sound');
                 return ensureProfileBootstrap();
             }
 
+            function isPermissionDeniedError(error) {
+                const errCode = String((error && error.code) || '').toLowerCase();
+                const errMessage = String((error && error.message) || '').toLowerCase();
+                return (
+                    errCode.includes('permission_denied') ||
+                    errMessage.includes('permission denied') ||
+                    errMessage.includes('permission_denied')
+                );
+            }
+
+            function buildRoomPayload(gameId, profile, payloadType = 'legacy') {
+                const roomName = `${profile.nickname}의 방`;
+                const base = {
+                    roomName,
+                    hostId: currentUser.uid,
+                    gameType: gameId,
+                    status: 'waiting',
+                    createdAt: firebase.database.ServerValue.TIMESTAMP,
+                    players: {
+                        [currentUser.uid]: {
+                            nickname: profile.nickname,
+                            avatar: profile.avatar,
+                            isHost: true
+                        }
+                    }
+                };
+
+                if (payloadType === 'extended') {
+                    base.gameStarted = false;
+                    base.readyPlayers = null;
+                    base.rematchRequests = null;
+                    base.attacks = null;
+                    base.players[currentUser.uid].level = Number(profile.level || 1);
+                    base.players[currentUser.uid].bombSkin = profile.bombSkin || './봄버맨사운드/물풍선.png';
+                    base.players[currentUser.uid].entryEffect = profile.equippedEntryEffect || null;
+                }
+
+                return base;
+            }
+
             async function createNewRoom(gameId) {
                 if (!currentUser || !currentUser.uid) {
                     showToast('로그인 상태를 확인한 뒤 다시 시도해주세요.');
@@ -2298,46 +2339,29 @@ const inviteSound = document.getElementById('invite-sound');
 
                 try {
                     const profile = await getSafeCurrentProfile();
-                    const roomName = `${profile.nickname}의 방`;
                     const newRoomRef = roomsRef.push();
-                    const roomPayload = {
-                        roomName,
-                        hostId: currentUser.uid,
-                        gameType: gameId,
-                        status: 'waiting',
-                        gameStarted: false,
-                        readyPlayers: null,
-                        rematchRequests: null,
-                        attacks: null,
-                        createdAt: firebase.database.ServerValue.TIMESTAMP,
-                        players: {
-                            [currentUser.uid]: {
-                                nickname: profile.nickname,
-                                avatar: profile.avatar,
-                                isHost: true,
-                                level: Number(profile.level || 1),
-                                bombSkin: profile.bombSkin || './봄버맨사운드/물풍선.png',
-                                entryEffect: profile.equippedEntryEffect || null
+                    const payloadCandidates = [
+                        buildRoomPayload(gameId, profile, 'legacy'),
+                        buildRoomPayload(gameId, profile, 'extended')
+                    ];
+
+                    let lastError = null;
+                    for (let i = 0; i < payloadCandidates.length; i++) {
+                        const payload = payloadCandidates[i];
+                        try {
+                            await newRoomRef.set(payload);
+                            lastError = null;
+                            break;
+                        } catch (error) {
+                            lastError = error;
+                            if (!isPermissionDeniedError(error)) throw error;
+                            if (i === 0) {
+                                // 첫 실패 시 프로필 누락 가능성을 보정하고 다음 형태(payload)로 재시도
+                                await ensureProfileBootstrap(profile, { persist: true });
                             }
                         }
-                    };
-
-                    try {
-                        await newRoomRef.set(roomPayload);
-                    } catch (error) {
-                        const errCode = String((error && error.code) || '');
-                        const errMessage = String((error && error.message) || '');
-                        const isPermissionDenied =
-                            errCode.toLowerCase().includes('permission_denied') ||
-                            errMessage.toLowerCase().includes('permission denied') ||
-                            errMessage.toLowerCase().includes('permission_denied');
-
-                        if (!isPermissionDenied) throw error;
-
-                        // 프로필 누락으로 룸 쓰기가 막히는 경우를 대비해 1회 복구 후 재시도
-                        await ensureProfileBootstrap(profile);
-                        await newRoomRef.set(roomPayload);
                     }
+                    if (lastError) throw lastError;
 
                     window.location.href = `게임방.html?roomId=${newRoomRef.key}`;
                 } catch (error) {
