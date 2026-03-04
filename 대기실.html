@@ -1737,13 +1737,18 @@ const inviteSound = document.getElementById('invite-sound');
                     cleanupMyGhostRooms(user.uid);
                     usersRef.child(user.uid).on('value', snapshot => {
                         if (snapshot.exists()) {
-                            currentUserData = snapshot.val();
+                            currentUserData = snapshot.val() || {};
                             myFriendIds = currentUserData.friends || {};
+
+                            const profile = currentUserData.profile || {};
+                            const safeNickname = String(profile.nickname || localStorage.getItem('userNickname') || '플레이어');
+                            const safeAvatar = String(profile.avatar || localStorage.getItem('userAvatar') || '🙂');
+                            currentUserData.profile = { ...profile, nickname: safeNickname, avatar: safeAvatar };
 
                             // [신규] localStorage 설정 (index.html에서 이동)
                             localStorage.setItem('myPlayerId', user.uid);
-                            localStorage.setItem('userNickname', currentUserData.profile.nickname);
-                            localStorage.setItem('userAvatar', currentUserData.profile.avatar);
+                            localStorage.setItem('userNickname', safeNickname);
+                            localStorage.setItem('userAvatar', safeAvatar);
                             
                             updateLobbyUI();
                             if (!roomListener) listenToRooms();
@@ -2173,24 +2178,71 @@ const inviteSound = document.getElementById('invite-sound');
                 });
             }
 
-            function createNewRoom(gameId) {
-                const newRoomRef = roomsRef.push();
-                newRoomRef.set({
-                    roomName: `${currentUserData.profile.nickname}의 방`,
-                    hostId: currentUser.uid,
-                    gameType: gameId,
-                    status: 'waiting',
-                    createdAt: firebase.database.ServerValue.TIMESTAMP,
-                    players: {
-                        [currentUser.uid]: {
-                            nickname: currentUserData.profile.nickname,
-                            avatar: currentUserData.profile.avatar,
-                            isHost: true
-                        }
+            async function getSafeCurrentProfile() {
+                const fallbackNickname = String(localStorage.getItem('userNickname') || '플레이어');
+                const fallbackAvatar = String(localStorage.getItem('userAvatar') || '🙂');
+
+                if (currentUserData && currentUserData.profile) {
+                    const cachedNickname = String(currentUserData.profile.nickname || fallbackNickname);
+                    const cachedAvatar = String(currentUserData.profile.avatar || fallbackAvatar);
+                    currentUserData.profile = { ...currentUserData.profile, nickname: cachedNickname, avatar: cachedAvatar };
+                    return currentUserData.profile;
+                }
+
+                if (!currentUser || !currentUser.uid) {
+                    return { nickname: fallbackNickname, avatar: fallbackAvatar };
+                }
+
+                try {
+                    const profileSnap = await usersRef.child(currentUser.uid).child('profile').once('value');
+                    if (profileSnap.exists()) {
+                        const profile = profileSnap.val() || {};
+                        const safeNickname = String(profile.nickname || fallbackNickname);
+                        const safeAvatar = String(profile.avatar || fallbackAvatar);
+                        currentUserData = currentUserData || {};
+                        currentUserData.profile = { ...profile, nickname: safeNickname, avatar: safeAvatar };
+                        localStorage.setItem('userNickname', safeNickname);
+                        localStorage.setItem('userAvatar', safeAvatar);
+                        return currentUserData.profile;
                     }
-                }).then(() => {
+                } catch (error) {
+                    console.error('프로필 재조회 실패:', error);
+                }
+
+                currentUserData = currentUserData || {};
+                currentUserData.profile = { nickname: fallbackNickname, avatar: fallbackAvatar };
+                return currentUserData.profile;
+            }
+
+            async function createNewRoom(gameId) {
+                if (!currentUser || !currentUser.uid) {
+                    showToast('로그인 상태를 확인한 뒤 다시 시도해주세요.');
+                    return;
+                }
+
+                try {
+                    const profile = await getSafeCurrentProfile();
+                    const roomName = `${profile.nickname}의 방`;
+                    const newRoomRef = roomsRef.push();
+                    await newRoomRef.set({
+                        roomName,
+                        hostId: currentUser.uid,
+                        gameType: gameId,
+                        status: 'waiting',
+                        createdAt: firebase.database.ServerValue.TIMESTAMP,
+                        players: {
+                            [currentUser.uid]: {
+                                nickname: profile.nickname,
+                                avatar: profile.avatar,
+                                isHost: true
+                            }
+                        }
+                    });
                     window.location.href = `게임방.html?roomId=${newRoomRef.key}`;
-                });
+                } catch (error) {
+                    console.error('방 만들기 실패:', error);
+                    showToast('방 만들기에 실패했습니다. 잠시 후 다시 시도해주세요.');
+                }
             }
             
             // --- 대기실 채팅 기능 (유지) ---
