@@ -1623,6 +1623,8 @@ const inviteSound = document.getElementById('invite-sound');
 
             let currentUser, currentUserData, roomListener, lastMessageDate = null;
             let myFriendIds = {};
+            let isLobbyChatListening = false;
+            let notificationsListeningUid = '';
             
             // [수정] 알림 통합 관리를 위한 변수
             let friendRequestRef, messageInboxRef;
@@ -1735,6 +1737,7 @@ const inviteSound = document.getElementById('invite-sound');
                     // [수정] 4. (index.html에서 이동됨) DB에서 프로필을 읽고 localStorage에 저장
                     currentUser = user;
                     cleanupMyGhostRooms(user.uid);
+                    if (!roomListener) listenToRooms();
                     usersRef.child(user.uid).on('value', snapshot => {
                         if (snapshot.exists()) {
                             currentUserData = snapshot.val() || {};
@@ -1751,17 +1754,38 @@ const inviteSound = document.getElementById('invite-sound');
                             localStorage.setItem('userAvatar', safeAvatar);
                             
                             updateLobbyUI();
-                            if (!roomListener) listenToRooms();
                             checkDailyLogin(user.uid, currentUserData.profile);
-                            listenToLobbyChat();
+                            if (!isLobbyChatListening) {
+                                listenToLobbyChat();
+                                isLobbyChatListening = true;
+                            }
                             
                             // [수정] 알림 리스너는 여기서(프로필 로드 후) 호출
-                            listenToNotifications(user.uid);
+                            if (notificationsListeningUid !== user.uid) {
+                                listenToNotifications(user.uid);
+                                notificationsListeningUid = user.uid;
+                            }
                         } else {
                             // [신규] DB에 프로필이 없는 비정상적 상황
                             console.error("인증은 되었으나 DB에 프로필이 없습니다. 로그아웃합니다.");
                             auth.signOut(); // (auth.signOut()은 onAuthStateChanged를 다시 호출)
                         }
+                    }, error => {
+                        console.error('유저 프로필 로드 실패:', error);
+                        const fallbackNickname = String(localStorage.getItem('userNickname') || '플레이어');
+                        const fallbackAvatar = String(localStorage.getItem('userAvatar') || '🙂');
+                        currentUserData = currentUserData || {};
+                        currentUserData.profile = { ...(currentUserData.profile || {}), nickname: fallbackNickname, avatar: fallbackAvatar };
+                        updateLobbyUI();
+                        if (!isLobbyChatListening) {
+                            listenToLobbyChat();
+                            isLobbyChatListening = true;
+                        }
+                        if (notificationsListeningUid !== user.uid) {
+                            listenToNotifications(user.uid);
+                            notificationsListeningUid = user.uid;
+                        }
+                        showToast('프로필을 불러오지 못해 기본 정보로 시작합니다.');
                     });
                 } else {
                     window.location.replace('index.html');
@@ -2027,6 +2051,9 @@ const inviteSound = document.getElementById('invite-sound');
                         });
                         roomListWrapper.appendChild(roomEl);
                     });
+                }, error => {
+                    console.error('방 목록 로드 실패:', error);
+                    roomListWrapper.innerHTML = '<p style="text-align:center; color:#c44; padding: 50px 0;">방 목록을 불러오지 못했습니다.<br>잠시 후 다시 시도해주세요.</p>';
                 });
             }
             
