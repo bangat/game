@@ -9,7 +9,7 @@ const {
     deepClone
 } = require('./game-data');
 
-const DB_PATH = path.join(__dirname, '..', 'data', 'profiles.json');
+const DB_PATH = path.join(__dirname, '..', 'data', 'profiles.local.json');
 
 function ensureDbFile() {
     const dir = path.dirname(DB_PATH);

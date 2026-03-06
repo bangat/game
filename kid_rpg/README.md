@@ -12,6 +12,8 @@ npm start
 
 브라우저에서 `http://localhost:43187` 또는 같은 네트워크의 `http://내PC아이피:43187`로 접속합니다.
 
+플레이 데이터는 로컬 전용 파일 `data/profiles.local.json`에 저장됩니다.
+
 ## 현재 포함된 것
 
 - 시작 화면과 직업 선택
