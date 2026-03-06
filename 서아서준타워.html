@@ -1548,41 +1548,60 @@
             };
 
             let cursor = new THREE.Vector3(spawnPoint.x, spawnCenterY, spawnPoint.z);
-            const loopStages = 16;
+            let progressCursor = 0;
             const baseProgress = 0.125;
+            const sectionCycle = ['warmup', 'diagonal', 'sway', 'gate', 'corner', 'bridge', 'wrap', 'stagger', 'cross', 'maze'];
+            const sectionSteps = [0.026, 0.032, 0.038, 0.031, 0.029, 0.036];
 
             for (let stage = 1; stage <= tower.stageCount; stage++) {
                 const progress = stage / tower.stageCount;
-                const expandedLaneHalf = laneHalf + Math.floor((stage - 1) / 50) * 1.5;
-                const targetBase = getSquarePerimeterPoint(baseProgress + (stage / loopStages), expandedLaneHalf);
-                let verticalGain = stage <= 15 ? 0.12 : (stage % 11 === 0 ? 0.72 : (stage % 5 === 0 ? 0.3 : (stage % 2 === 0 ? 0.18 : 0.12)));
-                if (progress > 0.66) verticalGain += 0.06;
+                const sectionIndex = Math.floor((stage - 1) / 6);
+                const stageInSection = (stage - 1) % 6;
+                const sectionType = sectionCycle[sectionIndex % sectionCycle.length];
+                const expandedLaneHalf = laneHalf + Math.floor((stage - 1) / 48) * 1.3;
+                progressCursor += sectionSteps[stageInSection] + ((sectionIndex % 3) * 0.002) + (stageInSection === 5 ? 0.008 : 0);
+
+                const targetBase = getSquarePerimeterPoint(baseProgress + progressCursor, expandedLaneHalf);
+                let verticalGain = 0.06;
+                if (sectionType === 'diagonal' || sectionType === 'corner') verticalGain = 0.22;
+                else if (sectionType === 'bridge' || sectionType === 'wrap') verticalGain = 0.1;
+                else if (sectionType === 'stagger') verticalGain = 0.3;
+                else if (sectionType === 'maze') verticalGain = 0.16;
+                if (stage <= 18) verticalGain *= 0.8;
+                if (progress > 0.65) verticalGain += 0.04;
+
                 const target = new THREE.Vector3(targetBase.x, cursor.y + verticalGain, targetBase.z);
                 const heading = target.clone().sub(cursor).setY(0);
-                if (heading.lengthSq() < 0.0001) {
-                    heading.set(1, 0, 0);
-                }
+                if (heading.lengthSq() < 0.0001) heading.set(1, 0, 0);
                 const forward = heading.clone().normalize();
                 const side = new THREE.Vector3(-forward.z, 0, forward.x);
                 const movingX = Math.abs(forward.x) >= Math.abs(forward.z);
-                const easySize = progress < 0.35 ? 6.6 : (progress < 0.68 ? 5.9 : 5.3);
-                const mediumSize = easySize - 0.75;
-                const checkpointSize = progress < 0.55 ? 8.6 : 7.8;
-                const stagePattern = stage <= 12 ? (stage % 3) : (stage % 7);
+                const easySize = progress < 0.35 ? 7.2 : (progress < 0.68 ? 6.3 : 5.6);
+                const mediumSize = easySize - 0.85;
+                const smallSize = mediumSize - 0.9;
+                const checkpointSize = progress < 0.55 ? 8.8 : 8.1;
 
-                const makeSquareStep = function(t, y, sideOffset, size, forwardOffset) {
+                const makeSquareStep = function(t, y, sideOffset, size, forwardOffset, inwardOffset) {
                     const pos = cursor.clone().lerp(target, t);
                     pos.y = y;
                     if (sideOffset) pos.add(side.clone().multiplyScalar(sideOffset));
                     if (forwardOffset) pos.add(forward.clone().multiplyScalar(forwardOffset));
+                    if (inwardOffset) {
+                        const inward = pos.clone().setY(0).normalize().multiplyScalar(-inwardOffset);
+                        pos.add(inward);
+                    }
                     return { pos: pos, sizeX: size, sizeY: 0.82, sizeZ: size };
                 };
 
-                const makeLaneStep = function(t, y, sideOffset, longSize, shortSize, forwardOffset) {
+                const makeLaneStep = function(t, y, sideOffset, longSize, shortSize, forwardOffset, inwardOffset) {
                     const pos = cursor.clone().lerp(target, t);
                     pos.y = y;
                     if (sideOffset) pos.add(side.clone().multiplyScalar(sideOffset));
                     if (forwardOffset) pos.add(forward.clone().multiplyScalar(forwardOffset));
+                    if (inwardOffset) {
+                        const inward = pos.clone().setY(0).normalize().multiplyScalar(-inwardOffset);
+                        pos.add(inward);
+                    }
                     return {
                         pos: pos,
                         sizeX: movingX ? longSize : shortSize,
@@ -1592,70 +1611,94 @@
                 };
 
                 let steps = [];
-                if (stagePattern === 0) {
+                if (sectionType === 'warmup') {
                     steps = [
-                        makeLaneStep(0.3, cursor.y + 0.04, 0, 9.2, 6.6, 0.28),
-                        makeLaneStep(0.62, cursor.y + 0.06, 0, 8.4, 6.2, 0),
-                        makeSquareStep(1, target.y, 0, checkpointSize, 0)
+                        makeLaneStep(0.26, cursor.y + 0.04, 0, 10.8, 6.6, 0.35, 0),
+                        makeLaneStep(0.58, cursor.y + 0.04, 0, 9.6, 6.2, 0, 0),
+                        makeSquareStep(1, target.y, 0, checkpointSize, 0, 0)
                     ];
-                } else if (stagePattern === 1) {
+                } else if (sectionType === 'diagonal') {
+                    const swing = stageInSection % 2 === 0 ? 2.8 : -2.8;
                     steps = [
-                        makeSquareStep(0.28, cursor.y + 0.18, 0, easySize, 0),
-                        makeSquareStep(0.62, cursor.y + 0.34, 1.2, mediumSize, 0),
-                        makeSquareStep(1, target.y, 0, checkpointSize, 0)
+                        makeSquareStep(0.22, cursor.y + 0.08, swing, mediumSize, 0, 0),
+                        makeSquareStep(0.5, cursor.y + 0.16, 0.6, smallSize, 0, 1.2),
+                        makeSquareStep(0.78, cursor.y + 0.18, -swing * 0.72, mediumSize - 0.2, 0, 0.8),
+                        makeSquareStep(1, target.y, 0, checkpointSize, 0, 0)
                     ];
-                } else if (stagePattern === 2) {
+                } else if (sectionType === 'sway') {
                     steps = [
-                        makeSquareStep(0.24, cursor.y + 0.08, 2.35, mediumSize, 0),
-                        makeSquareStep(0.52, cursor.y + 0.08, -2.35, mediumSize - 0.16, 0),
-                        makeSquareStep(0.82, cursor.y + 0.1, 1.45, mediumSize - 0.3, 0),
-                        makeSquareStep(1, target.y, 0, checkpointSize, 0)
+                        makeSquareStep(0.18, cursor.y + 0.02, 3.4, mediumSize, 0, 0),
+                        makeSquareStep(0.44, cursor.y + 0.04, -3.1, mediumSize - 0.12, 0, 0),
+                        makeSquareStep(0.72, cursor.y + 0.06, 2.2, mediumSize - 0.16, 0, 0.4),
+                        makeSquareStep(1, target.y, 0, checkpointSize, 0, 0)
                     ];
-                } else if (stagePattern === 3) {
-                    const gapSide = stage % 2 === 0 ? 2.8 : -2.8;
+                } else if (sectionType === 'gate') {
+                    const gapSide = stageInSection % 2 === 0 ? 3.1 : -3.1;
                     steps = [
-                        makeSquareStep(0.24, cursor.y + 0.06, 0, easySize - 0.3, 0),
-                        makeSquareStep(0.74, cursor.y + 0.1, gapSide, mediumSize, 0),
-                        makeSquareStep(1, target.y, 0, checkpointSize, 0)
+                        makeSquareStep(0.22, cursor.y + 0.04, 0, easySize - 0.4, 0, 0),
+                        makeSquareStep(0.72, cursor.y + 0.08, gapSide, mediumSize + 0.1, 0, 0),
+                        makeSquareStep(1, target.y, 0, checkpointSize, 0, 0)
                     ];
-                    const wallPos = cursor.clone().lerp(target, 0.5).add(side.clone().multiplyScalar(-gapSide * 0.45));
+                    const wallPos = cursor.clone().lerp(target, 0.46).add(side.clone().multiplyScalar(-gapSide * 0.4));
                     addPlatform({
                         x: wallPos.x,
-                        y: cursor.y + 1.8,
+                        y: cursor.y + 1.95,
                         z: wallPos.z,
-                        sizeX: movingX ? 1.7 : 11.2,
-                        sizeY: 2.8,
-                        sizeZ: movingX ? 11.2 : 1.7,
+                        sizeX: movingX ? 1.8 : 12.6,
+                        sizeY: 3.2,
+                        sizeZ: movingX ? 12.6 : 1.8,
                         material: accentMat.clone()
                     });
-                } else if (stagePattern === 4) {
+                } else if (sectionType === 'corner') {
                     steps = [
-                        makeSquareStep(0.2, cursor.y + 0.08, 3.1, mediumSize, 0),
-                        makeSquareStep(0.44, cursor.y + 0.1, 1.0, mediumSize - 0.16, 0),
-                        makeSquareStep(0.7, cursor.y + 0.14, -2.6, mediumSize - 0.32, 0),
-                        makeSquareStep(1, target.y, 0, checkpointSize, 0)
+                        makeSquareStep(0.18, cursor.y + 0.08, 2.8, mediumSize, 0, 1.4),
+                        makeSquareStep(0.42, cursor.y + 0.2, 0.5, smallSize, 0, 2.2),
+                        makeSquareStep(0.66, cursor.y + 0.28, -2.4, mediumSize - 0.2, 0, 1.8),
+                        makeSquareStep(1, target.y, 0, checkpointSize, 0, 0.6)
                     ];
-                } else if (stagePattern === 5) {
+                } else if (sectionType === 'bridge') {
                     steps = [
-                        makeLaneStep(0.36, cursor.y + 0.04, 0, 11.6, 2.3, 0),
-                        makeLaneStep(0.72, cursor.y + 0.06, stage % 2 === 0 ? 1.25 : -1.25, 9.6, 2.2, 0),
-                        makeSquareStep(1, target.y, 0, checkpointSize, 0)
+                        makeLaneStep(0.24, cursor.y + 0.02, 0, 12.8, 2.1, 0, 0),
+                        makeLaneStep(0.52, cursor.y + 0.04, stageInSection % 2 === 0 ? 1.35 : -1.35, 10.8, 2.0, 0, 0),
+                        makeLaneStep(0.78, cursor.y + 0.06, 0, 8.8, 2.0, 0, 0.2),
+                        makeSquareStep(1, target.y, 0, checkpointSize, 0, 0)
+                    ];
+                } else if (sectionType === 'wrap') {
+                    steps = [
+                        makeSquareStep(0.16, cursor.y + 0.02, 3.6, mediumSize, -0.8, 0.6),
+                        makeSquareStep(0.44, cursor.y + 0.04, 2.2, smallSize, 0, 1.8),
+                        makeSquareStep(0.72, cursor.y + 0.08, -1.6, mediumSize - 0.2, 0.8, 0.6),
+                        makeSquareStep(1, target.y, 0, checkpointSize, 0, 0)
+                    ];
+                } else if (sectionType === 'stagger') {
+                    steps = [
+                        makeSquareStep(0.22, cursor.y + 0.12, 0, mediumSize, 0, 0),
+                        makeSquareStep(0.48, cursor.y + 0.32, 0.8, smallSize, 0, 0),
+                        makeSquareStep(0.74, cursor.y + 0.54, -0.7, smallSize - 0.1, 0, 0),
+                        makeSquareStep(1, target.y, 0, checkpointSize, 0, 0)
+                    ];
+                } else if (sectionType === 'cross') {
+                    steps = [
+                        makeSquareStep(0.18, cursor.y + 0.04, 2.6, mediumSize, 0, 0),
+                        makeSquareStep(0.44, cursor.y + 0.04, -2.6, mediumSize, 0, 0),
+                        makeSquareStep(0.74, cursor.y + 0.06, 0, smallSize + 0.2, 0, 1.1),
+                        makeSquareStep(1, target.y, 0, checkpointSize, 0, 0)
                     ];
                 } else {
                     steps = [
-                        makeSquareStep(0.26, cursor.y + 0.06, 0, easySize - 0.4, 0),
-                        makeSquareStep(0.54, cursor.y + 0.32, 0, 3.6, 0),
-                        makeSquareStep(0.82, cursor.y + 0.1, 0, easySize - 0.6, 0),
-                        makeSquareStep(1, target.y, 0, checkpointSize, 0)
+                        makeSquareStep(0.22, cursor.y + 0.04, 0, easySize - 0.6, 0, 0),
+                        makeSquareStep(0.5, cursor.y + 0.08, stageInSection % 2 === 0 ? 1.8 : -1.8, mediumSize - 0.2, 0, 0.5),
+                        makeSquareStep(0.76, cursor.y + 0.08, 0, smallSize + 0.2, 0, 1.8),
+                        makeSquareStep(1, target.y, 0, checkpointSize, 0, 0)
                     ];
-                    const fencePos = cursor.clone().lerp(target, 0.56).add(side.clone().multiplyScalar(stage % 2 === 0 ? 2.4 : -2.4));
+                    const fencePos = cursor.clone().lerp(target, 0.54).add(side.clone().multiplyScalar(stageInSection % 2 === 0 ? 2.7 : -2.7));
                     addPlatform({
                         x: fencePos.x,
                         y: cursor.y + 1.2,
                         z: fencePos.z,
-                        sizeX: movingX ? 1.4 : 8.6,
-                        sizeY: 1.8,
-                        sizeZ: movingX ? 8.6 : 1.4,
+                        sizeX: movingX ? 1.6 : 9.4,
+                        sizeY: 2,
+                        sizeZ: movingX ? 9.4 : 1.6,
                         material: wallMat.clone()
                     });
                 }
