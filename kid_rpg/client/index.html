@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <title>별빛 원정대 RPG</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/webfontworld/gmarket/GmarketSans.css">
+    <link rel="stylesheet" href="/client/styles.css">
+</head>
+<body>
+    <div id="app">
+        <canvas id="game-canvas"></canvas>
+
+        <div id="orientation-guard" class="overlay active">
+            <div class="modal-card compact">
+                <h2>가로모드로 돌려주세요</h2>
+                <p>모바일과 태블릿에서는 가로 화면에서만 플레이할 수 있습니다.</p>
+            </div>
+        </div>
+
+        <div id="intro-screen" class="overlay active">
+            <div class="modal-card intro-card">
+                <span class="eyebrow">별빛 원정대</span>
+                <h1>모험을 시작하세요</h1>
+                <p class="intro-copy">자동사냥, 퀘스트, 장비 성장, 오프라인 보상을 갖춘 모바일 RPG 초안입니다.</p>
+                <label class="field">
+                    <span>모험가 이름</span>
+                    <input id="nickname-input" type="text" maxlength="14" placeholder="예: 서아원정대">
+                </label>
+                <button id="start-btn" class="primary-btn">게임 시작</button>
+            </div>
+        </div>
+
+        <div id="class-modal" class="overlay">
+            <div class="modal-card class-card">
+                <h2>직업 선택</h2>
+                <p class="subtext">첫 직업을 고르면 전투 스타일과 시작 장비가 정해집니다.</p>
+                <div id="class-grid" class="class-grid"></div>
+            </div>
+        </div>
+
+        <div id="offline-modal" class="overlay">
+            <div class="modal-card compact">
+                <h2>오프라인 보상</h2>
+                <div id="offline-reward-text" class="reward-box"></div>
+                <button id="offline-close-btn" class="primary-btn">확인</button>
+            </div>
+        </div>
+
+        <div id="hud">
+            <div id="top-hud" class="glass">
+                <div class="title-block">
+                    <span id="zone-label" class="eyebrow">별빛 마을</span>
+                    <strong id="player-name">별빛 모험가</strong>
+                    <span id="online-label" class="tiny">온라인 1명</span>
+                </div>
+                <div class="stat-row">
+                    <div class="stat-pill"><span>레벨</span><strong id="level-label">1</strong></div>
+                    <div class="stat-pill"><span>전투력</span><strong id="power-label">52</strong></div>
+                    <div class="stat-pill"><span>골드</span><strong id="gold-label">120</strong></div>
+                </div>
+                <div class="exp-wrap">
+                    <div id="exp-bar"></div>
+                    <span id="exp-label">0 / 100 EXP</span>
+                </div>
+            </div>
+
+            <div id="quest-card" class="glass">
+                <span class="eyebrow">메인 퀘스트</span>
+                <strong id="quest-title">준비 중</strong>
+                <p id="quest-desc">퀘스트를 불러오는 중입니다.</p>
+                <div class="quest-actions">
+                    <button id="auto-quest-btn" class="ghost-btn">자동 추적</button>
+                    <button id="teleport-btn" class="ghost-btn accent">순간이동</button>
+                </div>
+            </div>
+
+            <div id="right-actions">
+                <button id="inventory-btn" class="action-btn">가방</button>
+                <button id="quest-btn" class="action-btn">퀘스트</button>
+                <button id="options-btn" class="action-btn">옵션</button>
+            </div>
+
+            <div id="combat-hud" class="glass">
+                <div class="combat-head">
+                    <span class="eyebrow">전투 상태</span>
+                    <strong id="auto-state-label">수동 조작</strong>
+                </div>
+                <div class="hp-wrap">
+                    <div id="hp-bar"></div>
+                    <span id="hp-label">150 / 150 HP</span>
+                </div>
+                <div id="target-label" class="tiny">대상 없음</div>
+            </div>
+        </div>
+
+        <div id="panel-backdrop" class="panel-backdrop hidden"></div>
+
+        <aside id="inventory-panel" class="side-panel hidden">
+            <header>
+                <h2>장비와 가방</h2>
+                <button data-close-panel="inventory-panel" class="close-btn">닫기</button>
+            </header>
+            <section class="panel-section">
+                <h3>장착 장비</h3>
+                <div id="equipment-list" class="equipment-list"></div>
+                <button id="enhance-btn" class="primary-btn small">무기 강화</button>
+            </section>
+            <section class="panel-section grow">
+                <h3>인벤토리</h3>
+                <div id="inventory-list" class="inventory-list"></div>
+            </section>
+        </aside>
+
+        <aside id="quest-panel" class="side-panel hidden">
+            <header>
+                <h2>퀘스트</h2>
+                <button data-close-panel="quest-panel" class="close-btn">닫기</button>
+            </header>
+            <section class="panel-section">
+                <h3>진행 중</h3>
+                <div id="main-quest-detail" class="quest-detail"></div>
+            </section>
+            <section class="panel-section">
+                <h3>일일 퀘스트</h3>
+                <div id="daily-quest-detail" class="quest-detail"></div>
+            </section>
+        </aside>
+
+        <aside id="options-panel" class="side-panel hidden">
+            <header>
+                <h2>옵션</h2>
+                <button data-close-panel="options-panel" class="close-btn">닫기</button>
+            </header>
+            <section class="panel-section">
+                <label class="toggle-row">
+                    <span>배경음악</span>
+                    <input id="bgm-toggle" type="checkbox">
+                </label>
+                <label class="toggle-row">
+                    <span>효과음</span>
+                    <input id="sfx-toggle" type="checkbox">
+                </label>
+                <p class="tiny">설정은 자동 저장됩니다.</p>
+            </section>
+        </aside>
+
+        <div id="mobile-controls">
+            <div id="joystick-zone">
+                <div id="joystick-base">
+                    <div id="joystick-knob"></div>
+                </div>
+            </div>
+            <div id="skill-cluster">
+                <button id="basic-attack-btn" class="combat-btn wide">공격</button>
+                <button id="skill-1-btn" class="combat-btn">스킬 1</button>
+                <button id="skill-2-btn" class="combat-btn">스킬 2</button>
+                <button id="auto-btn" class="combat-btn accent">AUTO</button>
+            </div>
+        </div>
+
+        <div id="toast"></div>
+    </div>
+
+    <script type="module" src="/client/app.js"></script>
+</body>
+</html>
