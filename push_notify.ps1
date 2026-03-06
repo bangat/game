@@ -50,14 +50,15 @@ function Send-TelegramMessage {
     }
 
     $uri = "https://api.telegram.org/bot$token/sendMessage"
-    $body = @{
+    $payload = @{
         chat_id = $chatId
         text = $Text
-        disable_web_page_preview = "true"
-    }
+        disable_web_page_preview = $true
+    } | ConvertTo-Json -Compress -Depth 4
+    $body = [System.Text.Encoding]::UTF8.GetBytes($payload)
 
     try {
-        Invoke-RestMethod -Method Post -Uri $uri -Body $body -ContentType "application/x-www-form-urlencoded" | Out-Null
+        Invoke-RestMethod -Method Post -Uri $uri -Body $body -ContentType "application/json; charset=utf-8" | Out-Null
         Write-Host "텔레그램 전송 완료"
     } catch {
         Write-Warning "텔레그램 전송 실패: $($_.Exception.Message)"

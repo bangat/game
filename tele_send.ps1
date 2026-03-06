@@ -61,13 +61,14 @@ if ([string]::IsNullOrWhiteSpace($Token) -or [string]::IsNullOrWhiteSpace($ChatI
 $finalText = if ($NoInterpretEscapes) { $Text } else { Interpret-TelegramEscapes $Text }
 
 $msgUri = "https://api.telegram.org/bot$Token/sendMessage"
-$body = @{
+$payload = @{
     chat_id = $ChatID
     text = $finalText
-    disable_web_page_preview = "true"
-}
+    disable_web_page_preview = $true
+} | ConvertTo-Json -Compress -Depth 4
+$body = [System.Text.Encoding]::UTF8.GetBytes($payload)
 
-Invoke-RestMethod -Method Post -Uri $msgUri -Body $body -ContentType "application/x-www-form-urlencoded" | Out-Null
+Invoke-RestMethod -Method Post -Uri $msgUri -Body $body -ContentType "application/json; charset=utf-8" | Out-Null
 
 if ($Files) {
     $docUri = "https://api.telegram.org/bot$Token/sendDocument"
