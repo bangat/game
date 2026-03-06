@@ -780,11 +780,11 @@
             },
             cam: {
                 yaw: Math.PI,
-                pitch: -0.46,
-                dist: 11.2,
-                targetDist: 11.2,
-                minDist: 7.4,
-                maxDist: 18,
+                pitch: 0.44,
+                dist: 13.2,
+                targetDist: 13.2,
+                minDist: 8.6,
+                maxDist: 20,
                 dragId: -1,
                 lastX: 0,
                 lastY: 0,
@@ -1436,7 +1436,7 @@
                 world.cam.lastY = e.clientY;
                 world.cam.yaw -= dx * 0.0052;
                 world.cam.pitch -= dy * 0.0038;
-                world.cam.pitch = Math.max(-0.9, Math.min(0.08, world.cam.pitch));
+                world.cam.pitch = Math.max(0.2, Math.min(1.05, world.cam.pitch));
             });
             const endDrag = function(e) {
                 world.cam.pointers.delete(e.pointerId);
@@ -1507,9 +1507,9 @@
             const platformMat = new THREE.MeshStandardMaterial({ map: lightTexture, roughness: 0.74, metalness: 0.02 });
             const checkpointMat = new THREE.MeshStandardMaterial({ color: tower.themeColor, roughness: 0.52, metalness: 0.08 });
 
-            const outerHalf = 44;
-            const holeHalf = 10.5;
-            const laneHalf = 24;
+            const outerHalf = 58;
+            const holeHalf = 12;
+            const laneHalf = 33;
             const floorThickness = 1.6;
             const wallThickness = 2.2;
             const wallHeight = Math.max(92, tower.stageCount * 0.58 + 30);
@@ -1528,16 +1528,16 @@
             addPlatform({ x: outerHalf, y: wallHeight * 0.5 - 0.4, z: 0, sizeX: wallThickness, sizeY: wallHeight, sizeZ: outerSpan, material: wallMat.clone() });
             addPlatform({ x: -outerHalf, y: wallHeight * 0.5 - 0.4, z: 0, sizeX: wallThickness, sizeY: wallHeight, sizeZ: outerSpan, material: wallMat.clone() });
 
-            const spawnPoint = getSquarePerimeterPoint(0.125, laneHalf);
+            const spawnPoint = new THREE.Vector3(0, 0, 0);
             const spawnCenterY = 1.3;
             const spawnHeight = 1.0;
             addPlatform({
                 x: spawnPoint.x,
                 y: spawnCenterY,
                 z: spawnPoint.z,
-                sizeX: 9.6,
+                sizeX: 10.4,
                 sizeY: spawnHeight,
-                sizeZ: 9.6,
+                sizeZ: 10.4,
                 material: checkpointMat.clone(),
                 checkpointIndex: 0
             });
@@ -1550,7 +1550,7 @@
             let cursor = new THREE.Vector3(spawnPoint.x, spawnCenterY, spawnPoint.z);
             let progressCursor = 0;
             const baseProgress = 0.125;
-            const sectionCycle = ['warmup', 'diagonal', 'sway', 'gate', 'corner', 'bridge', 'wrap', 'stagger', 'cross', 'maze'];
+            const sectionCycle = ['warmup', 'diagonal', 'ladder', 'gate', 'corner', 'bridge', 'wrap', 'stagger', 'cross', 'maze', 'sway'];
             const sectionSteps = [0.026, 0.032, 0.038, 0.031, 0.029, 0.036];
 
             for (let stage = 1; stage <= tower.stageCount; stage++) {
@@ -1625,6 +1625,34 @@
                         makeSquareStep(0.78, cursor.y + 0.18, -swing * 0.72, mediumSize - 0.2, 0, 0.8),
                         makeSquareStep(1, target.y, 0, checkpointSize, 0, 0)
                     ];
+                } else if (sectionType === 'ladder') {
+                    const ladderSide = stageInSection % 2 === 0 ? 2.2 : -2.2;
+                    steps = [
+                        makeSquareStep(0.2, cursor.y + 0.18, ladderSide, 3.9, 0, 0),
+                        makeSquareStep(0.38, cursor.y + 0.4, ladderSide * 0.82, 3.6, 0, 0.4),
+                        makeSquareStep(0.58, cursor.y + 0.64, ladderSide * 0.66, 3.4, 0, 0.8),
+                        makeSquareStep(0.8, cursor.y + 0.9, ladderSide * 0.5, 3.2, 0, 1.1),
+                        makeSquareStep(1, target.y, 0, checkpointSize, 0, 0.4)
+                    ];
+                    const railPos = cursor.clone().lerp(target, 0.5);
+                    addPlatform({
+                        x: railPos.x + side.x * (ladderSide + 1.8),
+                        y: cursor.y + 1.55,
+                        z: railPos.z + side.z * (ladderSide + 1.8),
+                        sizeX: movingX ? 1.1 : 0.9,
+                        sizeY: 3.3,
+                        sizeZ: movingX ? 0.9 : 1.1,
+                        material: accentMat.clone()
+                    });
+                    addPlatform({
+                        x: railPos.x + side.x * (ladderSide - 1.8),
+                        y: cursor.y + 1.55,
+                        z: railPos.z + side.z * (ladderSide - 1.8),
+                        sizeX: movingX ? 1.1 : 0.9,
+                        sizeY: 3.3,
+                        sizeZ: movingX ? 0.9 : 1.1,
+                        material: accentMat.clone()
+                    });
                 } else if (sectionType === 'sway') {
                     steps = [
                         makeSquareStep(0.18, cursor.y + 0.02, 3.4, mediumSize, 0, 0),
@@ -1684,7 +1712,7 @@
                         makeSquareStep(0.74, cursor.y + 0.06, 0, smallSize + 0.2, 0, 1.1),
                         makeSquareStep(1, target.y, 0, checkpointSize, 0, 0)
                     ];
-                } else {
+                } else if (sectionType === 'maze') {
                     steps = [
                         makeSquareStep(0.22, cursor.y + 0.04, 0, easySize - 0.6, 0, 0),
                         makeSquareStep(0.5, cursor.y + 0.08, stageInSection % 2 === 0 ? 1.8 : -1.8, mediumSize - 0.2, 0, 0.5),
@@ -1701,6 +1729,13 @@
                         sizeZ: movingX ? 9.4 : 1.6,
                         material: wallMat.clone()
                     });
+                } else {
+                    steps = [
+                        makeSquareStep(0.18, cursor.y + 0.02, 3.4, mediumSize, 0, 0),
+                        makeSquareStep(0.44, cursor.y + 0.04, -3.1, mediumSize - 0.12, 0, 0),
+                        makeSquareStep(0.72, cursor.y + 0.06, 2.2, mediumSize - 0.16, 0, 0.4),
+                        makeSquareStep(1, target.y, 0, checkpointSize, 0, 0)
+                    ];
                 }
 
                 steps.forEach(function(step, idx) {
@@ -1727,6 +1762,10 @@
                 });
             }
 
+            world.cam.yaw = Math.PI;
+            world.cam.pitch = 0.44;
+            world.cam.dist = 13.2;
+            world.cam.targetDist = 13.2;
             setCheckpoint(0, false);
             respawnToCheckpoint(false);
             syncHud();
@@ -1825,7 +1864,7 @@
         function updateCamera(dt) {
             world.cam.dist = approach(world.cam.dist, world.cam.targetDist, dt * 10);
             const x = world.player.pos.x + Math.sin(world.cam.yaw) * Math.cos(world.cam.pitch) * world.cam.dist;
-            const y = world.player.pos.y + 2.55 + Math.sin(world.cam.pitch) * world.cam.dist;
+            const y = world.player.pos.y + 1.2 + Math.sin(world.cam.pitch) * world.cam.dist;
             const z = world.player.pos.z + Math.cos(world.cam.yaw) * Math.cos(world.cam.pitch) * world.cam.dist;
             world.camera.position.lerp(new THREE.Vector3(x, y, z), 0.14);
             world.camera.lookAt(world.player.pos.x, world.player.pos.y + 1.06, world.player.pos.z);
