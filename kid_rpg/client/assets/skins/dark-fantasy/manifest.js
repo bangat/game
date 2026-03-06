@@ -18,6 +18,61 @@ export const activeSkin = {
         fieldBoss: '/client/assets/skins/dark-fantasy/enemies/field-boss.png',
         elementalBoss: '/client/assets/skins/dark-fantasy/enemies/elemental-boss.png'
     },
+    worldSprites: {
+        players: {
+            warrior: {
+                src: '/client/assets/skins/dark-fantasy/characters/warrior.png',
+                crop: { x: 560, y: 170, w: 480, h: 740 },
+                height: 3.9,
+                keyColor: [49, 63, 74],
+                tolerance: 52
+            },
+            mage: {
+                src: '/client/assets/skins/dark-fantasy/characters/mage.png',
+                crop: { x: 50, y: 150, w: 470, h: 760 },
+                height: 3.9,
+                keyColor: [49, 63, 74],
+                tolerance: 52
+            },
+            ranger: {
+                src: '/client/assets/skins/dark-fantasy/characters/warrior.png',
+                crop: { x: 40, y: 170, w: 470, h: 740 },
+                height: 3.9,
+                keyColor: [49, 63, 74],
+                tolerance: 52
+            }
+        },
+        enemies: {
+            slime: {
+                src: '/client/assets/skins/dark-fantasy/enemies/field-goblin.png',
+                crop: { x: 40, y: 130, w: 520, h: 760 },
+                height: 3.5,
+                keyColor: [49, 63, 74],
+                tolerance: 52
+            },
+            wolf: {
+                src: '/client/assets/skins/dark-fantasy/enemies/field-goblin.png',
+                crop: { x: 590, y: 120, w: 600, h: 780 },
+                height: 3.8,
+                keyColor: [49, 63, 74],
+                tolerance: 52
+            },
+            wisp: {
+                src: '/client/assets/skins/dark-fantasy/enemies/field-boss.png',
+                crop: { x: 1200, y: 110, w: 520, h: 820 },
+                height: 4.1,
+                keyColor: [49, 63, 74],
+                tolerance: 52
+            },
+            colossus: {
+                src: '/client/assets/skins/dark-fantasy/enemies/elemental-boss.png',
+                crop: { x: 580, y: 110, w: 650, h: 850 },
+                height: 5.4,
+                keyColor: [49, 63, 74],
+                tolerance: 52
+            }
+        }
+    },
     ui: {
         hud: '/client/assets/skins/dark-fantasy/ui/main-hud.png',
         panel: '/client/assets/skins/dark-fantasy/ui/panel-frame.jpg',

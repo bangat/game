@@ -79,6 +79,8 @@ const zoneGroundPalette = {
 };
 
 const zoneGroundTextureCache = new Map();
+const spriteAssetCache = new Map();
+const tempWorldPosition = new THREE.Vector3();
 
 function generateUserId() {
     if (window.crypto && typeof window.crypto.randomUUID === 'function') {
@@ -639,50 +641,150 @@ function getZoneGroundTexture(zoneId) {
     return texture;
 }
 
+function getSpriteDefinition(kind, id) {
+    return state.skin?.worldSprites?.[kind]?.[id] || null;
+}
+
+function loadSpriteAsset(spriteDef) {
+    const key = JSON.stringify(spriteDef);
+    if (spriteAssetCache.has(key)) return spriteAssetCache.get(key);
+
+    const promise = new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => {
+            const crop = spriteDef.crop;
+            const sourceCanvas = document.createElement('canvas');
+            sourceCanvas.width = crop.w;
+            sourceCanvas.height = crop.h;
+            const sourceCtx = sourceCanvas.getContext('2d');
+            sourceCtx.drawImage(image, crop.x, crop.y, crop.w, crop.h, 0, 0, crop.w, crop.h);
+
+            const imageData = sourceCtx.getImageData(0, 0, crop.w, crop.h);
+            const data = imageData.data;
+            const [kr, kg, kb] = spriteDef.keyColor || [data[0], data[1], data[2]];
+            const tolerance = spriteDef.tolerance || 48;
+            let minX = crop.w;
+            let minY = crop.h;
+            let maxX = 0;
+            let maxY = 0;
+
+            for (let i = 0; i < data.length; i += 4) {
+                const dr = data[i] - kr;
+                const dg = data[i + 1] - kg;
+                const db = data[i + 2] - kb;
+                const distance = Math.sqrt(dr * dr + dg * dg + db * db);
+                const pixelIndex = i / 4;
+                const px = pixelIndex % crop.w;
+                const py = Math.floor(pixelIndex / crop.w);
+                if (distance <= tolerance) {
+                    data[i + 3] = 0;
+                } else if (data[i + 3] > 18) {
+                    if (px < minX) minX = px;
+                    if (py < minY) minY = py;
+                    if (px > maxX) maxX = px;
+                    if (py > maxY) maxY = py;
+                }
+            }
+
+            sourceCtx.putImageData(imageData, 0, 0);
+
+            if (maxX <= minX || maxY <= minY) {
+                minX = 0;
+                minY = 0;
+                maxX = crop.w - 1;
+                maxY = crop.h - 1;
+            }
+
+            const padding = 10;
+            minX = Math.max(0, minX - padding);
+            minY = Math.max(0, minY - padding);
+            maxX = Math.min(crop.w - 1, maxX + padding);
+            maxY = Math.min(crop.h - 1, maxY + padding);
+
+            const trimmedWidth = Math.max(1, maxX - minX + 1);
+            const trimmedHeight = Math.max(1, maxY - minY + 1);
+            const trimmedCanvas = document.createElement('canvas');
+            trimmedCanvas.width = trimmedWidth;
+            trimmedCanvas.height = trimmedHeight;
+            const trimmedCtx = trimmedCanvas.getContext('2d');
+            trimmedCtx.drawImage(sourceCanvas, minX, minY, trimmedWidth, trimmedHeight, 0, 0, trimmedWidth, trimmedHeight);
+
+            const texture = new THREE.CanvasTexture(trimmedCanvas);
+            texture.colorSpace = THREE.SRGBColorSpace;
+            texture.needsUpdate = true;
+            resolve({ texture, width: trimmedWidth, height: trimmedHeight });
+        };
+        image.onerror = reject;
+        image.src = spriteDef.src;
+    });
+
+    spriteAssetCache.set(key, promise);
+    return promise;
+}
+
+function applySpriteToPlane(plane, spriteDef, spriteHeight, opacity = 1) {
+    loadSpriteAsset(spriteDef).then((asset) => {
+        if (!plane.parent) return;
+        const aspect = asset.width / asset.height;
+        plane.geometry.dispose();
+        plane.geometry = new THREE.PlaneGeometry(Math.max(1.5, spriteHeight * aspect), spriteHeight);
+        plane.material.map = asset.texture;
+        plane.material.color.set('#ffffff');
+        plane.material.opacity = opacity;
+        plane.material.needsUpdate = true;
+        plane.position.y = spriteHeight * 0.5;
+    }).catch((error) => {
+        console.error('Failed to apply sprite asset', error);
+    });
+}
+
+function orientSpriteActor(actor, directionX = 0) {
+    if (!actor?.userData?.sprite || !state.world.camera) return;
+    actor.lookAt(state.world.camera.position.x, actor.position.y + actor.userData.spriteHeight * 0.5, state.world.camera.position.z);
+    actor.rotation.x = 0;
+    actor.rotation.z = 0;
+    if (Math.abs(directionX) > 0.02) {
+        actor.userData.flip = directionX < 0 ? -1 : 1;
+    }
+    actor.userData.sprite.scale.x = Math.abs(actor.userData.sprite.scale.x) * actor.userData.flip;
+}
+
 function createFloor(zoneId) {
     const zone = zoneLayout[zoneId];
     const visual = zoneVisuals[zoneId];
     const floor = new THREE.Mesh(
-        new THREE.BoxGeometry(zone.width, 2, zone.depth),
-        new THREE.MeshStandardMaterial({ color: visual.floor, roughness: 0.94, metalness: 0.04 })
-    );
-    floor.receiveShadow = true;
-    floor.position.set(zone.x, -1, zone.z);
-    state.world.zoneGroup.add(floor);
-
-    const cap = new THREE.Mesh(
-        new THREE.PlaneGeometry(zone.width - 0.6, zone.depth - 0.6),
+        new THREE.PlaneGeometry(zone.width, zone.depth),
         new THREE.MeshStandardMaterial({
             map: getZoneGroundTexture(zoneId),
             color: '#ffffff',
-            roughness: 0.96,
+            roughness: 0.97,
             metalness: 0.02
         })
     );
-    cap.rotation.x = -Math.PI / 2;
-    cap.position.set(zone.x, 0.08, zone.z);
-    cap.receiveShadow = true;
-    state.world.zoneGroup.add(cap);
+    floor.rotation.x = -Math.PI / 2;
+    floor.receiveShadow = true;
+    floor.position.set(zone.x, 0, zone.z);
+    state.world.zoneGroup.add(floor);
 
-    const rim = new THREE.Mesh(
-        new THREE.BoxGeometry(zone.width + 1.1, 0.55, zone.depth + 1.1),
-        new THREE.MeshStandardMaterial({
+    const cap = new THREE.Mesh(
+        new THREE.PlaneGeometry(zone.width + 1.2, zone.depth + 1.2),
+        new THREE.MeshBasicMaterial({
             color: visual.rim,
-            emissive: visual.rim,
-            emissiveIntensity: 0.08,
             transparent: true,
-            opacity: 0.34
+            opacity: 0.22,
+            side: THREE.DoubleSide
         })
     );
-    rim.position.set(zone.x, 0.2, zone.z);
-    state.world.zoneGroup.add(rim);
+    cap.rotation.x = -Math.PI / 2;
+    cap.position.set(zone.x, 0.02, zone.z);
+    state.world.zoneGroup.add(cap);
 
     const sigil = new THREE.Mesh(
         new THREE.RingGeometry(5.4, 6.6, 48),
         new THREE.MeshBasicMaterial({ color: visual.glow, transparent: true, opacity: 0.14, side: THREE.DoubleSide })
     );
     sigil.rotation.x = -Math.PI / 2;
-    sigil.position.set(zone.x, 0.28, 0);
+    sigil.position.set(zone.x, 0.03, 0);
     state.world.zoneGroup.add(sigil);
 }
 
@@ -732,42 +834,43 @@ function createPlayerModel(classId, isRemote = false) {
     shadow.position.y = 0.05;
     group.add(shadow);
 
-    const body = new THREE.Mesh(
-        new THREE.CapsuleGeometry(0.65, 1.1, 6, 12),
-        new THREE.MeshStandardMaterial({
+    const aura = new THREE.Mesh(
+        new THREE.RingGeometry(0.86, 1.02, 28),
+        new THREE.MeshBasicMaterial({
             color: classData.color,
-            emissive: classData.color,
-            emissiveIntensity: isRemote ? 0.08 : 0.18,
-            transparent: isRemote,
-            opacity: isRemote ? 0.45 : 1
+            transparent: true,
+            opacity: isRemote ? 0.22 : 0.34,
+            side: THREE.DoubleSide
         })
     );
-    body.castShadow = true;
-    body.position.y = 1.4;
-    group.add(body);
+    aura.rotation.x = -Math.PI / 2;
+    aura.position.y = 0.07;
+    group.add(aura);
 
-    const head = new THREE.Mesh(
-        new THREE.SphereGeometry(0.48, 16, 16),
-        new THREE.MeshStandardMaterial({ color: '#e6c1a4', transparent: isRemote, opacity: isRemote ? 0.45 : 1 })
+    const sprite = new THREE.Mesh(
+        new THREE.PlaneGeometry(2.2, 3.9),
+        new THREE.MeshBasicMaterial({
+            color: classData.color,
+            transparent: true,
+            opacity: isRemote ? 0.62 : 1,
+            alphaTest: 0.16,
+            side: THREE.DoubleSide
+        })
     );
-    head.position.y = 2.55;
-    head.castShadow = true;
-    group.add(head);
-
-    const weaponColor = classId === 'mage' ? '#7dd3fc' : classId === 'ranger' ? '#a7f3d0' : '#ffd166';
-    const weapon = new THREE.Mesh(
-        classId === 'mage'
-            ? new THREE.CylinderGeometry(0.08, 0.08, 1.8)
-            : classId === 'ranger'
-                ? new THREE.TorusGeometry(0.55, 0.08, 8, 16, Math.PI)
-                : new THREE.BoxGeometry(0.16, 1.4, 0.2),
-        new THREE.MeshStandardMaterial({ color: weaponColor, emissive: weaponColor, emissiveIntensity: isRemote ? 0.22 : 0.55, transparent: isRemote, opacity: isRemote ? 0.5 : 1 })
-    );
-    weapon.position.set(0.65, 1.65, 0.1);
-    weapon.rotation.z = classId === 'ranger' ? Math.PI * 0.5 : -0.3;
-    weapon.castShadow = true;
-    group.add(weapon);
-    group.userData = { body, head, weapon, bob: Math.random() * Math.PI * 2, attackTilt: 0 };
+    sprite.position.y = 1.95;
+    sprite.renderOrder = 4;
+    group.add(sprite);
+    const spriteDef = getSpriteDefinition('players', classId || 'warrior');
+    if (spriteDef) applySpriteToPlane(sprite, spriteDef, spriteDef.height || 3.9, isRemote ? 0.68 : 1);
+    group.userData = {
+        shadow,
+        aura,
+        sprite,
+        spriteHeight: spriteDef?.height || 3.9,
+        bob: Math.random() * Math.PI * 2,
+        attackTilt: 0,
+        flip: 1
+    };
     return group;
 }
 
@@ -781,21 +884,28 @@ function createEnemyModel(monsterId) {
     shadow.position.y = 0.05;
     group.add(shadow);
 
-    let mesh;
-    if (monsterId === 'slime') {
-        mesh = new THREE.Mesh(new THREE.SphereGeometry(1.05, 16, 16), new THREE.MeshStandardMaterial({ color: '#2c8a76', emissive: '#50b59e', emissiveIntensity: 0.16 }));
-        mesh.scale.y = 0.7;
-    } else if (monsterId === 'wolf') {
-        mesh = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.1, 1), new THREE.MeshStandardMaterial({ color: '#63555f', emissive: '#2d2430', emissiveIntensity: 0.2 }));
-    } else if (monsterId === 'wisp') {
-        mesh = new THREE.Mesh(new THREE.OctahedronGeometry(1), new THREE.MeshStandardMaterial({ color: '#8cb6ff', emissive: '#8cb6ff', emissiveIntensity: 0.75 }));
-    } else {
-        mesh = new THREE.Mesh(new THREE.BoxGeometry(2.4, 3.8, 2.4), new THREE.MeshStandardMaterial({ color: '#6f141a', roughness: 0.82, emissive: '#23080b', emissiveIntensity: 0.28 }));
-        mesh.position.y = 1.1;
-    }
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    group.add(mesh);
+    const sprite = new THREE.Mesh(
+        new THREE.PlaneGeometry(2.4, 4.1),
+        new THREE.MeshBasicMaterial({
+            color: '#ffffff',
+            transparent: true,
+            opacity: 1,
+            alphaTest: 0.16,
+            side: THREE.DoubleSide
+        })
+    );
+    sprite.position.y = 2.05;
+    sprite.renderOrder = 4;
+    group.add(sprite);
+    const spriteDef = getSpriteDefinition('enemies', monsterId);
+    if (spriteDef) applySpriteToPlane(sprite, spriteDef, spriteDef.height || 4.1, 1);
+    group.userData = {
+        shadow,
+        sprite,
+        spriteHeight: spriteDef?.height || 4.1,
+        bob: Math.random() * Math.PI * 2,
+        flip: 1
+    };
     return group;
 }
 
@@ -821,7 +931,7 @@ function spawnEnemies() {
         points.forEach((point, idx) => {
             const def = state.worldData.monsters[monsterId];
             const mesh = createEnemyModel(monsterId);
-            mesh.position.set(point[0], 0.6, point[1]);
+            mesh.position.set(point[0], 0, point[1]);
             state.world.actorGroup.add(mesh);
             state.world.enemies.push({
                 id: `${monsterId}_${idx}`,
@@ -832,7 +942,7 @@ function spawnEnemies() {
                 alive: true,
                 respawnAt: 0,
                 attackAt: 0,
-                home: new THREE.Vector3(point[0], 0.6, point[1]),
+                home: new THREE.Vector3(point[0], 0, point[1]),
                 roamTheta: idx * 1.7
             });
         });
@@ -851,7 +961,8 @@ function buildWorld() {
     scene.background = null;
     scene.fog = new THREE.Fog('#0c0d12', 72, 190);
 
-    const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 500);
+    const camera = new THREE.OrthographicCamera(-24, 24, 13.5, -13.5, 0.1, 500);
+    camera.userData.frustumHeight = 30;
     camera.position.set(12, 24, 20);
 
     scene.add(new THREE.HemisphereLight('#ebe4d9', '#171827', 0.9));
@@ -867,16 +978,22 @@ function buildWorld() {
 
     const baseFloor = new THREE.Mesh(
         new THREE.PlaneGeometry(360, 160),
-        new THREE.MeshStandardMaterial({ color: '#17161f', roughness: 0.98, transparent: true, opacity: 0.34 })
+        new THREE.MeshStandardMaterial({ color: '#19171d', roughness: 0.99, transparent: true, opacity: 0.82 })
     );
     baseFloor.rotation.x = -Math.PI / 2;
-    baseFloor.position.y = -1.6;
+    baseFloor.position.y = -0.04;
     baseFloor.receiveShadow = true;
     scene.add(baseFloor);
 
     state.world.renderer = renderer;
     state.world.scene = scene;
     state.world.camera = camera;
+    const aspect = window.innerWidth / window.innerHeight;
+    camera.left = -(camera.userData.frustumHeight * aspect) / 2;
+    camera.right = (camera.userData.frustumHeight * aspect) / 2;
+    camera.top = camera.userData.frustumHeight / 2;
+    camera.bottom = -camera.userData.frustumHeight / 2;
+    camera.updateProjectionMatrix();
     scene.add(state.world.zoneGroup, state.world.actorGroup, state.world.fxGroup);
     addDecoration();
     spawnEnemies();
@@ -1171,6 +1288,8 @@ function updateEnemies(dt) {
             enemy.roamTheta += dt * 0.4;
             enemy.mesh.position.x = enemy.home.x + Math.cos(enemy.roamTheta) * 0.9;
             enemy.mesh.position.z = enemy.home.z + Math.sin(enemy.roamTheta) * 0.9;
+            enemy.mesh.userData.sprite.position.y = enemy.mesh.userData.spriteHeight * 0.5 + Math.abs(Math.sin(enemy.mesh.userData.bob += dt * 3.4)) * 0.06;
+            orientSpriteActor(enemy.mesh, Math.cos(enemy.roamTheta));
             return;
         }
         const direction = state.world.hero.position.clone().sub(enemy.mesh.position).setY(0);
@@ -1198,7 +1317,8 @@ function updateEnemies(dt) {
             enemy.mesh.position.x = enemy.home.x + Math.cos(enemy.roamTheta) * 1.2;
             enemy.mesh.position.z = enemy.home.z + Math.sin(enemy.roamTheta) * 1.2;
         }
-        enemy.mesh.rotation.y = Math.atan2(direction.x, direction.z);
+        enemy.mesh.userData.sprite.position.y = enemy.mesh.userData.spriteHeight * 0.5 + Math.abs(Math.sin(enemy.mesh.userData.bob += dt * 3.8)) * 0.06;
+        orientSpriteActor(enemy.mesh, direction.x || Math.cos(enemy.roamTheta));
     });
 }
 
@@ -1232,6 +1352,7 @@ function updateDrops(dt) {
 function updateRemoteActors(dt) {
     state.remotePlayers.forEach((remote) => {
         remote.mesh.position.lerp(remote.target, Math.min(1, dt * 5));
+        orientSpriteActor(remote.mesh, remote.target.x - remote.mesh.position.x);
     });
 }
 
@@ -1240,9 +1361,10 @@ function updateHeroPresentation(dt) {
     if (!hero) return;
     hero.userData.bob += dt * 8;
     hero.userData.attackTilt = Math.max(0, hero.userData.attackTilt - dt * 4.6);
-    hero.userData.body.position.y = 1.35 + Math.abs(Math.sin(hero.userData.bob)) * 0.07;
-    hero.userData.weapon.rotation.z = (state.profile.classId === 'ranger' ? Math.PI * 0.45 : -0.24) - hero.userData.attackTilt;
-    hero.rotation.y += ((hero.userData.facingAngle || 0) - hero.rotation.y) * 0.16;
+    hero.userData.sprite.position.y = hero.userData.spriteHeight * 0.5 + Math.abs(Math.sin(hero.userData.bob)) * 0.08;
+    hero.userData.sprite.rotation.z = -hero.userData.attackTilt * 0.08;
+    hero.userData.aura.material.opacity = 0.24 + Math.abs(Math.sin(hero.userData.bob * 0.6)) * 0.12;
+    orientSpriteActor(hero, Math.sin(hero.userData.facingAngle || 0));
 }
 
 function regenerateResources(dt) {
@@ -1252,9 +1374,9 @@ function regenerateResources(dt) {
 
 function updateCamera() {
     const target = state.world.hero.position;
-    const camPos = new THREE.Vector3(target.x + 9.5, 24, target.z + 13);
+    const camPos = new THREE.Vector3(target.x + 14, 28, target.z + 16);
     state.world.camera.position.lerp(camPos, 0.08);
-    state.world.camera.lookAt(target.x + 2.1, 1.2, target.z + 2.6);
+    state.world.camera.lookAt(target.x + 1.8, 0.5, target.z + 2.4);
 }
 
 function updateProfileLocation() {
@@ -1550,7 +1672,16 @@ function bindUi() {
     window.addEventListener('resize', () => {
         updateOrientationGuard();
         if (!state.world.camera) return;
-        state.world.camera.aspect = window.innerWidth / window.innerHeight;
+        const aspect = window.innerWidth / window.innerHeight;
+        if (state.world.camera.isOrthographicCamera) {
+            const frustumHeight = state.world.camera.userData.frustumHeight || 30;
+            state.world.camera.left = -(frustumHeight * aspect) / 2;
+            state.world.camera.right = (frustumHeight * aspect) / 2;
+            state.world.camera.top = frustumHeight / 2;
+            state.world.camera.bottom = -frustumHeight / 2;
+        } else {
+            state.world.camera.aspect = aspect;
+        }
         state.world.camera.updateProjectionMatrix();
         state.world.renderer.setSize(window.innerWidth, window.innerHeight);
     });
