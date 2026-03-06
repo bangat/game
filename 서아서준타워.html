@@ -277,6 +277,27 @@
             box-shadow: 0 18px 28px rgba(56, 31, 57, 0.22);
         }
 
+        #camera-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-right: 8px;
+            pointer-events: auto;
+        }
+
+        .camera-btn {
+            width: 58px;
+            height: 58px;
+            border: none;
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.88);
+            color: var(--text-main);
+            font-family: var(--font-main);
+            font-size: 1.3rem;
+            font-weight: 700;
+            box-shadow: 0 18px 28px rgba(30, 49, 74, 0.16);
+        }
+
         .overlay {
             position: fixed;
             inset: 0;
@@ -295,6 +316,11 @@
 
         .overlay.active {
             display: flex;
+        }
+
+        .overlay.orientation-guard {
+            z-index: 60;
+            background: rgba(11, 21, 36, 0.9);
         }
 
         .modal-card {
@@ -495,6 +521,14 @@
                 grid-template-columns: 1fr;
             }
         }
+
+        @media (orientation: portrait) and (max-width: 1024px) {
+            #hud,
+            #mobile-controls,
+            #toast {
+                visibility: hidden;
+            }
+        }
     </style>
 </head>
 <body>
@@ -522,6 +556,10 @@
             <div id="stick-base">
                 <div id="stick-knob"></div>
             </div>
+        </div>
+        <div id="camera-controls">
+            <button id="zoom-in-btn" class="camera-btn" type="button">+</button>
+            <button id="zoom-out-btn" class="camera-btn" type="button">-</button>
         </div>
         <button id="jump-btn" type="button">점프</button>
     </div>
@@ -572,6 +610,13 @@
         </div>
     </div>
 
+    <div id="orientation-overlay" class="overlay orientation-guard">
+        <div class="modal-card panel">
+            <div class="modal-title">가로로 돌려서 플레이해 주세요</div>
+            <div class="modal-desc">서아서준타워는 모바일과 태블릿에서 가로 모드에 맞춰 조작 버튼과 시점을 배치했습니다.</div>
+        </div>
+    </div>
+
     <script>
         const GAME_KEY = 'seoaTower';
         const SOLO_PROGRESS_KEY = 'seoaseojunTowerProgressV1';
@@ -592,6 +637,8 @@
                 themeColor: 0xff8f6b
             }
         ];
+
+        const TOWER_CHARACTER_COLORS = ['beige', 'green', 'pink', 'purple', 'yellow'];
 
         const firebaseConfig = {
             apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
@@ -633,9 +680,12 @@
         const resultDesc = document.getElementById('result-desc');
         const resultList = document.getElementById('result-list');
         const confirmExitOverlay = document.getElementById('confirm-exit-overlay');
+        const orientationOverlay = document.getElementById('orientation-overlay');
         const stickZone = document.getElementById('stick-zone');
         const stickBase = document.getElementById('stick-base');
         const stickKnob = document.getElementById('stick-knob');
+        const zoomInBtn = document.getElementById('zoom-in-btn');
+        const zoomOutBtn = document.getElementById('zoom-out-btn');
         const jumpBtn = document.getElementById('jump-btn');
 
         const state = {
@@ -654,7 +704,7 @@
             exiting: false,
             phase: 'selecting',
             checkpointIndex: 0,
-            checkpointPos: new THREE.Vector3(0, HALF_HEIGHT + 2.2, 0),
+            checkpointPos: new THREE.Vector3(0, HALF_HEIGHT + 1.84, 0),
             startedAt: 0,
             finishedAt: 0,
             finishRank: null,
@@ -674,17 +724,19 @@
         };
 
         const physics = {
-            groundAccel: 34,
-            airAccel: 14,
-            groundFriction: 18,
-            airFriction: 1.2,
-            moveSpeed: 7.8,
-            airSpeed: 6.8,
-            gravity: 30,
-            jumpVelocity: 10.2,
+            groundAccel: 46,
+            airAccel: 22,
+            groundFriction: 34,
+            airFriction: 4.8,
+            moveSpeed: 6.4,
+            airSpeed: 6.1,
+            gravity: 24,
+            jumpVelocity: 9.1,
+            jumpMoveBoost: 5.8,
             maxFallSpeed: -32,
-            coyoteTime: 0.12,
-            jumpBufferTime: 0.16
+            coyoteTime: 0.16,
+            jumpBufferTime: 0.18,
+            groundSnapDistance: 0.28
         };
 
         const world = {
@@ -701,14 +753,19 @@
             lastFrame: 0,
             cam: {
                 yaw: Math.PI,
-                pitch: -0.36,
-                dist: 7.5,
+                pitch: -0.3,
+                dist: 6.4,
+                targetDist: 6.4,
+                minDist: 4.4,
+                maxDist: 9.8,
                 dragId: -1,
                 lastX: 0,
-                lastY: 0
+                lastY: 0,
+                pointers: new Map(),
+                pinchDistance: 0
             },
             player: {
-                pos: new THREE.Vector3(0, HALF_HEIGHT + 2.2, 0),
+                pos: new THREE.Vector3(0, HALF_HEIGHT + 1.84, 0),
                 vel: new THREE.Vector3(),
                 grounded: false,
                 coyote: 0,
@@ -783,6 +840,44 @@
             if (current < target) return Math.min(target, current + delta);
             if (current > target) return Math.max(target, current - delta);
             return current;
+        }
+
+        function hashString(value) {
+            const text = String(value || 'tower');
+            let hash = 0;
+            for (let i = 0; i < text.length; i++) {
+                hash = ((hash << 5) - hash) + text.charCodeAt(i);
+                hash |= 0;
+            }
+            return Math.abs(hash);
+        }
+
+        function pickTowerCharacterColor(seed) {
+            return TOWER_CHARACTER_COLORS[hashString(seed) % TOWER_CHARACTER_COLORS.length];
+        }
+
+        function resolveTowerCharacterFrames(seed) {
+            const color = pickTowerCharacterColor(seed);
+            const base = './seoa_tower_assets/characters/character_' + color + '_';
+            const fallback = createEmojiTexture('🙂');
+            const frames = {
+                idle: fallback,
+                walkA: fallback,
+                walkB: fallback,
+                jump: fallback
+            };
+            try {
+                ['idle', 'walk_a', 'walk_b', 'jump'].forEach(function(name) {
+                    const texture = world.textureLoader.load(base + name + '.svg');
+                    texture.colorSpace = THREE.SRGBColorSpace;
+                    if (name === 'walk_a') frames.walkA = texture;
+                    else if (name === 'walk_b') frames.walkB = texture;
+                    else frames[name] = texture;
+                });
+            } catch (error) {
+                console.warn('타워 캐릭터 프레임 로드 실패:', error);
+            }
+            return frames;
         }
 
         function getAvatarMarkup(avatarValue) {
@@ -898,6 +993,114 @@
                 z /= len;
             }
             return { x: x, z: z };
+        }
+
+        function setCameraZoom(nextDist) {
+            world.cam.targetDist = Math.max(world.cam.minDist, Math.min(world.cam.maxDist, nextDist));
+        }
+
+        function updateOrientationGuard() {
+            const needsLandscape = Math.max(window.innerWidth, window.innerHeight) <= 1180 && window.innerHeight > window.innerWidth;
+            setOverlay(orientationOverlay, needsLandscape);
+        }
+
+        async function tryLockLandscape() {
+            if (!screen.orientation || typeof screen.orientation.lock !== 'function') return;
+            try {
+                await screen.orientation.lock('landscape');
+            } catch (error) {
+                console.warn('가로 모드 잠금 실패:', error);
+            }
+        }
+
+        function getPointerDistance(pointers) {
+            const items = Array.from(pointers.values());
+            if (items.length < 2) return 0;
+            return Math.hypot(items[0].x - items[1].x, items[0].y - items[1].y);
+        }
+
+        function hasVerticalOverlap(record, posY) {
+            const playerBottom = posY - HALF_HEIGHT + 0.08;
+            const playerTop = posY + HALF_HEIGHT - 0.06;
+            const blockBottom = record.y - record.sizeY * 0.5;
+            const blockTop = record.y + record.sizeY * 0.5;
+            return playerTop > blockBottom + 0.08 && playerBottom < blockTop - 0.26;
+        }
+
+        function resolveAxisCollision(axis, prevValue) {
+            const otherAxis = axis === 'x' ? 'z' : 'x';
+            for (let i = 0; i < world.platformRecords.length; i++) {
+                const record = world.platformRecords[i];
+                if (!hasVerticalOverlap(record, world.player.pos.y)) continue;
+                const axisHalf = (axis === 'x' ? record.sizeX : record.sizeZ) * 0.5 + PLAYER_RADIUS * 0.9;
+                const otherHalf = (axis === 'x' ? record.sizeZ : record.sizeX) * 0.5 + PLAYER_RADIUS * 0.72;
+                const axisCenter = axis === 'x' ? record.x : record.z;
+                const otherCenter = axis === 'x' ? record.z : record.x;
+                if (Math.abs(world.player.pos[otherAxis] - otherCenter) > otherHalf) continue;
+                if (Math.abs(world.player.pos[axis] - axisCenter) > axisHalf) continue;
+                if (prevValue <= axisCenter - axisHalf && world.player.pos[axis] > axisCenter - axisHalf) {
+                    world.player.pos[axis] = axisCenter - axisHalf;
+                    world.player.vel[axis] = Math.min(0, world.player.vel[axis]);
+                } else if (prevValue >= axisCenter + axisHalf && world.player.pos[axis] < axisCenter + axisHalf) {
+                    world.player.pos[axis] = axisCenter + axisHalf;
+                    world.player.vel[axis] = Math.max(0, world.player.vel[axis]);
+                }
+            }
+        }
+
+        function findNearbySurface(maxDrop) {
+            let best = null;
+            const foot = world.player.pos.y - HALF_HEIGHT;
+            for (let i = 0; i < world.platformRecords.length; i++) {
+                const record = world.platformRecords[i];
+                const halfX = record.sizeX * 0.5 + PLAYER_RADIUS * 0.84;
+                const halfZ = record.sizeZ * 0.5 + PLAYER_RADIUS * 0.84;
+                if (Math.abs(world.player.pos.x - record.x) > halfX || Math.abs(world.player.pos.z - record.z) > halfZ) continue;
+                const top = record.y + record.sizeY * 0.5;
+                const drop = foot - top;
+                if (drop < 0 || drop > maxDrop) continue;
+                if (!best || top > best.top) {
+                    best = { top: top, record: record };
+                }
+            }
+            return best;
+        }
+
+        function applyLanding(record, top) {
+            world.player.pos.y = top + HALF_HEIGHT;
+            world.player.vel.y = 0;
+            world.player.grounded = true;
+            world.player.coyote = physics.coyoteTime;
+            if (record && typeof record.checkpointIndex === 'number' && record.checkpointIndex > state.checkpointIndex) {
+                setCheckpoint(record.checkpointIndex, true);
+                if (record.checkpointIndex >= STAGE_COUNT) {
+                    finishRun();
+                }
+            }
+        }
+
+        function updateAvatarMotion(entity, planarSpeed, airborne, velY, dt) {
+            if (!entity) return;
+            const moving = planarSpeed > 0.12;
+            entity.walkTime = (entity.walkTime || 0) + dt * (moving ? (4.6 + planarSpeed * 0.75) : 2.4);
+            const bob = moving ? Math.abs(Math.sin(entity.walkTime)) * 0.06 : 0;
+            const sway = moving ? Math.sin(entity.walkTime * 0.9) * 0.04 : 0;
+            if (entity.animFrames) {
+                const frame = airborne
+                    ? entity.animFrames.jump
+                    : (moving ? (Math.sin(entity.walkTime) >= 0 ? entity.animFrames.walkA : entity.animFrames.walkB) : entity.animFrames.idle);
+                if (entity.sprite.material.map !== frame) {
+                    entity.sprite.material.map = frame;
+                    entity.sprite.material.needsUpdate = true;
+                }
+            }
+            entity.sprite.position.y = (entity.baseSpriteY || 0.02) + bob;
+            entity.sprite.material.rotation = sway;
+            const stretchY = airborne ? (velY > 0.2 ? 1.08 : 0.93) : (1 + bob * 0.18);
+            const stretchX = airborne ? (velY > 0.2 ? 0.94 : 1.05) : (moving ? 0.98 : 1);
+            const flip = entity.currentDir === 'left' ? -1 : 1;
+            entity.sprite.scale.set((entity.baseScaleX || 1.08) * stretchX * flip, (entity.baseScaleY || 1.46) * stretchY, 1);
+            entity.shadow.scale.set(moving ? 0.9 : 1, airborne ? 0.76 : 1, 1);
         }
 
         function resetRunState(shouldRespawn) {
@@ -1049,7 +1252,7 @@
             return 'front';
         }
 
-        function createAvatarEntity(avatarValue) {
+        function createAvatarEntity(avatarValue, seedValue) {
             const shadow = new THREE.Mesh(
                 new THREE.CircleGeometry(0.5, 18),
                 new THREE.MeshBasicMaterial({ color: 0x000000, opacity: 0.18, transparent: true })
@@ -1057,10 +1260,10 @@
             shadow.rotation.x = -Math.PI / 2;
             shadow.position.y = 0.03;
 
-            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true }));
-            sprite.scale.set(1.62, 2.12, 1);
+            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, alphaTest: 0.05 }));
+            sprite.scale.set(1.08, 1.46, 1);
             sprite.center.set(0.5, 0);
-            sprite.position.y = 0.04;
+            sprite.position.y = 0.03;
 
             const group = new THREE.Group();
             group.add(shadow);
@@ -1071,14 +1274,20 @@
                 sprite: sprite,
                 shadow: shadow,
                 textures: resolveAvatarTextures(avatarValue),
+                animFrames: resolveTowerCharacterFrames(seedValue || avatarValue),
                 currentDir: '',
-                targetPos: new THREE.Vector3()
+                targetPos: new THREE.Vector3(),
+                baseScaleX: 1.08,
+                baseScaleY: 1.46,
+                baseSpriteY: 0.03,
+                walkTime: 0
             };
         }
 
         function applyAvatarDir(entity, dir) {
             if (!entity || entity.currentDir === dir) return;
             entity.currentDir = dir;
+            if (entity.animFrames) return;
             entity.sprite.material.map = entity.textures[dir] || entity.textures.front;
             entity.sprite.material.needsUpdate = true;
         }
@@ -1094,7 +1303,7 @@
             world.scene = new THREE.Scene();
             world.scene.background = new THREE.Color(0xd7eeff);
             world.scene.fog = new THREE.Fog(0xd7eeff, 52, 240);
-            world.camera = new THREE.PerspectiveCamera(64, window.innerWidth / window.innerHeight, 0.1, 1400);
+            world.camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.1, 1400);
             world.textureLoader = new THREE.TextureLoader();
             world.textureLoader.crossOrigin = '';
 
@@ -1136,7 +1345,7 @@
                 world.decoGroup.add(cloud);
             }
 
-            world.localAvatar = createAvatarEntity(state.myAvatar);
+            world.localAvatar = createAvatarEntity(state.myAvatar, state.myUid || state.myAvatar);
             world.scene.add(world.localAvatar.group);
             applyAvatarDir(world.localAvatar, 'front');
 
@@ -1150,13 +1359,29 @@
             world.scene.add(world.activeRing);
 
             world.renderer.domElement.addEventListener('pointerdown', function(e) {
-                if (e.clientX < window.innerWidth * 0.42) return;
-                world.cam.dragId = e.pointerId;
-                world.cam.lastX = e.clientX;
-                world.cam.lastY = e.clientY;
+                world.cam.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+                if (world.cam.pointers.size >= 2) {
+                    world.cam.dragId = -1;
+                    world.cam.pinchDistance = getPointerDistance(world.cam.pointers);
+                } else if (e.clientX >= window.innerWidth * 0.42) {
+                    world.cam.dragId = e.pointerId;
+                    world.cam.lastX = e.clientX;
+                    world.cam.lastY = e.clientY;
+                }
                 world.renderer.domElement.setPointerCapture(e.pointerId);
-            });
+            }, { passive: true });
             world.renderer.domElement.addEventListener('pointermove', function(e) {
+                if (world.cam.pointers.has(e.pointerId)) {
+                    world.cam.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+                }
+                if (world.cam.pointers.size >= 2) {
+                    const pinchDistance = getPointerDistance(world.cam.pointers);
+                    if (world.cam.pinchDistance) {
+                        setCameraZoom(world.cam.targetDist - (pinchDistance - world.cam.pinchDistance) * 0.012);
+                    }
+                    world.cam.pinchDistance = pinchDistance;
+                    return;
+                }
                 if (e.pointerId !== world.cam.dragId) return;
                 const dx = e.clientX - world.cam.lastX;
                 const dy = e.clientY - world.cam.lastY;
@@ -1164,20 +1389,29 @@
                 world.cam.lastY = e.clientY;
                 world.cam.yaw -= dx * 0.0052;
                 world.cam.pitch -= dy * 0.0038;
-                world.cam.pitch = Math.max(-1.04, Math.min(0.2, world.cam.pitch));
+                world.cam.pitch = Math.max(-0.9, Math.min(0.08, world.cam.pitch));
             });
             const endDrag = function(e) {
+                world.cam.pointers.delete(e.pointerId);
                 if (e.pointerId === world.cam.dragId) {
                     world.cam.dragId = -1;
+                }
+                if (world.cam.pointers.size < 2) {
+                    world.cam.pinchDistance = 0;
                 }
             };
             world.renderer.domElement.addEventListener('pointerup', endDrag);
             world.renderer.domElement.addEventListener('pointercancel', endDrag);
+            world.renderer.domElement.addEventListener('wheel', function(e) {
+                e.preventDefault();
+                setCameraZoom(world.cam.targetDist + e.deltaY * 0.007);
+            }, { passive: false });
 
             window.addEventListener('resize', function() {
                 world.camera.aspect = window.innerWidth / window.innerHeight;
                 world.camera.updateProjectionMatrix();
                 world.renderer.setSize(window.innerWidth, window.innerHeight);
+                updateOrientationGuard();
             });
         }
 
@@ -1217,53 +1451,139 @@
             const baseTexture = makeStudTexture('#ffffff', '#ededed', '#cacaca');
             baseTexture.repeat.set(2, 2);
             const platformMat = new THREE.MeshStandardMaterial({ map: baseTexture, roughness: 0.68, metalness: 0.03 });
+            const coreMat = new THREE.MeshStandardMaterial({ color: 0x8c5a4d, roughness: 0.74, metalness: 0.02 });
+            const wallMat = new THREE.MeshStandardMaterial({ color: 0x6a7a8c, roughness: 0.5, metalness: 0.04 });
 
-            addPlatform({ x: 0, y: 1.2, z: 0, sizeX: 7.6, sizeY: 1.2, sizeZ: 7.6, material: spawnMat, checkpointIndex: 0 });
-            world.checkpointRecords[0] = { x: 0, y: HALF_HEIGHT + 2.2, z: 0 };
+            const spawnY = 1.2;
+            const spawnZ = 14.6;
+            addPlatform({ x: 0, y: spawnY, z: spawnZ, sizeX: 8.8, sizeY: 1.2, sizeZ: 8.8, material: spawnMat, checkpointIndex: 0 });
+            world.checkpointRecords[0] = { x: 0, y: spawnY + 0.6 + HALF_HEIGHT + 0.04, z: spawnZ };
 
-            let cursor = new THREE.Vector3(0, 1.2, 0);
-            let dirIndex = 0;
+            const totalHeight = 26 + (tower.stageCount * 0.84);
+            addPlatform({ x: 0, y: totalHeight * 0.5, z: 0, sizeX: 10.6, sizeY: totalHeight + 8, sizeZ: 10.6, material: coreMat });
+
+            let cursor = new THREE.Vector3(0, spawnY, spawnZ);
             for (let stage = 1; stage <= tower.stageCount; stage++) {
-                if ((stage - 1) % 12 === 0 && stage > 1) {
-                    dirIndex = (dirIndex + 1) % 4;
+                const progress = stage / tower.stageCount;
+                const orbitRadius = 12.2 + (progress > 0.33 ? 0.55 : 0) + (progress > 0.66 ? 0.55 : 0);
+                const angle = -Math.PI * 0.5 + stage * (Math.PI / 8);
+                const circle = new THREE.Vector2(Math.cos(angle), Math.sin(angle));
+                const squareScale = orbitRadius / Math.max(Math.abs(circle.x), Math.abs(circle.y));
+                const squarePoint = new THREE.Vector3(circle.x * squareScale, 0, circle.y * squareScale);
+                const radial = squarePoint.clone().setY(0).normalize();
+                const tangent = new THREE.Vector3(-radial.z, 0, radial.x).normalize();
+                const pattern = stage <= 18 ? (stage % 3) : (stage % 7);
+                let verticalGain = [0.22, 0.78, 0.58, 0.68, 0.48, 0.32, 0.62][pattern];
+                if (stage <= 20) verticalGain *= 0.8;
+                if (stage >= 110) verticalGain *= 1.08;
+                const target = new THREE.Vector3(squarePoint.x, cursor.y + verticalGain, squarePoint.z);
+                const baseSize = progress < 0.33 ? 3.55 : (progress < 0.66 ? 3.15 : 2.82);
+                const checkpointSize = baseSize + 1.55;
+
+                const makeStep = function(t, y, sideOffset, size, radialOffset) {
+                    const pos = cursor.clone().lerp(target, t);
+                    pos.y = y;
+                    if (sideOffset) pos.add(tangent.clone().multiplyScalar(sideOffset));
+                    if (radialOffset) pos.add(radial.clone().multiplyScalar(radialOffset));
+                    return {
+                        pos: pos,
+                        sizeX: size,
+                        sizeY: 0.78,
+                        sizeZ: size
+                    };
+                };
+
+                let steps = [];
+                if (pattern === 0) {
+                    steps = [
+                        makeStep(0.28, cursor.y + 0.06, 0, baseSize + 0.12, 0.3),
+                        makeStep(0.56, cursor.y + 0.08, 0.95, baseSize - 0.08, 0),
+                        makeStep(0.82, cursor.y + 0.12, -0.95, baseSize - 0.1, 0),
+                        makeStep(1, target.y, 0, checkpointSize, 0)
+                    ];
+                } else if (pattern === 1) {
+                    steps = [
+                        makeStep(0.26, cursor.y + 0.18, 0, baseSize + 0.1, 0),
+                        makeStep(0.52, cursor.y + 0.4, 0.55, baseSize - 0.05, 0),
+                        makeStep(0.76, cursor.y + 0.6, -0.28, baseSize - 0.1, 0),
+                        makeStep(1, target.y, 0, checkpointSize, 0)
+                    ];
+                } else if (pattern === 2) {
+                    steps = [
+                        makeStep(0.28, cursor.y + 0.14, 1.45, baseSize - 0.08, 0),
+                        makeStep(0.56, cursor.y + 0.26, -1.45, baseSize - 0.12, 0),
+                        makeStep(0.82, cursor.y + 0.42, 1.1, baseSize - 0.1, 0),
+                        makeStep(1, target.y, 0, checkpointSize, 0)
+                    ];
+                } else if (pattern === 3) {
+                    steps = [
+                        makeStep(0.22, cursor.y + 0.12, 2.15, baseSize - 0.08, 0.25),
+                        makeStep(0.48, cursor.y + 0.24, 1.25, baseSize - 0.14, -0.1),
+                        makeStep(0.74, cursor.y + 0.5, -0.84, baseSize - 0.16, 0.12),
+                        makeStep(1, target.y, 0, checkpointSize, 0)
+                    ];
+                    const wallPos = cursor.clone().lerp(target, 0.56);
+                    addPlatform({
+                        x: wallPos.x,
+                        y: cursor.y + 1.2,
+                        z: wallPos.z,
+                        sizeX: 3.8,
+                        sizeY: 2.0,
+                        sizeZ: 1.2,
+                        material: wallMat.clone()
+                    });
+                } else if (pattern === 4) {
+                    steps = [
+                        makeStep(0.24, cursor.y + 0.1, 2.25, baseSize - 0.04, 0),
+                        makeStep(0.5, cursor.y + 0.18, 2.25, baseSize - 0.18, -0.18),
+                        makeStep(0.78, cursor.y + 0.32, 0.92, baseSize - 0.18, 0.12),
+                        makeStep(1, target.y, 0, checkpointSize, 0)
+                    ];
+                    const fakeWall = cursor.clone().lerp(target, 0.44);
+                    addPlatform({
+                        x: fakeWall.x,
+                        y: cursor.y + 0.92,
+                        z: fakeWall.z,
+                        sizeX: 4.2,
+                        sizeY: 1.4,
+                        sizeZ: 1.1,
+                        material: wallMat.clone()
+                    });
+                } else if (pattern === 5) {
+                    steps = [
+                        makeStep(0.34, cursor.y + 0.08, 0, baseSize + 0.52, 0.2),
+                        makeStep(0.68, cursor.y + 0.1, 0, baseSize + 0.42, -0.2),
+                        makeStep(1, target.y, 0, checkpointSize, 0)
+                    ];
+                } else {
+                    steps = [
+                        makeStep(0.22, cursor.y + 0.14, 0, baseSize - 0.1, -0.38),
+                        makeStep(0.46, cursor.y + 0.24, 1.4, baseSize - 0.14, 0),
+                        makeStep(0.72, cursor.y + 0.44, -1.2, baseSize - 0.12, 0.22),
+                        makeStep(1, target.y, 0, checkpointSize, 0)
+                    ];
                 }
-                const heading = getDirVector(dirIndex);
-                const side = getDirVector((dirIndex + 1) % 4);
-                const rise = 3.75 + ((stage % 5 === 0) ? 0.28 : 0);
-                const gap = 2.35 + (stage / tower.stageCount) * 0.35;
-                const offset = 2 + ((stage % 3) * 0.42);
-                const pattern = stage % 5;
-                const steps = pattern === 0
-                    ? [ [gap * 1.0, 0.95, 0], [gap * 2.25, 1.95, 0], [gap * 3.6, rise, 0] ]
-                    : pattern === 1
-                    ? [ [gap * 1.0, 0.9, offset], [gap * 2.1, 1.9, -offset * 0.82], [gap * 3.45, rise, 0] ]
-                    : pattern === 2
-                    ? [ [gap * 1.0, 0.82, offset * 0.8], [gap * 2.0, 1.66, 0], [gap * 3.0, 2.52, -offset * 0.7], [gap * 4.0, rise, 0] ]
-                    : pattern === 3
-                    ? [ [gap * 1.05, 0.8, 0], [gap * 2.5, 1.85, 0], [gap * 4.1, rise, 0] ]
-                    : [ [gap * 1.0, 0.85, offset * 0.72], [gap * 2.0, 1.72, offset * 0.72], [gap * 3.15, 2.58, -offset * 0.52], [gap * 4.35, rise, 0] ];
 
                 steps.forEach(function(step, idx) {
-                    const pos = cursor.clone()
-                        .add(heading.clone().multiplyScalar(step[0]))
-                        .add(side.clone().multiplyScalar(step[2]));
-                    pos.y = cursor.y + step[1];
                     const isCheckpoint = idx === steps.length - 1;
-                    const size = isCheckpoint ? 4 : (pattern === 3 && idx < steps.length - 1 ? 4.8 : 2.4);
-                    const sizeZ = pattern === 3 && idx < steps.length - 1 ? 1.2 : size;
+                    const height = isCheckpoint ? 0.96 : step.sizeY;
                     addPlatform({
-                        x: pos.x,
-                        y: pos.y,
-                        z: pos.z,
-                        sizeX: Math.abs(heading.x) > 0 ? size : sizeZ,
-                        sizeY: isCheckpoint ? 0.96 : 0.76,
-                        sizeZ: Math.abs(heading.x) > 0 ? sizeZ : size,
+                        x: step.pos.x,
+                        y: step.pos.y,
+                        z: step.pos.z,
+                        sizeX: step.sizeX,
+                        sizeY: height,
+                        sizeZ: step.sizeZ,
                         material: isCheckpoint ? spawnMat.clone() : platformMat.clone(),
                         checkpointIndex: isCheckpoint ? stage : null
                     });
                     if (isCheckpoint) {
-                        world.checkpointRecords[stage] = { x: pos.x, y: pos.y + HALF_HEIGHT + 0.58, z: pos.z };
-                        cursor = new THREE.Vector3(pos.x, pos.y, pos.z);
+                        world.checkpointRecords[stage] = {
+                            x: step.pos.x,
+                            y: step.pos.y + height * 0.5 + HALF_HEIGHT + 0.04,
+                            z: step.pos.z
+                        };
+                        cursor = new THREE.Vector3(step.pos.x, step.pos.y, step.pos.z);
                     }
                 });
             }
@@ -1343,14 +1663,17 @@
                 const prog = progress[uid] || {};
                 let remote = state.remotePlayers.get(uid);
                 if (!remote) {
-                    remote = createAvatarEntity(player.avatar || prog.avatar || '🙂');
+                    remote = createAvatarEntity(player.avatar || prog.avatar || '🙂', uid);
                     state.remotePlayers.set(uid, remote);
                     world.scene.add(remote.group);
                     applyAvatarDir(remote, 'front');
                 }
-                remote.targetPos.set(Number(prog.x || 0), Number(prog.y || (HALF_HEIGHT + 2.2)), Number(prog.z || 0));
-                remote.group.position.lerp(remote.targetPos.clone().add(new THREE.Vector3(0, -HALF_HEIGHT, 0)), 0.24);
+                remote.targetPos.set(Number(prog.x || 0), Number(prog.y || (HALF_HEIGHT + 1.84)), Number(prog.z || 0));
+                const worldTarget = remote.targetPos.clone().add(new THREE.Vector3(0, -HALF_HEIGHT, 0));
+                const travel = remote.group.position.distanceTo(worldTarget);
+                remote.group.position.lerp(worldTarget, 0.28);
                 applyAvatarDir(remote, getFacingDirection(Number(prog.facing || Math.PI)));
+                updateAvatarMotion(remote, travel * 12, false, 0, 1 / 60);
             });
             Array.from(state.remotePlayers.keys()).forEach(function(uid) {
                 if (livingIds.has(uid)) return;
@@ -1361,18 +1684,19 @@
         }
 
         function updateCamera(dt) {
-            const portrait = window.innerHeight >= window.innerWidth;
-            const desiredDist = portrait ? 7.2 : 8.2;
-            world.cam.dist = approach(world.cam.dist, desiredDist, dt * 4.8);
+            world.cam.dist = approach(world.cam.dist, world.cam.targetDist, dt * 10);
             const x = world.player.pos.x + Math.sin(world.cam.yaw) * Math.cos(world.cam.pitch) * world.cam.dist;
-            const y = world.player.pos.y + 1.45 + Math.sin(world.cam.pitch) * world.cam.dist;
+            const y = world.player.pos.y + 1.78 + Math.sin(world.cam.pitch) * world.cam.dist;
             const z = world.player.pos.z + Math.cos(world.cam.yaw) * Math.cos(world.cam.pitch) * world.cam.dist;
-            world.camera.position.lerp(new THREE.Vector3(x, y, z), 0.14);
-            world.camera.lookAt(world.player.pos.x, world.player.pos.y + 0.78, world.player.pos.z);
+            world.camera.position.lerp(new THREE.Vector3(x, y, z), 0.18);
+            world.camera.lookAt(world.player.pos.x, world.player.pos.y + 0.9, world.player.pos.z);
         }
 
         function updateLocalPlayer(dt) {
-            if (state.phase !== 'playing' || world.player.finished) return;
+            if (state.phase !== 'playing' || world.player.finished) {
+                updateAvatarMotion(world.localAvatar, 0, false, 0, dt);
+                return;
+            }
 
             input.jumpBuffer = Math.max(0, input.jumpBuffer - dt);
             world.player.coyote = Math.max(0, world.player.coyote - dt);
@@ -1388,59 +1712,88 @@
             const nz = desiredLen > 0.001 ? desiredZ / desiredLen : 0;
 
             if (desiredLen > 0.001) {
-                const accel = world.player.grounded ? physics.groundAccel : physics.airAccel;
-                const maxSpeed = world.player.grounded ? physics.moveSpeed : physics.airSpeed;
-                world.player.vel.x = approach(world.player.vel.x, nx * maxSpeed, accel * dt);
-                world.player.vel.z = approach(world.player.vel.z, nz * maxSpeed, accel * dt);
-                world.player.facing = Math.atan2(world.player.vel.x, world.player.vel.z);
+                if (world.player.grounded) {
+                    world.player.vel.x = nx * physics.moveSpeed;
+                    world.player.vel.z = nz * physics.moveSpeed;
+                } else {
+                    world.player.vel.x = approach(world.player.vel.x, nx * physics.airSpeed, physics.airAccel * dt);
+                    world.player.vel.z = approach(world.player.vel.z, nz * physics.airSpeed, physics.airAccel * dt);
+                }
+                world.player.facing = Math.atan2(nx, nz);
             } else {
-                const friction = world.player.grounded ? physics.groundFriction : physics.airFriction;
-                world.player.vel.x = approach(world.player.vel.x, 0, friction * dt);
-                world.player.vel.z = approach(world.player.vel.z, 0, friction * dt);
+                if (world.player.grounded) {
+                    world.player.vel.x = 0;
+                    world.player.vel.z = 0;
+                } else {
+                    world.player.vel.x = approach(world.player.vel.x, 0, physics.airFriction * dt);
+                    world.player.vel.z = approach(world.player.vel.z, 0, physics.airFriction * dt);
+                }
             }
 
             if (input.jumpBuffer > 0 && (world.player.grounded || world.player.coyote > 0)) {
                 world.player.vel.y = physics.jumpVelocity;
+                if (desiredLen > 0.001) {
+                    world.player.vel.x = nx * Math.max(physics.moveSpeed, physics.jumpMoveBoost);
+                    world.player.vel.z = nz * Math.max(physics.moveSpeed, physics.jumpMoveBoost);
+                }
                 world.player.grounded = false;
                 world.player.coyote = 0;
                 input.jumpBuffer = 0;
             }
 
             world.player.vel.y = Math.max(physics.maxFallSpeed, world.player.vel.y - physics.gravity * dt);
+            const prevX = world.player.pos.x;
+            world.player.pos.x += world.player.vel.x * dt;
+            resolveAxisCollision('x', prevX);
+
+            const prevZ = world.player.pos.z;
+            world.player.pos.z += world.player.vel.z * dt;
+            resolveAxisCollision('z', prevZ);
+
             const prevY = world.player.pos.y;
-            world.player.pos.addScaledVector(world.player.vel, dt);
+            world.player.pos.y += world.player.vel.y * dt;
             world.player.grounded = false;
 
             const footPrev = prevY - HALF_HEIGHT;
             const footNow = world.player.pos.y - HALF_HEIGHT;
+            const headPrev = prevY + HALF_HEIGHT;
+            const headNow = world.player.pos.y + HALF_HEIGHT;
+            let landingRecord = null;
+            let landingTop = -Infinity;
             for (let i = 0; i < world.platformRecords.length; i++) {
                 const record = world.platformRecords[i];
                 const halfX = record.sizeX * 0.5 + PLAYER_RADIUS * 0.76;
                 const halfZ = record.sizeZ * 0.5 + PLAYER_RADIUS * 0.76;
                 if (Math.abs(world.player.pos.x - record.x) > halfX || Math.abs(world.player.pos.z - record.z) > halfZ) continue;
                 const top = record.y + record.sizeY * 0.5;
-                if (footPrev >= top - 0.3 && footNow <= top + 0.18 && world.player.vel.y <= 0) {
-                    world.player.pos.y = top + HALF_HEIGHT;
+                const bottom = record.y - record.sizeY * 0.5;
+                if (world.player.vel.y <= 0 && footPrev >= top - 0.38 && footNow <= top + 0.2 && top > landingTop) {
+                    landingTop = top;
+                    landingRecord = record;
+                } else if (world.player.vel.y > 0 && headPrev <= bottom + 0.18 && headNow >= bottom - 0.08) {
+                    world.player.pos.y = bottom - HALF_HEIGHT;
                     world.player.vel.y = 0;
-                    world.player.grounded = true;
-                    world.player.coyote = physics.coyoteTime;
-                    if (typeof record.checkpointIndex === 'number' && record.checkpointIndex > state.checkpointIndex) {
-                        setCheckpoint(record.checkpointIndex, true);
-                        if (record.checkpointIndex >= STAGE_COUNT) {
-                            finishRun();
-                        }
-                    }
-                    break;
                 }
             }
 
-            if (!world.player.grounded && footNow < state.checkpointPos.y - 15) {
+            if (landingRecord) {
+                applyLanding(landingRecord, landingTop);
+            } else if (world.player.vel.y <= 1.2) {
+                const snapped = findNearbySurface(physics.groundSnapDistance);
+                if (snapped) {
+                    applyLanding(snapped.record, snapped.top);
+                }
+            }
+
+            if (!world.player.grounded && footNow <= 0.12) {
+                respawnToCheckpoint(false);
+            } else if (!world.player.grounded && footNow < state.checkpointPos.y - 10) {
                 respawnToCheckpoint(false);
             }
 
             world.localAvatar.group.position.set(world.player.pos.x, world.player.pos.y - HALF_HEIGHT, world.player.pos.z);
             applyAvatarDir(world.localAvatar, getFacingDirection(world.player.facing));
-            world.localAvatar.shadow.scale.setScalar(world.player.grounded ? 1 : 0.82);
+            updateAvatarMotion(world.localAvatar, Math.hypot(world.player.vel.x, world.player.vel.z), !world.player.grounded, world.player.vel.y, dt);
             syncLocalProgress(false);
         }
 
@@ -1786,6 +2139,8 @@
                 e.preventDefault();
                 queueJump();
             }, { passive: false });
+            zoomInBtn.addEventListener('click', function() { setCameraZoom(world.cam.targetDist - 0.7); });
+            zoomOutBtn.addEventListener('click', function() { setCameraZoom(world.cam.targetDist + 0.7); });
 
             document.getElementById('checkpoint-btn').addEventListener('click', function() { respawnToCheckpoint(true); });
             document.getElementById('exit-btn').addEventListener('click', function() { setOverlay(confirmExitOverlay, true); });
@@ -1834,6 +2189,9 @@
             world.localAvatar.textures = resolveAvatarTextures(state.myAvatar);
             applyAvatarDir(world.localAvatar, 'front');
             bindControls();
+            updateOrientationGuard();
+            tryLockLandscape();
+            window.addEventListener('orientationchange', updateOrientationGuard);
 
             const params = getQueryParams();
             state.roomId = params.roomId;
