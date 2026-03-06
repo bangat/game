@@ -25,6 +25,10 @@ app.use(express.json({ limit: '1mb' }));
 app.use('/vendor/three', express.static(path.join(__dirname, '..', 'node_modules', 'three')));
 app.use('/client', express.static(path.join(__dirname, '..', 'client')));
 
+app.get('/favicon.ico', (_req, res) => {
+    res.status(204).end();
+});
+
 app.get('/api/bootstrap', (req, res) => {
     const userId = String(req.query.userId || '').trim() || `guest_${Date.now()}`;
     const nickname = String(req.query.nickname || '').trim() || '별빛 모험가';

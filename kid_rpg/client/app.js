@@ -1,6 +1,8 @@
 import * as THREE from '/vendor/three/build/three.module.js';
+import { activeSkin, applySkinToRoot } from '/client/assets/skins/dark-fantasy/manifest.js';
 
 const refs = {
+    app: document.getElementById('app'),
     intro: document.getElementById('intro-screen'),
     orientationGuard: document.getElementById('orientation-guard'),
     classModal: document.getElementById('class-modal'),
@@ -12,12 +14,14 @@ const refs = {
     offlineCloseBtn: document.getElementById('offline-close-btn'),
     zoneLabel: document.getElementById('zone-label'),
     playerName: document.getElementById('player-name'),
+    playerAvatar: document.getElementById('player-avatar'),
     onlineLabel: document.getElementById('online-label'),
     levelLabel: document.getElementById('level-label'),
     powerLabel: document.getElementById('power-label'),
     goldLabel: document.getElementById('gold-label'),
     expBar: document.getElementById('exp-bar'),
     expLabel: document.getElementById('exp-label'),
+    questCard: document.getElementById('quest-card'),
     questTitle: document.getElementById('quest-title'),
     questDesc: document.getElementById('quest-desc'),
     autoQuestBtn: document.getElementById('auto-quest-btn'),
@@ -28,6 +32,8 @@ const refs = {
     combatState: document.getElementById('auto-state-label'),
     hpBar: document.getElementById('hp-bar'),
     hpLabel: document.getElementById('hp-label'),
+    mpBar: document.getElementById('mp-bar'),
+    mpLabel: document.getElementById('mp-label'),
     targetLabel: document.getElementById('target-label'),
     panelBackdrop: document.getElementById('panel-backdrop'),
     inventoryPanel: document.getElementById('inventory-panel'),
@@ -58,9 +64,33 @@ const zoneLayout = {
     shrine: { x: 198, z: 0, width: 40, depth: 30, color: '#d95d67', accent: '#ff6b6b' }
 };
 
+const zoneVisuals = {
+    village: { floor: '#6c5647', rim: '#b08a68', glow: '#f0c57b' },
+    meadow: { floor: '#58412d', rim: '#9d7a49', glow: '#d3af62' },
+    canyon: { floor: '#312c43', rim: '#72679d', glow: '#7fc8ff' },
+    shrine: { floor: '#2a2326', rim: '#8f5644', glow: '#ff8b5e' }
+};
+
+const zoneGroundPalette = {
+    village: { base: '#6a4f3d', shade: '#4d3b30', accent: '#9f7a56', glow: '#d3ab73' },
+    meadow: { base: '#4d4630', shade: '#353120', accent: '#827446', glow: '#c8be71' },
+    canyon: { base: '#302a3d', shade: '#211d2e', accent: '#615b87', glow: '#7eb7ff' },
+    shrine: { base: '#2c2225', shade: '#1c1517', accent: '#724537', glow: '#ef8b63' }
+};
+
+const zoneGroundTextureCache = new Map();
+
+function generateUserId() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+        return window.crypto.randomUUID();
+    }
+    return `guest_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
 const state = {
-    userId: localStorage.getItem('kidRpgUserId') || crypto.randomUUID(),
+    userId: localStorage.getItem('kidRpgUserId') || generateUserId(),
     nickname: localStorage.getItem('kidRpgNickname') || '',
+    skin: activeSkin,
     worldData: null,
     profile: null,
     ws: null,
@@ -251,6 +281,20 @@ function getStarterInventory(classId) {
     ];
 }
 
+function getBaseManaForClass(classId) {
+    if (classId === 'mage') return 180;
+    if (classId === 'ranger') return 130;
+    return 95;
+}
+
+function getSkillManaCost(skillId) {
+    const skill = state.worldData?.skills?.[skillId];
+    if (!skill) return 0;
+    if (skill.kind === 'meteor' || skill.kind === 'shockwave') return 28;
+    if (skill.kind === 'dash') return 22;
+    return 14;
+}
+
 function computeDerivedStats(profile) {
     const equipment = Object.values(profile.equipment || {});
     const bonus = { maxHp: 0, attack: 0, defense: 0 };
@@ -264,6 +308,7 @@ function computeDerivedStats(profile) {
     });
     profile.derivedStats = {
         maxHp: profile.baseStats.maxHp + bonus.maxHp,
+        maxMp: getBaseManaForClass(profile.classId) + Math.round(profile.level * 4),
         attack: profile.baseStats.attack + bonus.attack,
         defense: profile.baseStats.defense + bonus.defense,
         speed: profile.baseStats.speed
@@ -275,6 +320,7 @@ function computeDerivedStats(profile) {
     }, 0);
     profile.expMax = expForLevel(profile.level);
     profile.currentHp = Math.min(profile.derivedStats.maxHp, profile.currentHp || profile.derivedStats.maxHp);
+    profile.currentMp = Math.min(profile.derivedStats.maxMp, profile.currentMp || profile.derivedStats.maxMp);
     profile.powerScore = Math.round(profile.level * 22 + profile.derivedStats.attack * 2.6 + profile.derivedStats.defense * 2.2 + profile.derivedStats.maxHp * 0.22 + gearPower);
 }
 
@@ -302,6 +348,7 @@ function awardRewards(reward, sourceText) {
         state.profile.level += 1;
         state.profile.expMax = expForLevel(state.profile.level);
         state.profile.currentHp = state.profile.derivedStats.maxHp;
+        state.profile.currentMp = state.profile.derivedStats.maxMp;
     }
     computeDerivedStats(state.profile);
     if (state.profile.level > prevLevel) {
@@ -350,8 +397,17 @@ function closePanels() {
     refs.optionsPanel.classList.add('hidden');
 }
 
+function isBlockingModalVisible() {
+    return refs.intro.classList.contains('active')
+        || refs.classModal.classList.contains('active')
+        || refs.offlineModal.classList.contains('active');
+}
+
 function updateOrientationGuard() {
-    const needsLandscape = window.innerHeight > window.innerWidth && window.innerWidth < 1180;
+    const needsLandscape = !isBlockingModalVisible()
+        && !!state.profile
+        && window.innerHeight > window.innerWidth
+        && window.innerWidth < 1180;
     refs.orientationGuard.classList.toggle('active', needsLandscape);
 }
 
@@ -388,6 +444,8 @@ function getCurrentZone() {
 
 function refreshHud() {
     if (!state.profile) return;
+    refs.app.dataset.zone = state.profile.location.zoneId;
+    refs.playerAvatar.dataset.class = state.profile.classId || 'warrior';
     const zone = getZoneDefinition(state.profile.location.zoneId);
     const mainQuest = getMainQuest();
     refs.zoneLabel.textContent = `${zone.name} · ${zone.label}`;
@@ -398,10 +456,14 @@ function refreshHud() {
     refs.expBar.style.width = `${Math.max(0, Math.min(100, (state.profile.exp / state.profile.expMax) * 100))}%`;
     refs.expLabel.textContent = `${state.profile.exp} / ${state.profile.expMax} EXP`;
     refs.hpBar.style.width = `${Math.max(0, Math.min(100, (state.profile.currentHp / state.profile.derivedStats.maxHp) * 100))}%`;
-    refs.hpLabel.textContent = `${Math.round(state.profile.currentHp)} / ${state.profile.derivedStats.maxHp} HP`;
-    refs.combatState.textContent = state.profile.autoBattleState.enabled ? '자동 사냥 진행 중' : '수동 조작';
+    refs.hpLabel.textContent = `${Math.round(state.profile.currentHp)} / ${state.profile.derivedStats.maxHp}`;
+    refs.mpBar.style.width = `${Math.max(0, Math.min(100, (state.profile.currentMp / state.profile.derivedStats.maxMp) * 100))}%`;
+    refs.mpLabel.textContent = `${Math.round(state.profile.currentMp)} / ${state.profile.derivedStats.maxMp}`;
+    refs.combatState.textContent = state.profile.autoBattleState.enabled
+        ? (state.profile.autoBattleState.autoQuest ? '자동 찾기중...' : '자동 사냥중')
+        : '수동 조작';
     refs.autoBtn.textContent = state.profile.autoBattleState.enabled ? 'AUTO ON' : 'AUTO';
-    refs.autoQuestBtn.textContent = state.profile.autoBattleState.autoQuest ? '자동 추적 ON' : '자동 추적 OFF';
+    refs.autoQuestBtn.textContent = state.profile.autoBattleState.autoQuest ? 'AUTO ON' : 'AUTO';
     refs.onlineLabel.textContent = `온라인 ${Math.max(1, state.onlinePlayers.length)}명`;
     refs.bgmToggle.checked = state.profile.audioSettings.bgmEnabled;
     refs.sfxToggle.checked = state.profile.audioSettings.sfxEnabled;
@@ -502,83 +564,183 @@ function updateTargetLabel() {
     refs.targetLabel.textContent = enemy ? `${enemy.def.name} · HP ${Math.max(0, Math.round(enemy.hp))}` : '대상 없음';
 }
 
+function getZoneGroundTexture(zoneId) {
+    if (zoneGroundTextureCache.has(zoneId)) return zoneGroundTextureCache.get(zoneId);
+    const palette = zoneGroundPalette[zoneId] || zoneGroundPalette.village;
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+
+    const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+    gradient.addColorStop(0, palette.base);
+    gradient.addColorStop(1, palette.shade);
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    for (let i = 0; i < 520; i += 1) {
+        const alpha = 0.02 + Math.random() * 0.06;
+        ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+        const x = Math.random() * canvas.width;
+        const y = Math.random() * canvas.height;
+        const size = 8 + Math.random() * 30;
+        ctx.beginPath();
+        ctx.ellipse(x, y, size, size * (0.35 + Math.random() * 0.8), Math.random() * Math.PI, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    for (let i = 0; i < 260; i += 1) {
+        ctx.strokeStyle = `rgba(0,0,0,${0.07 + Math.random() * 0.08})`;
+        ctx.lineWidth = 1 + Math.random() * 2;
+        ctx.beginPath();
+        const startX = Math.random() * canvas.width;
+        const startY = Math.random() * canvas.height;
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(startX + (Math.random() * 40 - 20), startY + (Math.random() * 40 - 20));
+        ctx.stroke();
+    }
+
+    ctx.strokeStyle = `${palette.accent}66`;
+    ctx.lineWidth = 18;
+    ctx.beginPath();
+    ctx.moveTo(40, 376);
+    ctx.bezierCurveTo(140, 292, 238, 248, 470, 204);
+    ctx.stroke();
+
+    ctx.strokeStyle = `${palette.glow}44`;
+    ctx.lineWidth = 4;
+    ctx.strokeRect(18, 18, canvas.width - 36, canvas.height - 36);
+
+    if (zoneId === 'shrine') {
+        ctx.strokeStyle = `${palette.glow}88`;
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.arc(canvas.width / 2, canvas.height / 2, 98, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(canvas.width / 2, canvas.height / 2, 54, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+
+    if (zoneId === 'canyon') {
+        ctx.fillStyle = `${palette.glow}22`;
+        for (let i = 0; i < 7; i += 1) {
+            const x = 56 + i * 58;
+            ctx.fillRect(x, 74 + (i % 2) * 22, 12, 210);
+        }
+    }
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(1.2, 1.2);
+    texture.needsUpdate = true;
+    zoneGroundTextureCache.set(zoneId, texture);
+    return texture;
+}
+
 function createFloor(zoneId) {
     const zone = zoneLayout[zoneId];
+    const visual = zoneVisuals[zoneId];
     const floor = new THREE.Mesh(
         new THREE.BoxGeometry(zone.width, 2, zone.depth),
-        new THREE.MeshStandardMaterial({ color: zone.color, roughness: 0.88 })
+        new THREE.MeshStandardMaterial({ color: visual.floor, roughness: 0.94, metalness: 0.04 })
     );
     floor.receiveShadow = true;
     floor.position.set(zone.x, -1, zone.z);
     state.world.zoneGroup.add(floor);
 
+    const cap = new THREE.Mesh(
+        new THREE.PlaneGeometry(zone.width - 0.6, zone.depth - 0.6),
+        new THREE.MeshStandardMaterial({
+            map: getZoneGroundTexture(zoneId),
+            color: '#ffffff',
+            roughness: 0.96,
+            metalness: 0.02
+        })
+    );
+    cap.rotation.x = -Math.PI / 2;
+    cap.position.set(zone.x, 0.08, zone.z);
+    cap.receiveShadow = true;
+    state.world.zoneGroup.add(cap);
+
     const rim = new THREE.Mesh(
         new THREE.BoxGeometry(zone.width + 1.1, 0.55, zone.depth + 1.1),
-        new THREE.MeshStandardMaterial({ color: zone.accent, transparent: true, opacity: 0.28 })
+        new THREE.MeshStandardMaterial({
+            color: visual.rim,
+            emissive: visual.rim,
+            emissiveIntensity: 0.08,
+            transparent: true,
+            opacity: 0.34
+        })
     );
     rim.position.set(zone.x, 0.2, zone.z);
     state.world.zoneGroup.add(rim);
+
+    const sigil = new THREE.Mesh(
+        new THREE.RingGeometry(5.4, 6.6, 48),
+        new THREE.MeshBasicMaterial({ color: visual.glow, transparent: true, opacity: 0.14, side: THREE.DoubleSide })
+    );
+    sigil.rotation.x = -Math.PI / 2;
+    sigil.position.set(zone.x, 0.28, 0);
+    state.world.zoneGroup.add(sigil);
 }
 
 function addDecoration() {
     Object.keys(zoneLayout).forEach((zoneId) => createFloor(zoneId));
-    const bridgeMaterial = new THREE.MeshStandardMaterial({ color: '#d0b48f', roughness: 0.92 });
+    const pathMaterial = new THREE.MeshStandardMaterial({ color: '#463728', roughness: 0.96 });
     [31, 97, 165].forEach((x) => {
-        const bridge = new THREE.Mesh(new THREE.BoxGeometry(12, 1.1, 10), bridgeMaterial);
-        bridge.position.set(x, -0.35, 0);
-        bridge.receiveShadow = true;
-        state.world.zoneGroup.add(bridge);
+        const path = new THREE.Mesh(new THREE.BoxGeometry(16, 0.7, 8), pathMaterial);
+        path.position.set(x, -0.55, 0);
+        path.receiveShadow = true;
+        state.world.zoneGroup.add(path);
     });
 
-    const houseMat = new THREE.MeshStandardMaterial({ color: '#f4f1de', roughness: 0.9 });
-    for (let i = 0; i < 3; i += 1) {
-        const base = new THREE.Mesh(new THREE.BoxGeometry(5, 4, 4), houseMat);
-        base.position.set(-10 + i * 8, 1.5, -8 + (i % 2) * 12);
-        base.castShadow = true;
-        base.receiveShadow = true;
-        state.world.zoneGroup.add(base);
-        const roof = new THREE.Mesh(new THREE.ConeGeometry(4.2, 2.8, 4), new THREE.MeshStandardMaterial({ color: '#d1495b' }));
-        roof.rotation.y = Math.PI * 0.25;
-        roof.position.set(base.position.x, 4.8, base.position.z);
-        roof.castShadow = true;
-        state.world.zoneGroup.add(roof);
-    }
+    const pillarMaterial = new THREE.MeshStandardMaterial({ color: '#3d3346', roughness: 0.92 });
+    [-12, -4, 6, 14, 46, 56, 70, 78, 112, 122, 138, 148, 188, 208].forEach((x, index) => {
+        const z = index % 2 === 0 ? -13 : 13;
+        const pillar = new THREE.Mesh(new THREE.BoxGeometry(2.2, 5.2, 2.2), pillarMaterial);
+        pillar.position.set(x, 1.5, z);
+        pillar.castShadow = true;
+        pillar.receiveShadow = true;
+        state.world.zoneGroup.add(pillar);
+    });
 
-    const treeMat = new THREE.MeshStandardMaterial({ color: '#2a9d8f', roughness: 0.84 });
-    for (let i = 0; i < 10; i += 1) {
-        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.4, 2.4), new THREE.MeshStandardMaterial({ color: '#8d6e63' }));
-        trunk.position.set(40 + (i * 3.5), 0.8, -12 + (i % 4) * 8);
-        const crown = new THREE.Mesh(new THREE.SphereGeometry(1.8, 10, 10), treeMat);
-        crown.position.set(trunk.position.x, 3, trunk.position.z);
-        trunk.castShadow = crown.castShadow = true;
-        state.world.zoneGroup.add(trunk, crown);
-    }
+    const brazierMaterial = new THREE.MeshStandardMaterial({ color: '#6f4f35', roughness: 0.84 });
+    [-18, 18, 44, 80, 116, 152, 188, 208].forEach((x, index) => {
+        const brazier = new THREE.Mesh(new THREE.CylinderGeometry(0.65, 0.8, 1.2, 8), brazierMaterial);
+        brazier.position.set(x, 0.1, index % 2 === 0 ? -10 : 10);
+        state.world.zoneGroup.add(brazier);
 
-    const rockMat = new THREE.MeshStandardMaterial({ color: '#98a1b3', roughness: 0.95 });
-    for (let i = 0; i < 12; i += 1) {
-        const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(1 + (i % 3) * 0.35), rockMat);
-        rock.position.set(112 + i * 4, 1, -10 + (i % 5) * 5);
-        rock.rotation.set(i * 0.2, i * 0.1, 0);
-        rock.castShadow = true;
-        state.world.zoneGroup.add(rock);
-    }
-
-    const altar = new THREE.Mesh(
-        new THREE.CylinderGeometry(5.4, 6.4, 2.8, 8),
-        new THREE.MeshStandardMaterial({ color: '#f4f1de', roughness: 0.86 })
-    );
-    altar.position.set(zoneLayout.shrine.x, 0.6, 0);
-    altar.castShadow = true;
-    altar.receiveShadow = true;
-    state.world.zoneGroup.add(altar);
+        const flame = new THREE.Mesh(
+            new THREE.SphereGeometry(0.5, 10, 10),
+            new THREE.MeshBasicMaterial({ color: index > 4 ? '#8ac6ff' : '#ffb36a', transparent: true, opacity: 0.75 })
+        );
+        flame.position.set(x, 1.3, brazier.position.z);
+        state.world.zoneGroup.add(flame);
+    });
 }
 
 function createPlayerModel(classId, isRemote = false) {
     const classData = getClassData(classId || 'warrior');
     const group = new THREE.Group();
+    const shadow = new THREE.Mesh(
+        new THREE.CircleGeometry(1.2, 20),
+        new THREE.MeshBasicMaterial({ color: '#000000', transparent: true, opacity: isRemote ? 0.16 : 0.24 })
+    );
+    shadow.rotation.x = -Math.PI / 2;
+    shadow.position.y = 0.05;
+    group.add(shadow);
+
     const body = new THREE.Mesh(
         new THREE.CapsuleGeometry(0.65, 1.1, 6, 12),
-        new THREE.MeshStandardMaterial({ color: classData.color, transparent: isRemote, opacity: isRemote ? 0.45 : 1 })
+        new THREE.MeshStandardMaterial({
+            color: classData.color,
+            emissive: classData.color,
+            emissiveIntensity: isRemote ? 0.08 : 0.18,
+            transparent: isRemote,
+            opacity: isRemote ? 0.45 : 1
+        })
     );
     body.castShadow = true;
     body.position.y = 1.4;
@@ -586,7 +748,7 @@ function createPlayerModel(classId, isRemote = false) {
 
     const head = new THREE.Mesh(
         new THREE.SphereGeometry(0.48, 16, 16),
-        new THREE.MeshStandardMaterial({ color: '#f8dbc4', transparent: isRemote, opacity: isRemote ? 0.45 : 1 })
+        new THREE.MeshStandardMaterial({ color: '#e6c1a4', transparent: isRemote, opacity: isRemote ? 0.45 : 1 })
     );
     head.position.y = 2.55;
     head.castShadow = true;
@@ -599,7 +761,7 @@ function createPlayerModel(classId, isRemote = false) {
             : classId === 'ranger'
                 ? new THREE.TorusGeometry(0.55, 0.08, 8, 16, Math.PI)
                 : new THREE.BoxGeometry(0.16, 1.4, 0.2),
-        new THREE.MeshStandardMaterial({ color: weaponColor, emissive: weaponColor, emissiveIntensity: isRemote ? 0.2 : 0.35, transparent: isRemote, opacity: isRemote ? 0.5 : 1 })
+        new THREE.MeshStandardMaterial({ color: weaponColor, emissive: weaponColor, emissiveIntensity: isRemote ? 0.22 : 0.55, transparent: isRemote, opacity: isRemote ? 0.5 : 1 })
     );
     weapon.position.set(0.65, 1.65, 0.1);
     weapon.rotation.z = classId === 'ranger' ? Math.PI * 0.5 : -0.3;
@@ -611,16 +773,24 @@ function createPlayerModel(classId, isRemote = false) {
 
 function createEnemyModel(monsterId) {
     const group = new THREE.Group();
+    const shadow = new THREE.Mesh(
+        new THREE.CircleGeometry(1.15, 20),
+        new THREE.MeshBasicMaterial({ color: '#000000', transparent: true, opacity: 0.24 })
+    );
+    shadow.rotation.x = -Math.PI / 2;
+    shadow.position.y = 0.05;
+    group.add(shadow);
+
     let mesh;
     if (monsterId === 'slime') {
-        mesh = new THREE.Mesh(new THREE.SphereGeometry(1.05, 16, 16), new THREE.MeshStandardMaterial({ color: '#64dfdf', emissive: '#29c7c7', emissiveIntensity: 0.2 }));
+        mesh = new THREE.Mesh(new THREE.SphereGeometry(1.05, 16, 16), new THREE.MeshStandardMaterial({ color: '#2c8a76', emissive: '#50b59e', emissiveIntensity: 0.16 }));
         mesh.scale.y = 0.7;
     } else if (monsterId === 'wolf') {
-        mesh = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.1, 1), new THREE.MeshStandardMaterial({ color: '#8d99ae' }));
+        mesh = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.1, 1), new THREE.MeshStandardMaterial({ color: '#63555f', emissive: '#2d2430', emissiveIntensity: 0.2 }));
     } else if (monsterId === 'wisp') {
-        mesh = new THREE.Mesh(new THREE.OctahedronGeometry(1), new THREE.MeshStandardMaterial({ color: '#90e0ef', emissive: '#90e0ef', emissiveIntensity: 0.65 }));
+        mesh = new THREE.Mesh(new THREE.OctahedronGeometry(1), new THREE.MeshStandardMaterial({ color: '#8cb6ff', emissive: '#8cb6ff', emissiveIntensity: 0.75 }));
     } else {
-        mesh = new THREE.Mesh(new THREE.BoxGeometry(2.4, 3.8, 2.4), new THREE.MeshStandardMaterial({ color: '#9d0208', roughness: 0.82 }));
+        mesh = new THREE.Mesh(new THREE.BoxGeometry(2.4, 3.8, 2.4), new THREE.MeshStandardMaterial({ color: '#6f141a', roughness: 0.82, emissive: '#23080b', emissiveIntensity: 0.28 }));
         mesh.position.y = 1.1;
     }
     mesh.castShadow = true;
@@ -678,15 +848,15 @@ function buildWorld() {
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#bfe9ff');
-    scene.fog = new THREE.Fog('#bfe9ff', 80, 260);
+    scene.background = null;
+    scene.fog = new THREE.Fog('#0c0d12', 72, 190);
 
-    const camera = new THREE.PerspectiveCamera(48, window.innerWidth / window.innerHeight, 0.1, 500);
-    camera.position.set(18, 28, 26);
+    const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 500);
+    camera.position.set(12, 24, 20);
 
-    scene.add(new THREE.HemisphereLight('#ffffff', '#6ea8ff', 1.3));
-    const sun = new THREE.DirectionalLight('#fff8e8', 1.4);
-    sun.position.set(48, 60, 18);
+    scene.add(new THREE.HemisphereLight('#ebe4d9', '#171827', 0.9));
+    const sun = new THREE.DirectionalLight('#fcebd0', 1.25);
+    sun.position.set(32, 54, 22);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
     sun.shadow.camera.left = -120;
@@ -695,7 +865,10 @@ function buildWorld() {
     sun.shadow.camera.bottom = -120;
     scene.add(sun);
 
-    const baseFloor = new THREE.Mesh(new THREE.PlaneGeometry(360, 160), new THREE.MeshStandardMaterial({ color: '#d9edf7', roughness: 0.95 }));
+    const baseFloor = new THREE.Mesh(
+        new THREE.PlaneGeometry(360, 160),
+        new THREE.MeshStandardMaterial({ color: '#17161f', roughness: 0.98, transparent: true, opacity: 0.34 })
+    );
     baseFloor.rotation.x = -Math.PI / 2;
     baseFloor.position.y = -1.6;
     baseFloor.receiveShadow = true;
@@ -866,12 +1039,18 @@ function castSkill(slotIndex) {
     const skill = state.worldData.skills[skillId];
     const now = performance.now();
     if ((state.skillCooldowns[skillId] || 0) > now) return;
+    const manaCost = getSkillManaCost(skillId);
+    if (state.profile.currentMp < manaCost) {
+        showToast('마나가 부족합니다');
+        return;
+    }
     const target = getNearestEnemy(skill.range);
     if (!target) {
         showToast('사정거리 안에 대상이 없습니다');
         return;
     }
     state.skillCooldowns[skillId] = now + skill.cooldownMs;
+    state.profile.currentMp = Math.max(0, state.profile.currentMp - manaCost);
     state.world.hero.userData.attackTilt = 1.2;
     const damage = Math.round(state.profile.derivedStats.attack * skill.multiplier * currentZoneDamageScale());
     if (skill.kind === 'shockwave' || skill.kind === 'meteor') {
@@ -911,12 +1090,24 @@ function getQuestTargetZone() {
     return mainQuest ? mainQuest.objective.zoneId : 'meadow';
 }
 
+function beginQuestTracking(withTeleport = false) {
+    state.profile.autoBattleState.autoQuest = true;
+    state.profile.autoBattleState.enabled = true;
+    const targetZoneId = getQuestTargetZone();
+    if (withTeleport && targetZoneId && targetZoneId !== state.profile.location.zoneId) {
+        teleportToZone(targetZoneId, true);
+    }
+    showToast('자동 찾기중...');
+    syncProfileToServer();
+}
+
 function moveHero(direction, dt) {
     const speed = state.profile.derivedStats.speed * 4.2;
     state.world.hero.position.x += direction.x * speed * dt;
     state.world.hero.position.z += direction.z * speed * dt;
     state.world.hero.position.x = Math.max(state.world.groundBounds.minX, Math.min(state.world.groundBounds.maxX, state.world.hero.position.x));
     state.world.hero.position.z = Math.max(-18, Math.min(18, state.world.hero.position.z));
+    state.world.hero.userData.facingAngle = Math.atan2(direction.x, direction.z);
 }
 
 function getMoveVector() {
@@ -1049,15 +1240,21 @@ function updateHeroPresentation(dt) {
     if (!hero) return;
     hero.userData.bob += dt * 8;
     hero.userData.attackTilt = Math.max(0, hero.userData.attackTilt - dt * 4.6);
-    hero.userData.body.position.y = 1.4 + Math.abs(Math.sin(hero.userData.bob)) * 0.08;
-    hero.userData.weapon.rotation.z = (state.profile.classId === 'ranger' ? Math.PI * 0.5 : -0.3) - hero.userData.attackTilt;
+    hero.userData.body.position.y = 1.35 + Math.abs(Math.sin(hero.userData.bob)) * 0.07;
+    hero.userData.weapon.rotation.z = (state.profile.classId === 'ranger' ? Math.PI * 0.45 : -0.24) - hero.userData.attackTilt;
+    hero.rotation.y += ((hero.userData.facingAngle || 0) - hero.rotation.y) * 0.16;
+}
+
+function regenerateResources(dt) {
+    state.profile.currentHp = Math.min(state.profile.derivedStats.maxHp, state.profile.currentHp + dt * 1.2);
+    state.profile.currentMp = Math.min(state.profile.derivedStats.maxMp, state.profile.currentMp + dt * 6.5);
 }
 
 function updateCamera() {
     const target = state.world.hero.position;
-    const camPos = new THREE.Vector3(target.x + 18, 24, target.z + 24);
+    const camPos = new THREE.Vector3(target.x + 9.5, 24, target.z + 13);
     state.world.camera.position.lerp(camPos, 0.08);
-    state.world.camera.lookAt(target.x + 2, 1.6, target.z + 1);
+    state.world.camera.lookAt(target.x + 2.1, 1.2, target.z + 2.6);
 }
 
 function updateProfileLocation() {
@@ -1127,6 +1324,7 @@ function applyClassSelection(classId) {
     state.profile.autoBattleState = { enabled: false, lastZoneId: 'meadow', autoQuest: true };
     state.profile.currentHp = classData.baseStats.maxHp;
     computeDerivedStats(state.profile);
+    state.profile.currentMp = state.profile.derivedStats.maxMp;
 }
 
 async function bootstrapProfile(nickname) {
@@ -1149,6 +1347,7 @@ function populateClassCards() {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'class-item';
+        button.dataset.classId = classData.id;
         button.innerHTML = `<strong style="color:${classData.color}">${classData.name}</strong><p>${classData.flavor}</p>`;
         button.addEventListener('click', () => {
             audio.ensureContext();
@@ -1158,6 +1357,7 @@ function populateClassCards() {
             ensureHeroModel();
             teleportToZone('village', false);
             refreshHud();
+            updateOrientationGuard();
             syncProfileToServer();
         });
         refs.classGrid.appendChild(button);
@@ -1255,6 +1455,8 @@ function resetJoystick() {
 function bindUi() {
     refs.startBtn.addEventListener('click', async () => {
         refs.startBtn.disabled = true;
+        const originalText = refs.startBtn.textContent;
+        refs.startBtn.textContent = '연결 중...';
         try {
             const nickname = refs.nicknameInput.value.trim() || state.nickname || '별빛 모험가';
             audio.ensureContext();
@@ -1270,12 +1472,20 @@ function bindUi() {
             if (offlineReward) showOfflineReward(offlineReward);
             audio.applySettings();
             tryLockLandscape();
+            updateOrientationGuard();
+        } catch (error) {
+            console.error(error);
+            showToast('서버 연결에 실패했습니다. 잠시 후 다시 시도해주세요.');
         } finally {
+            refs.startBtn.textContent = originalText;
             refs.startBtn.disabled = false;
         }
     });
 
-    refs.offlineCloseBtn.addEventListener('click', () => refs.offlineModal.classList.remove('active'));
+    refs.offlineCloseBtn.addEventListener('click', () => {
+        refs.offlineModal.classList.remove('active');
+        updateOrientationGuard();
+    });
     refs.inventoryBtn.addEventListener('click', () => openPanel('inventoryPanel'));
     refs.questBtn.addEventListener('click', () => openPanel('questPanel'));
     refs.optionsBtn.addEventListener('click', () => openPanel('optionsPanel'));
@@ -1298,14 +1508,20 @@ function bindUi() {
         syncProfileToServer();
     });
     refs.autoQuestBtn.addEventListener('click', () => {
-        state.profile.autoBattleState.autoQuest = !state.profile.autoBattleState.autoQuest;
         audio.ensureContext();
         audio.playUi();
-        syncProfileToServer();
+        beginQuestTracking(false);
     });
     refs.teleportBtn.addEventListener('click', () => {
-        teleportToZone(getQuestTargetZone(), true);
-        syncProfileToServer();
+        audio.ensureContext();
+        audio.playUi();
+        beginQuestTracking(true);
+    });
+    refs.questCard.addEventListener('click', (event) => {
+        if (event.target.closest('button')) return;
+        audio.ensureContext();
+        audio.playUi();
+        beginQuestTracking(false);
     });
     refs.basicAttackBtn.addEventListener('click', () => {
         audio.ensureContext();
@@ -1379,6 +1595,7 @@ function gameLoop() {
         handleAutoBehavior(dt);
         const move = getMoveVector();
         if (move.lengthSq() > 0.001) moveHero(move, dt);
+        regenerateResources(dt);
         pickUpNearbyDrops();
         updateEnemies(dt);
         updateDrops(dt);
@@ -1397,6 +1614,7 @@ function gameLoop() {
 }
 
 function init() {
+    applySkinToRoot(refs.app, state.skin);
     bindUi();
     updateOrientationGuard();
     refs.nicknameInput.value = state.nickname;
