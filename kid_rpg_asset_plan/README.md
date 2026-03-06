@@ -13,8 +13,11 @@
 구성:
 
 - [ASSET_SELECTION.md](./ASSET_SELECTION.md): 카테고리별 우선 후보와 사용 이유
+- [PROTOTYPE_PICKLIST.md](./PROTOTYPE_PICKLIST.md): 지금 바로 프로토타입에 넣을 1차 채택 세트
 - [sources.json](./sources.json): 소스 정리용 manifest
 - [gallery.html](./gallery.html): 시각 검수용 미리보기 갤러리
+- `previews/`: 로컬 저장 썸네일 폴더
+- `open_gallery.cmd`: 갤러리 바로 열기
 - `characters_npc/`: 플레이어, 직업, NPC 후보 정리용
 - `monsters/`: 일반 몬스터, 보스 후보 정리용
 - `vfx/`: 스킬 이펙트, 히트 이펙트 후보 정리용
@@ -23,6 +26,12 @@
 - `audio/`: 효과음, BGM 후보 정리용
 
 지금 단계에서는 무작정 다운로드보다, `도트 감성 제거`와 `잠룡형 모바일 RPG 무드`에 맞는 후보를 먼저 추려 두는 데 집중합니다.
+
+빠른 확인:
+
+```cmd
+open_gallery.cmd
+```
 
 검수 포인트:
 
