@@ -15,7 +15,7 @@ const {
 } = require('./game-data');
 const { getProfile, patchProfile, markLogout } = require('./data-store');
 
-const PORT = Number(process.env.PORT || 3187);
+const PORT = Number(process.env.PORT || 43187);
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });

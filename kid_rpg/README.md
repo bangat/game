@@ -10,7 +10,7 @@ npm install
 npm start
 ```
 
-브라우저에서 `http://localhost:3187` 또는 같은 네트워크의 `http://내PC아이피:3187`로 접속합니다.
+브라우저에서 `http://localhost:43187` 또는 같은 네트워크의 `http://내PC아이피:43187`로 접속합니다.
 
 ## 현재 포함된 것
 
