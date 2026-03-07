@@ -16,6 +16,8 @@
 - [sources.json](./sources.json): 후보 원본 매니페스트
 - [gallery.html](./gallery.html): 검수용 갤러리
 - [ASSET_SELECTION.md](./ASSET_SELECTION.md): 1차 픽 요약
+- [UI_LAYOUT.md](./UI_LAYOUT.md): 모바일 HUD 배치 원칙
+- [ui_layout.html](./ui_layout.html): 모바일 HUD 목업
 - [preview_manifest.json](./preview_manifest.json): 자동 수집 결과
 - [generate_gallery.py](./generate_gallery.py): 갤러리 생성기
 - [sync_preview_assets.ps1](./sync_preview_assets.ps1): `previews/` 이미지를 카테고리 폴더로 복사
@@ -42,6 +44,12 @@ python generate_gallery.py
 
 ```cmd
 open_gallery.cmd
+```
+
+HUD 목업 보기:
+
+```cmd
+open_ui_layout.cmd
 ```
 
 로컬 웹서버 실행:
