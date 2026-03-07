@@ -17,16 +17,21 @@
 
 - [sources.json](./sources.json): 후보 원본 매니페스트
 - [jamryong_asset_seed.json](./jamryong_asset_seed.json): 새 모바일 검수 게시판에 넣을 번호형 시드 데이터와 직접 생성 가능 항목 분리본
+- [selection_state.json](./selection_state.json): 검수 게시판에서 저장한 선택 상태
+- [approved_assets.json](./approved_assets.json): 채택된 항목만 추린 export 파일
 - [preview_manifest.json](./preview_manifest.json): 미리보기 수집 결과
 - [gallery.html](./gallery.html): 전체 갤러리
 - [free_full_kits.html](./free_full_kits.html): 무료 통합팩 우선 검수판
 - [ui_layout.html](./ui_layout.html): HUD 목업
+- [asset_board.html](./asset_board.html): 모바일용 에셋 검수 게시판
 
 ## 스크립트
 
 - [generate_gallery.py](./generate_gallery.py): 갤러리 생성기
 - [sync_preview_assets.ps1](./sync_preview_assets.ps1): preview 이미지 동기화
 - [serve_gallery.ps1](./serve_gallery.ps1): 로컬 HTTP 서버 실행
+- [asset_board_server.js](./asset_board_server.js): 저장 가능한 검수 게시판 로컬 서버
+- [serve_asset_board.ps1](./serve_asset_board.ps1): 검수 게시판 서버 실행
 
 ## 실행
 
@@ -34,6 +39,7 @@
 cd C:\Users\user\Desktop\미니게임지옥\kid_rpg_asset_plan
 python generate_gallery.py
 powershell -ExecutionPolicy Bypass -File .\serve_gallery.ps1
+powershell -ExecutionPolicy Bypass -File .\serve_asset_board.ps1
 ```
 
 ## 방향
