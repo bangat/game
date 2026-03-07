@@ -8,6 +8,7 @@
 - [ANOTHER_DUNGEON_REBUILD_PROMPT.md](./ANOTHER_DUNGEON_REBUILD_PROMPT.md): 기존 재구성 방향 기준 프롬프트
 - [MASTER_PROMPT.md](./MASTER_PROMPT.md): 새 Phaser 잠룡 ARPG 구현 기준 프롬프트
 - [MOCKUP_SPEC.md](./MOCKUP_SPEC.md): 씬 흐름, HUD, 전투 연출 목업 명세
+- [JAMRYONG_ASSET_SHORTLIST.md](./JAMRYONG_ASSET_SHORTLIST.md): 1차 에셋 추천 조합과 카테고리별 숏리스트, 무료 기준/유료 참고/직접 생성 가능 영역 분리
 - [ASSET_SELECTION.md](./ASSET_SELECTION.md): 에셋 선정 요약
 - [FREE_FULL_PACK_SHORTLIST.md](./FREE_FULL_PACK_SHORTLIST.md): 무료 통합팩/보조팩 우선순위 메모
 - [UI_LAYOUT.md](./UI_LAYOUT.md): 모바일 HUD 배치 기준
@@ -15,6 +16,7 @@
 ## 검수 파일
 
 - [sources.json](./sources.json): 후보 원본 매니페스트
+- [jamryong_asset_seed.json](./jamryong_asset_seed.json): 새 모바일 검수 게시판에 넣을 번호형 시드 데이터와 직접 생성 가능 항목 분리본
 - [preview_manifest.json](./preview_manifest.json): 미리보기 수집 결과
 - [gallery.html](./gallery.html): 전체 갤러리
 - [free_full_kits.html](./free_full_kits.html): 무료 통합팩 우선 검수판
