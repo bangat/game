@@ -15,7 +15,9 @@
 
 - [sources.json](./sources.json): 후보 원본 매니페스트
 - [gallery.html](./gallery.html): 검수용 갤러리
+- [free_full_kits.html](./free_full_kits.html): 무료 통팩 우선 검수판
 - [ASSET_SELECTION.md](./ASSET_SELECTION.md): 1차 픽 요약
+- [FREE_FULL_PACK_SHORTLIST.md](./FREE_FULL_PACK_SHORTLIST.md): 무료/통팩 기준 재선정 메모
 - [UI_LAYOUT.md](./UI_LAYOUT.md): 모바일 HUD 배치 원칙
 - [ui_layout.html](./ui_layout.html): 모바일 HUD 목업
 - [preview_manifest.json](./preview_manifest.json): 자동 수집 결과
