@@ -1,42 +1,51 @@
 # kid_rpg_asset_plan
 
-`kid_rpg` 본작업 전에 먼저 검수할 에셋 계획 폴더입니다.
+`kid_rpg`를 `어나더던전` 같은 고퀄 도트 ARPG 톤으로 갈아엎기 전에,
+먼저 에셋 후보를 눈으로 확인하는 검수 폴더입니다.
 
-목표 방향:
+핵심 방향:
 
-- `잠룡` 같은 어두운 모바일 ARPG 감성
-- 작은 레트로 도트가 아니라 `고해상도 2D/2.5D 다크 판타지`
-- `배경판 + 구조물 오버레이 + 캐릭터/몬스터 + 무거운 HUD` 구조
-- 실제 게임 같은 상단 상태바, 우측 메뉴, 하단 스킬바
-- 4방향 캐릭터, 몬스터, NPC, 필드/던전 배경, 구조물, 스킬 이펙트, 아이템 아이콘을 먼저 고정
+- 3D 느낌 제거
+- 도트 기반 ARPG 시점
+- 상단 상태창 + 하단 스킬바 구조
+- 땅과 구조물이 붙어 보이는 맵
+- 캐릭터, 몬스터, VFX, HUD를 같은 톤으로 정리
 
-구성:
+주요 파일:
 
-- [ASSET_SELECTION.md](./ASSET_SELECTION.md): 카테고리별 우선 후보와 사용 이유
-- [PROTOTYPE_PICKLIST.md](./PROTOTYPE_PICKLIST.md): 지금 바로 프로토타입에 넣을 1차 채택 세트
-- [sources.json](./sources.json): 소스 정리용 manifest
-- [gallery.html](./gallery.html): 시각 검수용 미리보기 갤러리
-- `previews/`: 로컬 저장 썸네일 폴더
-- `open_gallery.cmd`: 갤러리 바로 열기
-- `characters_npc/`: 플레이어, 직업, NPC 후보 정리용
-- `monsters/`: 일반 몬스터, 보스 후보 정리용
-- `vfx/`: 스킬 이펙트, 히트 이펙트 후보 정리용
-- `items_ui/`: 아이템 아이콘, HUD/UI 후보 정리용
-- `maps_tiles/`: 필드/던전 배경판, 구조물, 타일보조 후보 정리용
-- `audio/`: 효과음, BGM 후보 정리용
+- [sources.json](./sources.json): 후보 원본 매니페스트
+- [gallery.html](./gallery.html): 검수용 갤러리
+- [ASSET_SELECTION.md](./ASSET_SELECTION.md): 1차 픽 요약
+- [preview_manifest.json](./preview_manifest.json): 자동 수집 결과
+- [generate_gallery.py](./generate_gallery.py): 갤러리 생성기
+- [sync_preview_assets.ps1](./sync_preview_assets.ps1): `previews/` 이미지를 카테고리 폴더로 복사
 
-지금 단계에서는 무작정 다운로드보다, `도트 감성 제거`와 `잠룡형 모바일 RPG 무드`에 맞는 후보를 먼저 추려 두는 데 집중합니다.
+카테고리:
 
-빠른 확인:
+- `reference`: Another Dungeon 공식 레퍼런스
+- `full_kits`: 전체 톤을 빨리 맞추는 통합 킷
+- `characters_npc`: 직업 / NPC 후보
+- `monsters`: 일반 몬스터 / 보스 후보
+- `maps_tiles`: 땅 / 길 / 던전 / 구조물 후보
+- `items_ui`: HUD / 상태창 / 아이콘 후보
+- `vfx`: 스킬 / 피격 / 순간이동 효과 후보
+- `audio`: 효과음 / 배경음악 후보
+
+로컬 확인:
+
+```powershell
+cd C:\Users\user\Desktop\미니게임지옥\kid_rpg_asset_plan
+python generate_gallery.py
+```
+
+브라우저로 바로 열기:
 
 ```cmd
 open_gallery.cmd
 ```
 
-검수 포인트:
+로컬 웹서버 실행:
 
-- 스샷처럼 실제 모바일 RPG 느낌이 나는가
-- 캐릭터/NPC/몬스터 스타일이 서로 충돌하지 않는가
-- 필드/던전이 테스트맵처럼 보이지 않는가
-- HUD가 웹페이지 패널처럼 보이지 않는가
-- 스킬 이펙트가 충분히 화려한가
+```powershell
+powershell -ExecutionPolicy Bypass -File .\serve_gallery.ps1
+```
