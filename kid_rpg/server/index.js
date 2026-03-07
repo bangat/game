@@ -24,9 +24,18 @@ const peers = new Map();
 app.use(express.json({ limit: '1mb' }));
 app.use('/vendor/three', express.static(path.join(__dirname, '..', 'node_modules', 'three')));
 app.use('/client', express.static(path.join(__dirname, '..', 'client')));
+app.use('/icons', express.static(path.join(__dirname, '..', '..', 'icons')));
 
 app.get('/favicon.ico', (_req, res) => {
     res.status(204).end();
+});
+
+app.get('/manifest.webmanifest', (_req, res) => {
+    res.sendFile(path.join(__dirname, '..', 'client', 'manifest.webmanifest'));
+});
+
+app.get('/sw.js', (_req, res) => {
+    res.sendFile(path.join(__dirname, '..', 'client', 'sw.js'));
 });
 
 app.get('/api/bootstrap', (req, res) => {

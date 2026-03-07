@@ -99,6 +99,142 @@ const SKILLS = {
     }
 };
 
+CLASSES.warrior.starterSkills = ['sword_slash'];
+CLASSES.warrior.buffSkillId = 'warrior_banner';
+CLASSES.warrior.levelUnlocks = [
+    { level: 3, skillId: 'warrior_banner' },
+    { level: 4, skillId: 'guard_break' }
+];
+CLASSES.mage.starterSkills = ['arcane_bolt'];
+CLASSES.mage.buffSkillId = 'mana_shield';
+CLASSES.mage.levelUnlocks = [
+    { level: 3, skillId: 'mana_shield' },
+    { level: 4, skillId: 'meteor_burst' }
+];
+CLASSES.ranger.starterSkills = ['triple_shot'];
+CLASSES.ranger.buffSkillId = 'hawk_eye';
+CLASSES.ranger.levelUnlocks = [
+    { level: 3, skillId: 'hawk_eye' },
+    { level: 4, skillId: 'dash_arrow' }
+];
+
+Object.assign(SKILLS, {
+    warrior_banner: {
+        id: 'warrior_banner',
+        name: '전장의 함성',
+        classId: 'warrior',
+        cooldownMs: 9000,
+        range: 0,
+        radius: 0,
+        multiplier: 0,
+        kind: 'buff',
+        tier: 'buff',
+        durationMs: 14000,
+        manaCost: 18,
+        buffBonus: { attack: 10, defense: 6 }
+    },
+    crimson_cross: {
+        id: 'crimson_cross',
+        name: '크림슨 크로스',
+        classId: 'warrior',
+        cooldownMs: 4300,
+        range: 5.6,
+        radius: 4.5,
+        multiplier: 2.1,
+        kind: 'shockwave',
+        tier: 'advanced',
+        manaCost: 26
+    },
+    earthshatter_legend: {
+        id: 'earthshatter_legend',
+        name: '대지 붕괴',
+        classId: 'warrior',
+        cooldownMs: 12800,
+        range: 6.4,
+        radius: 7.2,
+        multiplier: 3.45,
+        kind: 'shockwave',
+        tier: 'legendary',
+        manaCost: 40
+    },
+    mana_shield: {
+        id: 'mana_shield',
+        name: '마나 실드',
+        classId: 'mage',
+        cooldownMs: 8600,
+        range: 0,
+        radius: 0,
+        multiplier: 0,
+        kind: 'buff',
+        tier: 'buff',
+        durationMs: 16000,
+        manaCost: 18,
+        buffBonus: { attack: 8, maxHp: 40 }
+    },
+    frost_nova: {
+        id: 'frost_nova',
+        name: '프로스트 노바',
+        classId: 'mage',
+        cooldownMs: 4200,
+        range: 13,
+        radius: 5.2,
+        multiplier: 2.2,
+        kind: 'meteor',
+        tier: 'advanced',
+        manaCost: 28
+    },
+    astral_storm: {
+        id: 'astral_storm',
+        name: '아스트랄 스톰',
+        classId: 'mage',
+        cooldownMs: 13200,
+        range: 14,
+        radius: 7.4,
+        multiplier: 3.6,
+        kind: 'meteor',
+        tier: 'legendary',
+        manaCost: 42
+    },
+    hawk_eye: {
+        id: 'hawk_eye',
+        name: '호크 아이',
+        classId: 'ranger',
+        cooldownMs: 8200,
+        range: 0,
+        radius: 0,
+        multiplier: 0,
+        kind: 'buff',
+        tier: 'buff',
+        durationMs: 16000,
+        manaCost: 16,
+        buffBonus: { attack: 9, speed: 0.8 }
+    },
+    piercing_volley: {
+        id: 'piercing_volley',
+        name: '피어싱 발리',
+        classId: 'ranger',
+        cooldownMs: 3900,
+        range: 14,
+        radius: 4.6,
+        multiplier: 2.16,
+        kind: 'spread',
+        tier: 'advanced',
+        manaCost: 26
+    },
+    phoenix_barrage: {
+        id: 'phoenix_barrage',
+        name: '피닉스 배러지',
+        classId: 'ranger',
+        cooldownMs: 12600,
+        range: 15,
+        radius: 7,
+        multiplier: 3.4,
+        kind: 'spread',
+        tier: 'legendary',
+        manaCost: 40
+    }
+});
+
 const ITEM_TEMPLATES = {
     bronze_sword: {
         id: 'bronze_sword',
@@ -214,6 +350,63 @@ const ITEM_TEMPLATES = {
         classId: 'ranger'
     }
 };
+
+Object.assign(ITEM_TEMPLATES, {
+    scroll_crimson_cross: {
+        id: 'scroll_crimson_cross',
+        name: '스킬북: 크림슨 크로스',
+        slot: 'scroll',
+        rarity: 'epic',
+        unlockSkillId: 'crimson_cross',
+        power: 28,
+        classId: 'warrior'
+    },
+    scroll_earthshatter_legend: {
+        id: 'scroll_earthshatter_legend',
+        name: '전설 스킬북: 대지 붕괴',
+        slot: 'scroll',
+        rarity: 'legendary',
+        unlockSkillId: 'earthshatter_legend',
+        power: 44,
+        classId: 'warrior'
+    },
+    scroll_frost_nova: {
+        id: 'scroll_frost_nova',
+        name: '스킬북: 프로스트 노바',
+        slot: 'scroll',
+        rarity: 'epic',
+        unlockSkillId: 'frost_nova',
+        power: 28,
+        classId: 'mage'
+    },
+    scroll_astral_storm: {
+        id: 'scroll_astral_storm',
+        name: '전설 스킬북: 아스트랄 스톰',
+        slot: 'scroll',
+        rarity: 'legendary',
+        unlockSkillId: 'astral_storm',
+        power: 44,
+        classId: 'mage'
+    },
+    scroll_piercing_volley: {
+        id: 'scroll_piercing_volley',
+        name: '스킬북: 피어싱 발리',
+        slot: 'scroll',
+        rarity: 'epic',
+        unlockSkillId: 'piercing_volley',
+        power: 28,
+        classId: 'ranger'
+    },
+    scroll_phoenix_barrage: {
+        id: 'scroll_phoenix_barrage',
+        name: '전설 스킬북: 피닉스 배러지',
+        slot: 'scroll',
+        rarity: 'legendary',
+        unlockSkillId: 'phoenix_barrage',
+        power: 44,
+        classId: 'ranger'
+    }
+});
 
 const ZONES = {
     village: {
@@ -336,6 +529,25 @@ const MONSTERS = {
     }
 };
 
+MONSTERS.slime.drops.push(
+    { itemId: 'scroll_guard_break', chance: 0.012 },
+    { itemId: 'scroll_meteor_burst', chance: 0.012 },
+    { itemId: 'scroll_dash_arrow', chance: 0.012 }
+);
+MONSTERS.wolf.drops.push(
+    { itemId: 'scroll_crimson_cross', chance: 0.03 },
+    { itemId: 'scroll_piercing_volley', chance: 0.03 }
+);
+MONSTERS.wisp.drops.push(
+    { itemId: 'scroll_frost_nova', chance: 0.03 },
+    { itemId: 'starlight_ring', chance: 0.02 }
+);
+MONSTERS.colossus.drops.push(
+    { itemId: 'scroll_earthshatter_legend', chance: 0.015 },
+    { itemId: 'scroll_astral_storm', chance: 0.015 },
+    { itemId: 'scroll_phoenix_barrage', chance: 0.015 }
+);
+
 const QUESTS = [
     {
         id: 'main_1',
@@ -430,11 +642,29 @@ function getBaseProfile(userId, nickname = '별빛 모험가') {
             count: 0,
             completed: false
         },
+        currencies: {
+            points: 0,
+            cash: 0
+        },
         autoBattleState: {
             enabled: false,
             lastZoneId: 'meadow',
             autoQuest: true
         },
+        quickToggles: {
+            autoPotion: true,
+            autoBuff: false
+        },
+        consumables: {
+            hpPotion: 5,
+            mpPotion: 3
+        },
+        mailbox: [],
+        storyFlags: {
+            introSeen: false,
+            meadowWarpHintSeen: false
+        },
+        activeBuffs: {},
         offlineRewardState: {
             lastLogoutAt: Date.now(),
             pending: null
@@ -482,8 +712,9 @@ function syncClassProfile(profile) {
         profile.learnedSkills = classData.starterSkills.slice();
     }
     if (!profile.skillBar || !profile.skillBar.length) {
-        profile.skillBar = classData.starterSkills.slice(0, 2);
+        profile.skillBar = classData.starterSkills.slice(0, 1);
     }
+    while (profile.skillBar.length < 4) profile.skillBar.push('');
     if (!profile.equipment.weapon) {
         const starterInventory = getStarterItems(profile.classId);
         profile.equipment.weapon = starterInventory[0];
