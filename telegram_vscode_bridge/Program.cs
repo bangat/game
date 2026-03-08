@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Runtime.InteropServices;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json.Serialization;
 using System.Windows.Forms;
@@ -548,12 +549,22 @@ internal static class VsCodeBridge
 
     public static bool TryGetVsCodeWindow(string preferredTitle, out IntPtr hwnd, out string title)
     {
+        var foreground = Win32Native.GetForegroundWindow();
+        if (IsVsCodeWindow(foreground, preferredTitle, out var foregroundTitle))
+        {
+            hwnd = foreground;
+            title = string.IsNullOrWhiteSpace(foregroundTitle) ? "(작업 영역)" : foregroundTitle;
+            return true;
+        }
+
         var exact = IntPtr.Zero;
         var contains = IntPtr.Zero;
         var fallback = IntPtr.Zero;
+        var processFallback = IntPtr.Zero;
         var exactTitle = string.Empty;
         var containsTitle = string.Empty;
         var fallbackTitle = string.Empty;
+        var processFallbackTitle = string.Empty;
 
         Win32Native.EnumWindows((handle, _) =>
         {
@@ -563,12 +574,8 @@ internal static class VsCodeBridge
             }
 
             var currentTitle = Win32Native.GetWindowText(handle);
-            if (string.IsNullOrWhiteSpace(currentTitle))
-            {
-                return true;
-            }
-
-            if (string.Equals(currentTitle, preferredTitle, StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrWhiteSpace(currentTitle) &&
+                string.Equals(currentTitle, preferredTitle, StringComparison.OrdinalIgnoreCase))
             {
                 exact = handle;
                 exactTitle = currentTitle;
@@ -576,16 +583,23 @@ internal static class VsCodeBridge
             }
 
             if (!string.IsNullOrWhiteSpace(preferredTitle) &&
+                !string.IsNullOrWhiteSpace(currentTitle) &&
                 currentTitle.Contains(preferredTitle, StringComparison.OrdinalIgnoreCase))
             {
                 contains = handle;
                 containsTitle = currentTitle;
             }
-            else if (currentTitle.Contains("Visual Studio Code", StringComparison.OrdinalIgnoreCase) ||
-                     currentTitle.Contains("VS Code", StringComparison.OrdinalIgnoreCase))
+            else if (!string.IsNullOrWhiteSpace(currentTitle) &&
+                     (currentTitle.Contains("Visual Studio Code", StringComparison.OrdinalIgnoreCase) ||
+                      currentTitle.Contains("VS Code", StringComparison.OrdinalIgnoreCase)))
             {
                 fallback = handle;
                 fallbackTitle = currentTitle;
+            }
+            else if (IsVsCodeProcessWindow(handle))
+            {
+                processFallback = handle;
+                processFallbackTitle = currentTitle;
             }
 
             return true;
@@ -605,9 +619,66 @@ internal static class VsCodeBridge
             return true;
         }
 
-        hwnd = fallback;
-        title = fallbackTitle;
+        if (fallback != IntPtr.Zero)
+        {
+            hwnd = fallback;
+            title = fallbackTitle;
+            return true;
+        }
+
+        hwnd = processFallback;
+        title = string.IsNullOrWhiteSpace(processFallbackTitle) ? "(작업 영역)" : processFallbackTitle;
         return hwnd != IntPtr.Zero;
+    }
+
+    private static bool IsVsCodeWindow(IntPtr handle, string preferredTitle, out string title)
+    {
+        title = string.Empty;
+        if (handle == IntPtr.Zero || !Win32Native.IsWindowVisible(handle))
+        {
+            return false;
+        }
+
+        title = Win32Native.GetWindowText(handle);
+        if (!string.IsNullOrWhiteSpace(preferredTitle) &&
+            !string.IsNullOrWhiteSpace(title) &&
+            title.Contains(preferredTitle, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(title) &&
+            (title.Contains("Visual Studio Code", StringComparison.OrdinalIgnoreCase) ||
+             title.Contains("VS Code", StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        return IsVsCodeProcessWindow(handle);
+    }
+
+    private static bool IsVsCodeProcessWindow(IntPtr handle)
+    {
+        if (handle == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        try
+        {
+            Win32Native.GetWindowThreadProcessId(handle, out var processId);
+            if (processId == 0)
+            {
+                return false;
+            }
+
+            using var process = Process.GetProcessById((int)processId);
+            return string.Equals(process.ProcessName, "Code", StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     public static CaptureResult CaptureClickPoint(BridgeConfig config)
