@@ -295,8 +295,8 @@ internal sealed class TelegramBridge
             BridgeLog.Write($"forward ok: {detail}");
             var brief = payload.Length > 80 ? $"{payload[..80]}..." : payload;
             var statusText = sendEnter
-                ? $"VSCode 전달 완료: {brief}"
-                : $"VSCode 붙여넣기 완료: {brief}";
+                ? $"VSCode 입력 전송 시도 완료: {brief}"
+                : $"VSCode 붙여넣기 시도 완료: {brief}";
             await SafeSendStatusAsync(statusText).ConfigureAwait(false);
             return;
         }
@@ -454,6 +454,8 @@ internal static class VsCodeBridge
         var unicodeError = string.Empty;
         var clipError = string.Empty;
         var pasteError = string.Empty;
+        var focusAttempts = new List<string>();
+        var focusErrors = new List<string>();
 
         if (string.IsNullOrWhiteSpace(text))
         {
@@ -473,27 +475,46 @@ internal static class VsCodeBridge
             return false;
         }
 
+        var focusedByClick = false;
         if (config.UseClickFocus)
         {
-            if (!TryClickFocusPoint(target, config.FocusClickX, config.FocusClickY, out var clickError))
+            if (TryClickFocusPoint(target, config.FocusClickX, config.FocusClickY, out var clickError))
             {
-                message = clickError;
-                return false;
+                focusAttempts.Add($"click({config.FocusClickX},{config.FocusClickY})");
+                focusedByClick = true;
+                Thread.Sleep(120);
             }
-
-            Thread.Sleep(120);
+            else
+            {
+                focusErrors.Add(clickError);
+            }
         }
-        else if (!string.IsNullOrWhiteSpace(config.FocusHotkey) && config.FocusHotkey != "-")
+
+        if (!focusedByClick && !string.IsNullOrWhiteSpace(config.FocusHotkey) && config.FocusHotkey != "-")
         {
-            _ = TrySendKeysRaw(config.FocusHotkey, 100, out _);
-            Thread.Sleep(90);
+            if (TrySendKeysRaw(config.FocusHotkey, 100, out var hotkeyDetail))
+            {
+                focusAttempts.Add($"hotkey({config.FocusHotkey}:{hotkeyDetail})");
+                Thread.Sleep(90);
+            }
+            else
+            {
+                focusErrors.Add($"focusHotkey fail: {hotkeyDetail}");
+            }
+        }
+
+        if (focusAttempts.Count == 0 && focusErrors.Count > 0)
+        {
+            message = $"포커스 실패: {string.Join(" / ", focusErrors)}";
+            return false;
         }
 
         if (TrySendUnicodeText(text, out unicodeError))
         {
             if (!sendEnter || SendEnter(out var unicodeEnterError))
             {
-                message = $"유니코드 전달 성공: {title}";
+                var focusMode = focusAttempts.Count > 0 ? $" [{string.Join(" + ", focusAttempts)}]" : string.Empty;
+                message = $"유니코드 전달 성공{focusMode}: {title}";
                 return true;
             }
 
@@ -504,14 +525,16 @@ internal static class VsCodeBridge
         {
             if (!sendEnter || SendEnter(out var clipEnterError) || TrySendKeysRaw("{ENTER}", 80, out clipEnterError))
             {
-                message = $"클립보드 전달 성공: {title}";
+                var focusMode = focusAttempts.Count > 0 ? $" [{string.Join(" + ", focusAttempts)}]" : string.Empty;
+                message = $"클립보드 전달 성공{focusMode}: {title}";
                 return true;
             }
 
             pasteError = $"paste ok, enter fail: {clipEnterError}";
         }
 
-        message = $"전달 실패: unicode={unicodeError}, clip={clipError}, paste={pasteError}";
+        var focusDetail = focusErrors.Count > 0 ? $"focus={string.Join(" / ", focusErrors)}, " : string.Empty;
+        message = $"전달 실패: {focusDetail}unicode={unicodeError}, clip={clipError}, paste={pasteError}";
         return false;
     }
 
