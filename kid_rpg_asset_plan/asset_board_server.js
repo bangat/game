@@ -109,9 +109,13 @@ function buildCatalog() {
 
     for (const item of category.items || []) {
       const preview =
-        previewMaps.byUrl.get(item.url) ||
         previewMaps.byTitle.get(item.title) ||
+        previewMaps.byUrl.get(item.url) ||
         null;
+      const previewSourceUrl = preview ? preview.previewUrl || "" : item.previewUrl || "";
+      const imageUrl = preview
+        ? normalizePreviewPath(preview.localPreviewPath)
+        : item.previewUrl || "";
 
       catalogItems.push({
         assetId: `${category.id}:${item.number}`,
@@ -124,8 +128,8 @@ function buildCatalog() {
         useFor: item.useFor || "",
         itemStatus: item.status || "support",
         linkUrl: item.url || "",
-        imageUrl: preview ? normalizePreviewPath(preview.localPreviewPath) : "",
-        previewSourceUrl: preview ? preview.previewUrl || "" : ""
+        imageUrl,
+        previewSourceUrl
       });
     }
   }
@@ -133,9 +137,13 @@ function buildCatalog() {
   const paidWatchlist = (seed.paidWatchlist || [])
     .map((item) => {
       const preview =
-        previewMaps.byUrl.get(item.url) ||
         previewMaps.byTitle.get(item.title) ||
+        previewMaps.byUrl.get(item.url) ||
         null;
+      const previewSourceUrl = preview ? preview.previewUrl || "" : item.previewUrl || "";
+      const imageUrl = preview
+        ? normalizePreviewPath(preview.localPreviewPath)
+        : item.previewUrl || "";
 
       return {
         assetId: `paid_watchlist:${item.number}`,
@@ -148,8 +156,8 @@ function buildCatalog() {
         useFor: item.useFor || "",
         itemStatus: item.status || "watch",
         linkUrl: item.url || "",
-        imageUrl: preview ? normalizePreviewPath(preview.localPreviewPath) : "",
-        previewSourceUrl: preview ? preview.previewUrl || "" : "",
+        imageUrl,
+        previewSourceUrl,
         priceUsd: item.priceUsd ?? null,
         priceObservedAt: item.priceObservedAt || ""
       };

@@ -5,15 +5,21 @@ param(
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$isListening = Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue
-
-if (-not $isListening) {
-    Start-Process -FilePath "node" `
-        -ArgumentList "asset_board_server.js", "--port", $Port `
-        -WorkingDirectory $root `
-        -WindowStyle Hidden | Out-Null
-    Start-Sleep -Seconds 2
+$listeners = Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue
+foreach ($listener in $listeners) {
+    try {
+        Stop-Process -Id $listener.OwningProcess -Force -ErrorAction Stop
+    }
+    catch {
+        Write-Warning ("Failed to stop existing process on port {0}: {1}" -f $Port, $_.Exception.Message)
+    }
 }
+
+Start-Process -FilePath "node" `
+    -ArgumentList "asset_board_server.js", "--port", $Port `
+    -WorkingDirectory $root `
+    -WindowStyle Hidden | Out-Null
+Start-Sleep -Seconds 2
 
 $ip = Get-NetIPAddress -AddressFamily IPv4 |
     Where-Object { $_.InterfaceAlias -notmatch "Loopback|vEthernet" -and $_.IPAddress -notlike "169.254*" } |
