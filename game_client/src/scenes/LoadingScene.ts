@@ -9,14 +9,14 @@ type LoadingScenePayload = {
 };
 
 export class LoadingScene extends Phaser.Scene {
-  private nextScene = "TavernHub";
+  private nextScene = "CharacterSelect";
 
   constructor() {
     super("Loading");
   }
 
   init(data: LoadingScenePayload): void {
-    this.nextScene = data.nextScene ?? "TavernHub";
+    this.nextScene = data.nextScene ?? "CharacterSelect";
   }
 
   create(data: LoadingScenePayload): void {

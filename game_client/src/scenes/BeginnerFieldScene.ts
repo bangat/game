@@ -1,7 +1,11 @@
 import Phaser from "phaser";
+import { gameState, getSelectedHeroClass } from "../state/gameState";
+import { backgroundTextures, enemyVisual, heroVisuals } from "../state/visuals";
 
 type FieldMonster = {
+  id: string;
   root: Phaser.GameObjects.Container;
+  sprite: Phaser.GameObjects.Image;
   hpBar: Phaser.GameObjects.Rectangle;
   label: Phaser.GameObjects.Text;
   hp: number;
@@ -17,7 +21,18 @@ export class BeginnerFieldScene extends Phaser.Scene {
   private hudStatus?: HTMLElement;
   private hudTarget?: HTMLElement;
   private autoButton?: HTMLButtonElement;
+  private playerRoot?: Phaser.GameObjects.Container;
+  private playerSprite?: Phaser.GameObjects.Image;
+  private playerLabel?: Phaser.GameObjects.Text;
+  private cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
+  private wasd?: { [key: string]: Phaser.Input.Keyboard.Key };
+  private joystickBase?: Phaser.GameObjects.Arc;
+  private joystickStick?: Phaser.GameObjects.Arc;
+  private joystickVector = new Phaser.Math.Vector2(0, 0);
+  private joystickPointerId?: number;
   private isAutoAttackEnabled = true;
+  private worldSize = { width: 1280, height: 820 };
+  private stepTime = 0;
 
   constructor() {
     super("BeginnerField");
@@ -29,152 +44,147 @@ export class BeginnerFieldScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.DESTROY, this.clearOverlays, this);
 
     this.cameras.main.setBackgroundColor("#274a33");
+    this.cameras.main.setBounds(0, 0, this.worldSize.width, this.worldSize.height);
 
-    this.drawField(width, height);
-    this.drawPlayer(width, height);
-    this.createMonsters(width, height);
-    this.createFieldHud(width, height);
+    this.drawField();
+    this.drawPlayer();
+    this.createMonsters();
+    this.createCompactHud(width, height);
     this.createSkillPad(width, height);
-    this.createMenuColumn(width, height);
+    this.createRightMenu(width, height);
     this.createQuestBar(width, height);
+    this.createJoystick(width, height);
+    this.registerInput();
     this.startAutoAttackLoop();
   }
 
-  update(time: number): void {
+  update(time: number, delta: number): void {
+    this.updatePlayer(delta);
+    this.updatePlayerLabel();
     for (const monster of this.monsters) {
-      monster.root.y += Math.sin(time * 0.002 + monster.idlePhase) * 0.08;
+      monster.root.y += Math.sin(time * 0.002 + monster.idlePhase) * 0.06;
     }
   }
 
-  private drawField(width: number, height: number): void {
-    const tileSize = 64;
-    for (let y = 0; y < Math.ceil(height / tileSize); y += 1) {
-      for (let x = 0; x < Math.ceil(width / tileSize); x += 1) {
-        const color = (x + y) % 2 === 0 ? 0x446e46 : 0x527c4f;
-        this.add.rectangle(x * tileSize + tileSize * 0.5, y * tileSize + tileSize * 0.5, tileSize, tileSize, color, 1);
-      }
-    }
+  private drawField(): void {
+    const { width, height } = this.worldSize;
+    this.add.image(width * 0.5, height * 0.5, backgroundTextures.field).setDisplaySize(width, height);
+    this.add.rectangle(width * 0.5, height * 0.5, width, height, 0x17311d, 0.34);
 
-    this.add.rectangle(width * 0.75, height * 0.24, width * 0.2, height * 0.15, 0x3b6040, 1);
-    this.add.rectangle(width * 0.7, height * 0.58, width * 0.18, height * 0.22, 0x35553b, 1);
-    this.add.rectangle(width * 0.28, height * 0.33, width * 0.14, height * 0.12, 0x5d7e57, 1);
+    this.add.rectangle(width * 0.72, height * 0.26, width * 0.18, height * 0.16, 0x406244, 0.66);
+    this.add.rectangle(width * 0.28, height * 0.34, width * 0.16, height * 0.12, 0x4e7852, 0.7);
+    this.add.rectangle(width * 0.64, height * 0.62, width * 0.15, height * 0.16, 0x35553b, 0.72);
 
-    this.add.text(width * 0.06, height * 0.08, "BEGINNER FIELD", {
+    this.add.text(88, 72, "BEGINNER FIELD", {
       fontFamily: "Segoe UI",
       fontSize: "20px",
-      color: "#f3fbf0"
-    });
-    this.add.text(width * 0.06, height * 0.12, "KIT-03 타일 + MON-01 슬라임 + VFX-01/02 검수용", {
+      color: "#f5fbf5"
+    }).setScrollFactor(0);
+  }
+
+  private drawPlayer(): void {
+    const selected = getSelectedHeroClass();
+    const visual = heroVisuals[selected.id];
+    const root = this.add.container(540, 500);
+    const shadow = this.add.ellipse(0, 46, 44, 16, 0x000000, 0.22);
+    const sprite = this.add.image(0, 0, visual.texture);
+    sprite.setCrop(visual.crop.x, visual.crop.y, visual.crop.width, visual.crop.height);
+    sprite.setScale(visual.scale);
+    root.add(shadow);
+    root.add(sprite);
+
+    this.playerRoot = root;
+    this.playerSprite = sprite;
+    this.playerLabel = this.add.text(root.x - 30, root.y + 54, gameState.nickname, {
       fontFamily: "Segoe UI",
-      fontSize: "12px",
-      color: "#d7efcf"
+      fontSize: "11px",
+      color: "#f4f7fb"
     });
+    this.cameras.main.startFollow(root, true, 0.08, 0.08);
   }
 
-  private drawPlayer(width: number, height: number): void {
-    const root = this.add.container(width * 0.38, height * 0.52);
-    root.add(this.add.circle(0, 10, 20, 0x2b4369, 1));
-    root.add(this.add.circle(0, -18, 14, 0xf0ccac, 1));
-    root.add(this.add.rectangle(0, -28, 24, 8, 0x1a2535, 1));
-    root.add(this.add.ellipse(0, 32, 48, 20, 0x000000, 0.18));
-    root.add(this.add.text(-18, 44, "임시 플레이어", { fontFamily: "Segoe UI", fontSize: "11px", color: "#f4f7fb" }));
-  }
-
-  private createMonsters(width: number, height: number): void {
-    const spawnPoints = [
-      { x: width * 0.58, y: height * 0.42, color: 0x7ee264, name: "초보 슬라임" },
-      { x: width * 0.68, y: height * 0.56, color: 0x95f171, name: "숲 슬라임" },
-      { x: width * 0.55, y: height * 0.64, color: 0x65d75d, name: "젤리 슬라임" }
+  private createMonsters(): void {
+    const points = [
+      { x: 760, y: 360, name: "초보 고블린" },
+      { x: 860, y: 460, name: "숲 고블린" },
+      { x: 680, y: 540, name: "젤리 슬라임" }
     ];
 
-    this.monsters = spawnPoints.map((spawn, index) => {
-      const root = this.add.container(spawn.x, spawn.y);
-      root.add(this.add.ellipse(0, 20, 54, 18, 0x000000, 0.14));
-      root.add(this.add.ellipse(0, 0, 48, 34, spawn.color, 1));
-      root.add(this.add.circle(-8, -4, 4, 0x1b2c1a, 1));
-      root.add(this.add.circle(8, -4, 4, 0x1b2c1a, 1));
-      root.add(this.add.rectangle(0, 8, 18, 3, 0x40633f, 1));
-
-      const hpBack = this.add.rectangle(0, -34, 48, 6, 0x16201a, 1).setOrigin(0.5);
-      const hpBar = this.add.rectangle(-24, -34, 48, 6, 0x6bff8b, 1).setOrigin(0, 0.5);
+    this.monsters = points.map((point, index) => {
+      const root = this.add.container(point.x, point.y);
+      const shadow = this.add.ellipse(0, 42, 40, 16, 0x000000, 0.18);
+      const sprite = this.add.image(0, 0, enemyVisual.texture);
+      sprite.setCrop(enemyVisual.crop.x, enemyVisual.crop.y, enemyVisual.crop.width, enemyVisual.crop.height);
+      sprite.setScale(enemyVisual.scale);
+      const hpBack = this.add.rectangle(0, -32, 56, 6, 0x16201a, 1).setOrigin(0.5);
+      const hpBar = this.add.rectangle(-28, -32, 56, 6, 0x72ff8e, 1).setOrigin(0, 0.5);
       const label = this.add
-        .text(0, -52, spawn.name, {
+        .text(0, -50, point.name, {
           fontFamily: "Segoe UI",
           fontSize: "11px",
-          color: "#eef7eb"
+          color: "#f1f7ee"
         })
         .setOrigin(0.5);
-      root.add(hpBack);
-      root.add(hpBar);
-      root.add(label);
-
+      root.add([shadow, sprite, hpBack, hpBar, label]);
       return {
+        id: `mob-${index + 1}`,
         root,
+        sprite,
         hpBar,
         label,
         hp: 100,
         maxHp: 100,
-        name: spawn.name,
-        idlePhase: index * 0.9
+        name: point.name,
+        idlePhase: index * 0.7
       };
     });
   }
 
-  private createFieldHud(width: number, height: number): void {
-    const top = document.createElement("div");
-    top.className = "overlay-card overlay-card--field-top";
-    top.innerHTML = `
-      <div class="profile-chip profile-chip--compact">
-        <div class="profile-chip__avatar">P</div>
-        <div class="profile-chip__meta">
-          <div class="profile-chip__zone">햇살 초원</div>
-          <div class="profile-chip__name">Lv 7 / 전투력 377</div>
+  private createCompactHud(width: number, height: number): void {
+    const selected = getSelectedHeroClass();
+    const node = document.createElement("div");
+    node.className = "mini-hud mini-hud--field";
+    node.innerHTML = `
+      <div class="mini-hud__profile">
+        <div class="mini-hud__avatar">${selected.label[0]}</div>
+        <div>
+          <div class="mini-hud__name">${gameState.nickname}</div>
+          <div class="mini-hud__meta">${selected.label} / 전투력 377</div>
         </div>
       </div>
-      <div class="field-meta">
-        <span>자동사냥 ON</span>
-        <span>오프라인 보상 대기 12m</span>
+      <div class="mini-hud__bars">
+        <div class="mini-bar"><span>HP</span><i style="width:82%"></i></div>
+        <div class="mini-bar mini-bar--mana"><span>MP</span><i style="width:66%"></i></div>
       </div>
     `;
-    this.overlayNodes.push(top);
-    this.add.dom(width * 0.22, height * 0.09, top);
+    this.overlayNodes.push(node);
+    this.add.dom(width * 0.14, height * 0.07, node).setScrollFactor(0);
 
-    const combat = document.createElement("div");
-    combat.className = "combat-card";
-    combat.innerHTML = `
-      <div class="combat-card__row">
-        <span class="combat-card__label">전투 상태</span>
-        <strong id="combat-status">자동 전투 진행중</strong>
-      </div>
-      <div class="combat-card__row">
-        <span class="combat-card__label">현재 타깃</span>
-        <strong id="combat-target">초보 슬라임</strong>
-      </div>
-      <div class="combat-card__row">
-        <span class="combat-card__label">드랍 목표</span>
-        <strong>스킬북 / 초급 검술</strong>
-      </div>
+    const status = document.createElement("div");
+    status.className = "combat-status";
+    status.innerHTML = `
+      <span class="combat-status__eyebrow">전투 상태</span>
+      <strong id="combat-status">자동 전투 진행중</strong>
+      <small id="combat-target">타깃: 초보 고블린</small>
     `;
-    this.hudStatus = combat.querySelector("#combat-status") as HTMLElement;
-    this.hudTarget = combat.querySelector("#combat-target") as HTMLElement;
-    this.overlayNodes.push(combat);
-    this.add.dom(width * 0.19, height * 0.24, combat);
+    this.hudStatus = status.querySelector("#combat-status") as HTMLElement;
+    this.hudTarget = status.querySelector("#combat-target") as HTMLElement;
+    this.overlayNodes.push(status);
+    this.add.dom(width * 0.14, height * 0.18, status).setScrollFactor(0);
   }
 
   private createSkillPad(width: number, height: number): void {
+    const selected = getSelectedHeroClass();
     const pad = document.createElement("div");
-    pad.className = "skill-pad";
+    pad.className = "skill-pad skill-pad--compact";
     pad.innerHTML = `
-      <div class="skill-pad__left">
-        <button class="skill-pad__mini">퀵</button>
-      </div>
       <div class="skill-pad__right">
-        <button class="skill-pad__skill">칼날베기</button>
-        <button class="skill-pad__skill">중급 스킬</button>
+        <button class="skill-pad__skill">${selected.primarySkill}</button>
         <button class="skill-pad__skill skill-pad__skill--accent">AUTO</button>
         <button class="skill-pad__attack">공격</button>
       </div>
     `;
+
     this.autoButton = pad.querySelector(".skill-pad__skill--accent") as HTMLButtonElement;
     this.autoButton.addEventListener("click", () => {
       this.isAutoAttackEnabled = !this.isAutoAttackEnabled;
@@ -187,117 +197,209 @@ export class BeginnerFieldScene extends Phaser.Scene {
 
     const attackButton = pad.querySelector(".skill-pad__attack") as HTMLButtonElement;
     attackButton.addEventListener("click", () => {
-      this.attackNearestMonster();
+      this.performAttack();
     });
 
     this.overlayNodes.push(pad);
-    this.add.dom(width * 0.78, height * 0.86, pad);
+    this.add.dom(width * 0.82, height * 0.88, pad).setScrollFactor(0);
   }
 
-  private createMenuColumn(width: number, height: number): void {
+  private createRightMenu(width: number, height: number): void {
     const node = document.createElement("div");
-    node.className = "vertical-menu vertical-menu--field";
+    node.className = "vertical-menu vertical-menu--thin";
     node.innerHTML = `
       <button>메뉴</button>
       <button>가방</button>
       <button>퀘스트</button>
-      <button>설정</button>
+      <button data-action="character">캐선</button>
     `;
+
+    node.querySelector('[data-action="character"]')?.addEventListener("click", () => {
+      this.scene.start("Loading", {
+        nextScene: "CharacterSelect",
+        title: "Character Select",
+        subtitle: "캐릭터 슬롯과 직업을 다시 고릅니다.",
+        tip: "옵션의 캐릭터 변경으로 이동했습니다.",
+        accent: 0x6ea7ff
+      });
+    });
+
     this.overlayNodes.push(node);
-    this.add.dom(width * 0.93, height * 0.29, node);
+    this.add.dom(width * 0.948, height * 0.34, node).setScrollFactor(0);
   }
 
   private createQuestBar(width: number, height: number): void {
     const node = document.createElement("div");
-    node.className = "quest-strip quest-strip--field";
+    node.className = "quest-strip quest-strip--compact quest-strip--bottom";
     node.innerHTML = `
       <span class="quest-strip__label">메인 퀘스트</span>
-      <strong>젤리 슬라임 5마리 처치</strong>
-      <small>하단 대화형 퀘스트와 보상 표시는 다음 단계</small>
+      <strong>초보 고블린 5마리 처치</strong>
+      <small>하단 대화형 스토리 바는 다음 패치에서 연결</small>
     `;
     this.overlayNodes.push(node);
-    this.add.dom(width * 0.29, height * 0.8, node);
+    this.add.dom(width * 0.28, height * 0.88, node).setScrollFactor(0);
+  }
 
-    const backButton = this.add
-      .text(width * 0.12, height * 0.9, "객잔 복귀", {
-        fontFamily: "Segoe UI",
-        fontSize: "15px",
-        color: "#102118",
-        backgroundColor: "#9ce27f",
-        padding: { left: 14, right: 14, top: 8, bottom: 8 }
-      })
-      .setOrigin(0.5)
-      .setInteractive({ useHandCursor: true });
+  private createJoystick(width: number, height: number): void {
+    this.joystickBase = this.add.circle(width * 0.12, height * 0.82, 54, 0xffffff, 0.12).setScrollFactor(0);
+    this.joystickStick = this.add.circle(width * 0.12, height * 0.82, 24, 0xffffff, 0.26).setScrollFactor(0);
+  }
 
-    backButton.on("pointerdown", () => {
-      this.scene.start("Loading", {
-        nextScene: "TavernHub",
-        title: "Tavern Hub",
-        subtitle: "초보 필드 전투를 정리하고 객잔으로 돌아갑니다.",
-        tip: "다음 패치에서 하단 대화형 메인 퀘스트와 객잔 상점 패널을 연결합니다.",
-        accent: 0xf4b24f
-      });
+  private registerInput(): void {
+    this.cursors = this.input.keyboard?.createCursorKeys();
+    this.wasd = this.input.keyboard?.addKeys("W,A,S,D") as { [key: string]: Phaser.Input.Keyboard.Key };
+
+    this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+      const { width, height } = this.scale;
+      if (pointer.x < width * 0.38 && pointer.y > height * 0.52) {
+        this.joystickPointerId = pointer.id;
+        this.updateJoystick(pointer);
+      }
     });
+
+    this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
+      if (pointer.id === this.joystickPointerId) {
+        this.updateJoystick(pointer);
+      }
+    });
+
+    this.input.on("pointerup", (pointer: Phaser.Input.Pointer) => {
+      if (pointer.id === this.joystickPointerId) {
+        this.resetJoystick();
+      }
+    });
+  }
+
+  private updateJoystick(pointer: Phaser.Input.Pointer): void {
+    if (!this.joystickBase || !this.joystickStick) {
+      return;
+    }
+    const center = new Phaser.Math.Vector2(this.joystickBase.x, this.joystickBase.y);
+    const offset = new Phaser.Math.Vector2(pointer.x - center.x, pointer.y - center.y);
+    const radius = 34;
+    if (offset.length() > radius) {
+      offset.normalize().scale(radius);
+    }
+    this.joystickStick.setPosition(center.x + offset.x, center.y + offset.y);
+    this.joystickVector.set(offset.x / radius, offset.y / radius);
+  }
+
+  private resetJoystick(): void {
+    if (this.joystickBase && this.joystickStick) {
+      this.joystickStick.setPosition(this.joystickBase.x, this.joystickBase.y);
+    }
+    this.joystickVector.set(0, 0);
+    this.joystickPointerId = undefined;
   }
 
   private startAutoAttackLoop(): void {
     this.autoAttackEvent = this.time.addEvent({
-      delay: 900,
+      delay: 850,
       loop: true,
       callback: () => {
         if (!this.isAutoAttackEnabled) {
           return;
         }
-        this.attackNearestMonster();
+        this.performAttack();
       }
     });
   }
 
-  private attackNearestMonster(): void {
-    const livingMonster = this.monsters.find((monster) => monster.hp > 0);
-    if (!livingMonster) {
+  private performAttack(): void {
+    const player = this.playerRoot;
+    if (!player) {
+      return;
+    }
+    const target = this.findNearestMonster();
+    if (!target) {
       if (this.hudStatus) {
-        this.hudStatus.textContent = "모든 몬스터 정리 완료";
-      }
-      if (this.hudTarget) {
-        this.hudTarget.textContent = "타깃 없음";
+        this.hudStatus.textContent = "사거리 안 몬스터 없음";
       }
       return;
     }
 
-    const damage = Phaser.Math.Between(18, 34);
-    livingMonster.hp = Math.max(0, livingMonster.hp - damage);
-    livingMonster.hpBar.width = 48 * (livingMonster.hp / livingMonster.maxHp);
-
-    if (this.hudTarget) {
-      this.hudTarget.textContent = livingMonster.name;
+    const distance = Phaser.Math.Distance.Between(player.x, player.y, target.root.x, target.root.y);
+    if (distance > 140) {
+      if (this.hudStatus) {
+        this.hudStatus.textContent = "근접 사거리 밖";
+      }
+      return;
     }
 
-    this.showDamageText(livingMonster.root.x, livingMonster.root.y - 44, damage, livingMonster.hp === 0);
-    this.flashMonster(livingMonster.root);
+    this.animateAttack(target);
+    this.attackMonster(target);
+  }
 
-    if (livingMonster.hp === 0) {
-      livingMonster.label.setText(`${livingMonster.name} 처치`);
-      livingMonster.hpBar.setFillStyle(0xf4b44a, 1);
-      if (this.hudStatus) {
-        this.hudStatus.textContent = "드랍 확인 중";
-      }
-      this.time.delayedCall(320, () => {
-        livingMonster.root.setAlpha(0.35);
+  private attackMonster(monster: FieldMonster): void {
+    const damage = Phaser.Math.Between(20, 34);
+    monster.hp = Math.max(0, monster.hp - damage);
+    monster.hpBar.width = 56 * (monster.hp / monster.maxHp);
+
+    if (this.hudTarget) {
+      this.hudTarget.textContent = `타깃: ${monster.name}`;
+    }
+    if (this.hudStatus) {
+      this.hudStatus.textContent = "근접 베기 적중";
+    }
+
+    this.showDamageText(monster.root.x, monster.root.y - 46, damage, monster.hp === 0);
+    this.flashMonster(monster);
+
+    if (monster.hp === 0) {
+      monster.label.setText(`${monster.name} 처치`);
+      this.time.delayedCall(180, () => {
+        monster.root.destroy();
+        monster.label.destroy();
       });
-    } else if (this.hudStatus) {
-      this.hudStatus.textContent = "자동 전투 진행중";
+      this.monsters = this.monsters.filter((item) => item.id !== monster.id);
     }
   }
 
-  private flashMonster(target: Phaser.GameObjects.Container): void {
-    this.cameras.main.shake(70, 0.0012);
+  private findNearestMonster(): FieldMonster | undefined {
+    const player = this.playerRoot;
+    if (!player) {
+      return undefined;
+    }
+    return this.monsters
+      .filter((monster) => monster.hp > 0)
+      .sort((a, b) => {
+        const distanceA = Phaser.Math.Distance.Between(player.x, player.y, a.root.x, a.root.y);
+        const distanceB = Phaser.Math.Distance.Between(player.x, player.y, b.root.x, b.root.y);
+        return distanceA - distanceB;
+      })[0];
+  }
+
+  private flashMonster(monster: FieldMonster): void {
+    this.cameras.main.shake(70, 0.0011);
     this.tweens.add({
-      targets: target,
-      alpha: 0.45,
+      targets: monster.sprite,
+      alpha: 0.35,
       yoyo: true,
       duration: 70,
       repeat: 1
+    });
+  }
+
+  private animateAttack(target: FieldMonster): void {
+    const player = this.playerRoot;
+    const playerSprite = this.playerSprite;
+    if (!player || !playerSprite) {
+      return;
+    }
+
+    const selected = getSelectedHeroClass();
+    const direction = target.root.x >= player.x ? 1 : -1;
+    playerSprite.setFlipX(direction < 0);
+
+    const slash = this.add.arc(player.x + direction * 36, player.y + 4, 34, direction > 0 ? 220 : 20, direction > 0 ? 340 : 140, false, Phaser.Display.Color.HexStringToColor(selected.accentHex).color, 0.92);
+    slash.setStrokeStyle(7, Phaser.Display.Color.HexStringToColor(selected.accentHex).color, 0.94);
+    this.tweens.add({
+      targets: slash,
+      alpha: 0,
+      scaleX: 1.15,
+      scaleY: 1.15,
+      duration: 160,
+      onComplete: () => slash.destroy()
     });
   }
 
@@ -316,17 +418,61 @@ export class BeginnerFieldScene extends Phaser.Scene {
       targets: label,
       y: y - 28,
       alpha: 0,
-      duration: 540,
+      duration: 520,
       ease: "Cubic.Out",
-      onComplete: () => {
-        label.destroy();
-      }
+      onComplete: () => label.destroy()
     });
+  }
+
+  private updatePlayer(delta: number): void {
+    const player = this.playerRoot;
+    const sprite = this.playerSprite;
+    if (!player || !sprite) {
+      return;
+    }
+
+    const selected = getSelectedHeroClass();
+    const dt = delta / 1000;
+    const keyboardX =
+      (this.cursors?.left.isDown || this.wasd?.A?.isDown ? -1 : 0) +
+      (this.cursors?.right.isDown || this.wasd?.D?.isDown ? 1 : 0);
+    const keyboardY =
+      (this.cursors?.up.isDown || this.wasd?.W?.isDown ? -1 : 0) +
+      (this.cursors?.down.isDown || this.wasd?.S?.isDown ? 1 : 0);
+
+    const direction = new Phaser.Math.Vector2(keyboardX + this.joystickVector.x, keyboardY + this.joystickVector.y);
+    if (direction.lengthSq() > 1) {
+      direction.normalize();
+    }
+
+    player.x = Phaser.Math.Clamp(player.x + direction.x * selected.speed * dt, 96, this.worldSize.width - 96);
+    player.y = Phaser.Math.Clamp(player.y + direction.y * selected.speed * dt, 120, this.worldSize.height - 96);
+
+    if (direction.lengthSq() > 0.001) {
+      this.stepTime += delta;
+      sprite.setFlipX(direction.x < 0);
+      sprite.y = Math.sin(this.stepTime * 0.02) * 4;
+    } else {
+      this.stepTime = 0;
+      sprite.y = 0;
+    }
+  }
+
+  private updatePlayerLabel(): void {
+    if (!this.playerRoot || !this.playerLabel) {
+      return;
+    }
+    this.playerLabel.setPosition(this.playerRoot.x - 28, this.playerRoot.y + 56);
   }
 
   private clearOverlays(): void {
     this.overlayNodes.forEach((node) => node.remove());
     this.overlayNodes = [];
     this.autoAttackEvent?.remove();
+    this.playerRoot = undefined;
+    this.playerSprite = undefined;
+    this.playerLabel?.destroy();
+    this.playerLabel = undefined;
+    this.resetJoystick();
   }
 }
