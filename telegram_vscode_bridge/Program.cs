@@ -234,7 +234,7 @@ internal sealed class TelegramBridge
             var found = VsCodeBridge.TryGetVsCodeWindow(_config.WinTitle, out _, out var title);
             var status = found ? $"연결 가능: {title}" : "VS Code 창 없음";
             await SafeSendStatusAsync(
-                $"브리지 상태\n창: {status}\n클릭모드: {(_config.UseClickFocus ? "ON" : "OFF")}\n좌표: {_config.FocusClickX},{_config.FocusClickY}").ConfigureAwait(false);
+                $"브리지 상태\n창: {status}\n클릭모드: {(_config.UseClickFocus ? "ON" : "OFF")}\n핫키폴백: {(_config.AllowHotkeyFallbackWhenClickFocus ? "ON" : "OFF")}\n좌표: {_config.FocusClickX},{_config.FocusClickY}").ConfigureAwait(false);
             return;
         }
 
@@ -315,7 +315,7 @@ internal sealed class TelegramBridge
 
         _config = BridgeConfig.Load(_configPath);
         _configStampUtc = stamp;
-        BridgeLog.Write($"config reloaded: title={_config.WinTitle}, click={_config.UseClickFocus}:{_config.FocusClickX},{_config.FocusClickY}");
+        BridgeLog.Write($"config reloaded: title={_config.WinTitle}, click={_config.UseClickFocus}:{_config.FocusClickX},{_config.FocusClickY}, clickHotkeyFallback={_config.AllowHotkeyFallbackWhenClickFocus}");
     }
 
     private async Task SafeSendStatusAsync(string text)
@@ -384,6 +384,7 @@ internal sealed class BridgeConfig
     public bool AutoSendEnter { get; init; }
     public bool RequirePrefix { get; init; }
     public bool UseClickFocus { get; set; }
+    public bool AllowHotkeyFallbackWhenClickFocus { get; init; }
     public int FocusClickX { get; init; }
     public int FocusClickY { get; init; }
 
@@ -401,6 +402,7 @@ internal sealed class BridgeConfig
             AutoSendEnter = IniFile.ReadInt(configPath, "VSCode", "AutoSendEnter", 1) != 0,
             RequirePrefix = IniFile.ReadInt(configPath, "VSCode", "RequirePrefix", 0) != 0,
             UseClickFocus = IniFile.ReadInt(configPath, "VSCode", "UseClickFocus", 1) != 0,
+            AllowHotkeyFallbackWhenClickFocus = IniFile.ReadInt(configPath, "VSCode", "AllowHotkeyFallbackWhenClickFocus", 0) != 0,
             FocusClickX = IniFile.ReadInt(configPath, "VSCode", "FocusClickX", 141),
             FocusClickY = IniFile.ReadInt(configPath, "VSCode", "FocusClickY", 670)
         };
@@ -487,10 +489,16 @@ internal static class VsCodeBridge
             else
             {
                 focusErrors.Add(clickError);
+                if (!config.AllowHotkeyFallbackWhenClickFocus)
+                {
+                    message = $"클릭 포커스 실패: {clickError}";
+                    return false;
+                }
             }
         }
 
-        if (!focusedByClick && !string.IsNullOrWhiteSpace(config.FocusHotkey) && config.FocusHotkey != "-")
+        var allowHotkeyFallback = !config.UseClickFocus || config.AllowHotkeyFallbackWhenClickFocus;
+        if (allowHotkeyFallback && !focusedByClick && !string.IsNullOrWhiteSpace(config.FocusHotkey) && config.FocusHotkey != "-")
         {
             if (TrySendKeysRaw(config.FocusHotkey, 100, out var hotkeyDetail))
             {

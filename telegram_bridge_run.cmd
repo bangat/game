@@ -2,6 +2,8 @@
 setlocal EnableExtensions
 cd /d "%~dp0"
 
+taskkill /IM "MiniGameTelegramBridge.exe" /F >nul 2>&1
+
 dotnet build ".\telegram_vscode_bridge\MiniGameTelegramBridge.csproj" -c Release
 if errorlevel 1 exit /b 1
 
