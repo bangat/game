@@ -35,6 +35,29 @@ internal static class Program
                 return 0;
             }
 
+            if (HasArg(args, "--bind-current-vscode-window"))
+            {
+                var bindConfig = BridgeConfig.Load(configPath);
+                if (!VsCodeBridge.TryBindForegroundVsCodeWindow(bindConfig, out var bindMessage))
+                {
+                    BridgeLog.Write($"bind failed: {bindMessage}");
+                    Console.Error.WriteLine(bindMessage);
+                    return 1;
+                }
+
+                BridgeLog.Write($"bind saved: {bindMessage}");
+                Console.WriteLine(bindMessage);
+                return 0;
+            }
+
+            if (HasArg(args, "--clear-vscode-window-bind"))
+            {
+                BridgeConfig.ClearPinnedWindow(configPath);
+                BridgeLog.Write("bind cleared");
+                Console.WriteLine("cleared");
+                return 0;
+            }
+
             var sendText = ReadOptionValue(args, "--send-text");
             if (!string.IsNullOrWhiteSpace(sendText))
             {
@@ -232,10 +255,10 @@ internal sealed class TelegramBridge
 
         if (Matches(text, "상태", "/상태"))
         {
-            var found = VsCodeBridge.TryGetVsCodeWindow(_config.WinTitle, out _, out var title);
-            var status = found ? $"연결 가능: {title}" : "VS Code 창 없음";
+            var found = VsCodeBridge.TryResolveVsCodeWindow(_config, out _, out var title, out var windowDetail);
+            var status = found ? $"연결 가능: {title}" : $"VS Code 창 없음 ({windowDetail})";
             await SafeSendStatusAsync(
-                $"브리지 상태\n창: {status}\n클릭모드: {(_config.UseClickFocus ? "ON" : "OFF")}\n핫키폴백: {(_config.AllowHotkeyFallbackWhenClickFocus ? "ON" : "OFF")}\n좌표: {_config.FocusClickX},{_config.FocusClickY}").ConfigureAwait(false);
+                $"브리지 상태\n창: {status}\n고정바인딩: {(_config.HasPinnedWindow ? $"ON pid={_config.PinnedWindowProcessId}" : "OFF")}\n클릭모드: {(_config.UseClickFocus ? "ON" : "OFF")}\n핫키폴백: {(_config.AllowHotkeyFallbackWhenClickFocus ? "ON" : "OFF")}\n좌표: {_config.FocusClickX},{_config.FocusClickY}").ConfigureAwait(false);
             return;
         }
 
@@ -388,6 +411,11 @@ internal sealed class BridgeConfig
     public bool AllowHotkeyFallbackWhenClickFocus { get; init; }
     public int FocusClickX { get; init; }
     public int FocusClickY { get; init; }
+    public long PinnedWindowHandle { get; init; }
+    public int PinnedWindowProcessId { get; init; }
+    public string PinnedWindowTitle { get; init; } = string.Empty;
+
+    public bool HasPinnedWindow => PinnedWindowHandle != 0 || PinnedWindowProcessId != 0;
 
     public static BridgeConfig Load(string configPath)
     {
@@ -405,7 +433,10 @@ internal sealed class BridgeConfig
             UseClickFocus = IniFile.ReadInt(configPath, "VSCode", "UseClickFocus", 1) != 0,
             AllowHotkeyFallbackWhenClickFocus = IniFile.ReadInt(configPath, "VSCode", "AllowHotkeyFallbackWhenClickFocus", 0) != 0,
             FocusClickX = IniFile.ReadInt(configPath, "VSCode", "FocusClickX", 141),
-            FocusClickY = IniFile.ReadInt(configPath, "VSCode", "FocusClickY", 670)
+            FocusClickY = IniFile.ReadInt(configPath, "VSCode", "FocusClickY", 670),
+            PinnedWindowHandle = IniFile.ReadLong(configPath, "VSCode", "PinnedWindowHandle", 0),
+            PinnedWindowProcessId = IniFile.ReadInt(configPath, "VSCode", "PinnedWindowProcessId", 0),
+            PinnedWindowTitle = IniFile.Read(configPath, "VSCode", "PinnedWindowTitle", string.Empty)
         };
     }
 
@@ -438,6 +469,20 @@ internal sealed class BridgeConfig
         IniFile.Write(configPath, "VSCode", "UseClickFocus", enabled ? "1" : "0");
     }
 
+    public static void SavePinnedWindow(string configPath, IntPtr hwnd, int processId, string title)
+    {
+        IniFile.Write(configPath, "VSCode", "PinnedWindowHandle", hwnd.ToInt64().ToString());
+        IniFile.Write(configPath, "VSCode", "PinnedWindowProcessId", processId.ToString());
+        IniFile.Write(configPath, "VSCode", "PinnedWindowTitle", title);
+    }
+
+    public static void ClearPinnedWindow(string configPath)
+    {
+        IniFile.Write(configPath, "VSCode", "PinnedWindowHandle", "0");
+        IniFile.Write(configPath, "VSCode", "PinnedWindowProcessId", "0");
+        IniFile.Write(configPath, "VSCode", "PinnedWindowTitle", string.Empty);
+    }
+
     public static void SaveChatId(string configPath, string chatId)
     {
         IniFile.Write(configPath, "Telegram", "ChatID", chatId);
@@ -466,9 +511,9 @@ internal static class VsCodeBridge
             return false;
         }
 
-        if (!TryGetVsCodeWindow(config.WinTitle, out var target, out var title))
+        if (!TryResolveVsCodeWindow(config, out var target, out var title, out var targetDetail))
         {
-            message = $"대상 창 없음: {config.WinTitle}";
+            message = $"대상 창 없음: {targetDetail}";
             return false;
         }
 
@@ -545,6 +590,54 @@ internal static class VsCodeBridge
         var focusDetail = focusErrors.Count > 0 ? $"focus={string.Join(" / ", focusErrors)}, " : string.Empty;
         message = $"전달 실패: {focusDetail}unicode={unicodeError}, clip={clipError}, paste={pasteError}";
         return false;
+    }
+
+    public static bool TryResolveVsCodeWindow(BridgeConfig config, out IntPtr hwnd, out string title, out string detail)
+    {
+        if (config.HasPinnedWindow)
+        {
+            if (TryGetPinnedVsCodeWindow(config, out hwnd, out title))
+            {
+                detail = "pinned";
+                return true;
+            }
+
+            hwnd = IntPtr.Zero;
+            title = string.Empty;
+            detail = $"바인딩된 창 없음 pid={config.PinnedWindowProcessId} hwnd={config.PinnedWindowHandle}";
+            return false;
+        }
+
+        if (TryGetVsCodeWindow(config.WinTitle, out hwnd, out title))
+        {
+            detail = "search";
+            return true;
+        }
+
+        detail = config.WinTitle;
+        return false;
+    }
+
+    public static bool TryBindForegroundVsCodeWindow(BridgeConfig config, out string message)
+    {
+        message = string.Empty;
+        var foreground = Win32Native.GetForegroundWindow();
+        if (!IsVsCodeWindow(foreground, config.WinTitle, out var title))
+        {
+            message = "현재 활성 창이 VS Code가 아닙니다.";
+            return false;
+        }
+
+        Win32Native.GetWindowThreadProcessId(foreground, out var processId);
+        if (processId == 0)
+        {
+            message = "VS Code 프로세스 ID를 가져오지 못했습니다.";
+            return false;
+        }
+
+        BridgeConfig.SavePinnedWindow(config.ConfigPath, foreground, (int)processId, title);
+        message = $"pid={(int)processId}, title={NormalizeWindowTitle(title)}";
+        return true;
     }
 
     public static bool TryGetVsCodeWindow(string preferredTitle, out IntPtr hwnd, out string title)
@@ -631,6 +724,73 @@ internal static class VsCodeBridge
         return hwnd != IntPtr.Zero;
     }
 
+    private static bool TryGetPinnedVsCodeWindow(BridgeConfig config, out IntPtr hwnd, out string title)
+    {
+        title = string.Empty;
+        hwnd = IntPtr.Zero;
+
+        if (config.PinnedWindowHandle != 0)
+        {
+            var handle = new IntPtr(config.PinnedWindowHandle);
+            if (IsVsCodeWindow(handle, config.WinTitle, out var pinnedTitle))
+            {
+                if (config.PinnedWindowProcessId == 0)
+                {
+                    hwnd = handle;
+                    title = NormalizeWindowTitle(pinnedTitle);
+                    return true;
+                }
+
+                Win32Native.GetWindowThreadProcessId(handle, out var processId);
+                if (processId == (uint)config.PinnedWindowProcessId)
+                {
+                    hwnd = handle;
+                    title = NormalizeWindowTitle(pinnedTitle);
+                    return true;
+                }
+            }
+        }
+
+        if (config.PinnedWindowProcessId == 0)
+        {
+            return false;
+        }
+
+        var match = IntPtr.Zero;
+        var matchTitle = string.Empty;
+        Win32Native.EnumWindows((handle, _) =>
+        {
+            if (!Win32Native.IsWindowVisible(handle))
+            {
+                return true;
+            }
+
+            Win32Native.GetWindowThreadProcessId(handle, out var processId);
+            if (processId != (uint)config.PinnedWindowProcessId)
+            {
+                return true;
+            }
+
+            if (!IsVsCodeWindow(handle, config.WinTitle, out var currentTitle))
+            {
+                return true;
+            }
+
+            match = handle;
+            matchTitle = currentTitle;
+            return false;
+        }, IntPtr.Zero);
+
+        if (match == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        hwnd = match;
+        title = NormalizeWindowTitle(matchTitle);
+        return true;
+    }
+
     private static bool IsVsCodeWindow(IntPtr handle, string preferredTitle, out string title)
     {
         title = string.Empty;
@@ -655,6 +815,11 @@ internal static class VsCodeBridge
         }
 
         return IsVsCodeProcessWindow(handle);
+    }
+
+    private static string NormalizeWindowTitle(string title)
+    {
+        return string.IsNullOrWhiteSpace(title) ? "(작업 영역)" : title;
     }
 
     private static bool IsVsCodeProcessWindow(IntPtr handle)
@@ -683,9 +848,9 @@ internal static class VsCodeBridge
 
     public static CaptureResult CaptureClickPoint(BridgeConfig config)
     {
-        if (!TryGetVsCodeWindow(config.WinTitle, out var hwnd, out _))
+        if (!TryResolveVsCodeWindow(config, out var hwnd, out _, out var detail))
         {
-            return CaptureResult.Fail("대상 VS Code 창을 찾지 못했습니다.");
+            return CaptureResult.Fail($"대상 VS Code 창을 찾지 못했습니다: {detail}");
         }
 
         if (!TryFocusWindow(hwnd))
@@ -715,6 +880,8 @@ internal static class VsCodeBridge
 
                 if (cursor.X >= rect.Left && cursor.X < rect.Right && cursor.Y >= rect.Top && cursor.Y < rect.Bottom)
                 {
+                    Win32Native.GetWindowThreadProcessId(hwnd, out var processId);
+                    BridgeConfig.SavePinnedWindow(config.ConfigPath, hwnd, (int)processId, Win32Native.GetWindowText(hwnd));
                     return CaptureResult.Success(cursor.X - rect.Left, cursor.Y - rect.Top);
                 }
             }
@@ -1107,6 +1274,12 @@ internal static class IniFile
     {
         var value = Read(path, section, key, fallback.ToString());
         return int.TryParse(value, out var parsed) ? parsed : fallback;
+    }
+
+    public static long ReadLong(string path, string section, string key, long fallback)
+    {
+        var value = Read(path, section, key, fallback.ToString());
+        return long.TryParse(value, out var parsed) ? parsed : fallback;
     }
 
     public static void Write(string path, string section, string key, string value)
