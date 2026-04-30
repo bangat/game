@@ -285,8 +285,6 @@
 
         .my-board.size-3 { gap: 8px; }
         .my-board.size-4 { gap: 7px; }
-        .my-board.size-5 { gap: 5px; }
-        .my-board.size-6 { gap: 4px; }
 
         .my-board.my-turn-board {
             border-color: var(--primary);
@@ -310,22 +308,35 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            min-width: 0;
+            min-height: 0;
+            overflow: hidden;
             position: relative;
             z-index: 1;
             text-align: center;
             line-height: 1.12;
-            word-break: keep-all;
             transition: transform 0.08s, box-shadow 0.08s, background 0.12s;
         }
 
         .my-board.size-3 .cell-btn { font-size: clamp(1rem, 7vw, 1.45rem); }
         .my-board.size-4 .cell-btn { font-size: clamp(0.82rem, 5vw, 1.1rem); }
-        .my-board.size-5 .cell-btn { font-size: clamp(0.68rem, 3.8vw, 0.92rem); }
-        .my-board.size-6 .cell-btn { font-size: clamp(0.52rem, 2.8vw, 0.72rem); }
 
         .cell-label {
             display: block;
+            max-width: 100%;
             padding: 0 2px;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+
+        .cell-btn.long-word .cell-label {
+            font-size: 0.82em;
+            line-height: 1.04;
+        }
+
+        .cell-btn.very-long-word .cell-label {
+            font-size: 0.68em;
+            line-height: 1.02;
         }
 
         .cell-btn.called {
@@ -513,7 +524,7 @@
 
         .setup-choice-row {
             display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
+            grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 7px;
         }
 
@@ -582,7 +593,9 @@
             text-align: center;
             line-height: 1.12;
             padding: 2px;
-            word-break: keep-all;
+            overflow: hidden;
+            overflow-wrap: anywhere;
+            word-break: break-word;
             transition: transform 0.16s ease, background-color 0.16s ease, border-color 0.16s ease;
         }
 
@@ -599,13 +612,6 @@
 
         .selected-preview.size-3 .selected-slot { font-size: clamp(0.88rem, 4.8vw, 1.18rem); }
         .selected-preview.size-4 .selected-slot { font-size: clamp(0.74rem, 3.8vw, 0.98rem); }
-        .selected-preview.size-5 .selected-slot { font-size: clamp(0.58rem, 3vw, 0.76rem); }
-        .selected-preview.size-6 {
-            width: min(100%, 210px);
-            gap: 3px;
-            padding: 6px;
-        }
-        .selected-preview.size-6 .selected-slot { font-size: clamp(0.48rem, 2.4vw, 0.62rem); }
 
         @keyframes slot-pop {
             0% { transform: scale(0.78); }
@@ -632,6 +638,9 @@
             font-weight: 900;
             line-height: 1.1;
             padding: 4px 2px;
+            min-width: 0;
+            overflow-wrap: anywhere;
+            word-break: break-word;
         }
 
         .word-btn.active {
@@ -831,7 +840,7 @@
 
         .result-setup-grid {
             display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
+            grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 6px;
             margin-top: 8px;
         }
@@ -976,9 +985,7 @@
                     <span class="setup-label">판 크기</span>
                     <div class="setup-choice-row">
                         <button class="choice-btn size-choice" data-size="3">3x3</button>
-                        <button class="choice-btn size-choice" data-size="4">4x4</button>
-                        <button class="choice-btn size-choice active" data-size="5">5x5</button>
-                        <button class="choice-btn size-choice" data-size="6">6x6</button>
+                        <button class="choice-btn size-choice active" data-size="4">4x4</button>
                     </div>
                 </div>
                 <div class="setup-group">
@@ -1054,13 +1061,11 @@
             const roomsRef = db.ref('rooms');
             const usersRef = db.ref('users');
 
-            const DEFAULT_BOARD_SIZE = 5;
+            const DEFAULT_BOARD_SIZE = 4;
             const DEFAULT_TOPIC_ID = 'fruit';
             const WORD_POOL_TARGETS = {
-                3: 27,
-                4: 36,
-                5: 45,
-                6: 55
+                3: 50,
+                4: 50
             };
             const BINGO_TOPICS = [
                 {
@@ -1164,6 +1169,8 @@
             let resultSoundPlayed = false;
             let lastTurnId = null;
             let turnFlashTimer = null;
+            let lastLineTtsCallKey = null;
+            let lastAnnouncedLinesByPlayer = {};
 
             function setScreenHeight() {
                 app.style.height = `${window.innerHeight}px`;
@@ -1386,6 +1393,8 @@
                 lastSeenCallKey = null;
                 lastMyLineCount = 0;
                 lastTurnId = null;
+                lastLineTtsCallKey = null;
+                lastAnnouncedLinesByPlayer = {};
                 myBoardEl.classList.remove('my-turn-board');
 
                 setupOverlay.classList.remove('active');
@@ -1452,6 +1461,8 @@
                     const cell = document.createElement('button');
                     cell.type = 'button';
                     cell.className = 'cell-btn disabled';
+                    const lengthClass = getWordLengthClass(words[index]);
+                    if (lengthClass) cell.classList.add(lengthClass);
                     cell.innerHTML = `<span class="cell-label">${escapeHTML(words[index] || '')}</span>`;
                     myBoardEl.appendChild(cell);
                 }
@@ -1496,7 +1507,7 @@
 
                 selectInfoEl.textContent = `${gameData.topicName || '주제'} 단어 ${wordPool.length}개 중 ${needed}개를 선택하세요.`;
                 selectDoneBtn.disabled = selectedWords.length !== needed;
-                selectedPreviewEl.classList.remove('size-3', 'size-4', 'size-5', 'size-6');
+                selectedPreviewEl.classList.remove('size-3', 'size-4');
                 selectedPreviewEl.classList.add(`size-${boardSize}`);
                 selectedPreviewEl.style.gridTemplateColumns = `repeat(${boardSize}, 1fr)`;
                 selectedPreviewEl.style.gridTemplateRows = `repeat(${boardSize}, 1fr)`;
@@ -1666,6 +1677,7 @@
                 renderCalledNumbers(calledNumbers);
                 updateTurnText(gameData, players);
                 handleTurnCue(gameData, players);
+                handleLineTts(gameData, players, calledSet, boardSize);
                 handleCallSound(gameData, myLineInfo);
 
                 if (gameData.phase === 'finished') {
@@ -1721,13 +1733,16 @@
                 const canCall = gameData.phase === 'playing' && gameData.currentTurn === myPlayerId;
                 const winCellSet = new Set(lineInfo.winCells || []);
 
-                board.forEach((word, index) => {
+                board.slice(0, boardSize * boardSize).forEach((word, index) => {
+                    const wordText = String(word);
                     const button = document.createElement('button');
                     button.type = 'button';
                     button.className = 'cell-btn';
-                    button.innerHTML = `<span class="cell-label">${escapeHTML(String(word))}</span>`;
+                    const lengthClass = getWordLengthClass(wordText);
+                    if (lengthClass) button.classList.add(lengthClass);
+                    button.innerHTML = `<span class="cell-label">${escapeHTML(wordText)}</span>`;
 
-                    if (calledSet.has(String(word))) {
+                    if (calledSet.has(wordText)) {
                         button.classList.add('called');
                         const mark = document.createElement('span');
                         mark.className = 'call-mark';
@@ -1739,10 +1754,10 @@
                         button.classList.add('win-line');
                     }
 
-                    if (!canCall || calledSet.has(String(word))) {
+                    if (!canCall || calledSet.has(wordText)) {
                         button.classList.add('disabled');
                     } else {
-                        button.addEventListener('click', () => callNumber(String(word)));
+                        button.addEventListener('click', () => callNumber(wordText));
                     }
 
                     myBoardEl.appendChild(button);
@@ -1803,7 +1818,7 @@
                     const card = document.createElement('div');
                     card.className = 'mini-card';
 
-                    const cells = (state.board || []).map((word, index) => {
+                    const cells = (state.board || []).slice(0, boardSize * boardSize).map((word, index) => {
                         const classes = ['mini-cell'];
                         if (calledSet.has(String(word))) classes.push('called');
                         if (winCellSet.has(index)) classes.push('win-line');
@@ -1969,11 +1984,10 @@
                     const prevMyLines = Number(currentRoomData?.gameData?.players?.[myPlayerId]?.lines || 0);
 
                     if (nextData?.phase === 'finished') {
-                        playFinishSound(nextData.winnerId === myPlayerId);
-                        resultSoundPlayed = true;
-                    } else if (nextMyLines > prevMyLines) {
-                        playLineSound();
-                    } else {
+                    playResultAnnouncement(nextData, currentRoomData?.players || {}, nextData.winnerId === myPlayerId);
+                } else if (nextMyLines > prevMyLines) {
+                    playLineSound();
+                } else {
                         playMarkSound();
                     }
                 });
@@ -2022,8 +2036,7 @@
                     : '빙고가 끝났습니다.';
 
                 if (!resultSoundPlayed) {
-                    playFinishSound(didIWin);
-                    resultSoundPlayed = true;
+                    playResultAnnouncement(gameData, players, didIWin);
                 }
 
                 const scoreRows = getTurnOrder(gameData).map(id => {
@@ -2112,10 +2125,9 @@
                 const chooserId = getNextSetupChooser(gameData);
                 const chooser = players[chooserId];
                 const nextSetup = getNextSetup(gameData);
-                const myReady = !!gameData.rematchRequests?.[myPlayerId];
-                const canEdit = chooserId === myPlayerId && !myReady;
+                const canEdit = chooserId === myPlayerId;
 
-                const sizeButtons = [3, 4, 5, 6].map(size => {
+                const sizeButtons = [3, 4].map(size => {
                     return `<button type="button" class="result-setup-btn next-size-btn ${Number(nextSetup.boardSize) === size ? 'active' : ''}" data-size="${size}" ${canEdit ? '' : 'disabled'}>${size}x${size}</button>`;
                 }).join('');
 
@@ -2147,7 +2159,6 @@
                 const gameData = currentRoomData?.gameData;
                 if (!roomRef || !gameData || gameData.phase !== 'finished') return;
                 if (getNextSetupChooser(gameData) !== myPlayerId) return;
-                if (gameData.rematchRequests?.[myPlayerId]) return;
 
                 const current = getNextSetup(gameData);
                 const boardSize = getValidBoardSize(patch.boardSize || current.boardSize);
@@ -2342,6 +2353,31 @@
                 playTone(1175, 0.1, 'triangle', 0.076, 0.08);
             }
 
+            function speakText(text, interrupt = false) {
+                if (!text || !window.speechSynthesis || !window.SpeechSynthesisUtterance) return;
+
+                if (interrupt) {
+                    window.speechSynthesis.cancel();
+                }
+
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'ko-KR';
+                utterance.rate = 1.03;
+                utterance.pitch = 1.05;
+                utterance.volume = 1;
+                window.speechSynthesis.speak(utterance);
+            }
+
+            function playResultAnnouncement(gameData, players, didIWin) {
+                if (resultSoundPlayed) return;
+
+                const winner = players?.[gameData.winnerId];
+                const winnerName = winner?.nickname || gameData.lastCalled?.nickname || '플레이어';
+                speakText(`${winnerName} 빙고!`, true);
+                window.setTimeout(() => playFinishSound(didIWin), 900);
+                resultSoundPlayed = true;
+            }
+
             function startBgm() {
                 const context = ensureAudio();
                 if (!context || bgmTimer) return;
@@ -2383,6 +2419,49 @@
                 } else {
                     playMarkSound();
                 }
+            }
+
+            function handleLineTts(gameData, players, calledSet, boardSize) {
+                if (gameData.phase !== 'playing' && gameData.phase !== 'finished') return;
+
+                const calledValue = gameData.lastCalled ? getCalledValue(gameData.lastCalled) : null;
+                const callKey = calledValue && calledValue !== '-' ? `${calledValue}:${gameData.lastCalled?.at || ''}` : '';
+                const turnOrder = getTurnOrder(gameData);
+                const lineCounts = {};
+
+                turnOrder.forEach(id => {
+                    const state = gameData.players?.[id] || {};
+                    lineCounts[id] = getLineInfo(state.board || [], calledSet, boardSize).count;
+                });
+
+                if (!callKey) {
+                    lastAnnouncedLinesByPlayer = lineCounts;
+                    return;
+                }
+
+                if (lastLineTtsCallKey === null) {
+                    lastLineTtsCallKey = callKey;
+                    lastAnnouncedLinesByPlayer = lineCounts;
+                    return;
+                }
+
+                if (lastLineTtsCallKey === callKey) return;
+                lastLineTtsCallKey = callKey;
+
+                turnOrder.forEach(id => {
+                    const previous = Number(lastAnnouncedLinesByPlayer[id] || 0);
+                    const current = Number(lineCounts[id] || 0);
+                    if (current <= previous) {
+                        lastAnnouncedLinesByPlayer[id] = current;
+                        return;
+                    }
+
+                    const nickname = players[id]?.nickname || '플레이어';
+                    for (let line = previous + 1; line <= current; line++) {
+                        speakText(`${nickname} ${line}줄!`);
+                    }
+                    lastAnnouncedLinesByPlayer[id] = current;
+                });
             }
 
             function leaveToLobby() {
@@ -2430,6 +2509,13 @@
                 }
 
                 return [];
+            }
+
+            function getWordLengthClass(word) {
+                const length = Array.from(String(word || '')).length;
+                if (length >= 6) return 'very-long-word';
+                if (length >= 5) return 'long-word';
+                return '';
             }
 
             function getLineInfo(board, calledSet, boardSize = DEFAULT_BOARD_SIZE) {
@@ -2484,12 +2570,12 @@
 
             function getValidBoardSize(boardSize, fallback = DEFAULT_BOARD_SIZE) {
                 const size = Number(boardSize);
-                return [3, 4, 5, 6].includes(size) ? size : fallback;
+                return [3, 4].includes(size) ? size : fallback;
             }
 
             function getNextSetup(gameData) {
                 const stored = gameData?.nextSetup || {};
-                const boardSize = getValidBoardSize(stored.boardSize, getBoardSize(gameData));
+                const boardSize = getValidBoardSize(stored.boardSize, getValidBoardSize(gameData?.boardSize));
                 const topic = getTopic(stored.topicId || gameData?.topicId);
 
                 return {
@@ -2544,12 +2630,12 @@
 
             function getBoardSize(gameData) {
                 const stored = Number(gameData?.boardSize || DEFAULT_BOARD_SIZE);
-                if ([3, 4, 5, 6].includes(stored)) return stored;
+                if ([3, 4].includes(stored)) return stored;
 
                 const firstState = Object.values(gameData?.players || {})[0];
-                const boardLength = Array.isArray(firstState?.board) ? firstState.board.length : 25;
+                const boardLength = Array.isArray(firstState?.board) ? firstState.board.length : 16;
                 const inferred = Math.sqrt(boardLength);
-                return [3, 4, 5, 6].includes(inferred) ? inferred : DEFAULT_BOARD_SIZE;
+                return [3, 4].includes(inferred) ? inferred : DEFAULT_BOARD_SIZE;
             }
 
             function getTargetLines(boardSize) {
@@ -2557,7 +2643,7 @@
             }
 
             function setBoardGrid(element, boardSize) {
-                element.classList.remove('size-3', 'size-4', 'size-5', 'size-6');
+                element.classList.remove('size-3', 'size-4');
                 element.classList.add(`size-${boardSize}`);
                 element.style.gridTemplateColumns = `repeat(${boardSize}, 1fr)`;
                 element.style.gridTemplateRows = `repeat(${boardSize}, 1fr)`;
