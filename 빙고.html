@@ -2065,15 +2065,19 @@
                             <div id="result-rematch-status" class="rematch-status"></div>
                         </div>
                         <div class="modal-actions">
-                            <button id="result-rematch-btn" class="action-btn">다시하기</button>
-                            <button id="result-room-btn" class="action-btn secondary">게임방</button>
+                            <button id="result-rematch-btn" class="action-btn" type="button">다시하기</button>
+                            <button id="result-room-btn" class="action-btn secondary" type="button">게임방</button>
                         </div>
                     </div>
                 `;
                 resultOverlay.classList.add('active');
 
                 document.getElementById('result-room-btn')?.addEventListener('click', returnToGameRoom);
-                document.getElementById('result-rematch-btn')?.addEventListener('click', requestRematch);
+                document.getElementById('result-rematch-btn')?.addEventListener('click', event => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    requestRematch();
+                });
                 renderResultNextSetup(gameData);
                 updateResultRematchStatus(gameData);
             }
@@ -2081,21 +2085,21 @@
             function requestRematch() {
                 if (!roomRef || !currentRoomData?.gameData || currentRoomData.gameData.phase !== 'finished') return;
                 playReadySound();
-                roomRef.child(`gameData/rematchRequests/${myPlayerId}`).set({
-                    ready: true,
-                    at: Date.now()
+                roomRef.child(`players/${myPlayerId}`).update({
+                    bingoRematchReady: true,
+                    bingoRematchReadyAt: Date.now()
                 });
             }
 
             function isRematchReadyForCurrentSetup(gameData, playerId) {
-                const request = gameData.rematchRequests?.[playerId];
-                if (!request) return false;
+                const player = currentRoomData?.players?.[playerId] || {};
+                const setupUpdatedAt = Number(getNextSetup(gameData).updatedAt || 0);
 
-                const setupUpdatedAt = Number(gameData.nextSetup?.updatedAt || 0);
-                if (request === true) return setupUpdatedAt === 0;
+                if (player.bingoRematchReady) {
+                    return Number(player.bingoRematchReadyAt || 0) >= setupUpdatedAt;
+                }
 
-                const readyAt = Number(request.at || 0);
-                return !!request.ready && readyAt >= setupUpdatedAt;
+                return false;
             }
 
             function updateResultRematchStatus(gameData) {
@@ -2177,15 +2181,12 @@
                 const topic = getTopic(patch.topicId || current.topicId);
 
                 playPickSound();
-                roomRef.update({
-                    'gameData/nextSetup': {
-                        chooserId: myPlayerId,
-                        boardSize,
-                        topicId: topic.id,
-                        topicName: topic.name,
-                        updatedAt: Date.now()
-                    },
-                    'gameData/rematchRequests': null
+                roomRef.child(`players/${myPlayerId}/bingoNextSetup`).set({
+                    chooserId: myPlayerId,
+                    boardSize,
+                    topicId: topic.id,
+                    topicName: topic.name,
+                    updatedAt: Date.now()
                 });
             }
 
@@ -2217,24 +2218,34 @@
                     };
                 });
 
-                roomRef.child('gameData').set({
-                    gameId: 'bingo',
-                    boardSize,
-                    targetLines,
-                    topicId: topic.id,
-                    topicName: topic.name,
-                    wordPool: getWordPoolForBoard(topic, boardSize, true),
-                    phase: 'selecting',
-                    turnOrder: activeOrder,
-                    currentTurn: null,
-                    calledNumbers: [],
-                    calledMap: {},
-                    lastCalled: null,
-                    winnerId: null,
-                    players: playerStates,
-                    rematchRound: Number(gameData.rematchRound || 0) + 1,
-                    createdAt: Date.now()
+                const updates = {
+                    gameData: {
+                        gameId: 'bingo',
+                        boardSize,
+                        targetLines,
+                        topicId: topic.id,
+                        topicName: topic.name,
+                        wordPool: getWordPoolForBoard(topic, boardSize, true),
+                        phase: 'selecting',
+                        turnOrder: activeOrder,
+                        currentTurn: null,
+                        calledNumbers: [],
+                        calledMap: {},
+                        lastCalled: null,
+                        winnerId: null,
+                        players: playerStates,
+                        rematchRound: Number(gameData.rematchRound || 0) + 1,
+                        createdAt: Date.now()
+                    }
+                };
+
+                activeOrder.forEach(id => {
+                    updates[`players/${id}/bingoRematchReady`] = null;
+                    updates[`players/${id}/bingoRematchReadyAt`] = null;
+                    updates[`players/${id}/bingoNextSetup`] = null;
                 });
+
+                roomRef.update(updates);
                 return true;
             }
 
@@ -2588,14 +2599,16 @@
             }
 
             function getNextSetup(gameData) {
-                const stored = gameData?.nextSetup || {};
+                const chooserId = getNextSetupChooser(gameData);
+                const stored = currentRoomData?.players?.[chooserId]?.bingoNextSetup || {};
                 const boardSize = getValidBoardSize(stored.boardSize, getValidBoardSize(gameData?.boardSize));
                 const topic = getTopic(stored.topicId || gameData?.topicId);
 
                 return {
                     boardSize,
                     topicId: topic.id,
-                    topicName: topic.name
+                    topicName: topic.name,
+                    updatedAt: Number(stored.updatedAt || 0)
                 };
             }
 
