@@ -741,6 +741,11 @@
             overflow: hidden;
         }
 
+        .result-modal {
+            max-height: min(92vh, 760px);
+            overflow-y: auto;
+        }
+
         .modal-head {
             padding: 16px 14px;
             text-align: center;
@@ -797,6 +802,63 @@
         .rematch-ready-item.ready {
             background: #e8fbf8;
             color: #17675f;
+        }
+
+        .result-setup-panel {
+            margin-top: 12px;
+            padding: 10px;
+            border: 2px solid var(--line);
+            border-radius: 12px;
+            background: #fffaf4;
+            text-align: left;
+        }
+
+        .result-setup-title {
+            color: var(--ink);
+            font-size: 0.82rem;
+            font-weight: 900;
+            text-align: center;
+        }
+
+        .result-setup-sub {
+            margin-top: 4px;
+            color: var(--muted);
+            font-size: 0.72rem;
+            font-weight: 800;
+            text-align: center;
+            line-height: 1.35;
+        }
+
+        .result-setup-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 6px;
+            margin-top: 8px;
+        }
+
+        .result-topic-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .result-setup-btn {
+            min-height: 34px;
+            border: 2px solid var(--line);
+            border-radius: 10px;
+            background: #fffaf0;
+            color: var(--ink);
+            font-size: 0.72rem;
+            font-weight: 900;
+            box-shadow: 2px 2px 0 var(--shadow);
+        }
+
+        .result-setup-btn.active {
+            border-color: var(--primary);
+            background: #fff0ec;
+            color: var(--primary-dark);
+        }
+
+        .result-setup-btn:disabled {
+            opacity: 0.58;
         }
 
         .modal-actions {
@@ -1982,11 +2044,12 @@
                 }).join('');
 
                 resultOverlay.innerHTML = `
-                    <div class="modal">
+                    <div class="modal result-modal">
                         <div class="modal-head"><h2>${title}</h2></div>
                         <div class="modal-body">
                             <p>${escapeHTML(message)}</p>
                             <div style="margin-top:12px;">${scoreRows}</div>
+                            <div id="result-next-setup"></div>
                             <div id="result-rematch-status" class="rematch-status"></div>
                         </div>
                         <div class="modal-actions">
@@ -1999,6 +2062,7 @@
 
                 document.getElementById('result-room-btn')?.addEventListener('click', returnToGameRoom);
                 document.getElementById('result-rematch-btn')?.addEventListener('click', requestRematch);
+                renderResultNextSetup(gameData);
                 updateResultRematchStatus(gameData);
             }
 
@@ -2036,6 +2100,67 @@
                     rematchBtn.textContent = ready ? '준비완료' : '다시하기';
                     rematchBtn.disabled = ready;
                 }
+
+                renderResultNextSetup(gameData);
+            }
+
+            function renderResultNextSetup(gameData) {
+                const setupEl = document.getElementById('result-next-setup');
+                if (!setupEl) return;
+
+                const players = currentRoomData?.players || {};
+                const chooserId = getNextSetupChooser(gameData);
+                const chooser = players[chooserId];
+                const nextSetup = getNextSetup(gameData);
+                const myReady = !!gameData.rematchRequests?.[myPlayerId];
+                const canEdit = chooserId === myPlayerId && !myReady;
+
+                const sizeButtons = [3, 4, 5, 6].map(size => {
+                    return `<button type="button" class="result-setup-btn next-size-btn ${Number(nextSetup.boardSize) === size ? 'active' : ''}" data-size="${size}" ${canEdit ? '' : 'disabled'}>${size}x${size}</button>`;
+                }).join('');
+
+                const topicButtons = BINGO_TOPICS.map(topic => {
+                    return `<button type="button" class="result-setup-btn next-topic-btn ${nextSetup.topicId === topic.id ? 'active' : ''}" data-topic="${topic.id}" ${canEdit ? '' : 'disabled'}>${topic.name}</button>`;
+                }).join('');
+
+                setupEl.innerHTML = `
+                    <div class="result-setup-panel">
+                        <div class="result-setup-title">다음 판: ${nextSetup.boardSize}x${nextSetup.boardSize} · ${escapeHTML(nextSetup.topicName)}</div>
+                        <div class="result-setup-sub">${canEdit ? '이번 판에서 줄이 가장 적은 사람이 다음 보드와 주제를 고릅니다.' : `${escapeHTML(chooser?.nickname || '플레이어')}님이 다음 판을 고릅니다.`}</div>
+                        <div class="result-setup-grid">${sizeButtons}</div>
+                        <div class="result-setup-grid result-topic-grid">${topicButtons}</div>
+                    </div>
+                `;
+
+                if (!canEdit) return;
+
+                setupEl.querySelectorAll('.next-size-btn').forEach(button => {
+                    button.addEventListener('click', () => updateNextSetup({ boardSize: Number(button.dataset.size) }));
+                });
+
+                setupEl.querySelectorAll('.next-topic-btn').forEach(button => {
+                    button.addEventListener('click', () => updateNextSetup({ topicId: button.dataset.topic }));
+                });
+            }
+
+            function updateNextSetup(patch) {
+                const gameData = currentRoomData?.gameData;
+                if (!roomRef || !gameData || gameData.phase !== 'finished') return;
+                if (getNextSetupChooser(gameData) !== myPlayerId) return;
+                if (gameData.rematchRequests?.[myPlayerId]) return;
+
+                const current = getNextSetup(gameData);
+                const boardSize = getValidBoardSize(patch.boardSize || current.boardSize);
+                const topic = getTopic(patch.topicId || current.topicId);
+
+                playPickSound();
+                roomRef.child('gameData/nextSetup').set({
+                    chooserId: myPlayerId,
+                    boardSize,
+                    topicId: topic.id,
+                    topicName: topic.name,
+                    updatedAt: Date.now()
+                });
             }
 
             function restartIfAllRematchReady() {
@@ -2051,8 +2176,9 @@
                 const allReady = activeOrder.every(id => requests[id]);
                 if (!allReady) return false;
 
-                const boardSize = getBoardSize(gameData);
-                const topic = getTopic(gameData.topicId);
+                const nextSetup = getNextSetup(gameData);
+                const boardSize = getValidBoardSize(nextSetup.boardSize);
+                const topic = getTopic(nextSetup.topicId);
                 const targetLines = getTargetLines(boardSize);
                 const playerStates = {};
 
@@ -2353,6 +2479,38 @@
 
             function getTopic(topicId) {
                 return BINGO_TOPICS.find(topic => topic.id === topicId) || BINGO_TOPICS[0];
+            }
+
+            function getValidBoardSize(boardSize, fallback = DEFAULT_BOARD_SIZE) {
+                const size = Number(boardSize);
+                return [3, 4, 5, 6].includes(size) ? size : fallback;
+            }
+
+            function getNextSetup(gameData) {
+                const stored = gameData?.nextSetup || {};
+                const boardSize = getValidBoardSize(stored.boardSize, getBoardSize(gameData));
+                const topic = getTopic(stored.topicId || gameData?.topicId);
+
+                return {
+                    boardSize,
+                    topicId: topic.id,
+                    topicName: topic.name
+                };
+            }
+
+            function getNextSetupChooser(gameData) {
+                const turnOrder = getTurnOrder(gameData);
+                if (!turnOrder.length) return myPlayerId;
+
+                const losers = turnOrder.filter(id => id !== gameData.winnerId);
+                const candidates = losers.length ? losers : turnOrder;
+
+                return candidates.slice().sort((a, b) => {
+                    const aLines = Number(gameData.players?.[a]?.lines || 0);
+                    const bLines = Number(gameData.players?.[b]?.lines || 0);
+                    if (aLines !== bLines) return aLines - bLines;
+                    return turnOrder.indexOf(a) - turnOrder.indexOf(b);
+                })[0];
             }
 
             function getTopicWords(topic) {
