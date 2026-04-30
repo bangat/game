@@ -2081,7 +2081,21 @@
             function requestRematch() {
                 if (!roomRef || !currentRoomData?.gameData || currentRoomData.gameData.phase !== 'finished') return;
                 playReadySound();
-                roomRef.child(`gameData/rematchRequests/${myPlayerId}`).set(true);
+                roomRef.child(`gameData/rematchRequests/${myPlayerId}`).set({
+                    ready: true,
+                    at: Date.now()
+                });
+            }
+
+            function isRematchReadyForCurrentSetup(gameData, playerId) {
+                const request = gameData.rematchRequests?.[playerId];
+                if (!request) return false;
+
+                const setupUpdatedAt = Number(gameData.nextSetup?.updatedAt || 0);
+                if (request === true) return setupUpdatedAt === 0;
+
+                const readyAt = Number(request.at || 0);
+                return !!request.ready && readyAt >= setupUpdatedAt;
             }
 
             function updateResultRematchStatus(gameData) {
@@ -2090,13 +2104,12 @@
 
                 const players = currentRoomData?.players || {};
                 const turnOrder = getTurnOrder(gameData);
-                const requests = gameData.rematchRequests || {};
-                const readyCount = turnOrder.filter(id => requests[id]).length;
+                const readyCount = turnOrder.filter(id => isRematchReadyForCurrentSetup(gameData, id)).length;
                 const totalCount = turnOrder.length;
                 const allReady = totalCount > 0 && readyCount === totalCount;
 
                 const readyRows = turnOrder.map(id => {
-                    const ready = !!requests[id];
+                    const ready = isRematchReadyForCurrentSetup(gameData, id);
                     const nickname = players[id]?.nickname || '플레이어';
                     return `<div class="rematch-ready-item ${ready ? 'ready' : ''}">${ready ? '준비완료' : '대기중'} · ${escapeHTML(nickname)}</div>`;
                 }).join('');
@@ -2108,7 +2121,7 @@
 
                 const rematchBtn = document.getElementById('result-rematch-btn');
                 if (rematchBtn) {
-                    const ready = !!requests[myPlayerId];
+                    const ready = isRematchReadyForCurrentSetup(gameData, myPlayerId);
                     rematchBtn.textContent = ready ? '준비완료' : '다시하기';
                     rematchBtn.disabled = ready;
                 }
@@ -2164,12 +2177,15 @@
                 const topic = getTopic(patch.topicId || current.topicId);
 
                 playPickSound();
-                roomRef.child('gameData/nextSetup').set({
-                    chooserId: myPlayerId,
-                    boardSize,
-                    topicId: topic.id,
-                    topicName: topic.name,
-                    updatedAt: Date.now()
+                roomRef.update({
+                    'gameData/nextSetup': {
+                        chooserId: myPlayerId,
+                        boardSize,
+                        topicId: topic.id,
+                        topicName: topic.name,
+                        updatedAt: Date.now()
+                    },
+                    'gameData/rematchRequests': null
                 });
             }
 
@@ -2182,8 +2198,7 @@
                 const activeOrder = getTurnOrderFromGameData(gameData).filter(id => currentRoomData.players?.[id]);
                 if (activeOrder.length === 0) return false;
 
-                const requests = gameData.rematchRequests || {};
-                const allReady = activeOrder.every(id => requests[id]);
+                const allReady = activeOrder.every(id => isRematchReadyForCurrentSetup(gameData, id));
                 if (!allReady) return false;
 
                 const nextSetup = getNextSetup(gameData);
