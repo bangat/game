@@ -1297,6 +1297,10 @@
                         return;
                     }
 
+                    if (repairTargetLinesIfNeeded()) {
+                        return;
+                    }
+
                     if (currentRoomData.gameData.phase === 'selecting') {
                         if (startPlayingIfReady()) {
                             return;
@@ -1687,7 +1691,7 @@
                 const calledSet = new Set(calledNumbers.map(String));
                 const myState = gameData.players[myPlayerId] || {};
                 const myLineInfo = getLineInfo(myState.board || [], calledSet, boardSize);
-                const target = Number(gameData.targetLines || getTargetLines(boardSize));
+                const target = getRequiredLines(gameData, boardSize);
 
                 roomNameEl.textContent = currentRoomData.roomName || '빙고방';
                 targetLinesEl.textContent = `${gameData.topicName || '주제'} · ${target}줄 먼저`;
@@ -1709,6 +1713,11 @@
                     } else {
                         updateResultRematchStatus(gameData);
                     }
+                } else if (resultShown) {
+                    resultShown = false;
+                    resultSoundPlayed = false;
+                    resultOverlay.classList.remove('active');
+                    resultOverlay.innerHTML = '';
                 }
             }
 
@@ -1953,7 +1962,7 @@
                     const nextCalledNumbers = calledNumbers.concat(calledWord);
                     const calledSet = new Set(nextCalledNumbers.map(String));
                     const boardSize = getBoardSize(gameData);
-                    const target = Number(gameData.targetLines || getTargetLines(boardSize));
+                    const target = getRequiredLines(gameData, boardSize);
                     const nextPlayers = { ...(gameData.players || {}) };
                     let winnerId = null;
                     let bestLines = -1;
@@ -2046,6 +2055,58 @@
                 }
 
                 return false;
+            }
+
+            function repairTargetLinesIfNeeded() {
+                if (!isHost || !roomRef || !currentRoomData?.gameData) return false;
+
+                const gameData = currentRoomData.gameData;
+                const boardSize = getBoardSize(gameData);
+                const requiredLines = getRequiredLines(gameData, boardSize);
+                const storedTarget = Number(gameData.targetLines || 0);
+                const calledSet = new Set(normalizeCalledNumbers(gameData.calledNumbers).map(String));
+                const nextPlayers = { ...(gameData.players || {}) };
+                let changedPlayers = false;
+                let hasWinner = false;
+
+                Object.keys(nextPlayers).forEach(id => {
+                    const state = nextPlayers[id] || {};
+                    const lineInfo = getLineInfo(state.board || [], calledSet, boardSize);
+                    const finished = lineInfo.count >= requiredLines;
+
+                    if (Number(state.lines || 0) !== lineInfo.count || Boolean(state.finished) !== finished) {
+                        changedPlayers = true;
+                        nextPlayers[id] = {
+                            ...state,
+                            lines: lineInfo.count,
+                            finished
+                        };
+                    }
+
+                    if (finished) hasWinner = true;
+                });
+
+                const updates = {};
+                if (storedTarget !== requiredLines) {
+                    updates.targetLines = requiredLines;
+                }
+
+                if (gameData.phase === 'finished' && !hasWinner) {
+                    const turnOrder = getTurnOrderFromGameData(gameData);
+                    const lastPlayerId = gameData.lastCalled?.playerId || gameData.currentTurn;
+                    updates.phase = 'playing';
+                    updates.winnerId = null;
+                    updates.finishedAt = null;
+                    updates.currentTurn = getNextTurn(turnOrder, lastPlayerId);
+                    updates.players = nextPlayers;
+                } else if (changedPlayers) {
+                    updates.players = nextPlayers;
+                }
+
+                if (!Object.keys(updates).length) return false;
+
+                roomRef.child('gameData').update(updates);
+                return true;
             }
 
             function showResult(gameData, players, calledSet) {
@@ -2701,6 +2762,10 @@
 
             function getTargetLines(boardSize) {
                 return Number(boardSize || DEFAULT_BOARD_SIZE);
+            }
+
+            function getRequiredLines(gameData, boardSize = getBoardSize(gameData)) {
+                return getTargetLines(boardSize);
             }
 
             function setBoardGrid(element, boardSize) {
