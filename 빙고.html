@@ -1992,7 +1992,10 @@
                 startBgm();
                 const calledWord = String(word);
 
-                roomRef.child('gameData').transaction(gameData => {
+                roomRef.transaction(room => {
+                    if (!room || room.status !== 'playing' || !room.players?.[myPlayerId]) return;
+
+                    const gameData = room.gameData;
                     if (!gameData || gameData.phase !== 'playing') return;
                     if (gameData.currentTurn !== myPlayerId) return;
 
@@ -2005,37 +2008,17 @@
                     const calledSet = new Set(nextCalledNumbers.map(String));
                     const boardSize = getBoardSize(gameData);
                     const target = getRequiredLines(gameData, boardSize);
-                    const nextPlayers = { ...(gameData.players || {}) };
-                    const roomPlayers = currentRoomData?.players || {};
-                    const turnOrder = getTurnOrderFromGameData(gameData).filter(id => roomPlayers[id] && nextPlayers[id]);
-                    const winnerCandidates = [];
+                    const evaluation = evaluateBingoGame(gameData, room.players, calledSet, boardSize, target, myPlayerId);
+                    if (!evaluation.activeOrder.includes(myPlayerId)) return;
 
-                    Object.keys(nextPlayers).forEach(id => {
-                        const state = nextPlayers[id] || {};
-                        const isActive = turnOrder.includes(id);
-                        const hasBoard = isValidBingoBoard(state.board, boardSize);
-                        const lineInfo = isActive && hasBoard
-                            ? getLineInfo(state.board || [], calledSet, boardSize)
-                            : { count: 0 };
-                        const finished = isActive && hasBoard && lineInfo.count >= target;
-
-                        nextPlayers[id] = {
-                            ...state,
-                            lines: lineInfo.count,
-                            finished
-                        };
-
-                        if (finished) winnerCandidates.push(id);
-                    });
-
-                    const winnerId = pickBingoWinner(winnerCandidates, nextPlayers, turnOrder, myPlayerId);
-                    const nextTurn = winnerId ? gameData.currentTurn : getNextTurn(turnOrder, myPlayerId);
-
-                    return {
+                    const nextTurn = evaluation.winnerId ? gameData.currentTurn : getNextTurn(evaluation.activeOrder, myPlayerId);
+                    const nextGameData = {
                         ...gameData,
+                        targetLines: target,
                         calledNumbers: nextCalledNumbers,
                         calledMap: { ...calledMap, [wordKey]: true },
-                        players: nextPlayers,
+                        players: evaluation.players,
+                        turnOrder: evaluation.activeOrder,
                         currentTurn: nextTurn,
                         lastCalled: {
                             value: calledWord,
@@ -2044,9 +2027,14 @@
                             nickname: myNickname,
                             at: Date.now()
                         },
-                        phase: winnerId ? 'finished' : 'playing',
-                        winnerId: winnerId || null,
-                        finishedAt: winnerId ? Date.now() : null
+                        phase: evaluation.winnerId ? 'finished' : 'playing',
+                        winnerId: evaluation.winnerId || null,
+                        finishedAt: evaluation.winnerId ? Date.now() : null
+                    };
+
+                    return {
+                        ...room,
+                        gameData: nextGameData
                     };
                 }, (error, committed, snapshot) => {
                     if (error) {
@@ -2057,7 +2045,7 @@
 
                     if (!committed || !snapshot || !snapshot.exists()) return;
 
-                    const nextData = snapshot.val();
+                    const nextData = snapshot.val()?.gameData;
                     const nextMyLines = Number(nextData?.players?.[myPlayerId]?.lines || 0);
                     const prevMyLines = Number(currentRoomData?.gameData?.players?.[myPlayerId]?.lines || 0);
 
@@ -2111,50 +2099,34 @@
                 const requiredLines = getRequiredLines(gameData, boardSize);
                 const storedTarget = Number(gameData.targetLines || 0);
                 const calledSet = new Set(normalizeCalledNumbers(gameData.calledNumbers).map(String));
-                const nextPlayers = { ...(gameData.players || {}) };
-                const activeOrder = getTurnOrderFromGameData(gameData).filter(id => currentRoomData.players?.[id] && nextPlayers[id]);
-                const winnerCandidates = [];
-                let changedPlayers = false;
-
-                Object.keys(nextPlayers).forEach(id => {
-                    const state = nextPlayers[id] || {};
-                    const isActive = activeOrder.includes(id);
-                    const hasBoard = isValidBingoBoard(state.board, boardSize);
-                    const lineInfo = isActive && hasBoard
-                        ? getLineInfo(state.board || [], calledSet, boardSize)
-                        : { count: 0 };
-                    const finished = isActive && hasBoard && lineInfo.count >= requiredLines;
-
-                    if (Number(state.lines || 0) !== lineInfo.count || Boolean(state.finished) !== finished) {
-                        changedPlayers = true;
-                        nextPlayers[id] = {
-                            ...state,
-                            lines: lineInfo.count,
-                            finished
-                        };
-                    }
-
-                    if (finished) winnerCandidates.push(id);
-                });
-
-                const winnerId = pickBingoWinner(winnerCandidates, nextPlayers, activeOrder, gameData.lastCalled?.playerId || gameData.currentTurn);
+                const evaluation = evaluateBingoGame(
+                    gameData,
+                    currentRoomData.players || {},
+                    calledSet,
+                    boardSize,
+                    requiredLines,
+                    gameData.lastCalled?.playerId || gameData.currentTurn
+                );
                 const updates = {};
                 if (storedTarget !== requiredLines) {
                     updates.targetLines = requiredLines;
                 }
 
-                if (gameData.phase === 'finished' && !winnerId) {
+                if (gameData.phase === 'finished' && !evaluation.winnerId) {
                     const lastPlayerId = gameData.lastCalled?.playerId || gameData.currentTurn;
                     updates.phase = 'playing';
                     updates.winnerId = null;
                     updates.finishedAt = null;
-                    updates.currentTurn = getNextTurn(activeOrder, lastPlayerId);
-                    updates.players = nextPlayers;
-                } else if (gameData.phase === 'finished' && winnerId && gameData.winnerId !== winnerId) {
-                    updates.winnerId = winnerId;
-                    updates.players = nextPlayers;
-                } else if (changedPlayers) {
-                    updates.players = nextPlayers;
+                    updates.currentTurn = getNextTurn(evaluation.activeOrder, lastPlayerId);
+                    updates.players = evaluation.players;
+                    updates.turnOrder = evaluation.activeOrder;
+                } else if (gameData.phase === 'finished' && evaluation.winnerId && gameData.winnerId !== evaluation.winnerId) {
+                    updates.winnerId = evaluation.winnerId;
+                    updates.players = evaluation.players;
+                    updates.turnOrder = evaluation.activeOrder;
+                } else if (evaluation.changed) {
+                    updates.players = evaluation.players;
+                    updates.turnOrder = evaluation.activeOrder;
                 }
 
                 if (!Object.keys(updates).length) return false;
@@ -2710,6 +2682,42 @@
                     if (aLines !== bLines) return bLines - aLines;
                     return turnOrder.indexOf(a) - turnOrder.indexOf(b);
                 })[0];
+            }
+
+            function evaluateBingoGame(gameData, roomPlayers, calledSet, boardSize, targetLines, callerId) {
+                const sourcePlayers = gameData?.players || {};
+                const players = { ...sourcePlayers };
+                const activeOrder = getTurnOrderFromGameData(gameData)
+                    .filter(id => roomPlayers?.[id] && players[id] && isValidBingoBoard(players[id].board, boardSize));
+                const winnerCandidates = [];
+                let changed = false;
+
+                Object.keys(players).forEach(id => {
+                    const state = players[id] || {};
+                    const isActive = activeOrder.includes(id);
+                    const lineInfo = isActive
+                        ? getLineInfo(state.board || [], calledSet, boardSize)
+                        : { count: 0 };
+                    const finished = isActive && lineInfo.count >= targetLines;
+
+                    if (Number(state.lines || 0) !== lineInfo.count || Boolean(state.finished) !== finished) {
+                        changed = true;
+                        players[id] = {
+                            ...state,
+                            lines: lineInfo.count,
+                            finished
+                        };
+                    }
+
+                    if (finished) winnerCandidates.push(id);
+                });
+
+                return {
+                    players,
+                    activeOrder,
+                    winnerId: pickBingoWinner(winnerCandidates, players, activeOrder, callerId),
+                    changed
+                };
             }
 
             function getLineInfo(board, calledSet, boardSize = DEFAULT_BOARD_SIZE) {
