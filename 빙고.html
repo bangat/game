@@ -503,31 +503,56 @@
 
         .selected-preview {
             display: grid;
-            gap: 4px;
-            margin: 10px 0;
+            flex: 0 0 auto;
+            width: min(100%, 300px);
+            aspect-ratio: 1 / 1;
+            gap: 5px;
+            margin: 10px auto 12px;
             padding: 8px;
-            border: 2px solid var(--line);
-            border-radius: 12px;
+            border: 4px solid var(--ink);
+            border-radius: 16px;
             background: #fffaf0;
+            box-shadow: 5px 5px 0 var(--shadow);
         }
 
         .selected-slot {
-            min-height: 28px;
-            border-radius: 8px;
-            background: #f2e3ca;
+            min-width: 0;
+            min-height: 0;
+            border: 2px dashed #d8bd92;
+            border-radius: 9px;
+            background: #f6ead7;
             color: var(--muted);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 0.68rem;
+            font-size: 0.72rem;
             font-weight: 900;
             text-align: center;
+            line-height: 1.12;
             padding: 2px;
+            word-break: keep-all;
+            transition: transform 0.16s ease, background-color 0.16s ease, border-color 0.16s ease;
         }
 
         .selected-slot.filled {
             background: #fff0ec;
+            border-style: solid;
+            border-color: var(--primary);
             color: var(--primary-dark);
+        }
+
+        .selected-slot.just-filled {
+            animation: slot-pop 0.28s ease-out;
+        }
+
+        .selected-preview.size-3 .selected-slot { font-size: clamp(0.88rem, 4.8vw, 1.18rem); }
+        .selected-preview.size-4 .selected-slot { font-size: clamp(0.74rem, 3.8vw, 0.98rem); }
+        .selected-preview.size-5 .selected-slot { font-size: clamp(0.58rem, 3vw, 0.76rem); }
+
+        @keyframes slot-pop {
+            0% { transform: scale(0.78); }
+            70% { transform: scale(1.08); }
+            100% { transform: scale(1); }
         }
 
         .word-choice-list {
@@ -559,6 +584,23 @@
 
         .word-btn:disabled {
             opacity: 0.45;
+        }
+
+        .flying-word {
+            position: fixed;
+            z-index: 90;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid var(--mint);
+            border-radius: 10px;
+            background: #e8fbf8;
+            color: #17675f;
+            font-size: 0.76rem;
+            font-weight: 900;
+            pointer-events: none;
+            box-shadow: 3px 3px 0 rgba(55, 184, 169, 0.25);
+            transform-origin: center;
         }
 
         .action-btn {
@@ -1203,17 +1245,23 @@
                 });
             }
 
-            function renderWordSelection(gameData) {
+            function renderWordSelection(gameData, justFilledIndex = -1) {
                 const boardSize = getBoardSize(gameData);
                 const needed = boardSize * boardSize;
                 const wordPool = Array.isArray(gameData.wordPool) ? gameData.wordPool : getTopic(gameData.topicId).words;
 
                 selectInfoEl.textContent = `${gameData.topicName || '주제'} 단어 중 ${needed}개를 선택하세요. 선택한 순서대로 판에 들어갑니다.`;
                 selectDoneBtn.disabled = selectedWords.length !== needed;
+                selectedPreviewEl.classList.remove('size-3', 'size-4', 'size-5');
+                selectedPreviewEl.classList.add(`size-${boardSize}`);
                 selectedPreviewEl.style.gridTemplateColumns = `repeat(${boardSize}, 1fr)`;
+                selectedPreviewEl.style.gridTemplateRows = `repeat(${boardSize}, 1fr)`;
                 selectedPreviewEl.innerHTML = Array.from({ length: needed }, (_, index) => {
                     const word = selectedWords[index];
-                    return `<span class="selected-slot ${word ? 'filled' : ''}">${escapeHTML(word || String(index + 1))}</span>`;
+                    const classes = ['selected-slot'];
+                    if (word) classes.push('filled');
+                    if (index === justFilledIndex) classes.push('just-filled');
+                    return `<span class="${classes.join(' ')}" data-slot-index="${index}">${escapeHTML(word || '')}</span>`;
                 }).join('');
 
                 wordChoiceListEl.innerHTML = '';
@@ -1225,25 +1273,62 @@
                     if (active) button.classList.add('active');
                     button.textContent = word;
                     button.disabled = !active && selectedWords.length >= needed;
-                    button.addEventListener('click', () => toggleSelectedWord(word, gameData));
+                    button.addEventListener('click', event => toggleSelectedWord(word, gameData, event.currentTarget));
                     wordChoiceListEl.appendChild(button);
                 });
             }
 
-            function toggleSelectedWord(word, gameData) {
+            function toggleSelectedWord(word, gameData, sourceButton = null) {
                 const index = selectedWords.indexOf(word);
+                let justFilledIndex = -1;
+                let fromRect = null;
                 if (index >= 0) {
                     selectedWords.splice(index, 1);
                 } else {
                     const boardSize = getBoardSize(gameData);
                     const needed = boardSize * boardSize;
                     if (selectedWords.length >= needed) return;
+                    justFilledIndex = selectedWords.length;
+                    fromRect = sourceButton ? sourceButton.getBoundingClientRect() : null;
                     selectedWords.push(word);
                 }
 
                 roomRef.child(`gameData/players/${myPlayerId}/selectedWords`).set(selectedWords);
-                renderWordSelection(gameData);
+                renderWordSelection(gameData, justFilledIndex);
                 renderSelectionBoard(getBoardSize(gameData), selectedWords);
+                if (justFilledIndex >= 0 && fromRect) {
+                    animateWordToSlot(word, fromRect, justFilledIndex);
+                }
+            }
+
+            function animateWordToSlot(word, fromRect, slotIndex) {
+                requestAnimationFrame(() => {
+                    const targetSlot = selectedPreviewEl.querySelector(`[data-slot-index="${slotIndex}"]`);
+                    if (!targetSlot) return;
+
+                    const toRect = targetSlot.getBoundingClientRect();
+                    const moving = document.createElement('div');
+                    moving.className = 'flying-word';
+                    moving.textContent = word;
+                    moving.style.left = `${fromRect.left}px`;
+                    moving.style.top = `${fromRect.top}px`;
+                    moving.style.width = `${fromRect.width}px`;
+                    moving.style.height = `${fromRect.height}px`;
+                    document.body.appendChild(moving);
+
+                    const scaleX = toRect.width / fromRect.width;
+                    const scaleY = toRect.height / fromRect.height;
+                    const deltaX = toRect.left - fromRect.left;
+                    const deltaY = toRect.top - fromRect.top;
+
+                    moving.animate([
+                        { transform: 'translate(0, 0) scale(1)', opacity: 1 },
+                        { transform: `translate(${deltaX}px, ${deltaY}px) scale(${scaleX}, ${scaleY})`, opacity: 0.95 }
+                    ], {
+                        duration: 320,
+                        easing: 'cubic-bezier(0.2, 0.85, 0.25, 1)'
+                    }).onfinish = () => moving.remove();
+                });
             }
 
             function confirmSelectedWords() {
