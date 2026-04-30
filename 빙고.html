@@ -1094,6 +1094,8 @@
 
             const DEFAULT_BOARD_SIZE = 4;
             const DEFAULT_TOPIC_ID = 'fruit';
+            const RANDOM_TOPIC_ID = 'random';
+            const RANDOM_TOPIC_NAME = '랜덤';
             const WORD_POOL_TARGETS = {
                 3: 30,
                 4: 30
@@ -1383,7 +1385,7 @@
 
             function initializeGameData(boardSize = selectedSetupSize, topicId = selectedSetupTopic) {
                 const playerIds = Object.keys(currentRoomData.players || {}).slice(0, 4);
-                const topic = getTopic(topicId);
+                const topic = resolveTopicForNewRound(topicId);
                 const targetLines = getTargetLines(boardSize);
                 const playerStates = {};
 
@@ -1411,6 +1413,8 @@
                     calledMap: {},
                     lastCalled: null,
                     winnerId: null,
+                    previousFirstTurn: null,
+                    firstTurn: null,
                     players: playerStates,
                     createdAt: Date.now()
                 }).catch(error => {
@@ -1448,7 +1452,7 @@
 
             function renderSetupControls() {
                 topicChoiceListEl.innerHTML = '';
-                BINGO_TOPICS.forEach(topic => {
+                getTopicOptions().forEach(topic => {
                     const button = document.createElement('button');
                     button.type = 'button';
                     button.className = 'choice-btn topic-choice';
@@ -1715,11 +1719,12 @@
 
                 if (!allReady) return false;
 
-                const turnOrder = shuffle(activeOrder);
+                const turnOrder = getRandomTurnOrder(activeOrder, gameData.previousFirstTurn);
                 roomRef.child('gameData').update({
                     phase: 'playing',
                     turnOrder,
                     currentTurn: turnOrder[0] || null,
+                    firstTurn: turnOrder[0] || null,
                     calledNumbers: [],
                     calledMap: {},
                     lastCalled: null,
@@ -2280,7 +2285,7 @@
                     return `<button type="button" class="result-setup-btn next-size-btn ${Number(nextSetup.boardSize) === size ? 'active' : ''}" data-size="${size}" ${canEdit ? '' : 'disabled'}>${size}x${size}</button>`;
                 }).join('');
 
-                const topicButtons = BINGO_TOPICS.map(topic => {
+                const topicButtons = getTopicOptions().map(topic => {
                     return `<button type="button" class="result-setup-btn next-topic-btn ${nextSetup.topicId === topic.id ? 'active' : ''}" data-topic="${topic.id}" ${canEdit ? '' : 'disabled'}>${topic.name}</button>`;
                 }).join('');
 
@@ -2311,15 +2316,15 @@
 
                 const current = getNextSetup(gameData);
                 const boardSize = getValidBoardSize(patch.boardSize || current.boardSize);
-                const topic = getTopic(patch.topicId || current.topicId);
+                const topicId = getValidSetupTopicId(patch.topicId || current.topicId);
 
                 playPickSound();
                 roomRef.update({
                     [`players/${myPlayerId}/bingoNextSetup`]: {
                         chooserId: myPlayerId,
                         boardSize,
-                        topicId: topic.id,
-                        topicName: topic.name,
+                        topicId,
+                        topicName: getSetupTopicName(topicId),
                         updatedAt: Date.now()
                     },
                     rematchRequests: null
@@ -2340,7 +2345,7 @@
 
                 const nextSetup = getNextSetup(gameData);
                 const boardSize = getValidBoardSize(nextSetup.boardSize);
-                const topic = getTopic(nextSetup.topicId);
+                const topic = resolveTopicForNewRound(nextSetup.topicId);
                 const targetLines = getTargetLines(boardSize);
                 const playerStates = {};
 
@@ -2370,6 +2375,8 @@
                         calledMap: {},
                         lastCalled: null,
                         winnerId: null,
+                        previousFirstTurn: gameData.firstTurn || gameData.previousFirstTurn || null,
+                        firstTurn: null,
                         players: playerStates,
                         rematchRound: Number(gameData.rematchRound || 0) + 1,
                         createdAt: Date.now()
@@ -2663,6 +2670,14 @@
                 return turnOrder[(index + 1) % turnOrder.length];
             }
 
+            function getRandomTurnOrder(activeOrder, previousFirstTurn = null) {
+                const order = shuffle(activeOrder);
+                if (order.length > 1 && previousFirstTurn && order[0] === previousFirstTurn) {
+                    order.push(order.shift());
+                }
+                return order;
+            }
+
             function normalizeCalledNumbers(value) {
                 if (Array.isArray(value)) {
                     return value.filter(item => item !== null && item !== undefined && String(item).length > 0).map(String);
@@ -2788,6 +2803,27 @@
                 return BINGO_TOPICS.find(topic => topic.id === topicId) || BINGO_TOPICS[0];
             }
 
+            function getTopicOptions() {
+                return [{ id: RANDOM_TOPIC_ID, name: RANDOM_TOPIC_NAME }, ...BINGO_TOPICS];
+            }
+
+            function getValidSetupTopicId(topicId) {
+                if (topicId === RANDOM_TOPIC_ID) return RANDOM_TOPIC_ID;
+                return BINGO_TOPICS.some(topic => topic.id === topicId) ? topicId : DEFAULT_TOPIC_ID;
+            }
+
+            function getSetupTopicName(topicId) {
+                return topicId === RANDOM_TOPIC_ID ? RANDOM_TOPIC_NAME : getTopic(topicId).name;
+            }
+
+            function resolveTopicForNewRound(topicId) {
+                if (topicId === RANDOM_TOPIC_ID) {
+                    return BINGO_TOPICS[Math.floor(Math.random() * BINGO_TOPICS.length)] || getTopic(DEFAULT_TOPIC_ID);
+                }
+
+                return getTopic(topicId);
+            }
+
             function getValidBoardSize(boardSize, fallback = DEFAULT_BOARD_SIZE) {
                 const size = Number(boardSize);
                 return [3, 4].includes(size) ? size : fallback;
@@ -2797,12 +2833,12 @@
                 const chooserId = getNextSetupChooser(gameData);
                 const stored = currentRoomData?.players?.[chooserId]?.bingoNextSetup || {};
                 const boardSize = getValidBoardSize(stored.boardSize, getValidBoardSize(gameData?.boardSize));
-                const topic = getTopic(stored.topicId || gameData?.topicId);
+                const topicId = getValidSetupTopicId(stored.topicId || gameData?.topicId);
 
                 return {
                     boardSize,
-                    topicId: topic.id,
-                    topicName: topic.name,
+                    topicId,
+                    topicName: getSetupTopicName(topicId),
                     updatedAt: Number(stored.updatedAt || 0)
                 };
             }
