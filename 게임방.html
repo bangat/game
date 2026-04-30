@@ -1812,6 +1812,22 @@ if (currentRoomData.status === 'lobby') {
             });
         }
 
+        function getPresenceMessageWriterId(oldPlayers, currentPlayers, changedId) {
+            const allPlayers = { ...(oldPlayers || {}), ...(currentPlayers || {}) };
+            const candidates = Object.keys(allPlayers).filter(id => id !== changedId);
+            const hostId = currentRoomData?.hostId;
+
+            if (hostId && candidates.includes(hostId)) {
+                return hostId;
+            }
+
+            return candidates.sort()[0] || null;
+        }
+
+        function shouldWritePresenceMessage(oldPlayers, currentPlayers, changedId) {
+            return !!currentUser?.uid && currentUser.uid === getPresenceMessageWriterId(oldPlayers, currentPlayers, changedId);
+        }
+
         function handlePlayerChanges(oldPlayers) {
             const currentPlayers = currentRoomData.players || {};
             const oldPlayerIds = Object.keys(oldPlayers);
@@ -1821,7 +1837,7 @@ if (currentRoomData.status === 'lobby') {
 
             joined.forEach(id => {
                 const joinedPlayer = currentPlayers[id]; // ✨ [수정]
-                if (id !== currentUser.uid && oldPlayerIds.length > 0) {
+                if (oldPlayerIds.length > 0 && shouldWritePresenceMessage(oldPlayers, currentPlayers, id)) {
                     addSystemMessage(`${joinedPlayer.nickname}님이 입장했습니다.`);
                     playSound('enter-sound');
                     vibrate();
@@ -1835,7 +1851,7 @@ if (currentRoomData.status === 'lobby') {
             });
             left.forEach(id => {
                 const leftPlayerNickname = oldPlayers[id]?.nickname;
-                 if (leftPlayerNickname) {
+                 if (leftPlayerNickname && shouldWritePresenceMessage(oldPlayers, currentPlayers, id)) {
                     addSystemMessage(`${leftPlayerNickname}님이 퇴장했습니다.`);
                     playSound('leave-sound');
                     vibrate();

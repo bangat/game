@@ -1176,6 +1176,7 @@
             let turnFlashTimer = null;
             let lastLineTtsCallKey = null;
             let lastAnnouncedLinesByPlayer = {};
+            let playerOnDisconnectRef = null;
 
             function setScreenHeight() {
                 app.style.height = `${window.innerHeight}px`;
@@ -1236,11 +1237,7 @@
                         isHost
                     });
 
-                    if (isHost) {
-                        roomRef.onDisconnect().remove();
-                    } else {
-                        roomRef.child(`players/${myPlayerId}`).onDisconnect().remove();
-                    }
+                    setPlayerDisconnectHandler();
 
                     listenToRoom();
                 }).catch(error => {
@@ -1248,6 +1245,26 @@
                     alert('방 입장에 실패했습니다.');
                     window.location.replace('대기실.html');
                 });
+            }
+
+            function setPlayerDisconnectHandler() {
+                if (!roomRef || !myPlayerId) return;
+
+                cancelPlayerDisconnectHandler();
+                playerOnDisconnectRef = roomRef.child(`players/${myPlayerId}`).onDisconnect();
+                playerOnDisconnectRef.remove();
+            }
+
+            function cancelPlayerDisconnectHandler() {
+                if (!playerOnDisconnectRef) return;
+
+                try {
+                    playerOnDisconnectRef.cancel();
+                } catch (error) {
+                    console.warn('빙고 접속 종료 예약 취소 실패:', error);
+                }
+
+                playerOnDisconnectRef = null;
             }
 
             function listenToRoom() {
@@ -1270,6 +1287,7 @@
                     }
 
                     if (currentRoomData.status !== 'playing') {
+                        cancelPlayerDisconnectHandler();
                         window.location.replace(`게임방.html?roomId=${roomId}`);
                         return;
                     }
@@ -2091,18 +2109,22 @@
             function requestRematch() {
                 if (!roomRef || !currentRoomData?.gameData || currentRoomData.gameData.phase !== 'finished') return;
                 playReadySound();
-                roomRef.child(`players/${myPlayerId}`).update({
-                    bingoRematchReady: true,
-                    bingoRematchReadyAt: Date.now()
+                roomRef.child(`rematchRequests/${myPlayerId}`).set({
+                    ready: true,
+                    updatedAt: Date.now()
                 });
             }
 
             function isRematchReadyForCurrentSetup(gameData, playerId) {
-                const player = currentRoomData?.players?.[playerId] || {};
+                const request = currentRoomData?.rematchRequests?.[playerId];
                 const setupUpdatedAt = Number(getNextSetup(gameData).updatedAt || 0);
 
-                if (player.bingoRematchReady) {
-                    return Number(player.bingoRematchReadyAt || 0) >= setupUpdatedAt;
+                if (request === true) {
+                    return setupUpdatedAt === 0;
+                }
+
+                if (request?.ready) {
+                    return Number(request.updatedAt || 0) >= setupUpdatedAt;
                 }
 
                 return false;
@@ -2187,12 +2209,15 @@
                 const topic = getTopic(patch.topicId || current.topicId);
 
                 playPickSound();
-                roomRef.child(`players/${myPlayerId}/bingoNextSetup`).set({
-                    chooserId: myPlayerId,
-                    boardSize,
-                    topicId: topic.id,
-                    topicName: topic.name,
-                    updatedAt: Date.now()
+                roomRef.update({
+                    [`players/${myPlayerId}/bingoNextSetup`]: {
+                        chooserId: myPlayerId,
+                        boardSize,
+                        topicId: topic.id,
+                        topicName: topic.name,
+                        updatedAt: Date.now()
+                    },
+                    rematchRequests: null
                 });
             }
 
@@ -2225,6 +2250,7 @@
                 });
 
                 const updates = {
+                    rematchRequests: null,
                     gameData: {
                         gameId: 'bingo',
                         boardSize,
@@ -2262,6 +2288,7 @@
                     return;
                 }
 
+                cancelPlayerDisconnectHandler();
                 roomRef.update({
                     status: 'lobby',
                     gameData: null,
@@ -2503,6 +2530,7 @@
                     return;
                 }
 
+                cancelPlayerDisconnectHandler();
                 const leavePromise = isHost
                     ? roomRef.remove()
                     : roomRef.child(`players/${myPlayerId}`).remove();
