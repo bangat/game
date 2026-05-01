@@ -1636,9 +1636,9 @@ function setMyOnDisconnectHandler() {
     cancelMyOnDisconnectHandler();
 
     if (isHost) {
-        hostOnDisconnect = roomRef.onDisconnect();
+        hostOnDisconnect = roomRef.child('players/' + currentUser.uid).onDisconnect();
         hostOnDisconnect.remove();
-        console.log('[Presence] 호스트 onDisconnect 설정됨 (즉시 제거)');
+        console.log('[Presence] 호스트 onDisconnect 설정됨 (참가자만 제거)');
     } else {
         playerOnDisconnect = roomRef.child('players/' + currentUser.uid).onDisconnect();
         playerOnDisconnect.remove();
@@ -1741,7 +1741,7 @@ function cancelDisconnectBeforeGameStart() {
                      if (!document.querySelector('.overlay.active')) { // 게임 종료 모달 등이 떠 있지 않을 때만 알림
                         alert("방이 사라졌습니다.");
                      }
-                     cleanupAndExit();
+                     redirectToLobbyOnly();
                      return;
                  }
                 const oldRoomData = currentRoomData;
@@ -1751,15 +1751,11 @@ function cancelDisconnectBeforeGameStart() {
 if (currentRoomData.status === 'playing') {
     const game = availableGames.find(g => g.id === currentRoomData.gameType);
     if (game) {
-        if (isHost) {
-            if(hostOnDisconnect) hostOnDisconnect.cancel();
-            roomRef.onDisconnect().cancel();
-        } else {
-            if(playerOnDisconnect) playerOnDisconnect.cancel();
-            roomRef.child('players/' + currentUser.uid).onDisconnect().cancel();
-        }
-        if(roomRef) roomRef.off();
-        window.location.href = `${game.file}?roomId=${snapshot.key}`;
+        const targetUrl = `${game.file}?roomId=${snapshot.key}`;
+        cancelDisconnectBeforeGameStart().finally(() => {
+            if(roomRef) roomRef.off();
+            window.location.href = targetUrl;
+        });
     }
     return;
 }
@@ -1783,7 +1779,7 @@ if (currentRoomData.status === 'lobby') {
                      if (!document.querySelector('.overlay.active')) {
                         alert("방에서 퇴장되었습니다.");
                      }
-                     cleanupAndExit();
+                     redirectToLobbyOnly();
                      return;
                  }
 
@@ -2289,6 +2285,16 @@ if (currentRoomData.status === 'lobby') {
                     console.log("Redirecting to 대기실.html");
                     window.location.replace('대기실.html'); // replace 사용
                 });
+        }
+
+        function redirectToLobbyOnly() {
+            console.log("Redirecting to lobby without removing room");
+            if (roomRef) {
+                try { roomRef.off(); } catch(e) { console.warn("roomRef listener removal failed:", e); }
+            }
+            if (hostOnDisconnect) { try { hostOnDisconnect.cancel(); } catch(e) { console.warn("Host onDisconnect cancel failed:", e); } }
+            if (playerOnDisconnect) { try { playerOnDisconnect.cancel(); } catch(e) { console.warn("Player onDisconnect cancel failed:", e); } }
+            window.location.replace('대기실.html');
         }
 
 
