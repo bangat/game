@@ -670,7 +670,7 @@
                 roomNameEl.textContent = currentRoomData.roomName || '가족 방';
 
                 const gameData = currentRoomData.gameData;
-                if (!gameData || gameData.gameId !== 'familyQuiz') {
+                if (!gameData || gameData.gameId !== 'familyQuiz' || gameData.phase === 'booting') {
                     if (isHost) {
                         initializeGame();
                     } else {
@@ -686,12 +686,28 @@
         }
 
         function initializeGame() {
-            if (!roomRef || !currentRoomData?.players) return;
+            if (!roomRef) return;
 
-            const playerIds = Object.keys(currentRoomData.players).slice(0, 4);
+            const bootGameData = currentRoomData?.gameData || {};
+            const players = getGamePlayers(bootGameData);
+            let playerIds = getActivePlayerIds(bootGameData, players);
+            if (!playerIds.length) {
+                playerIds = Object.keys(currentRoomData?.players || {}).slice(0, 4);
+            }
+            if (!playerIds.length) return;
+
             const question = pickQuestion([]);
             const scores = {};
+            const playerSnapshots = {};
             playerIds.forEach(id => { scores[id] = 0; });
+            playerIds.forEach(id => {
+                const player = players[id] || currentRoomData?.players?.[id] || {};
+                playerSnapshots[id] = {
+                    nickname: player.nickname || '플레이어',
+                    avatar: player.avatar || '🙂',
+                    isHost: currentRoomData?.hostId === id
+                };
+            });
 
             roomRef.child('gameData').set({
                 gameId: 'familyQuiz',
@@ -704,6 +720,7 @@
                 usedQuestionIds: [question.id],
                 votes: {},
                 scores,
+                playerSnapshots,
                 lastResult: null,
                 roundStartedAt: Date.now(),
                 roundEndsAt: Date.now() + ROUND_TIME_MS,
@@ -712,7 +729,7 @@
         }
 
         function renderGame(gameData) {
-            const players = currentRoomData.players || {};
+            const players = getGamePlayers(gameData);
             const activeIds = getActivePlayerIds(gameData, players);
             const myScore = Number(gameData.scores?.[myPlayerId] || 0);
             myScoreEl.textContent = myScore;
@@ -837,7 +854,7 @@
             const gameData = currentRoomData?.gameData;
             if (!roomRef || !gameData || gameData.phase !== 'voting') return;
             if (gameData.votes?.[myPlayerId]) return;
-            if (!getActivePlayerIds(gameData, currentRoomData.players || {}).includes(targetId)) return;
+            if (!getActivePlayerIds(gameData, getGamePlayers(gameData)).includes(targetId)) return;
 
             playPickSound();
             roomRef.child(`gameData/votes/${myPlayerId}`).set({
@@ -854,7 +871,7 @@
                 const gameData = room.gameData;
                 if (gameData.phase !== 'voting') return;
 
-                const activeIds = getActivePlayerIds(gameData, room.players || {});
+                const activeIds = getActivePlayerIds(gameData, getGamePlayers(gameData, room));
                 const votes = gameData.votes || {};
                 const allVoted = activeIds.length > 0 && activeIds.every(id => votes[id]);
                 const timeOver = Date.now() >= Number(gameData.roundEndsAt || 0);
@@ -966,6 +983,13 @@
         function getActivePlayerIds(gameData, players) {
             const ids = Array.isArray(gameData.activePlayers) ? gameData.activePlayers : Object.keys(gameData.players || players || {});
             return ids.filter(id => players?.[id]).slice(0, 4);
+        }
+
+        function getGamePlayers(gameData, room = currentRoomData) {
+            return {
+                ...(gameData?.playerSnapshots || {}),
+                ...(room?.players || {})
+            };
         }
 
         function getRanking(gameData, players, activeIds) {
