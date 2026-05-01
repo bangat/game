@@ -2121,6 +2121,22 @@ const inviteSound = document.getElementById('invite-sound');
                             return;
                         }
 
+                        if (room.status === 'playing' && room.gameType === 'familyQuiz') {
+                            const gameData = room.gameData || {};
+                            const startedAt = Number(gameData.createdAt || gameData.roundStartedAt || room.createdAt || 0);
+                            const age = startedAt > 0 ? now - startedAt : 0;
+                            const votes = gameData.votes || {};
+                            const voteCount = Object.keys(votes).length;
+                            const isMissingGameData = gameData.gameId !== 'familyQuiz';
+                            const isStuckFirstVote = gameData.phase === 'voting' && Number(gameData.round || 1) === 1 && voteCount === 0 && age > 2 * 60 * 1000;
+
+                            if (isMissingGameData || isStuckFirstVote) {
+                                console.log(`[유령방 정리] 멈춘 가족순발력 방 ${room.key} 방을 삭제합니다.`);
+                                roomsRef.child(room.key).remove();
+                                return;
+                            }
+                        }
+
                         // [규칙 2] 플레이어가 0명인 대기 방 삭제
                         if (!room.players || Object.keys(room.players).length === 0) {
                             if (room.status === 'playing') {
