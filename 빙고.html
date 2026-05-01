@@ -1235,6 +1235,7 @@
             let lastAnnouncedLinesByPlayer = {};
             let playerOnDisconnectRef = null;
             let playerRestorePromise = null;
+            let finishedJoinRequested = false;
 
             function setScreenHeight() {
                 const viewportHeight = Math.floor(window.visualViewport?.height || window.innerHeight || document.documentElement.clientHeight);
@@ -1383,7 +1384,12 @@
                         return;
                     }
 
-                    if (!currentRoomData.gameData) {
+                    const gameData = currentRoomData.gameData;
+                    if (joinFinishedBingoIfNeeded(gameData)) {
+                        return;
+                    }
+
+                    if (!gameData) {
                         showSetupState();
                         return;
                     }
@@ -1392,15 +1398,15 @@
                         return;
                     }
 
-                    if (currentRoomData.gameData.phase === 'selecting') {
+                    if (gameData.phase === 'selecting') {
                         if (startPlayingIfReady()) {
                             return;
                         }
-                        renderSelectionState(currentRoomData.gameData);
+                        renderSelectionState(gameData);
                         return;
                     }
 
-                    if (currentRoomData.gameData.phase === 'finished' && restartIfAllRematchReady()) {
+                    if (gameData.phase === 'finished' && restartIfAllRematchReady()) {
                         return;
                     }
 
@@ -1410,6 +1416,42 @@
 
                     renderGame();
                 });
+            }
+
+            function joinFinishedBingoIfNeeded(gameData) {
+                if (!roomRef || !gameData || gameData.phase !== 'finished') return false;
+                if (gameData.players?.[myPlayerId]) return false;
+                if (finishedJoinRequested) return true;
+
+                const turnOrder = getTurnOrderFromGameData(gameData).slice(0, MAX_BINGO_PLAYERS);
+                if (turnOrder.includes(myPlayerId)) return false;
+
+                if (turnOrder.length >= MAX_BINGO_PLAYERS) {
+                    showLoading('정원 초과', '다음 판 정원이 가득 찼습니다.');
+                    return false;
+                }
+
+                finishedJoinRequested = true;
+                showLoading('참가 중', '다음 판 준비에 참가하고 있습니다.');
+
+                roomRef.update({
+                    [`gameData/players/${myPlayerId}`]: {
+                        selectedWords: [],
+                        board: [],
+                        lines: 0,
+                        ready: false,
+                        finished: false,
+                        joinedAfterFinish: true
+                    },
+                    'gameData/turnOrder': turnOrder.concat(myPlayerId)
+                }).catch(error => {
+                    finishedJoinRequested = false;
+                    console.error('빙고 결과 화면 참가 실패:', error);
+                    alert('방 참가에 실패했습니다.');
+                    window.location.replace('대기실.html');
+                });
+
+                return true;
             }
 
             function initializeGameData(boardSize = selectedSetupSize, topicId = selectedSetupTopic) {
@@ -2884,8 +2926,10 @@
                 const turnOrder = getRematchTurnOrder(gameData);
                 if (!turnOrder.length) return myPlayerId;
 
-                const losers = turnOrder.filter(id => id !== gameData.winnerId);
-                const candidates = losers.length ? losers : turnOrder;
+                const setupCandidates = turnOrder.filter(id => !gameData.players?.[id]?.joinedAfterFinish);
+                const baseCandidates = setupCandidates.length ? setupCandidates : turnOrder;
+                const losers = baseCandidates.filter(id => id !== gameData.winnerId);
+                const candidates = losers.length ? losers : baseCandidates;
 
                 return candidates.slice().sort((a, b) => {
                     const aLines = Number(gameData.players?.[a]?.lines || 0);

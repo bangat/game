@@ -2004,6 +2004,30 @@ const inviteSound = document.getElementById('invite-sound');
                 myProfilePoints.innerHTML = `Lv.${level} | 💰 ${points.toLocaleString()}`;
             }
             
+            function getRoomPlayerCount(room) {
+                const directCount = room.players ? Object.keys(room.players).length : 0;
+                const gameData = room.gameData || {};
+                const gamePlayerCount = gameData.players ? Object.keys(gameData.players).length : 0;
+                const turnOrderCount = Array.isArray(gameData.turnOrder) ? gameData.turnOrder.length : 0;
+                const activePlayerCount = Array.isArray(gameData.activePlayers) ? gameData.activePlayers.length : 0;
+
+                return Math.max(directCount, gamePlayerCount, turnOrderCount, activePlayerCount);
+            }
+
+            function isResultJoinableRoom(room) {
+                const resultStatuses = ['finished', 'gameOver', 'result'];
+                if (resultStatuses.includes(room.status)) return true;
+                if (room.status !== 'playing') return false;
+
+                const gameData = room.gameData || {};
+                const resultPhases = ['finished', 'final', 'gameOver', 'result', 'ended', 'complete', 'completed'];
+                const phase = String(gameData.phase || gameData.status || room.gameState || '');
+                if (resultPhases.includes(phase)) return true;
+                if (room.winner || room.winnerId || gameData.winnerId || gameData.winner) return true;
+
+                return false;
+            }
+
             function listenToRooms() {
                 if (roomListener) roomsRef.off('value', roomListener);
                 
@@ -2037,12 +2061,11 @@ const inviteSound = document.getElementById('invite-sound');
                         if (!room.players || Object.keys(room.players).length === 0) {
                             if (room.status === 'playing') {
                                 console.log(`[유령방 정리] 게임 전환 중일 수 있는 ${room.key} 방은 삭제하지 않습니다.`);
+                            } else {
+                                console.log(`[유령방 정리] 플레이어가 0명인 ${room.key} 방을 삭제합니다.`);
+                                roomsRef.child(room.key).remove();
                                 return;
                             }
-
-                            console.log(`[유령방 정리] 플레이어가 0명인 ${room.key} 방을 삭제합니다.`);
-                            roomsRef.child(room.key).remove();
-                            return;
                         }
 
                         // --- [20분으로 수정된 규칙] ---
@@ -2065,20 +2088,24 @@ const inviteSound = document.getElementById('invite-sound');
 
                     rooms.reverse().forEach(room => {
                         const game = availableGames.find(g => g.id === room.gameType);
-                        if (!game || !room.players) return;
+                        if (!game) return;
                         
-                        const playerCount = Object.keys(room.players).length;
+                        const playerCount = getRoomPlayerCount(room);
                         const isFull = playerCount >= game.maxPlayers;
                         const isPlaying = room.status === 'playing';
+                        const canJoinResult = isResultJoinableRoom(room);
+                        const canJoin = !isFull && (!isPlaying || canJoinResult);
+                        const stateLabel = canJoinResult ? '결과확인중' : (isPlaying ? '게임중' : '대기중');
+                        const buttonLabel = isPlaying && !canJoinResult ? '게임중' : '참가';
 
                         const roomEl = document.createElement('div');
                         roomEl.className = 'room-item';
                         roomEl.innerHTML = `
                             <div class="room-info">
                                 <h3>${escapeHTML(room.roomName)}</h3>
-                                <p>${game.icon} ${game.name} | ${isPlaying ? '게임중' : '대기중'} | ${playerCount}/${game.maxPlayers}</p>
+                                <p>${game.icon} ${game.name} | ${stateLabel} | ${playerCount}/${game.maxPlayers}</p>
                             </div>
-                            <button class="menu-btn primary join-btn" ${isFull || isPlaying ? 'disabled' : ''}>참가</button>
+                            <button class="menu-btn primary join-btn" ${canJoin ? '' : 'disabled'}>${buttonLabel}</button>
                         `;
                         roomEl.querySelector('.join-btn').addEventListener('click', () => {
                         if (gameSettings.sfx) clickSound.play();
