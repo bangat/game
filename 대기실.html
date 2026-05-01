@@ -1672,10 +1672,26 @@ const inviteSound = document.getElementById('invite-sound');
                 roomsRef.orderByChild('hostId').equalTo(myId).once('value', snapshot => {
                     if (!snapshot.exists()) return;
                     console.log(`[유령방 정리] ${snapshot.numChildren()}개의 내 방을 찾았습니다.`);
+                    const now = Date.now();
+                    const staleWaitingTime = 20 * 60 * 1000;
                     snapshot.forEach(child => {
                         const room = { key: child.key, ...child.val() };
-                        roomsRef.child(room.key).remove();
-                        console.log(`[유령방 정리] ${room.roomName} (상태: ${room.status}) 방을 삭제했습니다.`);
+                        const hasPlayers = room.players && Object.keys(room.players).length > 0;
+                        const createdAt = Number(room.createdAt || 0);
+                        const isStaleWaiting = room.status !== 'playing' && createdAt > 0 && (now - createdAt > staleWaitingTime);
+
+                        if (room.status === 'playing') {
+                            console.log(`[유령방 정리] ${room.roomName} (상태: ${room.status}) 방은 유지합니다.`);
+                            return;
+                        }
+
+                        if (!hasPlayers || isStaleWaiting) {
+                            roomsRef.child(room.key).remove();
+                            console.log(`[유령방 정리] ${room.roomName} (상태: ${room.status}) 방을 삭제했습니다.`);
+                            return;
+                        }
+
+                        console.log(`[유령방 정리] ${room.roomName} (상태: ${room.status}) 방은 유지합니다.`);
                     });
                 });
             }
@@ -2010,16 +2026,21 @@ const inviteSound = document.getElementById('invite-sound');
                     snapshot.forEach(child => {
                         const room = { key: child.key, ...child.val() };
                         
-                        // [규칙 1] 플레이어가 0명인 방 삭제
-                        if (!room.players || Object.keys(room.players).length === 0) {
-                            console.log(`[유령방 정리] 플레이어가 0명인 ${room.key} 방을 삭제합니다.`);
-                            roomsRef.child(room.key).remove(); 
+                        // [규칙 1] 'playing' 상태로 1시간 넘은 방 삭제
+                        if (room.status === 'playing' && (now - room.createdAt > oneHour)) {
+                            console.log(`[유령방 정리] 'playing' 상태로 1시간 넘은 ${room.key} 방을 삭제합니다.`);
+                            roomsRef.child(room.key).remove();
                             return;
                         }
 
-                        // [규칙 2] 'playing' 상태로 1시간 넘은 방 삭제
-                        if (room.status === 'playing' && (now - room.createdAt > oneHour)) {
-                            console.log(`[유령방 정리] 'playing' 상태로 1시간 넘은 ${room.key} 방을 삭제합니다.`);
+                        // [규칙 2] 플레이어가 0명인 대기 방 삭제
+                        if (!room.players || Object.keys(room.players).length === 0) {
+                            if (room.status === 'playing') {
+                                console.log(`[유령방 정리] 게임 전환 중일 수 있는 ${room.key} 방은 삭제하지 않습니다.`);
+                                return;
+                            }
+
+                            console.log(`[유령방 정리] 플레이어가 0명인 ${room.key} 방을 삭제합니다.`);
                             roomsRef.child(room.key).remove();
                             return;
                         }
