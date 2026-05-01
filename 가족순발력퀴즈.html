@@ -572,7 +572,7 @@
                 currentRoomData = snapshot.val() || {};
                 isHost = currentRoomData.hostId === myPlayerId;
                 const hasMyPlayer = Boolean(currentRoomData.players?.[myPlayerId]);
-                const canRestorePlayer = currentRoomData.status === 'playing' && currentRoomData.gameType === 'familyQuiz';
+                const canRestorePlayer = canEnterFromPlayingRoom(currentRoomData);
 
                 if (!hasMyPlayer && !canRestorePlayer) {
                     alert('방 참가 정보가 없습니다.');
@@ -584,6 +584,10 @@
                     listenToRoom();
                 }).catch(error => {
                     console.error('가족순발력퀴즈 참가 정보 복구 실패:', error);
+                    if (hasMyPlayer || canUseSnapshotPlayer(currentRoomData)) {
+                        listenToRoom();
+                        return;
+                    }
                     alert('방 입장에 실패했습니다.');
                     window.location.replace('대기실.html');
                 });
@@ -650,6 +654,7 @@
 
                 currentRoomData = snapshot.val() || {};
                 isHost = currentRoomData.hostId === myPlayerId;
+                const gameData = currentRoomData.gameData;
 
                 if (currentRoomData.status !== 'playing') {
                     cancelPlayerDisconnectHandler();
@@ -657,7 +662,7 @@
                     return;
                 }
 
-                if (!currentRoomData.players || !currentRoomData.players[myPlayerId]) {
+                if ((!currentRoomData.players || !currentRoomData.players[myPlayerId]) && !canUseSnapshotPlayer(currentRoomData)) {
                     showLoading('재접속 중', '참가 정보를 다시 연결하고 있습니다.');
                     syncMyPlayer().catch(error => {
                         console.error('가족순발력퀴즈 참가 정보 재연결 실패:', error);
@@ -667,9 +672,14 @@
                     return;
                 }
 
+                if ((!currentRoomData.players || !currentRoomData.players[myPlayerId]) && canUseSnapshotPlayer(currentRoomData)) {
+                    syncMyPlayer().catch(error => {
+                        console.warn('가족순발력퀴즈 참가 정보 백그라운드 복구 실패:', error);
+                    });
+                }
+
                 roomNameEl.textContent = currentRoomData.roomName || '가족 방';
 
-                const gameData = currentRoomData.gameData;
                 if (!gameData || gameData.gameId !== 'familyQuiz' || gameData.phase === 'booting') {
                     if (isHost) {
                         initializeGame();
@@ -981,8 +991,21 @@
         }
 
         function getActivePlayerIds(gameData, players) {
-            const ids = Array.isArray(gameData.activePlayers) ? gameData.activePlayers : Object.keys(gameData.players || players || {});
-            return ids.filter(id => players?.[id]).slice(0, 4);
+            if (Array.isArray(gameData.activePlayers)) {
+                return [...new Set(gameData.activePlayers.filter(Boolean))].slice(0, 4);
+            }
+            return Object.keys(gameData.players || players || {}).filter(id => players?.[id]).slice(0, 4);
+        }
+
+        function canEnterFromPlayingRoom(room) {
+            return room?.status === 'playing' && room?.gameType === 'familyQuiz';
+        }
+
+        function canUseSnapshotPlayer(room) {
+            if (!canEnterFromPlayingRoom(room)) return false;
+            const gameData = room?.gameData || {};
+            const players = getGamePlayers(gameData, room);
+            return getActivePlayerIds(gameData, players).includes(myPlayerId);
         }
 
         function getGamePlayers(gameData, room = currentRoomData) {
