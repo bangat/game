@@ -1660,6 +1660,29 @@ function cancelMyOnDisconnectHandler() {
     }
 }
 
+function cancelDisconnectBeforeGameStart() {
+    const tasks = [];
+
+    if (hostOnDisconnect) {
+        try { tasks.push(hostOnDisconnect.cancel()); } catch(e) { console.warn('[Presence] 호스트 시작 전 취소 실패:', e); }
+        hostOnDisconnect = null;
+    }
+
+    if (playerOnDisconnect) {
+        try { tasks.push(playerOnDisconnect.cancel()); } catch(e) { console.warn('[Presence] 게스트 시작 전 취소 실패:', e); }
+        playerOnDisconnect = null;
+    }
+
+    if (roomRef) {
+        try { tasks.push(roomRef.onDisconnect().cancel()); } catch (error) { console.warn('[Presence] 시작 전 방 삭제 예약 취소 실패:', error); }
+        if (currentUser?.uid) {
+            try { tasks.push(roomRef.child('players/' + currentUser.uid).onDisconnect().cancel()); } catch (error) { console.warn('[Presence] 시작 전 참가자 삭제 예약 취소 실패:', error); }
+        }
+    }
+
+    return Promise.allSettled(tasks);
+}
+
         function initializeRoom() {
             const urlParams = new URLSearchParams(window.location.search);
             const roomId = urlParams.get('roomId');
@@ -2120,9 +2143,7 @@ if (currentRoomData.status === 'lobby') {
             if (!game) return;
 
             console.log('[게임방] 게임 시작 - gameType:', game.id);
-            cancelMyOnDisconnectHandler();
-            try { roomRef?.onDisconnect().cancel(); } catch (error) { console.warn('[Presence] 시작 전 방 삭제 예약 취소 실패:', error); }
-            try { roomRef?.child('players/' + currentUser.uid).onDisconnect().cancel(); } catch (error) { console.warn('[Presence] 시작 전 참가자 삭제 예약 취소 실패:', error); }
+            const disconnectCancelPromise = cancelDisconnectBeforeGameStart();
             const playerIds = Object.keys(currentRoomData.players || {}); // null 체크
             const updates = {};
 
@@ -2197,10 +2218,13 @@ if (currentRoomData.status === 'lobby') {
 
             console.log('[게임방] Firebase 업데이트 실행:', updates);
             if (roomRef) { // roomRef null 체크
-                roomRef.update(updates).then(() => {
+                startGameBtn.disabled = true;
+                disconnectCancelPromise.then(() => roomRef.update(updates)).then(() => {
                     console.log('[게임방] 업데이트 성공!');
                 }).catch(error => {
                     console.error('[게임방] 업데이트 실패:', error);
+                }).finally(() => {
+                    startGameBtn.disabled = false;
                 });
             }
         }
