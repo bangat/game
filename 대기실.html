@@ -2014,18 +2014,69 @@ const inviteSound = document.getElementById('invite-sound');
                 return Math.max(directCount, gamePlayerCount, turnOrderCount, activePlayerCount);
             }
 
+            function hasResultValue(value) {
+                if (!value) return false;
+                if (Array.isArray(value)) return value.length > 0;
+                if (typeof value === 'object') return Object.keys(value).length > 0;
+                return true;
+            }
+
+            function hasNestedGameOverState(data) {
+                if (!data || typeof data !== 'object') return false;
+                return Object.values(data).some(value => {
+                    return value && typeof value === 'object' && value.isGameOver === true;
+                });
+            }
+
             function isResultJoinableRoom(room) {
-                const resultStatuses = ['finished', 'gameOver', 'result'];
-                if (resultStatuses.includes(room.status)) return true;
-                if (room.status !== 'playing') return false;
+                if (!room) return false;
+
+                const resultStatuses = ['finished', 'gameOver', 'result', 'ended', 'complete', 'completed'];
+                const roomStatus = String(room.status || '');
+                if (resultStatuses.includes(roomStatus)) return true;
+                if (roomStatus && roomStatus !== 'playing') return false;
 
                 const gameData = room.gameData || {};
                 const resultPhases = ['finished', 'final', 'gameOver', 'result', 'ended', 'complete', 'completed'];
-                const phase = String(gameData.phase || gameData.status || room.gameState || '');
+                const phase = String(
+                    gameData.phase ||
+                    gameData.status ||
+                    gameData.gameState ||
+                    gameData.state ||
+                    room.gameState ||
+                    room.phase ||
+                    room.state ||
+                    ''
+                );
                 if (resultPhases.includes(phase)) return true;
-                if (room.winner || room.winnerId || gameData.winnerId || gameData.winner) return true;
 
-                return false;
+                if (
+                    hasResultValue(room.gameOver) ||
+                    hasResultValue(room.result) ||
+                    hasResultValue(room.results) ||
+                    hasResultValue(room.finalResult) ||
+                    hasResultValue(room.finishedAt) ||
+                    hasResultValue(gameData.gameOver) ||
+                    hasResultValue(gameData.result) ||
+                    hasResultValue(gameData.results) ||
+                    hasResultValue(gameData.finalResult) ||
+                    hasResultValue(gameData.finishedAt)
+                ) {
+                    return true;
+                }
+
+                if (
+                    hasResultValue(room.winner) ||
+                    hasResultValue(room.winnerId) ||
+                    hasResultValue(room.winners) ||
+                    hasResultValue(gameData.winner) ||
+                    hasResultValue(gameData.winnerId) ||
+                    hasResultValue(gameData.winners)
+                ) {
+                    return true;
+                }
+
+                return hasNestedGameOverState(gameData);
             }
 
             function listenToRooms() {
