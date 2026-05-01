@@ -525,6 +525,7 @@
         let isLeaving = false;
         let playerOnDisconnectRef = null;
         let playerRestorePromise = null;
+        let playerRestoreRetryTimer = null;
         let audioContext = null;
 
         function setScreenHeight() {
@@ -584,7 +585,7 @@
                     listenToRoom();
                 }).catch(error => {
                     console.error('가족순발력퀴즈 참가 정보 복구 실패:', error);
-                    if (hasMyPlayer || canUseSnapshotPlayer(currentRoomData)) {
+                    if (canEnterFromPlayingRoom(currentRoomData)) {
                         listenToRoom();
                         return;
                     }
@@ -664,11 +665,7 @@
 
                 if ((!currentRoomData.players || !currentRoomData.players[myPlayerId]) && !canUseSnapshotPlayer(currentRoomData)) {
                     showLoading('재접속 중', '참가 정보를 다시 연결하고 있습니다.');
-                    syncMyPlayer().catch(error => {
-                        console.error('가족순발력퀴즈 참가 정보 재연결 실패:', error);
-                        alert('방에서 퇴장되었습니다.');
-                        window.location.replace('대기실.html');
-                    });
+                    schedulePlayerRestoreRetry();
                     return;
                 }
 
@@ -693,6 +690,20 @@
                 renderGame(gameData);
                 if (isHost) finishVotingIfReady();
             });
+        }
+
+        function schedulePlayerRestoreRetry() {
+            if (playerRestoreRetryTimer) return;
+
+            playerRestoreRetryTimer = setTimeout(() => {
+                playerRestoreRetryTimer = null;
+                if (isLeaving || !roomRef) return;
+
+                syncMyPlayer().catch(error => {
+                    console.warn('가족순발력퀴즈 참가 정보 재연결 재시도 실패:', error);
+                    schedulePlayerRestoreRetry();
+                });
+            }, 1200);
         }
 
         function initializeGame() {

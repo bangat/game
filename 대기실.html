@@ -2014,6 +2014,19 @@ const inviteSound = document.getElementById('invite-sound');
                 return Math.max(directCount, gamePlayerCount, turnOrderCount, activePlayerCount);
             }
 
+            function isMyPlayingRoom(room) {
+                const uid = currentUser?.uid;
+                if (!uid || !room) return false;
+                if (room.players?.[uid]) return true;
+
+                const gameData = room.gameData || {};
+                if (gameData.players?.[uid]) return true;
+                if (Array.isArray(gameData.turnOrder) && gameData.turnOrder.includes(uid)) return true;
+                if (Array.isArray(gameData.activePlayers) && gameData.activePlayers.includes(uid)) return true;
+
+                return false;
+            }
+
             function hasResultValue(value) {
                 if (!value) return false;
                 if (Array.isArray(value)) return value.length > 0;
@@ -2145,9 +2158,10 @@ const inviteSound = document.getElementById('invite-sound');
                         const isFull = playerCount >= game.maxPlayers;
                         const isPlaying = room.status === 'playing';
                         const canJoinResult = isResultJoinableRoom(room);
-                        const canJoin = !isFull && (!isPlaying || canJoinResult);
+                        const canRejoinPlaying = isPlaying && isMyPlayingRoom(room);
+                        const canJoin = canRejoinPlaying || (!isFull && (!isPlaying || canJoinResult));
                         const stateLabel = canJoinResult ? '결과확인중' : (isPlaying ? '게임중' : '대기중');
-                        const buttonLabel = isPlaying && !canJoinResult ? '게임중' : '참가';
+                        const buttonLabel = canRejoinPlaying ? '재입장' : (isPlaying && !canJoinResult ? '게임중' : '참가');
 
                         const roomEl = document.createElement('div');
                         roomEl.className = 'room-item';
