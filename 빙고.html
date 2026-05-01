@@ -1234,6 +1234,7 @@
             let lastLineTtsCallKey = null;
             let lastAnnouncedLinesByPlayer = {};
             let playerOnDisconnectRef = null;
+            let playerRestorePromise = null;
 
             function setScreenHeight() {
                 const viewportHeight = Math.floor(window.visualViewport?.height || window.innerHeight || document.documentElement.clientHeight);
@@ -1285,22 +1286,23 @@
                     }
 
                     currentRoomData = snapshot.val() || {};
-                    if (!currentRoomData.players || !currentRoomData.players[myPlayerId]) {
+                    isHost = currentRoomData.hostId === myPlayerId;
+                    const hasMyPlayer = Boolean(currentRoomData.players?.[myPlayerId]);
+                    const canRestorePlayer = currentRoomData.status === 'playing' && currentRoomData.gameType === 'bingo';
+
+                    if (!hasMyPlayer && !canRestorePlayer) {
                         alert('방 참가 정보가 없습니다.');
                         window.location.replace('대기실.html');
                         return;
                     }
 
-                    isHost = currentRoomData.hostId === myPlayerId;
-                    roomRef.child(`players/${myPlayerId}`).update({
-                        nickname: myNickname,
-                        avatar: myAvatar,
-                        isHost
+                    syncMyPlayer().then(() => {
+                        listenToRoom();
+                    }).catch(error => {
+                        console.error('빙고 참가 정보 복구 실패:', error);
+                        alert('방 입장에 실패했습니다.');
+                        window.location.replace('대기실.html');
                     });
-
-                    setPlayerDisconnectHandler();
-
-                    listenToRoom();
                 }).catch(error => {
                     console.error('빙고 방 입장 실패:', error);
                     alert('방 입장에 실패했습니다.');
@@ -1308,12 +1310,36 @@
                 });
             }
 
-            function setPlayerDisconnectHandler() {
-                if (!roomRef || !myPlayerId) return;
+            function getMyPlayerData() {
+                return {
+                    nickname: myNickname,
+                    avatar: myAvatar,
+                    isHost
+                };
+            }
 
+            function syncMyPlayer() {
+                if (!roomRef || !myPlayerId) return Promise.resolve();
+                if (playerRestorePromise) return playerRestorePromise;
+
+                playerRestorePromise = roomRef.child(`players/${myPlayerId}`).update(getMyPlayerData())
+                    .then(() => protectMyPlayerDuringGame())
+                    .finally(() => {
+                        playerRestorePromise = null;
+                    });
+
+                return playerRestorePromise;
+            }
+
+            function protectMyPlayerDuringGame() {
                 cancelPlayerDisconnectHandler();
-                playerOnDisconnectRef = roomRef.child(`players/${myPlayerId}`).onDisconnect();
-                playerOnDisconnectRef.remove();
+
+                try {
+                    return roomRef.child(`players/${myPlayerId}`).onDisconnect().cancel();
+                } catch (error) {
+                    console.warn('빙고 게임 중 자동 퇴장 보호 설정 실패:', error);
+                    return Promise.resolve();
+                }
             }
 
             function cancelPlayerDisconnectHandler() {
@@ -1341,15 +1367,19 @@
                     currentRoomData = snapshot.val() || {};
                     isHost = currentRoomData.hostId === myPlayerId;
 
-                    if (!currentRoomData.players || !currentRoomData.players[myPlayerId]) {
-                        alert('방에서 퇴장되었습니다.');
-                        window.location.replace('대기실.html');
-                        return;
-                    }
-
                     if (currentRoomData.status !== 'playing') {
                         cancelPlayerDisconnectHandler();
                         window.location.replace(`게임방.html?roomId=${roomId}`);
+                        return;
+                    }
+
+                    if (!currentRoomData.players || !currentRoomData.players[myPlayerId]) {
+                        showLoading('재접속 중', '참가 정보를 다시 연결하고 있습니다.');
+                        syncMyPlayer().catch(error => {
+                            console.error('빙고 참가 정보 재연결 실패:', error);
+                            alert('방에서 퇴장되었습니다.');
+                            window.location.replace('대기실.html');
+                        });
                         return;
                     }
 
@@ -1709,7 +1739,7 @@
 
                 const boardSize = getBoardSize(gameData);
                 const needed = boardSize * boardSize;
-                const activeOrder = getTurnOrderFromGameData(gameData).filter(id => currentRoomData.players?.[id]);
+                const activeOrder = getTurnOrderFromGameData(gameData).filter(id => gameData.players?.[id]);
                 if (activeOrder.length === 0) return false;
 
                 const allReady = activeOrder.every(id => {
@@ -2089,8 +2119,7 @@
                 const gameData = currentRoomData.gameData;
                 if (gameData.phase !== 'playing') return false;
 
-                const roomPlayers = currentRoomData.players || {};
-                const activeOrder = getTurnOrderFromGameData(gameData).filter(id => roomPlayers[id]);
+                const activeOrder = getTurnOrderFromGameData(gameData).filter(id => gameData.players?.[id]);
                 if (activeOrder.length === 0) return false;
 
                 if (activeOrder.length === 1) {
@@ -2246,7 +2275,7 @@
                 if (!statusEl) return;
 
                 const players = currentRoomData?.players || {};
-                const turnOrder = getTurnOrder(gameData);
+                const turnOrder = getRematchTurnOrder(gameData);
                 const readyCount = turnOrder.filter(id => isRematchReadyForCurrentSetup(gameData, id)).length;
                 const totalCount = turnOrder.length;
                 const allReady = totalCount > 0 && readyCount === totalCount;
@@ -2338,7 +2367,7 @@
                 const gameData = currentRoomData.gameData;
                 if (gameData.phase !== 'finished') return false;
 
-                const activeOrder = getTurnOrderFromGameData(gameData).filter(id => currentRoomData.players?.[id]);
+                const activeOrder = getRematchTurnOrder(gameData);
                 if (activeOrder.length === 0) return false;
 
                 const allReady = activeOrder.every(id => isRematchReadyForCurrentSetup(gameData, id));
@@ -2664,6 +2693,13 @@
                 return Object.keys(gameData.players || {});
             }
 
+            function getRematchTurnOrder(gameData) {
+                const order = getTurnOrderFromGameData(gameData).slice(0, MAX_BINGO_PLAYERS);
+                const roomPlayers = currentRoomData?.players || {};
+                const requests = currentRoomData?.rematchRequests || {};
+                return order.filter(id => roomPlayers[id] || requests[id]);
+            }
+
             function getNextTurn(turnOrder, currentId) {
                 if (!turnOrder.length) return currentId;
                 const index = turnOrder.indexOf(currentId);
@@ -2722,7 +2758,7 @@
                 const sourcePlayers = gameData?.players || {};
                 const players = { ...sourcePlayers };
                 const activeOrder = getTurnOrderFromGameData(gameData)
-                    .filter(id => roomPlayers?.[id] && players[id] && isValidBingoBoard(players[id].board, boardSize));
+                    .filter(id => players[id] && isValidBingoBoard(players[id].board, boardSize));
                 const winnerCandidates = [];
                 let changed = false;
 
@@ -2845,7 +2881,7 @@
             }
 
             function getNextSetupChooser(gameData) {
-                const turnOrder = getTurnOrder(gameData);
+                const turnOrder = getRematchTurnOrder(gameData);
                 if (!turnOrder.length) return myPlayerId;
 
                 const losers = turnOrder.filter(id => id !== gameData.winnerId);
