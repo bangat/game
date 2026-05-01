@@ -526,6 +526,7 @@
         let playerOnDisconnectRef = null;
         let playerRestorePromise = null;
         let playerRestoreRetryTimer = null;
+        let authRedirectTimer = null;
         let audioContext = null;
 
         function setScreenHeight() {
@@ -541,8 +542,19 @@
 
         auth.onAuthStateChanged(user => {
             if (!user) {
-                window.location.replace('index.html');
+                showLoading('로그인 확인중', '게임 입장 정보를 확인하고 있습니다.');
+                if (authRedirectTimer) clearTimeout(authRedirectTimer);
+                authRedirectTimer = setTimeout(() => {
+                    if (!auth.currentUser) {
+                        showLoading('로그인 필요', '대기실에서 다시 입장해주세요.');
+                    }
+                }, 2500);
                 return;
+            }
+
+            if (authRedirectTimer) {
+                clearTimeout(authRedirectTimer);
+                authRedirectTimer = null;
             }
 
             currentUser = user;
@@ -581,16 +593,10 @@
                     return;
                 }
 
-                syncMyPlayer().then(() => {
+                protectMyPlayerDuringGame().catch(error => {
+                    console.warn('가족순발력퀴즈 자동 퇴장 보호 설정 실패:', error);
+                }).finally(() => {
                     listenToRoom();
-                }).catch(error => {
-                    console.error('가족순발력퀴즈 참가 정보 복구 실패:', error);
-                    if (canEnterFromPlayingRoom(currentRoomData)) {
-                        listenToRoom();
-                        return;
-                    }
-                    alert('방 입장에 실패했습니다.');
-                    window.location.replace('대기실.html');
                 });
             }).catch(error => {
                 console.error('가족순발력퀴즈 입장 실패:', error);
@@ -667,12 +673,6 @@
                     showLoading('재접속 중', '참가 정보를 다시 연결하고 있습니다.');
                     schedulePlayerRestoreRetry();
                     return;
-                }
-
-                if ((!currentRoomData.players || !currentRoomData.players[myPlayerId]) && canUseSnapshotPlayer(currentRoomData)) {
-                    syncMyPlayer().catch(error => {
-                        console.warn('가족순발력퀴즈 참가 정보 백그라운드 복구 실패:', error);
-                    });
                 }
 
                 roomNameEl.textContent = currentRoomData.roomName || '가족 방';
