@@ -1,0 +1,1134 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>숫자순서터치</title>
+    <link rel="manifest" href="manifest.json">
+    <style>
+        :root {
+            --bg: #fff7e8;
+            --panel: #ffffff;
+            --ink: #362d2a;
+            --muted: #7b6d67;
+            --line: #ead4b4;
+            --primary: #2f80ed;
+            --primary-dark: #1b57a6;
+            --mint: #35b8a6;
+            --yellow: #ffd166;
+            --shadow: #e6c99d;
+            --danger: #dc4660;
+            --ok: #27ae60;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            min-height: 100dvh;
+            overflow: hidden;
+            background: var(--bg);
+            color: var(--ink);
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            -webkit-user-select: none;
+            user-select: none;
+            touch-action: manipulation;
+        }
+
+        button {
+            font-family: inherit;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        #app {
+            width: 100%;
+            max-width: 520px;
+            height: var(--app-height, 100dvh);
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            background:
+                radial-gradient(circle at top left, rgba(47, 128, 237, 0.18), transparent 34%),
+                linear-gradient(180deg, #fffaf0 0%, #fff1d4 100%);
+            overflow: hidden;
+            position: relative;
+        }
+
+        .topbar {
+            flex-shrink: 0;
+            display: grid;
+            grid-template-columns: 46px 1fr 88px;
+            gap: 8px;
+            align-items: center;
+            padding: calc(8px + env(safe-area-inset-top)) 12px 8px;
+            border-bottom: 3px solid var(--line);
+            background: rgba(255, 250, 235, 0.96);
+        }
+
+        .icon-btn,
+        .action-btn,
+        .size-btn,
+        .cell-btn {
+            border: 3px solid var(--ink);
+            background: var(--panel);
+            color: var(--ink);
+            font-weight: 900;
+            box-shadow: 3px 3px 0 var(--shadow);
+        }
+
+        .icon-btn {
+            width: 42px;
+            height: 42px;
+            border-radius: 12px;
+            font-size: 1.5rem;
+        }
+
+        .title-box {
+            min-width: 0;
+            text-align: center;
+        }
+
+        .title-box h1 {
+            font-size: 1.12rem;
+            line-height: 1.1;
+        }
+
+        .title-box p {
+            margin-top: 3px;
+            color: var(--muted);
+            font-size: 0.72rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .next-badge {
+            min-height: 42px;
+            border: 3px solid var(--ink);
+            border-radius: 12px;
+            background: var(--yellow);
+            box-shadow: 3px 3px 0 #d6a944;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-weight: 900;
+        }
+
+        .next-badge strong {
+            line-height: 1;
+            font-size: 1.08rem;
+        }
+
+        .next-badge span {
+            font-size: 0.66rem;
+        }
+
+        .content {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            padding: 10px 12px calc(14px + env(safe-area-inset-bottom));
+        }
+
+        .panel,
+        .board-card,
+        .players-card,
+        .result-card {
+            border: 3px solid var(--ink);
+            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.92);
+            box-shadow: 4px 4px 0 var(--shadow);
+        }
+
+        .panel {
+            padding: 14px;
+        }
+
+        .panel-title {
+            font-size: 0.95rem;
+            font-weight: 900;
+            color: var(--primary-dark);
+            text-align: center;
+        }
+
+        .panel-main {
+            margin-top: 8px;
+            font-size: 1.36rem;
+            line-height: 1.25;
+            font-weight: 900;
+            text-align: center;
+            word-break: keep-all;
+        }
+
+        .panel-sub {
+            margin-top: 6px;
+            color: var(--muted);
+            font-size: 0.8rem;
+            font-weight: 800;
+            line-height: 1.35;
+            text-align: center;
+        }
+
+        .size-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 7px;
+            margin-top: 12px;
+        }
+
+        .size-btn {
+            min-height: 44px;
+            border-radius: 13px;
+            font-size: 0.96rem;
+        }
+
+        .size-btn.active {
+            border-color: var(--primary);
+            background: #eaf3ff;
+            color: var(--primary-dark);
+        }
+
+        .action-row {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .action-btn {
+            flex: 1;
+            min-height: 46px;
+            border-radius: 13px;
+            font-size: 0.95rem;
+        }
+
+        .action-btn.primary {
+            background: var(--mint);
+            color: #fff;
+            border-color: var(--mint);
+        }
+
+        .action-btn.danger {
+            background: var(--danger);
+            color: #fff;
+            border-color: var(--danger);
+        }
+
+        .players-card {
+            margin-top: 10px;
+            padding: 8px;
+        }
+
+        .players-row {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 5px;
+        }
+
+        .player-chip {
+            min-width: 0;
+            border: 2px solid var(--line);
+            border-radius: 12px;
+            background: #fffaf0;
+            padding: 5px 4px;
+            text-align: center;
+            font-weight: 900;
+        }
+
+        .player-chip.me {
+            border-color: var(--primary);
+            background: #eaf3ff;
+        }
+
+        .player-chip.done {
+            border-color: var(--ok);
+            background: #eafff3;
+        }
+
+        .avatar {
+            width: 28px;
+            height: 28px;
+            margin: 0 auto 3px;
+            border: 2px solid var(--ink);
+            border-radius: 9px;
+            background: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            font-size: 0.95rem;
+        }
+
+        .avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .player-name,
+        .player-stat {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .player-name {
+            font-size: 0.68rem;
+        }
+
+        .player-stat {
+            margin-top: 2px;
+            color: var(--muted);
+            font-size: 0.64rem;
+        }
+
+        .board-card {
+            margin-top: 10px;
+            padding: 9px;
+        }
+
+        .board-head {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .board-head strong {
+            min-width: 0;
+            font-size: 0.92rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .timer {
+            min-width: 76px;
+            padding: 7px 8px;
+            border-radius: 999px;
+            background: #fff1d1;
+            border: 2px solid var(--line);
+            color: var(--primary-dark);
+            text-align: center;
+            font-size: 0.8rem;
+            font-weight: 900;
+        }
+
+        .number-board {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 6px;
+        }
+
+        .cell-btn {
+            aspect-ratio: 1;
+            min-height: 0;
+            border-radius: 12px;
+            font-size: clamp(0.86rem, 5vw, 1.32rem);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #fff;
+            color: var(--ink);
+            transition: transform 0.08s ease, background 0.12s ease;
+        }
+
+        .cell-btn:active {
+            transform: translate(2px, 2px);
+            box-shadow: 1px 1px 0 var(--shadow);
+        }
+
+        .cell-btn.done {
+            background: #dff8ef;
+            color: #28845c;
+            border-color: #58c996;
+        }
+
+        .cell-btn.target {
+            background: #fff1c7;
+            border-color: var(--primary);
+        }
+
+        .cell-btn.wrong {
+            background: #ffe4e9;
+            border-color: var(--danger);
+        }
+
+        .result-card {
+            margin-top: 10px;
+            padding: 12px;
+            display: none;
+        }
+
+        .result-card.active {
+            position: fixed;
+            inset: 0;
+            z-index: 40;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: calc(18px + env(safe-area-inset-top)) 18px calc(18px + env(safe-area-inset-bottom));
+            border: 0;
+            border-radius: 0;
+            background: rgba(48, 40, 36, 0.54);
+            box-shadow: none;
+        }
+
+        .result-modal {
+            width: min(100%, 440px);
+            max-height: 86dvh;
+            overflow-y: auto;
+            border: 3px solid var(--ink);
+            border-radius: 18px;
+            background: #fffdf7;
+            box-shadow: 5px 5px 0 rgba(0, 0, 0, 0.18);
+            padding: 14px;
+        }
+
+        .result-title {
+            font-size: 1.18rem;
+            font-weight: 900;
+            color: var(--primary-dark);
+            text-align: center;
+        }
+
+        .result-sub {
+            margin: 6px 0 10px;
+            color: var(--muted);
+            font-size: 0.82rem;
+            font-weight: 800;
+            text-align: center;
+        }
+
+        .rank-list {
+            display: grid;
+            gap: 7px;
+            margin-top: 9px;
+        }
+
+        .rank-row {
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            gap: 8px;
+            align-items: center;
+            padding: 8px;
+            border-radius: 11px;
+            background: #fff8e8;
+            font-size: 0.82rem;
+            font-weight: 900;
+        }
+
+        .rank-row.me {
+            background: #eaf3ff;
+        }
+
+        .rank-row.winner {
+            background: #fff1cf;
+        }
+
+        .overlay {
+            position: absolute;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 18px;
+            background: rgba(54, 45, 42, 0.42);
+            z-index: 20;
+        }
+
+        .overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            width: min(100%, 360px);
+            border: 3px solid var(--ink);
+            border-radius: 18px;
+            background: var(--panel);
+            box-shadow: 5px 5px 0 var(--shadow);
+            padding: 18px;
+            text-align: center;
+        }
+
+        .modal h2 {
+            font-size: 1.25rem;
+        }
+
+        .modal p {
+            margin-top: 8px;
+            color: var(--muted);
+            font-weight: 800;
+            line-height: 1.45;
+        }
+
+        @media (max-height: 720px) {
+            .content { padding-top: 7px; }
+            .panel { padding: 11px; }
+            .cell-btn { border-radius: 10px; }
+            .number-board { gap: 5px; }
+        }
+    </style>
+</head>
+<body>
+    <main id="app">
+        <header class="topbar">
+            <button id="back-btn" class="icon-btn" type="button" aria-label="나가기">‹</button>
+            <div class="title-box">
+                <h1>숫자순서터치</h1>
+                <p id="room-name">게임방에 입장 중</p>
+            </div>
+            <div class="next-badge">
+                <strong id="next-number">1</strong>
+                <span>다음 숫자</span>
+            </div>
+        </header>
+
+        <section class="content">
+            <div id="setup-panel" class="panel">
+                <div class="panel-title">숫자판 고르기</div>
+                <div class="panel-main">1부터 차례대로 누르세요</div>
+                <div id="setup-sub" class="panel-sub">방장이 숫자 개수를 고르면 모두 같은 랜덤판으로 시작합니다.</div>
+                <div id="size-grid" class="size-grid"></div>
+                <div class="action-row">
+                    <button id="start-btn" class="action-btn primary" type="button">시작</button>
+                    <button id="room-btn-setup" class="action-btn" type="button">게임방</button>
+                </div>
+            </div>
+
+            <div class="players-card">
+                <div id="players-row" class="players-row"></div>
+            </div>
+
+            <div class="board-card">
+                <div class="board-head">
+                    <strong id="board-title">숫자판 준비중</strong>
+                    <div id="timer" class="timer">0.0초</div>
+                </div>
+                <div id="number-board" class="number-board"></div>
+            </div>
+
+            <div id="result-card" class="result-card"></div>
+        </section>
+
+        <div id="loading-overlay" class="overlay active">
+            <div class="modal">
+                <h2 id="loading-title">숫자판 준비중</h2>
+                <p id="loading-text">방 정보를 확인하고 있습니다.</p>
+            </div>
+        </div>
+    </main>
+
+    <audio id="tap-sound" src="./봄버맨사운드/버튼클릭.mp3" preload="auto"></audio>
+    <audio id="start-sound" src="./봄버맨사운드/321go.mp3" preload="auto"></audio>
+    <audio id="correct-sound" src="./봄버맨사운드/사천성맞춤.mp3" preload="auto"></audio>
+    <audio id="wrong-sound" src="./봄버맨사운드/사천성틀림.mp3" preload="auto"></audio>
+    <audio id="finish-sound" src="./sound/게임승리.mp3" preload="auto"></audio>
+    <audio id="bgm" src="./봄버맨사운드/애니팡배경음악.mp3" preload="auto" loop></audio>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
+            authDomain: "goodluck-7c14b.firebaseapp.com",
+            databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com",
+            projectId: "goodluck-7c14b",
+            storageBucket: "goodluck-7c14b.appspot.com",
+            messagingSenderId: "858281658455",
+            appId: "1:858281658455:web:9131280a459be983933b12"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+        const auth = firebase.auth();
+        const roomsRef = db.ref('rooms');
+
+        const NUMBER_COUNTS = [20, 25, 30, 35];
+        const DEFAULT_COUNT = 25;
+
+        const app = document.getElementById('app');
+        const backBtn = document.getElementById('back-btn');
+        const roomNameEl = document.getElementById('room-name');
+        const nextNumberEl = document.getElementById('next-number');
+        const setupPanelEl = document.getElementById('setup-panel');
+        const setupSubEl = document.getElementById('setup-sub');
+        const sizeGridEl = document.getElementById('size-grid');
+        const startBtn = document.getElementById('start-btn');
+        const roomBtnSetup = document.getElementById('room-btn-setup');
+        const playersRowEl = document.getElementById('players-row');
+        const boardTitleEl = document.getElementById('board-title');
+        const timerEl = document.getElementById('timer');
+        const numberBoardEl = document.getElementById('number-board');
+        const resultCardEl = document.getElementById('result-card');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const loadingTitleEl = document.getElementById('loading-title');
+        const loadingTextEl = document.getElementById('loading-text');
+
+        let currentUser = null;
+        let myPlayerId = null;
+        let myNickname = '';
+        let myAvatar = '';
+        let roomId = null;
+        let roomRef = null;
+        let currentRoomData = null;
+        let isHost = false;
+        let isLeaving = false;
+        let playerRestorePromise = null;
+        let timerHandle = null;
+        let lastFinishedAt = 0;
+        let lastStartedAt = 0;
+        let lastResultAt = 0;
+
+        function setScreenHeight() {
+            const viewportHeight = Math.floor(window.visualViewport?.height || window.innerHeight || document.documentElement.clientHeight);
+            document.documentElement.style.setProperty('--app-height', `${viewportHeight}px`);
+            app.style.height = `${viewportHeight}px`;
+        }
+
+        setScreenHeight();
+        window.addEventListener('resize', setScreenHeight);
+        window.visualViewport?.addEventListener('resize', setScreenHeight);
+        window.visualViewport?.addEventListener('scroll', setScreenHeight);
+
+        auth.onAuthStateChanged(user => {
+            if (!user) {
+                window.location.replace('index.html');
+                return;
+            }
+
+            currentUser = user;
+            myPlayerId = user.uid;
+            myNickname = localStorage.getItem('userNickname') || '플레이어';
+            myAvatar = localStorage.getItem('userAvatar') || '🙂';
+
+            const params = new URLSearchParams(window.location.search);
+            roomId = params.get('roomId');
+            if (!roomId) {
+                alert('잘못된 접근입니다.');
+                window.location.replace('대기실.html');
+                return;
+            }
+
+            joinRoom(roomId);
+        });
+
+        function joinRoom(id) {
+            roomRef = roomsRef.child(id);
+            roomRef.once('value').then(snapshot => {
+                if (!snapshot.exists()) {
+                    alert('방을 찾을 수 없습니다.');
+                    window.location.replace('대기실.html');
+                    return;
+                }
+
+                currentRoomData = snapshot.val() || {};
+                isHost = currentRoomData.hostId === myPlayerId;
+                const hasMyPlayer = Boolean(currentRoomData.players?.[myPlayerId]);
+                const canRestorePlayer = currentRoomData.status === 'playing' && currentRoomData.gameType === 'numberOrder';
+
+                if (!hasMyPlayer && !canRestorePlayer) {
+                    alert('방 참가 정보가 없습니다.');
+                    window.location.replace('대기실.html');
+                    return;
+                }
+
+                syncMyPlayer().then(() => {
+                    listenToRoom();
+                }).catch(error => {
+                    console.error('숫자순서터치 참가 정보 복구 실패:', error);
+                    alert('방 입장에 실패했습니다.');
+                    window.location.replace('대기실.html');
+                });
+            });
+        }
+
+        function syncMyPlayer() {
+            if (!roomRef || !myPlayerId) return Promise.resolve();
+            if (playerRestorePromise) return playerRestorePromise;
+
+            playerRestorePromise = roomRef.child(`players/${myPlayerId}`).update({
+                nickname: myNickname,
+                avatar: myAvatar,
+                isHost
+            }).then(() => roomRef.child(`players/${myPlayerId}`).onDisconnect().cancel())
+              .finally(() => { playerRestorePromise = null; });
+
+            return playerRestorePromise;
+        }
+
+        function listenToRoom() {
+            roomRef.on('value', snapshot => {
+                if (isLeaving) return;
+
+                if (!snapshot.exists()) {
+                    alert('방이 사라졌습니다.');
+                    window.location.replace('대기실.html');
+                    return;
+                }
+
+                currentRoomData = snapshot.val() || {};
+                isHost = currentRoomData.hostId === myPlayerId;
+
+                if (currentRoomData.status !== 'playing') {
+                    window.location.replace(`게임방.html?roomId=${roomId}`);
+                    return;
+                }
+
+                if (!currentRoomData.players || !currentRoomData.players[myPlayerId]) {
+                    showLoading('재접속 중', '참가 정보를 다시 연결하고 있습니다.');
+                    syncMyPlayer().catch(() => window.location.replace('대기실.html'));
+                    return;
+                }
+
+                roomNameEl.textContent = currentRoomData.roomName || '가족 방';
+
+                const gameData = currentRoomData.gameData;
+                if (!gameData || gameData.gameId !== 'numberOrder') {
+                    if (isHost) initializeGameData();
+                    else showLoading('숫자판 준비중', '방장이 숫자판을 준비하고 있습니다.');
+                    return;
+                }
+
+                loadingOverlay.classList.remove('active');
+                renderGame(gameData);
+            });
+        }
+
+        function initializeGameData() {
+            const players = currentRoomData?.players || {};
+            const playerIds = Object.keys(players).slice(0, 5);
+            const playerSnapshots = {};
+            playerIds.forEach(id => {
+                const player = players[id] || {};
+                playerSnapshots[id] = {
+                    nickname: player.nickname || '플레이어',
+                    avatar: player.avatar || '🙂',
+                    isHost: currentRoomData?.hostId === id
+                };
+            });
+
+            roomRef.child('gameData').set({
+                gameId: 'numberOrder',
+                phase: 'setup',
+                activePlayers: playerIds,
+                playerSnapshots,
+                numberCount: DEFAULT_COUNT,
+                board: [],
+                playerStates: {},
+                createdAt: Date.now()
+            });
+        }
+
+        function renderGame(gameData) {
+            const players = getGamePlayers(gameData);
+            const activeIds = getActivePlayerIds(gameData, players);
+            const myState = gameData.playerStates?.[myPlayerId] || {};
+            const nextNumber = Number(myState.next || 1);
+            nextNumberEl.textContent = gameData.phase === 'playing' ? Math.min(nextNumber, Number(gameData.numberCount || DEFAULT_COUNT)) : Number(gameData.numberCount || DEFAULT_COUNT);
+
+            renderSetup(gameData);
+            renderPlayers(gameData, players, activeIds);
+            renderBoard(gameData, myState);
+            renderResult(gameData, players, activeIds);
+            updateTimer(gameData);
+            syncRoundSound(gameData);
+            startTimerLoop();
+        }
+
+        function renderSetup(gameData) {
+            const isSetup = gameData.phase === 'setup';
+            setupPanelEl.style.display = isSetup ? 'block' : 'none';
+            sizeGridEl.innerHTML = '';
+            const selected = Number(gameData.numberCount || DEFAULT_COUNT);
+
+            NUMBER_COUNTS.forEach(count => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = `size-btn ${selected === count ? 'active' : ''}`;
+                button.textContent = `${count}개`;
+                button.disabled = !isHost;
+                button.addEventListener('click', () => setNumberCount(count));
+                sizeGridEl.appendChild(button);
+            });
+
+            setupSubEl.textContent = isHost
+                ? '숫자 개수를 고르고 시작을 누르세요.'
+                : '방장이 숫자 개수를 고르는 중입니다.';
+            startBtn.style.display = isHost ? 'block' : 'none';
+            startBtn.disabled = !isHost;
+        }
+
+        function renderPlayers(gameData, players, activeIds) {
+            playersRowEl.innerHTML = '';
+            activeIds.forEach(id => {
+                const player = players[id] || {};
+                const state = gameData.playerStates?.[id] || {};
+                const done = Boolean(state.finishedAt);
+                const chip = document.createElement('div');
+                chip.className = `player-chip ${id === myPlayerId ? 'me' : ''} ${done ? 'done' : ''}`;
+                chip.innerHTML = `
+                    <div class="avatar">${getAvatarHTML(player.avatar)}</div>
+                    <div class="player-name">${escapeHTML(player.nickname || '플레이어')}</div>
+                    <div class="player-stat">${getPlayerStat(gameData, state)}</div>
+                `;
+                playersRowEl.appendChild(chip);
+            });
+        }
+
+        function renderBoard(gameData, myState) {
+            numberBoardEl.innerHTML = '';
+            const board = Array.isArray(gameData.board) ? gameData.board : [];
+            const count = Number(gameData.numberCount || DEFAULT_COUNT);
+            boardTitleEl.textContent = gameData.phase === 'setup'
+                ? `${count}개 숫자판`
+                : `1부터 ${count}까지 순서대로`;
+
+            if (!board.length) {
+                numberBoardEl.innerHTML = '<div class="panel-sub" style="grid-column: 1 / -1;">시작하면 숫자판이 나옵니다.</div>';
+                return;
+            }
+
+            const next = Number(myState.next || 1);
+            const lastWrong = Number(myState.lastWrong || 0);
+            board.forEach(number => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'cell-btn';
+                if (number < next) button.classList.add('done');
+                if (number === next && gameData.phase === 'playing') button.classList.add('target');
+                if (number === lastWrong && gameData.phase === 'playing') button.classList.add('wrong');
+                button.textContent = number;
+                button.disabled = gameData.phase !== 'playing' || Boolean(myState.finishedAt);
+                button.addEventListener('click', () => submitNumber(number));
+                numberBoardEl.appendChild(button);
+            });
+        }
+
+        function renderResult(gameData, players, activeIds) {
+            if (gameData.phase !== 'result') {
+                resultCardEl.classList.remove('active');
+                resultCardEl.innerHTML = '';
+                return;
+            }
+
+            const ranking = getRanking(gameData, players, activeIds);
+            resultCardEl.classList.add('active');
+            resultCardEl.innerHTML = `
+                <div class="result-modal">
+                    <div class="result-title">최종 순위</div>
+                    <div class="result-sub">1등이 완주한 순간까지 맞춘 숫자로 순위를 매겼습니다.</div>
+                    <div class="rank-list">
+                        ${ranking.map((row, index) => `
+                            <div class="rank-row ${row.id === myPlayerId ? 'me' : ''} ${index === 0 ? 'winner' : ''}">
+                                <strong>${index + 1}등</strong>
+                                <span>${escapeHTML(row.name)}</span>
+                                <strong>${row.timeText}</strong>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <div class="action-row">
+                        ${isHost ? '<button id="again-btn" class="action-btn primary" type="button">다시하기</button>' : ''}
+                        <button id="room-btn-result" class="action-btn" type="button">게임방</button>
+                    </div>
+                </div>
+            `;
+            document.getElementById('again-btn')?.addEventListener('click', resetToSetup);
+            document.getElementById('room-btn-result')?.addEventListener('click', returnToGameRoom);
+        }
+
+        function setNumberCount(count) {
+            if (!isHost || !roomRef || !NUMBER_COUNTS.includes(Number(count))) return;
+            roomRef.child('gameData/numberCount').set(Number(count));
+            playAudio('tap-sound', 0.55);
+        }
+
+        function startRound() {
+            if (!isHost || !roomRef || !currentRoomData?.gameData) return;
+            const gameData = currentRoomData.gameData;
+            const players = getGamePlayers(gameData);
+            const activeIds = getActivePlayerIds(gameData, players);
+            const count = Number(gameData.numberCount || DEFAULT_COUNT);
+            const now = Date.now();
+            const playerStates = {};
+            activeIds.forEach(id => {
+                playerStates[id] = {
+                    next: 1,
+                    mistakes: 0,
+                    startedAt: now,
+                    finishedAt: null,
+                    lastWrong: null,
+                    lastCorrectAt: null
+                };
+            });
+
+            roomRef.child('gameData').update({
+                phase: 'playing',
+                numberCount: count,
+                board: shuffleNumbers(count),
+                playerStates,
+                winnerId: null,
+                startedAt: now,
+                endedAt: null
+            });
+        }
+
+        function submitNumber(number) {
+            if (!roomRef || !currentRoomData?.gameData || currentRoomData.gameData.phase !== 'playing') return;
+
+            roomRef.transaction(room => {
+                if (!room || room.status !== 'playing' || room.gameType !== 'numberOrder') return;
+                const gameData = room.gameData;
+                if (!gameData || gameData.gameId !== 'numberOrder' || gameData.phase !== 'playing') return;
+                const states = gameData.playerStates || {};
+                const state = states[myPlayerId];
+                if (!state || state.finishedAt) return;
+
+                const count = Number(gameData.numberCount || DEFAULT_COUNT);
+                const next = Number(state.next || 1);
+                const now = Date.now();
+
+                if (Number(number) === next) {
+                    state.next = next + 1;
+                    state.lastWrong = null;
+                    state.lastCorrectAt = now;
+                    if (state.next > count) {
+                        state.finishedAt = now;
+                        if (!gameData.winnerId) {
+                            gameData.winnerId = myPlayerId;
+                            gameData.phase = 'result';
+                            gameData.endedAt = now;
+                        }
+                    }
+                } else {
+                    state.mistakes = Number(state.mistakes || 0) + 1;
+                    state.lastWrong = Number(number);
+                }
+
+                states[myPlayerId] = state;
+                gameData.playerStates = states;
+
+                room.gameData = gameData;
+                return room;
+            }).then(result => {
+                if (!result.committed) return;
+                const gameData = result.snapshot?.val()?.gameData;
+                const state = gameData?.playerStates?.[myPlayerId];
+                if (state?.lastWrong === Number(number)) {
+                    playAudio('wrong-sound', 0.65);
+                } else if (state?.finishedAt && state.finishedAt !== lastFinishedAt && gameData?.phase !== 'result') {
+                    lastFinishedAt = state.finishedAt;
+                    playAudio('finish-sound', 0.8);
+                } else if (state?.finishedAt) {
+                    lastFinishedAt = state.finishedAt;
+                } else {
+                    playAudio('correct-sound', 0.68);
+                }
+            });
+        }
+
+        function resetToSetup() {
+            if (!isHost || !roomRef) return;
+            roomRef.child('gameData').update({
+                phase: 'setup',
+                board: [],
+                playerStates: {},
+                winnerId: null,
+                startedAt: null,
+                endedAt: null
+            });
+            stopBgm();
+        }
+
+        function returnToGameRoom() {
+            isLeaving = true;
+            if (!roomRef) {
+                window.location.replace('대기실.html');
+                return;
+            }
+
+            const done = () => window.location.replace(`게임방.html?roomId=${roomId}`);
+            stopBgm();
+            roomRef.update({
+                status: 'lobby',
+                gameData: null,
+                gameStarted: false,
+                readyPlayers: null,
+                rematchRequests: null
+            }).finally(done);
+        }
+
+        function getActivePlayerIds(gameData, players) {
+            if (Array.isArray(gameData.activePlayers)) {
+                return [...new Set(gameData.activePlayers.filter(Boolean))].slice(0, 5);
+            }
+            return Object.keys(gameData.playerSnapshots || players || {}).filter(id => players?.[id]).slice(0, 5);
+        }
+
+        function getGamePlayers(gameData, room = currentRoomData) {
+            return {
+                ...(gameData?.playerSnapshots || {}),
+                ...(room?.players || {})
+            };
+        }
+
+        function getPlayerStat(gameData, state) {
+            if (gameData.phase === 'setup') return '대기';
+            if (state?.finishedAt) return formatTime(Number(state.finishedAt) - Number(state.startedAt || gameData.startedAt || state.finishedAt));
+            const count = Number(gameData.numberCount || DEFAULT_COUNT);
+            const doneCount = Math.max(0, Math.min(Number(state?.next || 1) - 1, count));
+            return `${doneCount}/${count}`;
+        }
+
+        function getRanking(gameData, players, activeIds) {
+            const states = gameData.playerStates || {};
+            const count = Number(gameData.numberCount || DEFAULT_COUNT);
+            const endedAt = Number(gameData.endedAt || Date.now());
+            return activeIds.map(id => {
+                const state = states[id] || {};
+                const startedAt = Number(state.startedAt || gameData.startedAt || endedAt);
+                const finishedAt = Number(state.finishedAt || 0);
+                const completed = finishedAt ? count : Math.max(0, Math.min(Number(state.next || 1) - 1, count));
+                const elapsed = (finishedAt || endedAt) - startedAt;
+                const mistakes = Number(state.mistakes || 0);
+                return {
+                    id,
+                    name: players[id]?.nickname || '플레이어',
+                    completed,
+                    elapsed,
+                    mistakes,
+                    finished: Boolean(finishedAt),
+                    timeText: finishedAt
+                        ? `${formatTime(elapsed)} / 실수 ${mistakes}`
+                        : `${completed}/${count} / 실수 ${mistakes}`
+                };
+            }).sort((a, b) => {
+                if (a.finished !== b.finished) return a.finished ? -1 : 1;
+                if (a.completed !== b.completed) return b.completed - a.completed;
+                if (a.mistakes !== b.mistakes) return a.mistakes - b.mistakes;
+                if (a.elapsed !== b.elapsed) return a.elapsed - b.elapsed;
+                return activeIds.indexOf(a.id) - activeIds.indexOf(b.id);
+            });
+        }
+
+        function shuffleNumbers(count) {
+            const numbers = Array.from({ length: count }, (_, index) => index + 1);
+            for (let i = numbers.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [numbers[i], numbers[j]] = [numbers[j], numbers[i]];
+            }
+            return numbers;
+        }
+
+        function startTimerLoop() {
+            if (timerHandle) return;
+            timerHandle = setInterval(() => {
+                const gameData = currentRoomData?.gameData;
+                if (gameData?.gameId === 'numberOrder') updateTimer(gameData);
+            }, 100);
+        }
+
+        function updateTimer(gameData) {
+            if (gameData.phase === 'setup') {
+                timerEl.textContent = '준비';
+                return;
+            }
+            const base = Number(gameData.startedAt || Date.now());
+            const end = gameData.phase === 'result' ? Number(gameData.endedAt || Date.now()) : Date.now();
+            timerEl.textContent = formatTime(end - base);
+        }
+
+        function formatTime(ms) {
+            const value = Math.max(0, Number(ms || 0)) / 1000;
+            return `${value.toFixed(1)}초`;
+        }
+
+        function showLoading(title, text) {
+            loadingTitleEl.textContent = title;
+            loadingTextEl.textContent = text;
+            loadingOverlay.classList.add('active');
+        }
+
+        function escapeHTML(value) {
+            return String(value ?? '').replace(/[&<>"']/g, char => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            }[char]));
+        }
+
+        function getAvatarHTML(avatar) {
+            const value = String(avatar || '🙂');
+            if (value.startsWith('http') || value.startsWith('./') || value.startsWith('/') || value.includes('.png') || value.includes('.jpg') || value.includes('.webp')) {
+                return `<img src="${escapeHTML(value)}" alt="">`;
+            }
+            return escapeHTML(value);
+        }
+
+        function playAudio(id, volume = 0.8) {
+            const audio = document.getElementById(id);
+            if (!audio) return;
+            audio.volume = volume;
+            try { audio.currentTime = 0; } catch (error) {}
+            audio.play().catch(() => {});
+        }
+
+        function playBgm() {
+            const audio = document.getElementById('bgm');
+            if (!audio) return;
+            audio.volume = 0.24;
+            audio.play().catch(() => {});
+        }
+
+        function stopBgm() {
+            const audio = document.getElementById('bgm');
+            if (!audio) return;
+            audio.pause();
+            try { audio.currentTime = 0; } catch (error) {}
+        }
+
+        function syncRoundSound(gameData) {
+            const startedAt = Number(gameData.startedAt || 0);
+            const endedAt = Number(gameData.endedAt || 0);
+
+            if (gameData.phase === 'playing') {
+                if (startedAt && startedAt !== lastStartedAt) {
+                    lastStartedAt = startedAt;
+                    lastResultAt = 0;
+                    playAudio('start-sound', 0.55);
+                }
+                playBgm();
+                return;
+            }
+
+            if (gameData.phase === 'result') {
+                stopBgm();
+                if (endedAt && endedAt !== lastResultAt) {
+                    lastResultAt = endedAt;
+                    playAudio('finish-sound', 0.85);
+                }
+                return;
+            }
+
+            stopBgm();
+        }
+
+        function unlockSound() {
+            document.querySelectorAll('audio').forEach(audio => audio.load());
+        }
+
+        startBtn.addEventListener('click', startRound);
+        roomBtnSetup.addEventListener('click', returnToGameRoom);
+        backBtn.addEventListener('click', returnToGameRoom);
+        window.addEventListener('pointerdown', unlockSound, { once: true });
+    </script>
+</body>
+</html>
