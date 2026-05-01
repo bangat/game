@@ -524,6 +524,7 @@
         let isHost = false;
         let isLeaving = false;
         let playerOnDisconnectRef = null;
+        let playerRestorePromise = null;
         let audioContext = null;
 
         function setScreenHeight() {
@@ -569,20 +570,23 @@
                 }
 
                 currentRoomData = snapshot.val() || {};
-                if (!currentRoomData.players || !currentRoomData.players[myPlayerId]) {
+                isHost = currentRoomData.hostId === myPlayerId;
+                const hasMyPlayer = Boolean(currentRoomData.players?.[myPlayerId]);
+                const canRestorePlayer = currentRoomData.status === 'playing' && currentRoomData.gameType === 'familyQuiz';
+
+                if (!hasMyPlayer && !canRestorePlayer) {
                     alert('방 참가 정보가 없습니다.');
                     window.location.replace('대기실.html');
                     return;
                 }
 
-                isHost = currentRoomData.hostId === myPlayerId;
-                roomRef.child(`players/${myPlayerId}`).update({
-                    nickname: myNickname,
-                    avatar: myAvatar,
-                    isHost
+                syncMyPlayer().then(() => {
+                    listenToRoom();
+                }).catch(error => {
+                    console.error('가족순발력퀴즈 참가 정보 복구 실패:', error);
+                    alert('방 입장에 실패했습니다.');
+                    window.location.replace('대기실.html');
                 });
-                setPlayerDisconnectHandler();
-                listenToRoom();
             }).catch(error => {
                 console.error('가족순발력퀴즈 입장 실패:', error);
                 alert('방 입장에 실패했습니다.');
@@ -590,11 +594,38 @@
             });
         }
 
-        function setPlayerDisconnectHandler() {
-            if (!roomRef || !myPlayerId) return;
+        function getMyPlayerData() {
+            return {
+                nickname: myNickname,
+                avatar: myAvatar,
+                isHost
+            };
+        }
+
+        function syncMyPlayer() {
+            if (!roomRef || !myPlayerId) return Promise.resolve();
+            if (playerRestorePromise) return playerRestorePromise;
+
+            playerRestorePromise = roomRef.child(`players/${myPlayerId}`).update(getMyPlayerData())
+                .then(() => {
+                    return protectMyPlayerDuringGame();
+                })
+                .finally(() => {
+                    playerRestorePromise = null;
+                });
+
+            return playerRestorePromise;
+        }
+
+        function protectMyPlayerDuringGame() {
             cancelPlayerDisconnectHandler();
-            playerOnDisconnectRef = roomRef.child(`players/${myPlayerId}`).onDisconnect();
-            playerOnDisconnectRef.remove();
+
+            try {
+                return roomRef.child(`players/${myPlayerId}`).onDisconnect().cancel();
+            } catch (error) {
+                console.warn('게임 중 자동 퇴장 보호 설정 실패:', error);
+                return Promise.resolve();
+            }
         }
 
         function cancelPlayerDisconnectHandler() {
@@ -620,15 +651,19 @@
                 currentRoomData = snapshot.val() || {};
                 isHost = currentRoomData.hostId === myPlayerId;
 
-                if (!currentRoomData.players || !currentRoomData.players[myPlayerId]) {
-                    alert('방에서 퇴장되었습니다.');
-                    window.location.replace('대기실.html');
-                    return;
-                }
-
                 if (currentRoomData.status !== 'playing') {
                     cancelPlayerDisconnectHandler();
                     window.location.replace(`게임방.html?roomId=${roomId}`);
+                    return;
+                }
+
+                if (!currentRoomData.players || !currentRoomData.players[myPlayerId]) {
+                    showLoading('재접속 중', '참가 정보를 다시 연결하고 있습니다.');
+                    syncMyPlayer().catch(error => {
+                        console.error('가족순발력퀴즈 참가 정보 재연결 실패:', error);
+                        alert('방에서 퇴장되었습니다.');
+                        window.location.replace('대기실.html');
+                    });
                     return;
                 }
 
