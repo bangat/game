@@ -525,8 +525,6 @@
         let isLeaving = false;
         let playerOnDisconnectRef = null;
         let playerRestorePromise = null;
-        let playerRestoreRetryTimer = null;
-        let authRedirectTimer = null;
         let audioContext = null;
 
         function setScreenHeight() {
@@ -540,27 +538,10 @@
         window.visualViewport?.addEventListener('resize', setScreenHeight);
         window.visualViewport?.addEventListener('scroll', setScreenHeight);
 
-        auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(error => {
-            console.warn('가족순발력퀴즈 인증 유지 설정 실패:', error);
-        }).finally(() => {
-            auth.onAuthStateChanged(handleAuthState);
-        });
-
-        function handleAuthState(user) {
+        auth.onAuthStateChanged(user => {
             if (!user) {
-                showLoading('로그인 확인중', '게임 입장 정보를 확인하고 있습니다.');
-                if (authRedirectTimer) clearTimeout(authRedirectTimer);
-                authRedirectTimer = setTimeout(() => {
-                    if (!auth.currentUser) {
-                        showLoading('로그인 필요', '대기실에서 다시 입장해주세요.');
-                    }
-                }, 12000);
+                window.location.replace('index.html');
                 return;
-            }
-
-            if (authRedirectTimer) {
-                clearTimeout(authRedirectTimer);
-                authRedirectTimer = null;
             }
 
             currentUser = user;
@@ -577,7 +558,7 @@
             }
 
             joinRoom(roomId);
-        }
+        });
 
         function joinRoom(id) {
             roomRef = roomsRef.child(id);
@@ -591,7 +572,7 @@
                 currentRoomData = snapshot.val() || {};
                 isHost = currentRoomData.hostId === myPlayerId;
                 const hasMyPlayer = Boolean(currentRoomData.players?.[myPlayerId]);
-                const canRestorePlayer = canEnterFromPlayingRoom(currentRoomData);
+                const canRestorePlayer = currentRoomData.status === 'playing' && currentRoomData.gameType === 'familyQuiz';
 
                 if (!hasMyPlayer && !canRestorePlayer) {
                     alert('방 참가 정보가 없습니다.');
@@ -599,10 +580,12 @@
                     return;
                 }
 
-                protectMyPlayerDuringGame().catch(error => {
-                    console.warn('가족순발력퀴즈 자동 퇴장 보호 설정 실패:', error);
-                }).finally(() => {
+                syncMyPlayer().then(() => {
                     listenToRoom();
+                }).catch(error => {
+                    console.error('가족순발력퀴즈 참가 정보 복구 실패:', error);
+                    alert('방 입장에 실패했습니다.');
+                    window.location.replace('대기실.html');
                 });
             }).catch(error => {
                 console.error('가족순발력퀴즈 입장 실패:', error);
@@ -675,9 +658,13 @@
                     return;
                 }
 
-                if ((!currentRoomData.players || !currentRoomData.players[myPlayerId]) && !canUseSnapshotPlayer(currentRoomData)) {
+                if (!currentRoomData.players || !currentRoomData.players[myPlayerId]) {
                     showLoading('재접속 중', '참가 정보를 다시 연결하고 있습니다.');
-                    schedulePlayerRestoreRetry();
+                    syncMyPlayer().catch(error => {
+                        console.error('가족순발력퀴즈 참가 정보 재연결 실패:', error);
+                        alert('방에서 퇴장되었습니다.');
+                        window.location.replace('대기실.html');
+                    });
                     return;
                 }
 
@@ -696,20 +683,6 @@
                 renderGame(gameData);
                 if (isHost) finishVotingIfReady();
             });
-        }
-
-        function schedulePlayerRestoreRetry() {
-            if (playerRestoreRetryTimer) return;
-
-            playerRestoreRetryTimer = setTimeout(() => {
-                playerRestoreRetryTimer = null;
-                if (isLeaving || !roomRef) return;
-
-                syncMyPlayer().catch(error => {
-                    console.warn('가족순발력퀴즈 참가 정보 재연결 재시도 실패:', error);
-                    schedulePlayerRestoreRetry();
-                });
-            }, 1200);
         }
 
         function initializeGame() {
@@ -1021,17 +994,6 @@
                 return [...new Set(gameData.activePlayers.filter(Boolean))].slice(0, 4);
             }
             return Object.keys(gameData.players || players || {}).filter(id => players?.[id]).slice(0, 4);
-        }
-
-        function canEnterFromPlayingRoom(room) {
-            return room?.status === 'playing' && room?.gameType === 'familyQuiz';
-        }
-
-        function canUseSnapshotPlayer(room) {
-            if (!canEnterFromPlayingRoom(room)) return false;
-            const gameData = room?.gameData || {};
-            const players = getGamePlayers(gameData, room);
-            return getActivePlayerIds(gameData, players).includes(myPlayerId);
         }
 
         function getGamePlayers(gameData, room = currentRoomData) {
