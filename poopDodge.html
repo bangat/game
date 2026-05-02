@@ -609,6 +609,7 @@
         const PLAYER_SIZE = 0.086;
         const POOP_SIZE = 0.064;
         const SPAWN_INTERVAL_MS = 430;
+        const DIFFICULTY_STEP_MS = 20000;
         const FALL_WINDOW_MS = 4200;
         const POSITION_WRITE_MS = 90;
 
@@ -856,7 +857,7 @@
             if (gameData.phase === 'setup') return '시작 대기 중';
             if (gameData.phase === 'result') return '결과 발표';
             if (myState.alive === false) return '탈락했습니다';
-            return `${aliveCount}명 생존 중`;
+            return `${aliveCount}명 생존 중 · ${getDifficultyLevel(gameData)}단계`;
         }
 
         function renderPlayers(gameData, players, activeIds) {
@@ -1135,12 +1136,14 @@
 
         function getPoops(gameData, elapsed) {
             const seed = Number(gameData.seed || 1);
-            const startIndex = Math.max(0, Math.floor((elapsed - FALL_WINDOW_MS) / SPAWN_INTERVAL_MS));
-            const endIndex = Math.floor(elapsed / SPAWN_INTERVAL_MS) + 2;
-            const speed = 0.00025 + Math.min(0.00022, elapsed * 0.0000000045);
+            const level = getDifficultyLevel(gameData, elapsed);
+            const spawnInterval = Math.max(230, SPAWN_INTERVAL_MS - (level - 1) * 55);
+            const speed = 0.00025 + (level - 1) * 0.000065 + Math.min(0.0001, elapsed * 0.000000002);
+            const startIndex = Math.max(0, Math.floor((elapsed - FALL_WINDOW_MS) / spawnInterval));
+            const endIndex = Math.floor(elapsed / spawnInterval) + 2;
             const result = [];
             for (let index = startIndex; index <= endIndex; index++) {
-                const age = elapsed - index * SPAWN_INTERVAL_MS;
+                const age = elapsed - index * spawnInterval;
                 if (age < 0) continue;
                 const x = 0.06 + rand(seed, index, 1) * 0.88;
                 const y = age * speed - 0.08;
@@ -1152,6 +1155,10 @@
                 });
             }
             return result;
+        }
+
+        function getDifficultyLevel(gameData, elapsed = getElapsed(gameData)) {
+            return Math.min(4, Math.floor(Math.max(0, elapsed) / DIFFICULTY_STEP_MS) + 1);
         }
 
         function rand(seed, index, salt) {
