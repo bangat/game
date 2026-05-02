@@ -334,28 +334,27 @@
             width: 42px;
             height: 42px;
             transform: translateX(-50%);
-            border: 3px solid var(--ink);
-            border-radius: 12px;
-            background: #fff;
-            box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.15);
+            border: 0;
+            border-radius: 0;
+            background: transparent;
+            box-shadow: none;
             display: flex;
             align-items: center;
             justify-content: center;
             overflow: visible;
             z-index: 2;
             font-size: 1.7rem;
+            filter: drop-shadow(2px 3px 0 rgba(0, 0, 0, 0.18));
         }
 
         .arena-player img {
             width: 100%;
             height: 100%;
             object-fit: contain;
-            border-radius: 9px;
         }
 
         .arena-player.me {
-            border-color: var(--mint);
-            box-shadow: 0 0 0 4px rgba(53, 184, 166, 0.22), 3px 3px 0 rgba(0, 0, 0, 0.15);
+            filter: drop-shadow(0 0 6px rgba(53, 184, 166, 0.8)) drop-shadow(2px 3px 0 rgba(0, 0, 0, 0.18));
         }
 
         .arena-player.dead {
@@ -382,7 +381,7 @@
         .control-row {
             flex-shrink: 0;
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 1fr 1fr 1fr;
             gap: 10px;
             margin-top: 8px;
         }
@@ -399,6 +398,12 @@
         .action-btn:active {
             transform: translate(2px, 2px);
             box-shadow: 1px 1px 0 var(--shadow);
+        }
+
+        .control-btn:disabled {
+            opacity: 0.55;
+            transform: none;
+            box-shadow: 3px 3px 0 var(--shadow);
         }
 
         .result-card {
@@ -564,6 +569,7 @@
                 </div>
                 <div class="control-row">
                     <button id="left-btn" class="control-btn" type="button">←</button>
+                    <button id="shoot-btn" class="control-btn" type="button">발사 0</button>
                     <button id="right-btn" class="control-btn" type="button">→</button>
                 </div>
             </div>
@@ -581,6 +587,9 @@
 
     <audio id="start-sound" src="./봄버맨사운드/321go.mp3" preload="auto"></audio>
     <audio id="hit-sound" src="./봄버맨사운드/물풍선터지는소리.mp3" preload="auto"></audio>
+    <audio id="item-sound" src="./봄버맨사운드/초대알림.mp3" preload="auto"></audio>
+    <audio id="shoot-sound" src="./봄버맨사운드/폭탄놓는소리.mp3" preload="auto"></audio>
+    <audio id="clear-sound" src="./봄버맨사운드/폭탄효과음.mp3" preload="auto"></audio>
     <audio id="win-sound" src="./sound/게임승리.mp3" preload="auto"></audio>
     <audio id="lose-sound" src="./sound/게임패배.mp3" preload="auto"></audio>
     <audio id="bgm" src="./봄버맨사운드/배경음악1.mp3" preload="auto" loop></audio>
@@ -608,10 +617,14 @@
         const PLAYER_Y = 0.86;
         const PLAYER_SIZE = 0.086;
         const POOP_SIZE = 0.064;
+        const ITEM_SIZE = 0.07;
+        const BULLET_SIZE = 0.026;
         const SPAWN_INTERVAL_MS = 430;
+        const ITEM_INTERVAL_MS = 8500;
         const DIFFICULTY_STEP_MS = 20000;
         const FALL_WINDOW_MS = 4200;
         const POSITION_WRITE_MS = 90;
+        const BULLET_SPEED = 0.0019;
 
         const app = document.getElementById('app');
         const backBtn = document.getElementById('back-btn');
@@ -629,6 +642,7 @@
         const ctx = canvas.getContext('2d');
         const arenaPlayersEl = document.getElementById('arena-players');
         const leftBtn = document.getElementById('left-btn');
+        const shootBtn = document.getElementById('shoot-btn');
         const rightBtn = document.getElementById('right-btn');
         const resultCardEl = document.getElementById('result-card');
         const loadingOverlay = document.getElementById('loading-overlay');
@@ -651,6 +665,9 @@
         let localX = 0.5;
         let moveDir = 0;
         let dragTargetX = null;
+        let bullets = [];
+        let localClearedPoops = new Set();
+        let collectingItems = new Set();
         let lastStartedAt = 0;
         let lastResultAt = 0;
         let hitSent = false;
@@ -809,7 +826,8 @@
                 playerStates[id] = {
                     x: getStartX(index, activeIds.length),
                     alive: true,
-                    diedAt: null
+                    diedAt: null,
+                    ammo: 0
                 };
             });
 
@@ -819,6 +837,8 @@
                 activePlayers: activeIds,
                 playerSnapshots,
                 playerStates,
+                clearedPoops: {},
+                collectedItems: {},
                 seed: 0,
                 startedAt: null,
                 endedAt: null,
@@ -839,6 +859,7 @@
                 localX = clamp(myState.x, 0.05, 0.95);
             }
             aliveCountEl.textContent = aliveIds.length;
+            renderAmmo(gameData, myState);
             setupPanelEl.style.display = gameData.phase === 'setup' ? 'block' : 'none';
             setupSubEl.textContent = isHost ? '시작을 누르면 똥비가 떨어집니다.' : '방장이 시작할 때까지 기다려주세요.';
             startBtn.style.display = isHost ? 'block' : 'none';
@@ -858,6 +879,12 @@
             if (gameData.phase === 'result') return '결과 발표';
             if (myState.alive === false) return '탈락했습니다';
             return `${aliveCount}명 생존 중 · ${getDifficultyLevel(gameData)}단계`;
+        }
+
+        function renderAmmo(gameData, myState) {
+            const ammo = Number(myState?.ammo || 0);
+            shootBtn.textContent = `발사 ${ammo}`;
+            shootBtn.disabled = gameData.phase !== 'playing' || myState?.alive === false || ammo <= 0;
         }
 
         function renderPlayers(gameData, players, activeIds) {
@@ -939,13 +966,16 @@
                 states[id] = {
                     x: getStartX(index, activeIds.length),
                     alive: true,
-                    diedAt: null
+                    diedAt: null,
+                    ammo: 0
                 };
             });
 
             roomRef.child('gameData').update({
                 phase: 'playing',
                 playerStates: states,
+                clearedPoops: null,
+                collectedItems: null,
                 seed: Math.floor(Math.random() * 1000000000),
                 startedAt: now + 1200,
                 endedAt: null,
@@ -963,7 +993,8 @@
                 states[id] = {
                     x: getStartX(index, activeIds.length),
                     alive: true,
-                    diedAt: null
+                    diedAt: null,
+                    ammo: 0
                 };
             });
 
@@ -971,6 +1002,8 @@
             roomRef.child('gameData').update({
                 phase: 'setup',
                 playerStates: states,
+                clearedPoops: null,
+                collectedItems: null,
                 seed: 0,
                 startedAt: null,
                 endedAt: null,
@@ -988,6 +1021,7 @@
             const dt = Math.min(48, now - lastFrameAt);
             lastFrameAt = now;
             updateLocalMovement(dt, now);
+            updateBullets(dt);
             drawFrame();
             animationHandle = requestAnimationFrame(tick);
         }
@@ -1012,6 +1046,8 @@
                 lastPositionWriteAt = now;
                 roomRef?.child(`gameData/playerStates/${myPlayerId}/x`).set(Number(localX.toFixed(4))).catch(() => {});
             }
+
+            collectItemsIfNeeded(gameData);
 
             if (isColliding(gameData, localX)) markDead();
             else checkTimeLimit(gameData);
@@ -1045,8 +1081,19 @@
             }
 
             const objects = getPoops(gameData, elapsed);
+            const items = getItems(gameData, elapsed);
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
+            items.forEach(item => {
+                const size = Math.max(22, width * ITEM_SIZE);
+                ctx.font = `${size}px sans-serif`;
+                ctx.save();
+                ctx.translate(item.x * width, item.y * height);
+                ctx.rotate(item.spin);
+                ctx.fillText('🔫', 0, 0);
+                ctx.restore();
+            });
+
             objects.forEach(obj => {
                 const size = Math.max(22, width * POOP_SIZE);
                 ctx.font = `${size}px sans-serif`;
@@ -1055,6 +1102,13 @@
                 ctx.rotate(obj.spin);
                 ctx.fillText('💩', 0, 0);
                 ctx.restore();
+            });
+
+            ctx.fillStyle = '#2f80ed';
+            bullets.forEach(bullet => {
+                ctx.beginPath();
+                ctx.arc(bullet.x * width, bullet.y * height, Math.max(4, width * BULLET_SIZE), 0, Math.PI * 2);
+                ctx.fill();
             });
 
             if (elapsed > ROUND_LIMIT_MS) checkTimeLimit(gameData);
@@ -1076,6 +1130,111 @@
                 const dy = Math.abs(obj.y - PLAYER_Y);
                 return dx < (PLAYER_SIZE + POOP_SIZE) * 0.42 && dy < (PLAYER_SIZE + POOP_SIZE) * 0.46;
             });
+        }
+
+        function collectItemsIfNeeded(gameData) {
+            const elapsed = getElapsed(gameData);
+            if (elapsed < 0) return;
+            getItems(gameData, elapsed).forEach(item => {
+                if (collectingItems.has(item.id)) return;
+                const dx = Math.abs(item.x - localX);
+                const dy = Math.abs(item.y - PLAYER_Y);
+                if (dx < (PLAYER_SIZE + ITEM_SIZE) * 0.44 && dy < (PLAYER_SIZE + ITEM_SIZE) * 0.48) {
+                    collectItem(item.id);
+                }
+            });
+        }
+
+        function collectItem(itemId) {
+            if (!roomRef || !myPlayerId) return;
+            collectingItems.add(itemId);
+
+            roomRef.transaction(room => {
+                if (!room || room.status !== 'playing' || room.gameType !== 'poopDodge') return;
+                const gameData = room.gameData;
+                if (!gameData || gameData.gameId !== 'poopDodge' || gameData.phase !== 'playing') return;
+                const collectedItems = gameData.collectedItems || {};
+                if (collectedItems[itemId]) return;
+                const states = gameData.playerStates || {};
+                const myState = states[myPlayerId];
+                if (!myState || myState.alive === false) return;
+
+                collectedItems[itemId] = myPlayerId;
+                myState.ammo = Math.min(9, Number(myState.ammo || 0) + 3);
+                states[myPlayerId] = myState;
+                gameData.collectedItems = collectedItems;
+                gameData.playerStates = states;
+                room.gameData = gameData;
+                return room;
+            }).then(result => {
+                if (result.committed) playAudio('item-sound', 0.72);
+            }).finally(() => {
+                setTimeout(() => collectingItems.delete(itemId), 800);
+            });
+        }
+
+        function shootBullet() {
+            const gameData = currentRoomData?.gameData;
+            const state = gameData?.playerStates?.[myPlayerId] || {};
+            if (!roomRef || !gameData || gameData.phase !== 'playing' || state.alive === false || Number(state.ammo || 0) <= 0) return;
+
+            roomRef.transaction(room => {
+                if (!room || room.status !== 'playing' || room.gameType !== 'poopDodge') return;
+                const data = room.gameData;
+                if (!data || data.gameId !== 'poopDodge' || data.phase !== 'playing') return;
+                const states = data.playerStates || {};
+                const myState = states[myPlayerId];
+                if (!myState || myState.alive === false || Number(myState.ammo || 0) <= 0) return;
+                myState.ammo = Number(myState.ammo || 0) - 1;
+                myState.x = Number(localX.toFixed(4));
+                states[myPlayerId] = myState;
+                data.playerStates = states;
+                room.gameData = data;
+                return room;
+            }).then(result => {
+                if (!result.committed) return;
+                bullets.push({
+                    id: `${Date.now()}-${Math.random()}`,
+                    x: localX,
+                    y: PLAYER_Y - PLAYER_SIZE * 0.62
+                });
+                playAudio('shoot-sound', 0.62);
+            });
+        }
+
+        function updateBullets(dt) {
+            const gameData = currentRoomData?.gameData;
+            if (!gameData || gameData.gameId !== 'poopDodge' || gameData.phase !== 'playing') {
+                bullets = [];
+                return;
+            }
+
+            const elapsed = getElapsed(gameData);
+            const poops = getPoops(gameData, elapsed);
+            bullets.forEach(bullet => {
+                bullet.y -= BULLET_SPEED * dt;
+                if (bullet.y < -0.08) {
+                    bullet.done = true;
+                    return;
+                }
+                const target = poops.find(obj => {
+                    const dx = Math.abs(obj.x - bullet.x);
+                    const dy = Math.abs(obj.y - bullet.y);
+                    return dx < (POOP_SIZE + BULLET_SIZE) * 0.52 && dy < (POOP_SIZE + BULLET_SIZE) * 0.62;
+                });
+                if (target) {
+                    bullet.done = true;
+                    clearPoop(target.id);
+                }
+            });
+            bullets = bullets.filter(bullet => !bullet.done);
+        }
+
+        function clearPoop(poopId) {
+            if (!roomRef || !poopId || localClearedPoops.has(poopId)) return;
+            localClearedPoops.add(poopId);
+            playAudio('clear-sound', 0.55);
+            roomRef.child(`gameData/clearedPoops/${poopId}`).set(myPlayerId).catch(() => {});
         }
 
         function markDead() {
@@ -1136,6 +1295,7 @@
 
         function getPoops(gameData, elapsed) {
             const seed = Number(gameData.seed || 1);
+            const clearedPoops = gameData.clearedPoops || {};
             const level = getDifficultyLevel(gameData, elapsed);
             const spawnInterval = Math.max(230, SPAWN_INTERVAL_MS - (level - 1) * 55);
             const speed = 0.00025 + (level - 1) * 0.000065 + Math.min(0.0001, elapsed * 0.000000002);
@@ -1143,15 +1303,42 @@
             const endIndex = Math.floor(elapsed / spawnInterval) + 2;
             const result = [];
             for (let index = startIndex; index <= endIndex; index++) {
+                const id = `p${index}`;
+                if (clearedPoops[id] || localClearedPoops.has(id)) continue;
                 const age = elapsed - index * spawnInterval;
                 if (age < 0) continue;
                 const x = 0.06 + rand(seed, index, 1) * 0.88;
                 const y = age * speed - 0.08;
                 if (y < -0.12 || y > 1.12) continue;
                 result.push({
+                    id,
                     x,
                     y,
                     spin: (rand(seed, index, 2) - 0.5) * 0.7
+                });
+            }
+            return result;
+        }
+
+        function getItems(gameData, elapsed) {
+            const seed = Number(gameData.seed || 1);
+            const collectedItems = gameData.collectedItems || {};
+            const startIndex = Math.max(0, Math.floor((elapsed - FALL_WINDOW_MS) / ITEM_INTERVAL_MS));
+            const endIndex = Math.floor(elapsed / ITEM_INTERVAL_MS) + 1;
+            const result = [];
+            for (let index = startIndex; index <= endIndex; index++) {
+                const id = `i${index}`;
+                if (collectedItems[id] || collectingItems.has(id)) continue;
+                const age = elapsed - index * ITEM_INTERVAL_MS;
+                if (age < 0) continue;
+                const x = 0.08 + rand(seed, index, 5) * 0.84;
+                const y = age * 0.00024 - 0.08;
+                if (y < -0.12 || y > 1.12) continue;
+                result.push({
+                    id,
+                    x,
+                    y,
+                    spin: (rand(seed, index, 6) - 0.5) * 0.5
                 });
             }
             return result;
@@ -1322,6 +1509,9 @@
                     lastStartedAt = startedAt;
                     lastResultAt = 0;
                     hitSent = false;
+                    bullets = [];
+                    localClearedPoops = new Set();
+                    collectingItems = new Set();
                     playAudio('start-sound', 0.58);
                 }
                 playBgm();
@@ -1369,6 +1559,7 @@
         startBtn.addEventListener('click', startRound);
         roomBtnSetup.addEventListener('click', returnToGameRoom);
         backBtn.addEventListener('click', returnToGameRoom);
+        shootBtn.addEventListener('click', shootBullet);
 
         leftBtn.addEventListener('pointerdown', event => { event.preventDefault(); setDirection(-1); });
         rightBtn.addEventListener('pointerdown', event => { event.preventDefault(); setDirection(1); });
