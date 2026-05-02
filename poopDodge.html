@@ -624,6 +624,8 @@
         const DIFFICULTY_STEP_MS = 20000;
         const FALL_WINDOW_MS = 4200;
         const POSITION_WRITE_MS = 90;
+        const HEARTBEAT_MS = 1000;
+        const STALE_PLAYER_MS = 8000;
         const BULLET_SPEED = 0.0019;
 
         const app = document.getElementById('app');
@@ -668,9 +670,21 @@
         let bullets = [];
         let localClearedPoops = new Set();
         let collectingItems = new Set();
+        let localAmmo = 0;
+        let serverTimeOffset = 0;
         let lastStartedAt = 0;
         let lastResultAt = 0;
         let hitSent = false;
+        let lastHeartbeatAt = 0;
+        let lastDisconnectCheckAt = 0;
+
+        db.ref('.info/serverTimeOffset').on('value', snapshot => {
+            serverTimeOffset = Number(snapshot.val() || 0);
+        });
+
+        function nowMs() {
+            return Date.now() + serverTimeOffset;
+        }
 
         function setScreenHeight() {
             const viewportHeight = Math.floor(window.visualViewport?.height || window.innerHeight || document.documentElement.clientHeight);
@@ -818,6 +832,7 @@
             const playerStates = {};
             activeIds.forEach((id, index) => {
                 const player = players[id] || {};
+                const now = nowMs();
                 playerSnapshots[id] = {
                     nickname: player.nickname || '플레이어',
                     avatar: player.avatar || '🙂',
@@ -827,7 +842,9 @@
                     x: getStartX(index, activeIds.length),
                     alive: true,
                     diedAt: null,
-                    ammo: 0
+                    ammo: 0,
+                    lastSeen: now,
+                    disconnected: false
                 };
             });
 
@@ -843,7 +860,7 @@
                 startedAt: null,
                 endedAt: null,
                 winnerId: null,
-                createdAt: Date.now()
+                createdAt: nowMs()
             });
         }
 
@@ -883,6 +900,7 @@
 
         function renderAmmo(gameData, myState) {
             const ammo = Number(myState?.ammo || 0);
+            localAmmo = ammo;
             shootBtn.textContent = `발사 ${ammo}`;
             shootBtn.disabled = gameData.phase !== 'playing' || myState?.alive === false || ammo <= 0;
         }
@@ -960,14 +978,16 @@
             const gameData = currentRoomData.gameData;
             const players = getGamePlayers(gameData);
             const activeIds = getActivePlayerIds(gameData, players);
-            const now = Date.now();
+            const now = nowMs();
             const states = {};
             activeIds.forEach((id, index) => {
                 states[id] = {
                     x: getStartX(index, activeIds.length),
                     alive: true,
                     diedAt: null,
-                    ammo: 0
+                    ammo: 0,
+                    lastSeen: now,
+                    disconnected: false
                 };
             });
 
@@ -988,13 +1008,16 @@
             const gameData = currentRoomData.gameData;
             const players = getGamePlayers(gameData);
             const activeIds = getActivePlayerIds(gameData, players);
+            const now = nowMs();
             const states = {};
             activeIds.forEach((id, index) => {
                 states[id] = {
                     x: getStartX(index, activeIds.length),
                     alive: true,
                     diedAt: null,
-                    ammo: 0
+                    ammo: 0,
+                    lastSeen: now,
+                    disconnected: false
                 };
             });
 
@@ -1022,6 +1045,8 @@
             lastFrameAt = now;
             updateLocalMovement(dt, now);
             updateBullets(dt);
+            sendHeartbeat();
+            reconcileDisconnectedPlayers();
             drawFrame();
             animationHandle = requestAnimationFrame(tick);
         }
@@ -1059,6 +1084,71 @@
             playerEl.style.left = `${localX * 100}%`;
         }
 
+        function sendHeartbeat() {
+            const gameData = currentRoomData?.gameData;
+            if (!roomRef || !myPlayerId || !gameData || gameData.gameId !== 'poopDodge' || gameData.phase !== 'playing') return;
+            const state = gameData.playerStates?.[myPlayerId] || {};
+            if (state.alive === false) return;
+            const now = nowMs();
+            if (now - lastHeartbeatAt < HEARTBEAT_MS) return;
+            lastHeartbeatAt = now;
+            roomRef.child(`gameData/playerStates/${myPlayerId}`).update({
+                x: Number(localX.toFixed(4)),
+                lastSeen: now,
+                disconnected: false
+            }).catch(() => {});
+        }
+
+        function reconcileDisconnectedPlayers() {
+            const gameData = currentRoomData?.gameData;
+            if (!roomRef || !gameData || gameData.gameId !== 'poopDodge' || gameData.phase !== 'playing') return;
+            const now = nowMs();
+            if (now - lastDisconnectCheckAt < 1500) return;
+            lastDisconnectCheckAt = now;
+
+            const players = getGamePlayers(gameData);
+            const activeIds = getActivePlayerIds(gameData, players);
+            const states = gameData.playerStates || {};
+            const hasStalePlayer = activeIds.some(id => {
+                if (id === myPlayerId) return false;
+                const state = states[id] || {};
+                const lastSeen = Number(state.lastSeen || gameData.startedAt || 0);
+                return state.alive !== false && lastSeen > 0 && now - lastSeen > STALE_PLAYER_MS;
+            });
+            if (!hasStalePlayer) return;
+
+            roomRef.transaction(room => {
+                if (!room || room.status !== 'playing' || room.gameType !== 'poopDodge') return;
+                const data = room.gameData;
+                if (!data || data.gameId !== 'poopDodge' || data.phase !== 'playing') return;
+                const roomPlayers = getGamePlayers(data, room);
+                const roomActiveIds = getActivePlayerIds(data, roomPlayers);
+                const roomStates = data.playerStates || {};
+                let changed = false;
+
+                roomActiveIds.forEach(id => {
+                    if (id === myPlayerId) return;
+                    const state = roomStates[id] || {};
+                    const lastSeen = Number(state.lastSeen || data.startedAt || 0);
+                    if (state.alive !== false && lastSeen > 0 && now - lastSeen > STALE_PLAYER_MS) {
+                        roomStates[id] = {
+                            ...state,
+                            alive: false,
+                            disconnected: true,
+                            diedAt: now
+                        };
+                        changed = true;
+                    }
+                });
+
+                if (!changed) return;
+                data.playerStates = roomStates;
+                finishIfNeeded(data, now);
+                room.gameData = data;
+                return room;
+            });
+        }
+
         function drawFrame() {
             resizeCanvas();
             const rect = arenaEl.getBoundingClientRect();
@@ -1074,7 +1164,7 @@
             }
 
             const elapsed = getElapsed(gameData);
-            const countdown = Number(gameData.startedAt || 0) - Date.now();
+            const countdown = Number(gameData.startedAt || 0) - nowMs();
             if (countdown > 0) {
                 drawWaitingText(width, height, `${Math.ceil(countdown / 1000)}초 후 시작`);
                 return;
@@ -1160,14 +1250,20 @@
                 if (!myState || myState.alive === false) return;
 
                 collectedItems[itemId] = myPlayerId;
-                myState.ammo = Math.min(9, Number(myState.ammo || 0) + 3);
+                myState.ammo = Math.min(20, Number(myState.ammo || 0) + 5);
                 states[myPlayerId] = myState;
                 gameData.collectedItems = collectedItems;
                 gameData.playerStates = states;
                 room.gameData = gameData;
                 return room;
             }).then(result => {
-                if (result.committed) playAudio('item-sound', 0.72);
+                if (!result.committed) return;
+                const state = result.snapshot?.val()?.gameData?.playerStates?.[myPlayerId];
+                if (state) {
+                    localAmmo = Number(state.ammo || 0);
+                    renderAmmo(result.snapshot.val().gameData, state);
+                }
+                playAudio('item-sound', 0.72);
             }).finally(() => {
                 setTimeout(() => collectingItems.delete(itemId), 800);
             });
@@ -1176,30 +1272,23 @@
         function shootBullet() {
             const gameData = currentRoomData?.gameData;
             const state = gameData?.playerStates?.[myPlayerId] || {};
-            if (!roomRef || !gameData || gameData.phase !== 'playing' || state.alive === false || Number(state.ammo || 0) <= 0) return;
+            const ammo = Math.max(localAmmo, Number(state.ammo || 0));
+            if (!roomRef || !gameData || gameData.phase !== 'playing' || state.alive === false || ammo <= 0) return;
 
-            roomRef.transaction(room => {
-                if (!room || room.status !== 'playing' || room.gameType !== 'poopDodge') return;
-                const data = room.gameData;
-                if (!data || data.gameId !== 'poopDodge' || data.phase !== 'playing') return;
-                const states = data.playerStates || {};
-                const myState = states[myPlayerId];
-                if (!myState || myState.alive === false || Number(myState.ammo || 0) <= 0) return;
-                myState.ammo = Number(myState.ammo || 0) - 1;
-                myState.x = Number(localX.toFixed(4));
-                states[myPlayerId] = myState;
-                data.playerStates = states;
-                room.gameData = data;
-                return room;
-            }).then(result => {
-                if (!result.committed) return;
-                bullets.push({
-                    id: `${Date.now()}-${Math.random()}`,
-                    x: localX,
-                    y: PLAYER_Y - PLAYER_SIZE * 0.62
-                });
-                playAudio('shoot-sound', 0.62);
+            localAmmo = ammo - 1;
+            renderAmmo(gameData, { ...state, ammo: localAmmo });
+            bullets.push({
+                id: `${nowMs()}-${Math.random()}`,
+                x: localX,
+                y: PLAYER_Y - PLAYER_SIZE * 0.62
             });
+            playAudio('shoot-sound', 0.62);
+            roomRef.child(`gameData/playerStates/${myPlayerId}`).update({
+                ammo: localAmmo,
+                x: Number(localX.toFixed(4)),
+                lastSeen: nowMs(),
+                disconnected: false
+            }).catch(() => {});
         }
 
         function updateBullets(dt) {
@@ -1240,7 +1329,7 @@
         function markDead() {
             if (hitSent || !roomRef || !myPlayerId) return;
             hitSent = true;
-            const now = Date.now();
+            const now = nowMs();
             playAudio('hit-sound', 0.8);
 
             roomRef.transaction(room => {
@@ -1268,7 +1357,7 @@
             if (!roomRef || gameData.phase !== 'playing') return;
             const elapsed = getElapsed(gameData);
             if (elapsed < ROUND_LIMIT_MS) return;
-            const now = Date.now();
+            const now = nowMs();
 
             roomRef.transaction(room => {
                 if (!room || room.status !== 'playing' || room.gameType !== 'poopDodge') return;
@@ -1354,7 +1443,7 @@
         }
 
         function getElapsed(gameData) {
-            return Date.now() - Number(gameData.startedAt || Date.now());
+            return nowMs() - Number(gameData.startedAt || nowMs());
         }
 
         function getActivePlayerIds(gameData, players) {
@@ -1379,8 +1468,8 @@
         }
 
         function getRanking(gameData, players, activeIds) {
-            const startedAt = Number(gameData.startedAt || gameData.createdAt || Date.now());
-            const endedAt = Number(gameData.endedAt || Date.now());
+            const startedAt = Number(gameData.startedAt || gameData.createdAt || nowMs());
+            const endedAt = Number(gameData.endedAt || nowMs());
             const states = gameData.playerStates || {};
             return activeIds.map(id => {
                 const state = states[id] || {};
@@ -1420,11 +1509,11 @@
                 return;
             }
             if (gameData.phase === 'result') {
-                timerEl.textContent = formatTime(Number(gameData.endedAt || Date.now()) - Number(gameData.startedAt || Date.now()));
+                timerEl.textContent = formatTime(Number(gameData.endedAt || nowMs()) - Number(gameData.startedAt || nowMs()));
                 return;
             }
 
-            const countdown = Number(gameData.startedAt || 0) - Date.now();
+            const countdown = Number(gameData.startedAt || 0) - nowMs();
             if (countdown > 0) {
                 timerEl.textContent = `${Math.ceil(countdown / 1000)}초`;
                 return;
