@@ -885,7 +885,11 @@
                 const player = players[id] || {};
                 const item = document.createElement('div');
                 item.className = `arena-player ${id === myPlayerId ? 'me' : ''} ${state.alive === false ? 'dead' : ''}`;
-                item.style.left = `${clamp(Number(state.x ?? 0.5), 0.05, 0.95) * 100}%`;
+                item.dataset.playerId = id;
+                const x = id === myPlayerId && gameData.phase === 'playing' && state.alive !== false
+                    ? localX
+                    : clamp(Number(state.x ?? 0.5), 0.05, 0.95);
+                item.style.left = `${x * 100}%`;
                 item.innerHTML = `${getAvatarHTML(player.avatar)}<div class="name-tag">${escapeHTML(player.nickname || '플레이어')}</div>`;
                 arenaPlayersEl.appendChild(item);
             });
@@ -1001,6 +1005,7 @@
             }
             if (moveDir !== 0) localX += moveDir * speed;
             localX = clamp(localX, 0.05, 0.95);
+            updateLocalPlayerDom();
 
             if (now - lastPositionWriteAt > POSITION_WRITE_MS) {
                 lastPositionWriteAt = now;
@@ -1009,6 +1014,12 @@
 
             if (isColliding(gameData, localX)) markDead();
             else checkTimeLimit(gameData);
+        }
+
+        function updateLocalPlayerDom() {
+            const playerEl = Array.from(arenaPlayersEl.children).find(element => element.dataset.playerId === myPlayerId);
+            if (!playerEl) return;
+            playerEl.style.left = `${localX * 100}%`;
         }
 
         function drawFrame() {
