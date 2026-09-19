@@ -1,0 +1,33 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "rooms": { ".read": "auth != null", ".write": "auth != null" },
+    "users": { ".read": "auth != null", ".write": "auth != null" },
+    "skyTowerSessions": {
+      "$roomId": {
+        ".read": "auth != null && root.child('rooms').child($roomId).child('players').child(auth.uid).exists()",
+        ".write": "auth != null && !data.exists() && auth.uid === root.child('rooms').child($roomId).child('hostId').val() && !newData.child('players').exists()",
+        ".validate": "newData.hasChildren(['version', 'phase', 'startedAt', 'createdBy']) && newData.child('version').val() === 1 && ((!data.exists() && newData.child('createdBy').val() === root.child('rooms').child($roomId).child('hostId').val()) || (data.exists() && newData.child('createdBy').val() === data.child('createdBy').val()))",
+        "version": { ".validate": "newData.val() === 1" },
+        "phase": { ".validate": "newData.isString() && (newData.val() === 'playing' || newData.val() === 'finished')" },
+        "startedAt": { ".validate": "newData.isNumber() && (!data.exists() || newData.val() === data.val())" },
+        "createdBy": { ".validate": "newData.isString() && (!data.exists() || newData.val() === data.val())" },
+        "players": {
+          "$uid": {
+            ".write": "auth != null && newData.exists() && auth.uid === $uid && root.child('rooms').child($roomId).child('players').child(auth.uid).exists()",
+            ".validate": "newData.hasChildren(['profile', 'runtime'])",
+            "profile": { ".validate": "newData.hasChildren(['nickname', 'avatar']) && newData.child('nickname').isString() && newData.child('nickname').val().length <= 20 && newData.child('avatar').isString() && newData.child('avatar').val().length <= 300" },
+            "runtime": {
+              ".validate": "newData.hasChildren(['position', 'rotation', 'animation', 'character', 'checkpoint', 'falls', 'connected']) && newData.child('checkpoint').isNumber() && (!data.child('checkpoint').exists() || newData.child('checkpoint').val() >= data.child('checkpoint').val()) && newData.child('checkpoint').val() <= 3 && newData.child('falls').isNumber() && (!data.child('falls').exists() || newData.child('falls').val() >= data.child('falls').val()) && newData.child('falls').val() <= 999 && (!data.child('finishAt').exists() || newData.child('finishAt').val() === data.child('finishAt').val()) && (!newData.child('finishAt').exists() || newData.child('checkpoint').val() === 3)",
+              "finishAt": { ".validate": "!data.exists() || newData.val() === data.val()" },
+              "$other": { ".validate": true }
+            },
+            "$other": { ".validate": false }
+          }
+        },
+        "$other": { ".validate": false }
+      }
+    }
+  }
+}
