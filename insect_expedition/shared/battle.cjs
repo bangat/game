@@ -1,6 +1,7 @@
 'use strict';
 
 const Data = require('./data.js');
+const Trials=require('./trials.js');
 const TURN_MS = 25000;
 const MAX_TEAM = 3;
 
@@ -13,13 +14,13 @@ function statsForCreature(creature) {
   if (!species) throw new Error(`알 수 없는 곤충: ${creature.speciesId}`);
   const level = clamp(Math.floor(Number(creature.level) || 1), 1, 50);
   const growth = level - 1;
-  return {
+  return Trials.withRune({
     maxHealth: species.baseStats.maxHealth + growth * 5,
     attack: species.baseStats.attack + growth * 2,
     defense: species.baseStats.defense + growth * 2,
     speed: species.baseStats.speed + growth,
     level
-  };
+  },creature.rune);
 }
 
 function combatPower(creature) {
@@ -83,7 +84,8 @@ function validateAction(state, sideKey, action) {
   const actor = active(side);
   if (!actor || actor.hp <= 0) throw new Error('행동할 수 있는 곤충이 없습니다.');
   const type = action && action.type;
-  if (!['attack', 'skill', 'switch', 'capture', 'retreat'].includes(type)) throw new Error('잘못된 행동입니다.');
+  if (!['attack', 'skill', 'switch', 'capture', 'retreat', 'tonic'].includes(type)) throw new Error('잘못된 행동입니다.');
+  if(type==='tonic'&&(state.type!=='field'||actor.hp>=actor.maxHp))throw Error('야생 전투에서 다친 동료에게 사용할 수 있어요.');
   if (type === 'skill') {
     const ability = Data.speciesById[actor.speciesId].skill;
     if (!ability) throw new Error('이 곤충은 고유 기술이 없습니다.');
@@ -180,6 +182,7 @@ function processAttack(state, sideKey, action, rng, events) {
 function perform(state, sideKey, action, rng, events) {
   const side = state.sides[sideKey];
   const foeKey = other(sideKey);
+  if(action.type==='tonic'){const actor=active(side),amount=Math.min(actor.maxHp-actor.hp,Math.ceil(actor.maxHp*.45));actor.hp+=amount;events.push({type:'heal',actorSide:sideKey,targetSide:sideKey,targetCreatureId:actor.id,amount,remainingHp:actor.hp,message:'버섯 회복제 · 체력 +'+amount});return;}
   if (action.type === 'switch') {
     side.active = side.team.findIndex(c => c.id === String(action.creatureId));
     events.push({ type: 'switch', actorSide: sideKey, targetSide: sideKey, creatureId: active(side).id, message: `${active(side).nickname}, 나가자!` });

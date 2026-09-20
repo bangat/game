@@ -9,7 +9,9 @@ const Battle = require('../shared/battle.cjs');
 const H=require('../shared/housing.js');
 const Appearance=require('../shared/appearance.js');
 const Regions=require('../shared/regions.js');
-const SCHEMA_VERSION = 9;
+const Ecology=require('../shared/ecology.js');
+const Trials=require('../shared/trials.js');
+const SCHEMA_VERSION = 11;
 const VALID_SPECIES = new Set(Data.species.map((item) => item.id));
 
 function clone(value) {
@@ -57,7 +59,9 @@ function createProfile(uid, nickname, starterIds = []) {
     mounts: {owned:[],equipped:''},
     bag:{deeds:{small:0,large:0}}, housing:{plot:null,pieces:[]},
     expedition: {bosses:[],crystals:0,hatched:0,claimed:[],eggs:[],walk:0},
-    gold: 0, resources: {berries:0,ore:0},
+    trials:Trials.normalize(),
+    ecology: Ecology.normalize(),
+    gold: 0, resources: Object.fromEntries(Object.keys(Data.resources).map(k=>[k,0])),
     supplies: { heals: 3, feeds: 0 },
     quest: { id: 'dew-sample', status: 'available', progress: 0, target: 3 },
     location: { x: 0, z: 22 },
@@ -72,6 +76,7 @@ function migrateProfile(input, uid, nickname, starterIds) {
   const old = input && typeof input === 'object' ? input : {};
   const rawCollection = Array.isArray(old.collection) ? old.collection : [];
   const collection = rawCollection.slice(0, 120).filter((item) => item && VALID_SPECIES.has(String(item.speciesId))).map((item) => ({
+    rune: Trials.normalizeRune(item.rune),
     id: boundedText(item && item.id, crypto.randomUUID(), 80),
     speciesId: boundedText(item.speciesId, starterIds[0] || 'dew_ladybird', 80),
     nickname: boundedText(item && item.nickname, '', 18),
@@ -119,6 +124,8 @@ function migrateProfile(input, uid, nickname, starterIds) {
       walk:Math.max(0,Math.min(79.99,finiteNumber(old.expedition?.walk,0))),
       eggs:(Array.isArray(old.expedition?.eggs)?old.expedition.eggs:[]).filter(e=>e&&Data.eggKinds[e.kind]).slice(0,12).map(e=>({id:boundedText(e.id,crypto.randomUUID(),80),kind:e.kind,incubating:!!e.incubating,progress:Math.max(0,Math.min(Data.eggKinds[e.kind].steps,Math.floor(finiteNumber(e.progress,0))))}))
     },
+    trials:Trials.normalize(old.trials),
+    ecology: Ecology.normalize(old.ecology),
     bonuses: { collection: Math.max(0, Math.min(0.35, Number(old.bonuses && old.bonuses.collection) || 0)) },
     gold: Math.max(0, Math.min(999999, Math.floor(finiteNumber(old.gold,0)))),
     resources: Object.fromEntries(Object.keys(Data.resources).map(id => [id,Math.max(0, Math.min(9999, Math.floor(finiteNumber(old.resources?.[id],0))))])),

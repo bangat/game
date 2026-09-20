@@ -22,10 +22,12 @@
   const spawn=id=>id==='safe'?{x:7,z:14}:['lumber','quarry','sandpit'].includes(id)?{x:-20,z:-3}:{x:0,z:68};
   const terrain=(id,x,z)=>{
     const t=themes[id]||themes.safe;
-    const entry=spawn(id),flatten=Math.min(1,Math.max(0,(Math.hypot(x-entry.x,z-entry.z)-14)/25));
-    const center=Math.min(1,Math.max(0,(Math.hypot(x,z)-24)/38));
-    const wave=(Math.sin(x*.027+.8)*Math.cos(z*.024)+.5*Math.sin((x+z)*.043)+.25*Math.cos(z*.069));
-    return t.height*(.6+wave*.45)*flatten*center;
+    if(id==='safe')return 0;
+    const bump=(cx,cz,sx,sz,h)=>h*Math.exp(-(((x-cx)/sx)**2+((z-cz)/sz)**2));
+    const factor=t.height/11,entry=spawn(id),fade=Math.min(1,Math.max(0,(Math.hypot(x-entry.x,z-entry.z)-6)/18));
+    const ridges=bump(-82,-40,36,55,30)+bump(72,-72,42,38,26)+bump(-65,62,32,38,15)+bump(2,-132,45,29,18);
+    const rolling=2.8+2.1*Math.sin(x*.045)*Math.cos(z*.038)+1.4*Math.sin((x+z)*.065);
+    return Math.max(0,(ridges+rolling)*factor)*fade;
   };
   function portals(id){
     if(id==='safe')return Data.biomes.filter(b=>b.id!=='safe').map((b,i)=>{const angle=Math.PI+(i/(Data.biomes.length-2))*Math.PI;return {id:'portal-'+b.id,to:b.id,name:b.name,x:Math.cos(angle)*47,z:Math.sin(angle)*47,color:themes[b.id].leaf};});
@@ -33,7 +35,9 @@
   }
   function obstacles(id){
     if(id==='safe')return [{id:'lab',type:'box',x:0,z:-6,width:18,depth:10}];
-    return [{id:'ridge-rock-a',type:'circle',x:-63,z:15,radius:7},{id:'ridge-rock-b',type:'circle',x:56,z:-43,radius:9},{id:'ridge-rock-c',type:'circle',x:93,z:53,radius:6}];
+    const base=[{id:'ridge-rock-a',type:'circle',x:-63,z:15,radius:7},{id:'ridge-rock-b',type:'circle',x:56,z:-43,radius:9},{id:'ridge-rock-c',type:'circle',x:93,z:53,radius:6}];
+    if(['lumber','quarry','sandpit'].includes(id))return base;
+    return [...base,{id:'ancient-trunk',type:'circle',x:-32,z:15,radius:3.6},{id:'fallen-log',type:'box',x:-44,z:21,width:12,depth:3.2},{id:'cave-back',type:'circle',x:43,z:-77,radius:8},...[-44,-39,-34,-29,-24].map((x,i)=>({id:'ruin-pillar-'+i,type:'circle',x,z:-38,radius:.9}))];
   }
   function blocked(id,p,padding=1.15){return Math.hypot(p.x,p.z)>limit-padding||obstacles(id).some(o=>o.type==='circle'?Math.hypot(p.x-o.x,p.z-o.z)<o.radius+padding:Math.abs(p.x-o.x)<o.width/2+padding&&Math.abs(p.z-o.z)<o.depth/2+padding);}
   function localize(value,id){const b=get(id);return {...value,regionId:id,biomeId:id,x:(value.x-b.center.x)*2.5,z:(value.z-b.center.z)*2.5};}

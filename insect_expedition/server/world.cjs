@@ -111,6 +111,10 @@ function makeSpawn(id, speciesId, x, z, field, level) {
 
 function updateSpawns(spawns, now = Date.now()) {
   for (const spawn of spawns) {
+    if(spawn.available&&!spawn.reservedBy&&Number.isFinite(spawn.homeX)){
+      const t=now/4200+spawn.phase,p={x:spawn.homeX+Math.sin(t)*1.3,z:spawn.homeZ+Math.cos(t*.7)*1.3};
+      if(!Regions.blocked(spawn.regionId,p,2)){spawn.x=p.x;spawn.z=p.z;}
+    }
     if (!spawn.available && !spawn.reservedBy && spawn.respawnAt && spawn.respawnAt <= now) {
       spawn.available = true;
       spawn.respawnAt = 0;
@@ -120,7 +124,7 @@ function updateSpawns(spawns, now = Date.now()) {
 }
 
 function publicSpawn(spawn) {
-  return { id: spawn.id, speciesId: spawn.speciesId, x: spawn.x, z: spawn.z, available: spawn.available, reservedBy: spawn.reservedBy, field: spawn.field, level: spawn.level, group: !!spawn.group, members: spawn.members, boss: !!spawn.boss, biomeId: spawn.biomeId, bossName: spawn.bossName, respawnAt: spawn.respawnAt };
+  return { id: spawn.id, speciesId: spawn.speciesId, x: spawn.x, z: spawn.z, available: spawn.available, reservedBy: spawn.reservedBy, field: spawn.field, level: spawn.level, group: !!spawn.group, members: spawn.members, boss: !!spawn.boss, biomeId: spawn.biomeId, bossName: spawn.bossName, lured:!!spawn.lured, event:!!spawn.event, respawnAt: spawn.respawnAt };
 }
 
 module.exports = {

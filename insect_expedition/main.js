@@ -25,7 +25,7 @@
     return request(name,payload);
   }
   function request(name, payload) {
-    if (name === 'navigate') { if(snapshot?.battle)return Promise.reject(new Error('전투를 마친 뒤 길 안내를 시작해 주세요.')); const target=InsectNavigation.destination(payload.id,snapshot?.regionId); if(!target)return Promise.reject(new Error('목적지를 찾지 못했어요.')); world.setNavigation(target); return Promise.resolve({message:target.name+' 길 안내를 시작합니다. 화살표를 따라 이동하세요.'}); }
+    if (name === 'navigate') { if(snapshot?.battle)return Promise.reject(new Error('전투를 마친 뒤 길 안내를 시작해 주세요.')); const target=(snapshot?.ecology?.sites||[]).find(s=>s.id===payload.id)||(snapshot?.ecology?.event?.id===payload.id?snapshot.ecology.event:null)||(snapshot?.resources||[]).find(n=>n.id===payload.id)||InsectNavigation.destination(payload.id,snapshot?.regionId); if(!target)return Promise.reject(new Error('목적지를 찾지 못했어요.')); world.setNavigation(target); return Promise.resolve({message:target.name+' 길 안내를 시작합니다. 화살표를 따라 이동하세요.'}); }
     if (name === 'exit') return leave();
     if (name === 'sound') return Promise.resolve({message: InsectAudio.toggle() ? '효과음을 켰습니다.' : '효과음을 껐습니다.'});
     if (animating && (name === 'action' || name === 'return')) return Promise.reject(new Error('전투 연출이 끝나면 다음 행동을 선택해 주세요.'));

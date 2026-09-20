@@ -1,0 +1,20 @@
+(function(global){
+  'use strict';
+  const E=global.InsectEcology,D=global.InsectData;
+  const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const button=(act,id,text,disabled=false)=>'<button data-act="'+act+'" data-id="'+esc(id)+'" '+(disabled?'disabled':'')+'>'+text+'</button>';
+  const cost=(p,recipe)=>Object.entries(recipe.cost).map(([id,n])=>D.resources[id].name+' '+(p.resources[id]||0)+'/'+n).join(' · ');
+  function trials(s){const p=s.profile,T=global.InsectTrials,cleared=p.trials?.cleared||0,next=T.stage(Math.min(24,cleared+1)),stages=Array.from({length:12},(_,i)=>T.stage(i+1));if(cleared>=12)stages.push(next);return '<section class="eco-trials"><h3>수호자 시련 · '+cleared+'단계 돌파</h3><p>전설 팀의 다음 목표. 적 조합과 특성이 다른 12개 관문, 이후 더 강한 심층 시련이 24단계까지 이어져요.</p><strong>다음 목표: '+(cleared>=24?'모든 시련 돌파!':next.stage+'단계 '+next.name)+'</strong><p>첫 돌파 보상으로 시련 문장을 모아 동료를 특화하세요. 다시 도전할 때는 추가 보상이 없는 연습 전투입니다.</p><div class="eco-trial-grid">'+stages.map(t=>'<article><strong>'+t.stage+' · '+t.name+'</strong><small>Lv.'+t.level+' · '+t.modifier.name+'</small><p>'+t.members.map(m=>D.speciesById[m.speciesId].name).join(' · ')+'</p><small>'+t.modifier.text+'</small><small>첫 돌파: 문장 '+t.shards+' · 골드 '+t.gold+' · 사료 '+t.feeds+'</small>'+button('trial-start',t.stage,t.stage<=cleared?'다시 도전':t.stage===cleared+1?'시련 도전':'앞 단계 돌파 필요',t.stage>cleared+1||p.team.length!==3)+'</article>').join('')+'</div></section>';}
+  function drawer(s,head){const p=s.profile,e=p.ecology||E.normalize(),sites=s.ecology?.sites||[],event=s.ecology?.event;
+    return '<aside class="ix-drawer ix-ecology-drawer">'+head('채집 → 제작 → 희귀종 유인 → 수호자 도전','탐험 수첩',e.charm?'✦ 부적 장착':'오늘의 발견')+'<div class="ix-drawer-scroll">'+
+      '<section class="eco-intro"><strong>'+esc(s.locationName)+'</strong><p>청록색 네모는 채집물, 느낌표는 탐험 사건이에요. 길을 따라 고목과 유적을 찾아보세요.</p>'+button('panel','', '부화·보스 연구 보기').replace('data-id=""','data-value="research"')+'</section>'+
+      (event?'<article class="eco-event"><span>✦ 새로운 기척</span><strong>'+esc(event.name)+'</strong><p>현장 조사로 알·보급품·곤충 떼를 발견해요. 사건은 약 4분마다 바뀝니다.</p>'+button('eco-route',event.id,'흔적까지 길 안내')+'</article>':'')+
+      trials(s)+'<h3>지역 탐험 경로</h3><div class="eco-sites">'+(sites.length?sites.map(site=>'<article><div><strong>'+esc(site.name)+'</strong><small>'+esc(site.hint)+'</small></div>'+button('eco-route',site.id,'길 안내')+'</article>').join(''):'<p>마을 포탈에서 사냥터로 들어가면 서식지와 탐험 경로가 표시돼요.</p>')+'</div>'+
+      '<h3>채집 재료로 제작</h3><div class="eco-recipes">'+E.recipes.map(r=>'<article><strong>'+r.name+'</strong><p>'+r.text+'</p><small>'+cost(p,r)+'</small>'+button('craft',r.id,r.output==='charm'&&e.charm?'장착 완료':'제작하기',Object.entries(r.cost).some(([id,n])=>(p.resources[id]||0)<n)||(r.output==='charm'&&e.charm))+'</article>').join('')+'</div>'+
+      '<h3>탐험 목표 · 계정당 한 번씩</h3><div class="eco-goals">'+E.goals.map(g=>'<article><div><strong>'+g.name+'</strong><small>'+Math.min(g.target,e[g.metric])+'/'+g.target+' · 골드 '+g.gold+' · 사료 '+g.feeds+'</small></div>'+button('ecology-claim',g.id,e.claimed.includes(g.id)?'수령 완료':'보상 받기',e[g.metric]<g.target||e.claimed.includes(g.id))+'</article>').join('')+'</div></div></aside>';
+  }
+  function hud(s){if(s.battle||s.realm||!s.ecology?.sites?.length)return '';const p=s.players.find(p=>p.uid===s.you);if(!p)return '';const site=s.ecology.sites.reduce((a,b)=>Math.hypot(p.x-a.x,p.z-a.z)<Math.hypot(p.x-b.x,p.z-b.z)?a:b),distance=Math.round(Math.hypot(p.x-site.x,p.z-site.z)),event=s.ecology.event,eventNear=event&&Math.hypot(p.x-event.x,p.z-event.z)<=7;
+    return '<aside class="eco-hud"><button class="eco-hud-title" data-act="panel" data-value="ecology">📖 탐험 수첩 <span>제작 · 발견</span></button><p>'+esc(site.name)+' · '+distance+'m</p>'+(eventNear?button('explore-event',event.id,'✦ '+esc(event.name)+' 조사'):site.siteId==='sap'&&distance<=7?button('lure',site.id,'🍯 유인 먹이 설치 · '+(s.profile.resources.bait||0)+'개',!s.profile.resources.bait||s.ecology.lureActive):button('eco-route',site.id,'이 장소로 길 안내'))+'</aside>';
+  }
+  global.InsectEcologyUI={drawer,hud};
+})(window);

@@ -15,7 +15,9 @@
     let snapshot = { players: [], spawns: [], profile: { collection: [], team: [], discoveries: [] }, challenges: [] };
     let selection = null, celebration = null, fusionReview = null;
     const announcedBattles = new Set();
-    let panel = null;
+    let panel = null, panelHistory=[];
+    function openPanel(next){if(next===panel)return;if(panel)panelHistory.push(panel);else panelHistory=[];panel=next;}
+    function backPanel(){panel=panelHistory.pop()||null;selection=null;render();}
     const H=global.InsectHousing;
     let homeTool={building:false,deed:null,kind:'floor',rotation:0,cell:{x:0,z:0},pieceId:null,siteId:null};
     function syncHomeTool(){options.send?.('home-tool',homeTool);}
@@ -85,6 +87,8 @@
       try { return global.InsectBattle ? global.InsectBattle.statsForCreature(creature)[key] : speciesOf(creature).baseStats[key]; } catch (_) { return 0; }
     }
 
+    let legacyReview=null;
+    function specialization(c,p){const T=global.InsectTrials,r=T.normalizeRune(c.rune),duplicate=speciesOf(c).rarity==='monster'&&!p.team.includes(c.id)&&p.collection.filter(x=>x.speciesId===c.speciesId).length>1;return '<div class="eco-specialization"><strong>동료 특화 · '+(r?T.runes[r.kind].name+' '+r.level+'단계':'미장착')+'</strong><small>보유 시련 문장 '+(p.resources.shard||0)+' · 시련 돌파 또는 중복 전설 연구로 획득</small><div>'+Object.entries(T.runes).map(([kind,info])=>{const swap=r&&r.kind!==kind,cost=swap?1:T.cost(r),max=r?.level===3&&!swap;return '<button data-act="rune-upgrade" data-id="'+escapeHtml(c.id)+'" data-kind="'+kind+'" '+(max||(p.resources.shard||0)<cost?'disabled':'')+'>'+info.name+' '+(swap?'변경':max?'완성':'강화')+'<small>'+info.text+' · '+(max?'최고 단계':cost+'문장')+'</small></button>';}).join('')+'</div>'+(duplicate?'<button class="eco-legacy" data-act="legacy-review" data-id="'+escapeHtml(c.id)+'">중복 전설 계승 연구 · 문장 5개</button>':'')+'</div>';}
     function creatureCard(creature, profile, compact) {
       const species = speciesOf(creature);
       const inTeam = (profile.team || []).includes(creature.id);
@@ -98,7 +102,7 @@
         <div class="ix-creature-copy"><div class="ix-card-title"><strong>${escapeHtml(creature.nickname || species.name)}</strong><span>Lv.${creature.level || 1}</span></div>
         <small>${escapeHtml(species.name)} · ${rankBadge(species)}</small>
         <div class="ix-hp"><i style="width:${Math.round((hp / Math.max(1, maxHp)) * 100)}%"></i></div><small>체력 ${hp}/${maxHp} · 전투력 ${creature.cp || creature.combatPower || '—'}</small></div>
-        ${compact ? '' : `<div class="ix-xp"><i style="width:${Math.min(100,Math.round(((creature.xp || 0) / Math.max(1,neededXp))*100))}%"></i><span>경험치 ${creature.xp || 0}/${neededXp}</span></div><div class="ix-card-actions"><button data-act="detail" data-id="${escapeHtml(creature.id)}">${expanded ? '정보 닫기' : '상세 정보'}</button><button data-act="open-team" data-id="${escapeHtml(creature.id)}">${inTeam ? '배치 변경' : '팀 편성'}</button>${[1,10,"all"].map(count=>`<button data-act="feed" data-count="${count}" data-id="${escapeHtml(creature.id)}" ${(profile.supplies?.feeds||0)<1||creature.level>=50?"disabled":""}>${count==="all"?"모두 사용":count+"개 사용"}</button>`).join("")}${species.evolvesTo ? `<button data-act="evolve" data-id="${escapeHtml(creature.id)}" ${(creature.level || 1) < (species.evolutionLevel||5) ? 'disabled' : ''}>${(creature.level || 1) < (species.evolutionLevel||5) ? 'Lv.'+(species.evolutionLevel||5)+' 진화' : '진화하기'}</button>` : ''}</div>${expanded ? `<div class="ix-creature-detail"><button data-act="rename" data-id="${escapeHtml(creature.id)}">이름 바꾸기</button><div class="ix-detail-tags"><span>${escapeHtml(species.stage)}</span><span>${escapeHtml(species.habitat)}</span><span>포획 난도 ${species.captureDifficulty}</span></div><dl><div><dt>생명력</dt><dd>${stats.maxHealth || maxHp}</dd></div><div><dt>공격</dt><dd>${stats.attack || stat(creature,'attack')}</dd></div><div><dt>방어</dt><dd>${stats.defense || stat(creature,'defense')}</dd></div><div><dt>속도</dt><dd>${stats.speed || stat(creature,'speed')}</dd></div></dl><p class="ix-feed-note">사료 1개 = 경험치 +84.${species.evolvesTo ? ` Lv.${species.evolutionLevel||5}부터 ${escapeHtml(Data.speciesById[species.evolvesTo].name)}로 진화하며 공격도 바뀝니다.` : ' 최종 형태입니다. 레벨과 팀 조합으로 더 강해질 수 있어요.'}</p><div class="ix-move"><b>${escapeHtml(species.normalAttack.name)}</b><span>위력 ${species.normalAttack.power} · 명중 ${Math.round(species.normalAttack.accuracy*100)}%</span></div>${species.skill ? `<div class="ix-move is-skill"><b>${escapeHtml(species.skill.name)}</b><span>위력 ${species.skill.power} · 재사용 ${species.skill.cooldown}턴</span><p>${escapeHtml(species.skill.description)}</p></div>` : '<p class="ix-no-skill">일반종은 고유 기술 없이 기본 공격으로 싸웁니다.</p>'}</div>` : ''}`}
+        ${compact ? '' : `<div class="ix-xp"><i style="width:${Math.min(100,Math.round(((creature.xp || 0) / Math.max(1,neededXp))*100))}%"></i><span>경험치 ${creature.xp || 0}/${neededXp}</span></div><div class="ix-card-actions">${profile.resources?.nectar?`<button class="eco-nectar" data-act="nectar" data-id="${escapeHtml(creature.id)}" ${creature.level>=50?'disabled':''}>농축액 · 경험치 +300</button>`:''}<button data-act="detail" data-id="${escapeHtml(creature.id)}">${expanded ? '정보 닫기' : '상세 정보'}</button><button data-act="open-team" data-id="${escapeHtml(creature.id)}">${inTeam ? '배치 변경' : '팀 편성'}</button>${[1,10,"all"].map(count=>`<button data-act="feed" data-count="${count}" data-id="${escapeHtml(creature.id)}" ${(profile.supplies?.feeds||0)<1||creature.level>=50?"disabled":""}>${count==="all"?"모두 사용":count+"개 사용"}</button>`).join("")}${species.evolvesTo ? `<button data-act="evolve" data-id="${escapeHtml(creature.id)}" ${(creature.level || 1) < (species.evolutionLevel||5) ? 'disabled' : ''}>${(creature.level || 1) < (species.evolutionLevel||5) ? 'Lv.'+(species.evolutionLevel||5)+' 진화' : '진화하기'}</button>` : ''}</div>${expanded ? `<div class="ix-creature-detail">${specialization(creature,profile)}<button data-act="rename" data-id="${escapeHtml(creature.id)}">이름 바꾸기</button><div class="ix-detail-tags"><span>${escapeHtml(species.stage)}</span><span>${escapeHtml(species.habitat)}</span><span>포획 난도 ${species.captureDifficulty}</span></div><dl><div><dt>생명력</dt><dd>${stats.maxHealth || maxHp}</dd></div><div><dt>공격</dt><dd>${stats.attack || stat(creature,'attack')}</dd></div><div><dt>방어</dt><dd>${stats.defense || stat(creature,'defense')}</dd></div><div><dt>속도</dt><dd>${stats.speed || stat(creature,'speed')}</dd></div></dl><p class="ix-feed-note">사료 1개 = 경험치 +84.${species.evolvesTo ? ` Lv.${species.evolutionLevel||5}부터 ${escapeHtml(Data.speciesById[species.evolvesTo].name)}로 진화하며 공격도 바뀝니다.` : ' 최종 형태입니다. 레벨과 팀 조합으로 더 강해질 수 있어요.'}</p><div class="ix-move"><b>${escapeHtml(species.normalAttack.name)}</b><span>위력 ${species.normalAttack.power} · 명중 ${Math.round(species.normalAttack.accuracy*100)}%</span></div>${species.skill ? `<div class="ix-move is-skill"><b>${escapeHtml(species.skill.name)}</b><span>위력 ${species.skill.power} · 재사용 ${species.skill.cooldown}턴</span><p>${escapeHtml(species.skill.description)}</p></div>` : '<p class="ix-no-skill">일반종은 고유 기술 없이 기본 공격으로 싸웁니다.</p>'}</div>` : ''}`}
       </article>`;
     }
 
@@ -120,7 +124,7 @@
 
     function topBar(profile) {
       const online = listOf(snapshot.players).length;
-      return `<header class="ix-top"><div><p class="ix-eyebrow">현재 지역</p><strong>${escapeHtml(snapshot.locationName || '해오름 초원')}</strong></div><div class="ix-online"><i></i>${online}명 탐험 중</div><button class="ix-feed" data-act="panel" data-value="collection" title="사료로 동료 성장">🍀 ${profile.supplies && profile.supplies.feeds || 0}</button><button data-act="heal" data-action="heal" title="팀 전체 회복">회복</button><button data-act="sound" title="효과음 켜기·끄기">${global.InsectAudio?.isEnabled()?'소리 켜짐':'소리 꺼짐'}</button><button class="ix-exit" data-act="exit" title="대기실로 돌아가기">나가기</button></header>`;
+      return `<header class="ix-top"><div><p class="ix-eyebrow">현재 지역</p><strong>${escapeHtml(snapshot.locationName || '해오름 초원')}</strong></div><div class="ix-online"><i></i>${online}명 탐험 중</div><button class="ix-feed" data-act="panel" data-value="collection" title="사료로 동료 성장">🍀 ${profile.supplies && profile.supplies.feeds || 0}</button><button class="ix-town-return" data-act="town-return" title="마을로 바로 귀환" ${(!snapshot.realm&&snapshot.regionId==='safe')||listOf(snapshot.players).find(p=>p.uid===snapshot.you)?.harvest?'disabled':''}>⌂ 귀환</button><button data-act="heal" data-action="heal" title="팀 전체 회복">회복</button><button data-act="sound" title="효과음 켜기·끄기">${global.InsectAudio?.isEnabled()?'소리 켜짐':'소리 꺼짐'}</button><button class="ix-exit" data-act="exit" title="대기실로 돌아가기">나가기</button></header>`;
     }
 
     function nearbySpawn(state) {
@@ -164,7 +168,7 @@
     }
 
     function selectionPanel() {
-      if (panel || !selection || selection.type === 'spawn' || selection.type === 'resource' || selection.type === 'portal') return '';
+      if (panel || !selection || selection.type === 'spawn' || selection.type === 'resource' || selection.type === 'portal' || selection.type === 'site' || selection.type === 'event') return '';
       if (selection.type === 'npc' && selection.id === 'guide-mira') {
         const quest = snapshot.profile && snapshot.profile.quest || { status: 'available', progress: 0, target: 3 };
         const definition = Data.quests.find(q => q.id === quest.id) || Data.quests[0];
@@ -205,7 +209,7 @@
       if (!panel) return '';
       const collection = profile.collection || [];
       const filtered = collection.filter(c => rarityFilter === 'all' || speciesOf(c).rarity === rarityFilter);
-      const head = (small, title, count) => '<div class="ix-drawer-head"><div><small>' + small + '</small><h2>' + title + ' <b>' + count + '</b></h2></div><button data-act="close-panel" aria-label="닫기">×</button></div>';
+      const head = (small, title, count) => '<div class="ix-drawer-head"><div><small>' + small + '</small><h2>' + title + ' <b>' + count + '</b></h2></div><div class="eco-drawer-controls"><button data-act="panel-back" aria-label="이전 메뉴로 뒤로 가기">← 뒤로</button><button data-act="close-panel" aria-label="메뉴 닫기">닫기 ×</button></div></div>';
       if(panel==='bag'){
         const slots=[];for(const [id,n] of Object.entries(profile.bag?.deeds||{}))if(n)slots.push('<article class="ix-bag-slot"><b>📜</b><strong>'+H.deeds[id].name+'</strong><small>'+n+'개 · 미사용</small><button data-act="deed-use" data-id="'+id+'">사용 · 토지 선택</button></article>');
         for(const [id,def] of Object.entries(Data.resources)){const count=profile.resources?.[id]||0;if(count)slots.push('<article class="ix-bag-slot"><b>'+def.icon+'</b><strong>'+def.name+'</strong><small>'+count+'개</small></article>');}
@@ -214,6 +218,7 @@
         const used=slots.length;while(slots.length<16)slots.push('<div class="ix-bag-slot is-empty">빈 칸</div>');
         return '<aside class="ix-drawer">'+head('종류별 묶음 보관 · 건축 자재는 모두 판매에서 보호됩니다.','가방',used+'종')+'<div class="ix-bag-grid ix-drawer-scroll">'+slots.join('')+'</div></aside>';
       }
+      if(panel==='ecology')return global.InsectEcologyUI.drawer(snapshot,head);
       if(panel==='housing')return '<aside class="ix-drawer ix-housing-drawer">'+head('채집해서 직접 짓는 나의 3D 집','집 꾸미기',profile.housing?.plot?H.deeds[profile.housing.plot.size].label+' 보유':'토지 미보유')+'<div class="ix-drawer-scroll"><div class="ix-home-intro"><strong>'+(profile.housing?.plot?'내 집을 꾸미고 친구를 초대하세요.':'상점에서 땅문서 구매 → 가방에서 사용 → 초록색 땅 선택')+'</strong><p>바닥·벽·문·지붕을 직접 배치하고 문을 열어 안으로 들어가요. 건축은 소유자만 가능하며 철거하면 자재를 모두 돌려받습니다.</p><div><button data-act="home-travel" data-id="home">내 정원으로 이동</button>'+(profile.housing?.plot?'<button data-act="build-enter">집 건축 시작</button>':'<button data-act="panel" data-value="shop">땅문서 상점</button><button data-act="panel" data-value="bag">가방 열기</button>')+'<button data-act="home-travel" data-id="field">탐험 마을로 이동</button></div></div><h3>건축 자재 채집장</h3><div class="ix-camp-list">'+Data.constructionCamps.map(c=>'<article><span>'+Data.resources[c.kind].icon+'</span><div><strong>'+c.name+'</strong><small>'+Data.resources[c.kind].name+' · 보유 '+(profile.resources[c.kind]||0)+'개</small><small>가까이 다가가 채집 · 도구는 자동 장착</small></div><button data-act="home-travel" data-id="'+c.id+'">이동</button></article>').join('')+'</div><h3>같은 방 친구의 집</h3>'+((snapshot.neighbors||[]).filter(p=>p.uid!==snapshot.you).map(p=>'<button class="ix-visit" data-act="home-visit" data-id="'+escapeHtml(p.uid)+'">🏠 '+escapeHtml(p.name)+'의 집 방문</button>').join('')||'<p class="ix-map-copy">같은 방에 집을 가진 친구가 접속하면 여기에 표시됩니다.</p>')+'</div></aside>';
       if(panel==='research') {
         const p=profile.expedition||{bosses:[],crystals:0,hatched:0,claimed:[],eggs:[]};
@@ -248,7 +253,7 @@
       const catalog = Data.species.filter(c => rarityFilter === 'all' || c.rarity === rarityFilter);
       return '<aside class="ix-drawer ix-dex-drawer">' + head('새로운 종마다 사료 보상 · 보상은 한 번씩', '이슬숲 도감', known.size + '/' + Data.species.length)
         + '<div class="ix-dex-rewards"><button data-act="dex-claim" ' + (reward ? '' : 'disabled') + '>🍀 수집 보상 받기 +' + reward + '</button><span>' + Data.collectionMilestones.map(m => '<b class="' + (known.size >= m.count ? 'is-complete' : '') + '">' + m.count + '종 · 사료 ' + m.feeds + '</b>').join('') + '</span></div>'
-        + rankTabs(Data.species.map(c => ({speciesId:c.id}))) + '<div class="ix-encyclopedia">' + catalog.map(c => '<div class="' + (known.has(c.id) ? '' : 'is-unknown') + '"><span>' + (known.has(c.id) ? modelFor(c.id) : '?') + '</span><strong>' + (known.has(c.id) ? escapeHtml(c.name) : '미발견') + '</strong><small>' + rankBadge(c) + ' · ' + (known.has(c.id) ? (claimed.has(c.id) ? '보상 수령' : '사료 +' + Data.rarity[c.rarity].reward) : escapeHtml(c.habitat)) + '</small></div>').join('') + '</div></aside>';
+        + rankTabs(Data.species.map(c => ({speciesId:c.id}))) + '<div class="ix-encyclopedia">' + catalog.map(c => '<div class="' + (known.has(c.id) ? '' : 'is-unknown') + '"><span>' + (known.has(c.id) ? modelFor(c.id) : '?') + '</span><strong>' + (known.has(c.id) ? escapeHtml(c.name) : '미발견') + '</strong><small>' + rankBadge(c) + ' · ' + (known.has(c.id) ? (claimed.has(c.id) ? '보상 수령' : '사료 +' + Data.rarity[c.rarity].reward) : escapeHtml(c.habitat)) + '</small><small class="eco-dex-hint">'+escapeHtml(global.InsectEcology.hint(c))+'</small></div>').join('') + '</div></aside>';
     }
 
     function challengeModal() {
@@ -277,13 +282,13 @@
       const capture = outcome && outcome.captureSummary;
       const captures=outcome?.captureSummaries||[],capturedNames=captures.filter(c=>c.success).map(c=>Data.speciesById[c.speciesId].name);
       const captureText = capturedNames.length>1 ? escapeHtml(capturedNames.join(', '))+'를 채집했습니다!' : capture && capture.success ? `${escapeHtml(Data.speciesById[capture.speciesId] && Data.speciesById[capture.speciesId].name || '야생 곤충')}를 채집했습니다!${capture.isNew ? ' 새 도감 등록 +1' : ''}` : capture && capture.failureReason === 'inventory-full' ? '보관함이 가득 차 포획 보상을 받지 못했습니다.' : capture && capture.success === false ? `채집 실패 · 곤충이 달아났어요. 성공 확률 ${Math.round((capture.chance || 0) * 100)}%` : '';
-      const rewardText = [outcome && outcome.totalXp > 0 ? `총 경험치 +${outcome.totalXp} · 참여 곤충당 ${outcome.xpPerCreature}` : '', outcome && outcome.gold ? `골드 +${outcome.gold}` : '', outcome && outcome.feeds ? `사료 +${outcome.feeds}` : '', captureText, outcome && outcome.recovered ? '전원 자동 회복 완료' : ''].filter(Boolean).join(' · ') || '전투 기록이 안전하게 저장됩니다.';
+      const rewardText = [outcome && outcome.totalXp > 0 ? `총 경험치 +${outcome.totalXp} · 참여 곤충당 ${outcome.xpPerCreature}` : '', outcome && outcome.gold ? `골드 +${outcome.gold}` : '', outcome && outcome.feeds ? `사료 +${outcome.feeds}` : '', outcome?.essence?'수호 정수 +'+outcome.essence:'',outcome?.shards?'시련 문장 +'+outcome.shards:'',outcome?.firstClear?'새 시련 돌파! 다음 관문 해금':'', captureText, outcome && outcome.recovered ? '전원 자동 회복 완료' : ''].filter(Boolean).join(' · ') || '전투 기록이 안전하게 저장됩니다.';
       const levelText = outcome && outcome.levelUps && outcome.levelUps.length ? ` · ${outcome.levelUps.length}마리 레벨 상승!` : '';
-      return `<section class="ix-battle" aria-label="턴제 전투"><header><div><small>${battle.type === 'pvp' ? '탐험가 대전' : battle.boss ? '필드 보스' : enemy.team.length>1?'무리 전투':'필드 전투'} · ${mine.team.length} 대 ${enemy.team.length}</small><strong>턴 ${battle.turn}${mine.entryPriority === yourActive.id ? " · 새 공격자 선공!" : ""}</strong></div>${battle.status==='active'?`<button data-act="auto-battle" aria-pressed="${!!mine.auto}">${mine.auto?'자동 진행 중':'자동 전투 켜기'}</button>`:''}<button class="ix-battle-sound" data-act="sound" aria-label="전투 음악과 효과음 켜기 또는 끄기">${global.InsectAudio?.isEnabled()?'♫ 소리 켜짐':'♫ 소리 꺼짐'}</button><div class="ix-turn"><i style="--time:${Math.min(25, time)}"></i><b>${time}</b>초</div></header>
+      return `<section class="ix-battle" aria-label="턴제 전투"><header><div><small>${battle.trial ? '수호자 시련 '+battle.trial.stage+'단계 · '+battle.trial.modifier.name : battle.type === 'pvp' ? '탐험가 대전' : battle.boss ? '필드 보스' : enemy.team.length>1?'무리 전투':'필드 전투'} · ${mine.team.length} 대 ${enemy.team.length}</small><strong>턴 ${battle.turn}${mine.entryPriority === yourActive.id ? " · 새 공격자 선공!" : ""}</strong></div>${battle.status==='active'?`<button data-act="auto-battle" aria-pressed="${!!mine.auto}">${mine.auto?'자동 진행 중':'자동 전투 켜기'}</button>`:''}<button class="ix-battle-sound" data-act="sound" aria-label="전투 음악과 효과음 켜기 또는 끄기">${global.InsectAudio?.isEnabled()?'♫ 소리 켜짐':'♫ 소리 꺼짐'}</button><div class="ix-turn"><i style="--time:${Math.min(25, time)}"></i><b>${time}</b>초</div></header>
         <div class="ix-battle-rosters">${[mine,enemy].map(side=>`<div>${side.team.map((c,i)=>`<span class="${i===side.active?'is-active':''} ${c.hp<=0?'is-down':''}" title="${escapeHtml(speciesOf(c).name)}">${modelFor(c.speciesId)}<b>${i+1}</b><i style="--hp:${hpPercent(c)}%"></i></span>`).join('')}</div>`).join('')}</div><div class="ix-battlefield"><div class="ix-fighter is-enemy"><div class="ix-fighter-info"><strong>${escapeHtml(foeActive.nickname || foeSpecies.name)}</strong><span>${rankBadge(foeSpecies)} Lv.${foeActive.level}</span><div class="ix-hp"><i style="width:${hpPercent(foeActive)}%"></i></div><small>${foeActive.hp}/${foeActive.maxHp}</small></div></div>
         <div class="ix-impact" ${battle.status === 'finished' ? 'hidden' : ''} aria-live="polite">${lastHit ? `${lastHit.critical ? '치명타 · ' : ''}-${lastHit.amount}` : '대치 중'}</div><div class="ix-fighter is-player"><div class="ix-fighter-info"><strong>${escapeHtml(yourActive.nickname || species.name)}</strong><span>${rankBadge(species)} Lv.${yourActive.level} · 전투력 ${yourActive.cp || yourActive.combatPower || '—'}</span><div class="ix-hp"><i style="width:${hpPercent(yourActive)}%"></i></div><small>${yourActive.hp}/${yourActive.maxHp}</small></div></div></div>
         <div class="ix-battle-bottom"><div class="ix-log" aria-live="polite">${events.slice(-3).map(e => `<p>${escapeHtml(e.message || '전투가 이어집니다.')}</p>`).join('') || '<p>자동 진행 · 1→2→3번 순환 공격 · 상대 생존자 무작위 타격</p>'}</div>
-        ${battle.status === 'finished' ? `<div class="ix-battle-result"><strong>${outcome && outcome.winner === youKey ? '탐험 승리' : outcome && outcome.reason === 'retreat' ? '안전하게 후퇴했습니다' : '다음 도전을 준비해요'}</strong><span>${rewardText}${levelText}</span>${outcome && outcome.winner !== youKey ? '<p>연구소 주변의 낮은 레벨 곤충부터 도전하고, 사료로 팀을 키워 보세요.</p>' : ''}</div><button class="ix-return" data-act="return" data-action="return">탐험지로 돌아가기</button>` : `<div class="ix-actions"><button data-act="battle-action" data-action="attack" data-value="attack"><span>⚔️</span><strong>${escapeHtml(species.normalAttack.name)}</strong><small>일반 공격</small></button>${species.skill ? `<button data-act="battle-action" data-action="skill" data-value="skill" ${(yourActive.cooldowns && yourActive.cooldowns[species.skill.id]) > 0 ? 'disabled' : ''}><span>✦</span><strong>${escapeHtml(species.skill.name)}</strong><small>${(yourActive.cooldowns && yourActive.cooldowns[species.skill.id]) || '고유 기술'}</small></button>` : ''}<button data-act="open-switch" data-action="switch-menu"><span>↻</span><strong>교체</strong><small>남은 ${mine.team.filter(c => c.hp > 0).length}마리</small></button>${battle.type === 'field' ? `<button data-act="battle-action" data-action="retreat" data-value="retreat"><span>⌂</span><strong>도주</strong><small>탐험지 복귀</small></button>` : ''}</div>`}
+        ${battle.status === 'finished' ? `<div class="ix-battle-result"><strong>${outcome && outcome.winner === youKey ? '탐험 승리' : outcome && outcome.reason === 'retreat' ? '안전하게 후퇴했습니다' : '다음 도전을 준비해요'}</strong><span>${rewardText}${levelText}</span>${outcome && outcome.winner !== youKey ? '<p>연구소 주변의 낮은 레벨 곤충부터 도전하고, 사료로 팀을 키워 보세요.</p>' : ''}</div><button class="ix-return" data-act="return" data-action="return">탐험지로 돌아가기</button>` : `<div class="ix-actions"><button data-act="battle-action" data-action="attack" data-value="attack"><span>⚔️</span><strong>${escapeHtml(species.normalAttack.name)}</strong><small>일반 공격</small></button>${species.skill ? `<button data-act="battle-action" data-action="skill" data-value="skill" ${(yourActive.cooldowns && yourActive.cooldowns[species.skill.id]) > 0 ? 'disabled' : ''}><span>✦</span><strong>${escapeHtml(species.skill.name)}</strong><small>${(yourActive.cooldowns && yourActive.cooldowns[species.skill.id]) || '고유 기술'}</small></button>` : ''}<button data-act="open-switch" data-action="switch-menu"><span>↻</span><strong>교체</strong><small>남은 ${mine.team.filter(c => c.hp > 0).length}마리</small></button>${battle.type==='field'&&profile.resources?.tonic?`<button data-act="battle-action" data-value="tonic" ${yourActive.hp>=yourActive.maxHp?'disabled':''}><span>🧪</span><strong>버섯 회복제</strong><small>체력 45% · ${profile.resources.tonic}개</small></button>`:''}${battle.type === 'field' ? `<button data-act="battle-action" data-action="retreat" data-value="retreat"><span>⌂</span><strong>도주</strong><small>탐험지 복귀</small></button>` : ''}</div>`}
         <div class="ix-switch-list" hidden>${mine.team.map(c => `<button data-act="switch" data-id="${escapeHtml(c.id)}" ${c.id === yourActive.id || c.hp <= 0 ? 'disabled' : ''}>${escapeHtml(c.nickname || speciesOf(c).name)} <small>${c.hp}/${c.maxHp}</small></button>`).join('')}</div></div></section>`;
     }
 
@@ -295,6 +300,7 @@
         celebration = {title:names.join(', ')+'를 채집했습니다!',speciesId:capture.speciesId,text:(capture.isNew?'새로운 도감 등록! · ':'')+'골드 +'+battle.result.gold+' · 사료 +'+battle.result.feeds};
         global.InsectAudio?.play('capture');
       }
+      if(legacyReview){const c=snapshot.profile.collection.find(c=>c.id===legacyReview);if(!c){legacyReview=null;return '';}return '<div class="ix-modal-backdrop ix-celebration"><section class="ix-dialog" role="dialog" aria-modal="true" aria-label="계승 연구 확인"><h2>이 동료를 계승 연구할까요?</h2>'+modelFor(c.speciesId)+'<p>'+escapeHtml(c.nickname||speciesOf(c).name)+' Lv.'+c.level+' 1마리를 소모합니다. 이 개체의 레벨과 특화도 사라지며 되돌릴 수 없습니다.</p><p>같은 종류의 다른 동료는 남고, 시련 문장 5개를 얻어요.</p><div><button data-act="legacy-cancel">취소</button><button data-act="legacy-confirm">이 동료 소모 · 문장 5개 받기</button></div></section></div>';}
       if (fusionReview) {
         const base = snapshot.profile.collection.find(c=>c.id===fusionReview.creatureId), recipe = base && Data.fusionRecipes[base.speciesId];
         if (!recipe) { fusionReview = null; return ''; }
@@ -323,10 +329,10 @@
       const quest = profile.quest || { status: 'available', progress: 0, target: 3 };
       const definition = Data.quests.find(q => q.id === quest.id) || Data.quests[0];
       const questText = quest.status === 'available' || quest.status === 'complete' ? '새 퀘스트 받기 · 현재 위치에서 바로 수락' : quest.status === 'active' ? `${definition.name} · ${definition.description} ${quest.progress}/${quest.target}` : `${definition.name} 완료! 눌러서 사료 보상 받기`;
-      root.innerHTML = `${topBar(profile)}<nav class="ix-nav"><button data-act="customize"><span>🎀</span>꾸미기</button><button data-act="panel" data-value="bag"><span>🎒</span>가방</button><button data-act="panel" data-value="housing"><span>🏠</span>집 꾸미기</button><button data-act="panel" data-value="research"><span>🥚</span>탐험 연구</button><button class="${panel === 'team' ? 'is-active' : ''}" data-act="panel" data-value="team"><span>⚔</span>팀 편성</button><button class="${panel === 'collection' ? 'is-active' : ''}" data-act="panel" data-value="collection"><span>🪲</span>성장</button><button class="${panel === 'encyclopedia' ? 'is-active' : ''}" data-act="panel" data-value="encyclopedia"><span>▦</span>도감${unread ? `<b class="ix-badge" aria-label="새 도감 ${unread}종">${unread}</b>` : ''}</button><button class="${panel === 'map' ? 'is-active' : ''}" data-act="panel" data-value="map"><span>🗺️</span>지도</button><button class="${panel === 'shop' ? 'is-active' : ''}" data-act="panel" data-value="shop"><span>🛒</span>상점</button></nav>
+      root.innerHTML = `${topBar(profile)}<nav class="ix-nav"><button data-act="panel" data-value="ecology"><span>📖</span>탐험 수첩</button><button data-act="customize"><span>🎀</span>꾸미기</button><button data-act="panel" data-value="bag"><span>🎒</span>가방</button><button data-act="panel" data-value="housing"><span>🏠</span>집 꾸미기</button><button data-act="panel" data-value="research"><span>🥚</span>탐험 연구</button><button class="${panel === 'team' ? 'is-active' : ''}" data-act="panel" data-value="team"><span>⚔</span>팀 편성</button><button class="${panel === 'collection' ? 'is-active' : ''}" data-act="panel" data-value="collection"><span>🪲</span>성장</button><button class="${panel === 'encyclopedia' ? 'is-active' : ''}" data-act="panel" data-value="encyclopedia"><span>▦</span>도감${unread ? `<b class="ix-badge" aria-label="새 도감 ${unread}종">${unread}</b>` : ''}</button><button class="${panel === 'map' ? 'is-active' : ''}" data-act="panel" data-value="map"><span>🗺️</span>지도</button><button class="${panel === 'shop' ? 'is-active' : ''}" data-act="panel" data-value="shop"><span>🛒</span>상점</button></nav>
         <button class="ix-team" data-act="panel" data-value="team" aria-label="현재 팀 편성"><small>전투 팀 ${team.length}/3</small>${team.map(c => `<span title="${escapeHtml(c.nickname || speciesOf(c).name)}">${modelFor(c.speciesId, speciesOf(c).category)}</span>`).join('')} ${team.length ? '' : '<b>곤충을 팀에 편성하세요</b>'}</button>
         ${panel ? '' : me.mount?`<button class="ix-sprint is-active" data-act="mount" data-id=""><strong>${Data.mounts[me.mount].icon} ${Data.mounts[me.mount].name}</strong><small>스태미나 소모 없음 · 내리기</small></button>`:`<button class="ix-sprint ${me.sprinting ? 'is-active' : ''}" data-act="sprint" aria-pressed="${!!me.sprinting}"><strong>${me.sprinting ? '달리기 켜짐' : '달리기'}</strong><span class="ix-stamina"><i style="width:${me.stamina ?? 100}%"></i></span><small>스태미나 ${me.stamina ?? 100}/100</small></button>`}
-        <button class="ix-quest-strip" ${panel ? 'hidden' : ''} data-act="quest-guide">📜 ${escapeHtml(questText)}</button>${nearbyPanel()}${selectionPanel()}${drawer(profile)}${housingOverlay(profile)}${challengeModal()}${battleModal(profile)}${centerModal()}<div class="ix-toast ${toastState ? 'is-visible' : ''}" data-tone="${toastState ? toastState.tone : 'info'}" role="status">${toastState ? escapeHtml(toastState.message) : ''}</div>`;
+        <button class="ix-quest-strip" ${panel ? 'hidden' : ''} data-act="quest-guide">📜 ${escapeHtml(questText)}</button>${panel?'':global.InsectEcologyUI.hud(snapshot)}${nearbyPanel()}${selectionPanel()}${drawer(profile)}${housingOverlay(profile)}${challengeModal()}${battleModal(profile)}${centerModal()}<div class="ix-toast ${toastState ? 'is-visible' : ''}" data-tone="${toastState ? toastState.tone : 'info'}" role="status">${toastState ? escapeHtml(toastState.message) : ''}</div>`;
     }
 
     function signature(state) {
@@ -338,6 +344,7 @@
         profile: { appearance:profile.appearance, characterCreated:profile.characterCreated, characterId: profile.characterId, adventurerName: profile.adventurerName, team: profile.team, collection: profile.collection, discoveries: profile.discoveries, supplies: profile.supplies, quest: profile.quest, encyclopedia: profile.encyclopedia, gold: profile.gold, resources: profile.resources, mounts:profile.mounts },
         players: listOf(state.players).map(p => [p.uid || p.id, p.name || p.nickname, Boolean(p.busy), p.characterId, p.mount, p.uid === state.you ? p.stamina : null, p.uid === state.you ? p.sprinting : null]),
         spawns: listOf(state.spawns).map(s => [s.id, s.speciesId, s.available, s.reservedBy, s.field, s.level, s.boss, s.respawnAt]),
+        ecology:state.ecology,ecologyProfile:profile.ecology,trials:profile.trials,ecoPosition:listOf(state.players).filter(p=>p.uid===state.you).map(p=>[Math.round(p.x),Math.round(p.z)]),
         resources: state.resources,realm:state.realm,home:state.home,neighbors:state.neighbors,
         challenges: state.challenges,
         battle: battle && { id: battle.id, status: battle.status, turn: battle.turn, deadline: battle.deadline, sides: battle.sides, events: battle.events, result: battle.result },
@@ -351,6 +358,15 @@
       const button = event.target.closest('[data-act]');
       if (!button || button.disabled) return;
       const act = button.dataset.act, id = button.dataset.id;
+      if(act==='town-return'){const result=await command('home-travel',{destination:'field'});if(result){panel=null;panelHistory=[];selection=null;homeTool.building=false;homeTool.deed=null;syncHomeTool();render();}return;}
+      if(act==='trial-start'){const result=await command('trial-start',{stage:Number(id)});if(result){panel=null;render();}return;}
+      if(act==='rune-upgrade')return command('rune-upgrade',{creatureId:id,kind:button.dataset.kind});
+      if(act==='legacy-review'){legacyReview=id;render();return;}
+      if(act==='legacy-cancel'){legacyReview=null;render();return;}
+      if(act==='legacy-confirm'){const result=await command('legacy-research',{creatureId:legacyReview,confirm:true});if(result)legacyReview=null;render();return;}
+      if(['craft','lure','explore-event','ecology-claim'].includes(act))return command(act,{id});
+      if(act==='nectar')return command('nectar',{creatureId:id});
+      if(act==='eco-route'){const result=await command('navigate',{id});if(result){panel=null;selection=null;render();}return;}
       if(act==='deed-use'){const result=await command('home-travel',{destination:'home'});if(result){panel=null;homeTool={...homeTool,deed:id,siteId:null,building:false};syncHomeTool();render();}return;}
       if(act==='home-site'){homeTool.siteId=id;syncHomeTool();render();return;}
       if(act==='land-confirm'){const result=await command('land-claim',{deed:homeTool.deed,siteId:homeTool.siteId});if(result){homeTool.deed=null;homeTool.building=true;homeTool.cell={x:0,z:0};syncHomeTool();render();}return;}
@@ -376,10 +392,10 @@
       if (act === 'navigate') { const result=await command('navigate',{id}); if(result){panel=null;selection=null;render();} return; }
       if (act === 'customize') { openEditor(false); return; }
 
-      if (act === 'panel') { panel = panel === button.dataset.value ? null : button.dataset.value; rarityFilter = 'all'; render(); if (panel === 'encyclopedia') await command('dex-seen', {ids: snapshot.profile.discoveries || []}); return; }
+      if (act === 'panel') { if(panel===button.dataset.value){panel=null;panelHistory=[];}else openPanel(button.dataset.value); rarityFilter = 'all'; render(); if (panel === 'encyclopedia') await command('dex-seen', {ids: snapshot.profile.discoveries || []}); return; }
       if (act === 'rarity-filter') { rarityFilter = id; render(); return; }
       if (act === 'team-slot') { teamSlot = Number(button.dataset.index); render(); return; }
-      if (act === 'open-team') { panel = 'team'; rarityFilter = 'all'; teamSlot = Math.max(0, snapshot.profile.team.indexOf(id)); render(); return; }
+      if (act === 'open-team') { openPanel('team'); rarityFilter = 'all'; teamSlot = Math.max(0, snapshot.profile.team.indexOf(id)); render(); return; }
       if (act === 'assign-team') {
         const ids = [...snapshot.profile.team], slot = Math.min(teamSlot, ids.length), previous = ids.indexOf(id);
         if (previous === slot) return;
@@ -396,7 +412,8 @@
       if (act === 'gather') return command('gather', {nodeId:id});
       if (act === 'dex-claim') return command('dex-claim', {});
       if (act === 'sprint') { const me = listOf(snapshot.players).find(p => p.uid === snapshot.you); return command('sprint', { enabled: !me?.sprinting }); }
-      if (act === 'close-panel') { panel = null; render(); return; }
+      if (act === 'panel-back'){backPanel();return;}
+      if (act === 'close-panel') { panel = null;panelHistory=[]; render(); return; }
       if (act === 'collect' || act === 'encounter') return command(act, { spawnId: id });
       if (act === 'challenge') return command('challenge', { targetUid: id });
       if (act === 'respond') return command('respond', { requestId: id, accept: button.dataset.value === 'true' });
@@ -420,6 +437,9 @@
       if (act === 'return') return command('return', {});
     });
 
+    function escapeMenu(event){if(event.key!=='Escape'||editor||event.target.matches('input,textarea,select'))return;
+      if(legacyReview){legacyReview=null;render();}else if(celebration||fusionReview){celebration=null;fusionReview=null;render();}else if(panel){backPanel();}else if(homeTool.building||homeTool.deed){homeTool.building=false;homeTool.deed=null;syncHomeTool();render();}else{selection=null;render();}event.preventDefault();}
+    global.addEventListener('keydown',escapeMenu);
     render();
     const clock = setInterval(() => {
       const label = root.querySelector('.ix-turn b');
@@ -442,10 +462,11 @@
           if(homeTool.building){homeTool.cell={x:p.x,z:p.z};homeTool.pieceId=p.id;syncHomeTool();render();}
           else if(p.kind==='door')command('house-door',{pieceId:p.id});return;
         }
+        if(next?.type==='site'||next?.type==='event'){command('navigate',{id:next.id});}
         selection = next && next.id ? { type: next.type, id: next.id } : null; lastSignature = ''; if (entered) render(); },
       setAnimating(value) { animationPlaying = !!value; root.classList.toggle('is-animating', animationPlaying); },
       notify,
-      dispose() { editor?.close(); clearTimeout(toastTimer); clearInterval(clock); root.innerHTML = ''; root.classList.remove('ix-ui', 'is-busy'); }
+      dispose() { global.removeEventListener('keydown',escapeMenu); editor?.close(); clearTimeout(toastTimer); clearInterval(clock); root.innerHTML = ''; root.classList.remove('ix-ui', 'is-busy'); }
     };
   }
 

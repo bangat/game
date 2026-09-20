@@ -367,17 +367,17 @@
     var presentation=global.InsectPresentation?.create(scene),battleIntroUntil=0;
     scene.imageProcessingConfiguration.contrast = 1.08; scene.imageProcessingConfiguration.exposure = 1.0;
     scene.fogMode = B.Scene.FOGMODE_LINEAR; scene.fogColor = new B.Color3(0.48, 0.63, 0.65); scene.fogStart = 75; scene.fogEnd = 185;
-    var savedRadius = 29;
+    var savedRadius = 38;
     try {
       var storedRadius = Number(global.localStorage.getItem('insect.cameraRadius'));
       if (Number.isFinite(storedRadius) && storedRadius >= 10) savedRadius = clamp(storedRadius, 16, 52);
-      if (global.localStorage.getItem('insect.cameraVersion') !== '2') {
-        savedRadius = Math.max(29, savedRadius);
-        global.localStorage.setItem('insect.cameraVersion', '2');
+      if (global.localStorage.getItem('insect.cameraVersion') !== '3') {
+        savedRadius = Math.max(38, savedRadius);
+        global.localStorage.setItem('insect.cameraVersion', '3');
         global.localStorage.setItem('insect.cameraRadius', String(savedRadius));
       }
     } catch (_) {}
-    var camera = new B.ArcRotateCamera('explore-camera', Math.PI / 2, 1.03, savedRadius, new B.Vector3(0, 1.4, 0), scene);
+    var camera = new B.ArcRotateCamera('explore-camera', Math.PI / 2, 1.15, savedRadius, new B.Vector3(0, 1.4, 0), scene);
     camera.lowerRadiusLimit = 16; camera.upperRadiusLimit = 52; camera.lowerBetaLimit = 0.55; camera.upperBetaLimit = 1.34; camera.wheelPrecision = 35; camera.panningSensibility = 0;
     camera.minZ = 0.5; camera.maxZ = 400;
     camera.attachControl(canvas, true);
@@ -595,7 +595,7 @@
     });
     var localAvatar = createAvatar(scene, characterInfo(options.characterId || 'original').id, '', null); localAvatar.parent = worldRoot; localAvatar.position.set(0, 0.4, 12);
     addShadowModel(localAvatar);
-    var companions = {}, resourceModels = {}, followTrail = [], serverPositionAt = 0, localSprint = false, localMount = '';
+    var companions = {}, resourceModels = {}, eventModels = {}, followTrail = [], serverPositionAt = 0, localSprint = false, localMount = '';
     var homeView=global.InsectHousingWorld.create(scene,{select:onSelect}),lastRealm='';
     var remote = {}, spawns = {}, latest = { players: [], spawns: [] }, battleActors = {}, battleViewSide = 'a', arenaDecor = [], eventQueue = [], activeEvent = null, battleMode = false;
     var navTarget=null,navRoute=[],navUpdated=0;
@@ -675,7 +675,15 @@
     }
     function createResource(node) {
       var root = new B.TransformNode('resource-' + node.id, scene); root.parent = worldRoot; root.position.set(node.x,heightAt(node.x,node.z),node.z);root.metadata={kind:node.kind};
-      if(node.kind==='wood'){
+      if(['sap','mushroom','pollen'].includes(node.kind)){
+        var special=material(scene,'gather-'+node.kind,node.kind==='sap'?'#ffc263':node.kind==='mushroom'?'#d991dc':'#fff18d',.25);
+        for(var k=0;k<4;k++){var px=Math.sin(k*2.4)*.65,pz=Math.cos(k*2.4)*.65;
+          part(scene,root,'gather-stalk','cylinder',{height:node.kind==='sap'?1.8:.65,diameter:node.kind==='sap'?.8:.13,tessellation:7},[px,.4,pz],mats.wood);
+          part(scene,root,'gather-cap','sphere',{diameterX:node.kind==='mushroom'?.85:.55,diameterY:.35,diameterZ:.7,segments:8},[px,node.kind==='sap'?1.3:.82,pz],special);
+        }
+        part(scene,root,'gather-marker','torus',{diameter:2.4,thickness:.09,tessellation:16},[0,.1,0],special);
+      }else if(node.kind==='wood'){
+
         part(scene,root,'timber-trunk','cylinder',{height:4,diameter:1,tessellation:9},[0,2,0],mats.wood);
         part(scene,root,'timber-crown','sphere',{diameterX:4,diameterY:3.5,diameterZ:4,segments:8},[0,5,0],mats.leaf);
         part(scene,root,'timber-mark','box',{width:1.1,height:.2,depth:1.1},[0,1.4,0],mats.path);
@@ -696,10 +704,14 @@
         var crystalMat=material(scene,'ore-crystal','#8ee1df',.6);
         for(var j=0;j<3;j++){var crystal=part(scene,root,'ore-spire','cylinder',{height:1.1+j*.25,diameterTop:0,diameterBottom:.45,tessellation:5},[(j-1)*.45,1.05,(j%2)*.3],crystalMat);crystal.rotation.z=(j-1)*.3;}
       }
-      label(scene,root,node.name,2.25,'#ffe39a');
+      label(scene,root,node.name,2.6,'#ffe39a');
       root.getChildMeshes().forEach(function(mesh){mesh.isPickable=true;mesh.metadata={selectTarget:{type:'resource',id:node.id}};});
       addShadowModel(root);return root;
     }
+    function createEvent(event){var node=new B.TransformNode('discovery-beacon',scene);node.metadata={};node.parent=worldRoot;node.position.set(event.x,heightAt(event.x,event.z),event.z);
+      var glow=material(scene,'discovery-gold','#ffdd88',.8);part(scene,node,'event-beam','cylinder',{height:9,diameter:.3,tessellation:6},[0,4.5,0],glow);part(scene,node,'event-ring','torus',{diameter:4,thickness:.17,tessellation:24},[0,.25,0],glow);label(scene,node,'✦ '+event.name,4,'#ffedb7');
+      for(var i=0;i<8;i++)part(scene,node,'discovery-mote','sphere',{diameter:.18,segments:4},[Math.sin(i*2.4)*1.8,1+i*.6,Math.cos(i*2.4)*1.8],glow);
+      node.getChildMeshes().forEach(m=>{m.isPickable=true;m.metadata={selectTarget:{type:'event',id:event.id}};});return node;}
     function syncCompanions() {
       var profile=latest.profile || {}, collection=profile.collection || [], present={};
       (profile.team || []).forEach(function(id,index){
@@ -773,8 +785,10 @@
       var otherPlayers = (latest.players || []).filter(function (player) { return !localId || String(player.uid) !== String(localId); });
       syncEntityMap(otherPlayers, remote, function (p) { var avatar = createAvatar(scene, p.character, p.nickname, { type: 'player', id: String(p.uid), busy: p.busy }, p.appearance); avatar.parent = worldRoot; avatar.position.set(p.x || 0, 0.4, p.z || 0); addShadowModel(avatar); return avatar; }, 'uid');
       syncEntityMap((latest.spawns || []).filter(function (s) { return s.available !== false && Math.hypot(s.x-localAvatar.metadata.targetX,s.z-localAvatar.metadata.targetZ)<85; }), spawns, function (s) { var creature = createCreature(scene, s.speciesId, s);if(s.group){(s.members||[]).slice(1).forEach(function(m,i){var member=createCreature(scene,m.speciesId,Object.assign({},s,{id:s.id+'-member-'+i}));member.parent=creature;member.position.set(i?2.5:-2.5,0,1.7);member.getChildMeshes().forEach(function(mesh){mesh.isPickable=true;mesh.metadata={selectTarget:{type:'spawn',id:s.id}};});});label(scene,creature,'3마리 무리 · 자동 턴제',3.1,'#ffc96e');} creature.parent = worldRoot; creature.position.set(s.x || 0, 0.2, s.z || 0); addShadowModel(creature); return creature; }, 'id');
-      syncEntityMap((latest.resources || []).filter(function(n){return n.available;}),resourceModels,createResource,'id');
+      syncEntityMap((latest.resources || []).filter(function(n){return n.available&&Math.hypot(n.x-localAvatar.metadata.targetX,n.z-localAvatar.metadata.targetZ)<75;}),resourceModels,createResource,'id');
       Object.values(remote).forEach(function(a){a.parent=latest.realm?homeView.root:worldRoot;});
+      if(regionChanged){Object.values(eventModels).forEach(disposeNode);eventModels={};}
+      syncEntityMap(latest.ecology?.event?[latest.ecology.event]:[],eventModels,createEvent,'id');
       syncCompanions();
       var shouldBattle = !!latest.battle;
       if (shouldBattle !== battleMode) switchBattle(shouldBattle, latest.battle);
@@ -977,9 +991,11 @@
         if(s.boss){ctx.beginPath();for(var p=0;p<10;p++){var a=p*Math.PI/5-Math.PI/2,rr=p%2?6:14;ctx.lineTo(x+Math.cos(a)*rr,y+Math.sin(a)*rr);}ctx.closePath();ctx.fill();ctx.stroke();}
         else {ctx.beginPath();ctx.arc(x,y,s.group?7:4.5,0,Math.PI*2);ctx.fill();if(s.group){ctx.beginPath();ctx.arc(x,y,11,0,Math.PI*2);ctx.strokeStyle=color;ctx.stroke();}}
       });
+      (latest.resources||[]).filter(n=>n.available).forEach(function(n){var dx=(n.x-localAvatar.position.x)/range*r,dz=(n.z-localAvatar.position.z)/range*r;if(Math.hypot(dx,dz)>r)return;ctx.fillStyle='#76eee0';ctx.fillRect(cx+dx-3,cy+dz-3,6,6);});
+      var event=latest.ecology?.event;if(event){var dx=(event.x-localAvatar.position.x)/range*r,dz=(event.z-localAvatar.position.z)/range*r;if(Math.hypot(dx,dz)<=r){ctx.fillStyle='#ffdf91';ctx.font='bold 22px sans-serif';ctx.fillText('!',cx+dx,cy+dz);}}
       (latest.players||[]).filter(function(p){return p.uid!==latest.you;}).forEach(function(p){var dx=(p.x-localAvatar.position.x)/range*r,dz=(p.z-localAvatar.position.z)/range*r;if(Math.hypot(dx,dz)>r)return;ctx.fillStyle='#7bddff';ctx.fillRect(cx+dx-4,cy+dz-4,8,8);});
       ctx.translate(cx,cy);ctx.rotate(-localAvatar.rotation.y);ctx.fillStyle='#ffffff';ctx.beginPath();ctx.moveTo(0,12);ctx.lineTo(-7,-7);ctx.lineTo(0,-3);ctx.lineTo(7,-7);ctx.closePath();ctx.fill();ctx.restore();
-      ctx.strokeStyle='#91c9b3';ctx.lineWidth=3;ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.stroke();ctx.fillStyle='#eafff4';ctx.font='bold 18px sans-serif';ctx.textAlign='center';ctx.fillText('북',160,17);ctx.font='17px sans-serif';ctx.fillText('주변 65m · ★ 보스',160,326);ctx.font='14px sans-serif';[['약함','#76e1a1'],['비슷','#ffe077'],['강함','#ff7474'],['위험','#cf87ff']].forEach(function(item,i){ctx.fillStyle=item[1];ctx.fillText(item[0],52+i*72,349);});
+      ctx.strokeStyle='#91c9b3';ctx.lineWidth=3;ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.stroke();ctx.fillStyle='#eafff4';ctx.font='bold 18px sans-serif';ctx.textAlign='center';ctx.fillText('북',160,17);ctx.font='17px sans-serif';ctx.fillText('65m · ★ 보스 · ▪ 채집 · ! 발견',160,326);ctx.font='14px sans-serif';[['약함','#76e1a1'],['비슷','#ffe077'],['강함','#ff7474'],['위험','#cf87ff']].forEach(function(item,i){ctx.fillStyle=item[1];ctx.fillText(item[0],52+i*72,349);});
     }
     var lastIntentAt = 0;
     scene.onBeforeRenderObservable.add(function () {
@@ -1013,9 +1029,9 @@
       followCompanions(dt,now);
       var stepped = animateAvatar(localAvatar, dt, Math.hypot(actualX, actualZ) / Math.max(dt, 0.001));
       localAvatar.position.y+=heightAt(localAvatar.position.x,localAvatar.position.z);
-      regionView?.frame(now);
+      regionView?.frame(now,camera,localAvatar);
       if (stepped && controlsEnabled && length > 0.05 && !document.hidden) {
-        var onPath = [-144, 0, 144].some(function (axis) { return Math.abs(localAvatar.position.x - axis) < 4.5 || Math.abs(localAvatar.position.z - axis) < 4.5; });
+        var onPath = global.InsectEcology.routeDistance(localAvatar.position.x,localAvatar.position.z)<4;
         onFootstep({ surface: onPath ? 'path' : 'grass', foot: Math.floor((localAvatar.metadata.walk + Math.PI / 2) / Math.PI) % 2 });
       }
       if (controlsEnabled && Math.abs(camera.radius - lastRadius) > 0.02) {
@@ -1024,6 +1040,8 @@
         radiusSaveTimer = setTimeout(function () { try { global.localStorage.setItem('insect.cameraRadius', String(radiusToSave)); } catch (_) {} }, 300);
       }
       camera.target.x += (localAvatar.position.x - camera.target.x) * Math.min(1, dt * 6); camera.target.z += (localAvatar.position.z - camera.target.z) * Math.min(1, dt * 6); camera.target.y = heightAt(localAvatar.position.x,localAvatar.position.z)+1.4;
+      if(!latest.realm){const minCameraY=heightAt(camera.globalPosition.x,camera.globalPosition.z)+3;if(camera.globalPosition.y<minCameraY)camera.beta=Math.max(camera.lowerBetaLimit,camera.beta-.04);}
+      Object.values(eventModels).forEach(n=>n.getChildMeshes().filter(m=>m.name==='discovery-mote').forEach((m,i)=>{m.position.y=1+i*.6+Math.sin(now/700+i)*.3;}));
       homeView.frame(localAvatar,camera);
       Object.keys(remote).forEach(function (id) { var avatar = remote[id], dx = avatar.metadata.targetX - avatar.position.x, dz = avatar.metadata.targetZ - avatar.position.z, moving = Math.abs(dx) + Math.abs(dz) > 0.025, blend = Math.min(1, dt * 8); avatar.position.x += dx * blend; avatar.position.z += dz * blend; if (moving) avatar.rotation.y = Math.atan2(dx, dz); animateAvatar(avatar, dt, Math.hypot(dx, dz) * blend / Math.max(dt, 0.001)); avatar.position.y+=heightAt(avatar.position.x,avatar.position.z); });
       Object.keys(spawns).forEach(function (id) { var creature = spawns[id]; creature.position.x += (creature.metadata.targetX - creature.position.x) * Math.min(1, dt * 7); creature.position.z += (creature.metadata.targetZ - creature.position.z) * Math.min(1, dt * 7); creature.metadata.phase += dt * 4; (creature.metadata.dinoLegs||[]).forEach(function(leg,li){leg.rotation.x=Math.sin(creature.metadata.phase+(li%2?Math.PI:0))*.25;}); if(creature.metadata.dinoTail)creature.metadata.dinoTail.rotation.y=Math.sin(creature.metadata.phase*.6)*.1; creature.position.y = heightAt(creature.position.x,creature.position.z)+0.25 + Math.abs(Math.sin(creature.metadata.phase)) * 0.17; creature.metadata.wings.forEach(function (wing, wi) { wing.rotation.z = (wi ? 1 : -1) * (0.3 + Math.abs(Math.sin(creature.metadata.phase * 3)) * 0.55); }); });

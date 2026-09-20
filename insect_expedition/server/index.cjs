@@ -1,6 +1,7 @@
 'use strict';
 const Appearance = require('../shared/appearance.js');
 const Regions = require('../shared/regions.js');
+const Ecology=require('../shared/ecology.js'),EcologyServer=require('./ecology.cjs');
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -11,6 +12,7 @@ const WebSocket = require('ws');
 const Data = require('../shared/data.js');
 const Battle = require('../shared/battle.cjs');
 const Expedition = require('./expedition.cjs');
+const Trials=require('./trials.cjs');
 const H=require('../shared/housing.js'),Housing=require('./housing.cjs');
 const { createStore } = require('./data-store.cjs');
 const { createCloudStore } = require('./cloud-store.cjs');
@@ -70,7 +72,7 @@ function progressQuest(profile, type) {
 }
 
 function createRoom(id) {
-  return { id, players: new Map(), spawns: World.makeSpawns(Data.species, Data.biomes).map(Regions.spawnRecord), resources: Data.resourceNodes.map(n => ({...Regions.resourceRecord(n),respawnAt:0})), challenges: new Map(), battles: new Map(), lastBroadcastAt: 0, broadcastTimer: null };
+  return { id, players: new Map(), spawns: EcologyServer.spawns(World.makeSpawns(Data.species, Data.biomes).map(Regions.spawnRecord)), resources: [...Data.resourceNodes.map(n => ({...Regions.resourceRecord(n),respawnAt:0})),...Data.biomes.flatMap(b=>Ecology.nodes(b.id)).filter(n=>!Regions.blocked(n.regionId,n,2))], challenges: new Map(), battles: new Map(), lastBroadcastAt: 0, broadcastTimer: null };
 }
 
 function publicPlayer(player) {
@@ -89,6 +91,7 @@ function makeState(room, player, now = nowMs()) {
   }
   const homeOwner=player.realm?room.players.get(player.realm):null,home=homeOwner?.profile.housing;
   return {
+    ecology:player.realm?null:EcologyServer.state(player,room,now),
     regionId:player.regionId||'safe',portals:player.realm?[]:Regions.portals(player.regionId||'safe'),
     realm:player.realm||'',home:homeOwner?{ownerUid:homeOwner.uid,name:homeOwner.nickname,...home}:null,
     neighbors:[...room.players.values()].filter(p=>p.connected&&p.profile.housing.plot).map(p=>({uid:p.uid,name:p.nickname})),
@@ -125,7 +128,7 @@ function createGameServer(options = {}) {
 
   app.disable('x-powered-by');
   app.get('/insect_expedition/api/health', (_req, res) => {
-    res.json({ ok: true, release: '2026.09.20.14', storage: process.env.INSECT_PROFILE_BUCKET ? 'cloud' : 'local', now: clock(), rooms: rooms.size, online: [...rooms.values()].reduce((sum, room) => sum + [...room.players.values()].filter((p) => p.connected).length, 0) });
+    res.json({ ok: true, release: '2026.09.20.15', storage: process.env.INSECT_PROFILE_BUCKET ? 'cloud' : 'local', now: clock(), rooms: rooms.size, online: [...rooms.values()].reduce((sum, room) => sum + [...room.players.values()].filter((p) => p.connected).length, 0) });
   });
   app.get('*path', (req, res, next) => {
     let requested;
@@ -157,6 +160,7 @@ function createGameServer(options = {}) {
   function broadcast(room) {
     if (room.broadcastTimer) { clearTimeout(room.broadcastTimer); room.broadcastTimer = null; }
     room.lastBroadcastAt = clock();
+    room.spawns=room.spawns.filter(s=>!s.expiresAt||s.reservedBy||s.available&&s.expiresAt>clock());
     World.updateSpawns(room.spawns, clock());
     for (const player of room.players.values()) if (player.connected) send(player.ws, makeState(room, player, clock()));
   }
@@ -171,7 +175,7 @@ function createGameServer(options = {}) {
     spawn.reservedBy = null;
     if (consumed) {
       spawn.available = false;
-      spawn.respawnAt = clock() + (spawn.boss ? 300000 : spawn.field ? 90000 : 30000);
+      spawn.respawnAt = spawn.expiresAt ? 0 : clock() + (spawn.boss ? 300000 : spawn.field ? 45000 : 30000);
     }
   }
 
@@ -201,11 +205,15 @@ function createGameServer(options = {}) {
       if (!nextProfile.processedRewards.includes(record.state.id)) {
         nextProfile.processedRewards.push(record.state.id);
         nextProfile.processedRewards = nextProfile.processedRewards.slice(-100);
-        if (record.state.type === 'field') {
+        if(record.state.trial){
+          if(result.winner===sideKey&&result.reason==='defeat')Trials.award(nextProfile,record.state.trial.stage,result);
+        }else if (record.state.type === 'field') {
           result.xpPerCreature = 0; result.totalXp = 0; result.levelUps = []; result.captureSummary = null; result.feeds = 0; result.gold = 0;
           if (result.winner === sideKey && ['defeat', 'capture'].includes(result.reason)) {
             progressQuest(nextProfile, 'victory');
             Expedition.advance(nextProfile,2);
+            nextProfile.ecology.wins++;
+            if(record.spawn?.boss){nextProfile.resources.essence=Math.min(9999,nextProfile.resources.essence+1);result.essence=1;}
             if(record.spawn?.boss&&!nextProfile.expedition.bosses.includes(record.spawn.id))nextProfile.expedition.bosses.push(record.spawn.id);
             const enemy = record.state.sides.b.team[0];
             const rank = Data.speciesById[enemy.speciesId].rarity;
@@ -230,7 +238,7 @@ function createGameServer(options = {}) {
               const team=record.state.sides[sideKey].team,healthScore=team.reduce((n,c)=>n+c.hp/c.maxHp,0)/team.length;
               const performanceBonus=healthScore*.08+(record.state.turn<=3?.04:0);
               record.state.victoryCaptures=record.state.sides.b.team.map(enemy=>{
-                const rank=Data.speciesById[enemy.speciesId].rarity,chance=Math.min(.98,Data.rarity[rank].capture+performanceBonus+nextProfile.bonuses.collection);
+                const rank=Data.speciesById[enemy.speciesId].rarity,chance=Math.min(.98,Data.rarity[rank].capture+performanceBonus+nextProfile.bonuses.collection+(nextProfile.ecology.charm?.05:0)+(record.spawn?.lured?.15:0));
                 return {chance,performanceBonus,success:!Data.speciesById[enemy.speciesId].eggOnly&&(result.reason==='capture'||rng()<chance),speciesId:enemy.speciesId,level:Math.min(5,enemy.level)};
               });
             }
@@ -270,6 +278,7 @@ function createGameServer(options = {}) {
     }
     const state = Battle.createBattle({ id, type, a: { uid: aPlayer.uid, name: aPlayer.nickname, team: selectedTeam(aPlayer.profile) }, b, now: clock() });
     state.boss = !!spawn?.boss;
+    if(spawn?.trial)Trials.prepare(state,spawn.trial);
     state.biomeId = aPlayer.regionId || spawn?.biomeId || Data.biomes.reduce((best,b)=>World.distance(aPlayer,b.center)<World.distance(aPlayer,best.center)?b:best,Data.biomes[0]).id;
     for(const side of ['a','b'])state.sides[side].auto=true;
     const record = { id, state, sides, spawn, nextAutoAt:clock()+1200, origins: new Map(), finishedAt: 0 };
@@ -277,10 +286,8 @@ function createGameServer(options = {}) {
       const player = room.players.get(uid);
       record.origins.set(uid, { x: player.x, z: player.z });
       World.updateStamina(player, clock()); player.moveActive = false;
-      player.busy = true;
-      player.battleId = id;
-      player.profile.interruptedBattle = { roomId: room.id, battleId: id, at: clock() };
-      player.profile = await store.save(player.profile);
+      const nextProfile=await store.save({...player.profile,interruptedBattle:{roomId:room.id,battleId:id,at:clock()}});
+      player.busy=true;player.battleId=id;player.profile=nextProfile;
     }
     room.battles.set(id, record);
     return record;
@@ -297,7 +304,20 @@ function createGameServer(options = {}) {
     if (player.battleId && !['action', 'return', 'auto-battle'].includes(name)) throw new Error('전투 결과에서 돌아가기를 눌러 탐험을 계속해 주세요.');
     if(player.harvest&&!['move','gather','gather-cancel'].includes(name))throw Error('자재 채집을 마치거나 취소한 뒤 이용해 주세요.');
     if(player.realm&&!['move','home-travel','land-claim','house-place','house-remove','house-door','character','appearance','sell-resource','sell-materials','rename','feed','team','team-slot','dex-seen','dex-claim','incubate','hatch','research-claim','heal','fuse','evolve'].includes(name))throw Error('탐험지로 돌아간 뒤 이용해 주세요.');
+    if(name==='trial-start'){
+      rate(player,'trial',1200);const stage=Number(payload.stage),team=selectedTeam(player.profile);
+      if(!Number.isInteger(stage)||stage<1||stage>24||stage>player.profile.trials.cleared+1)throw Error('앞 단계를 돌파하면 다음 시련이 열려요.');
+      if(team.length!==3)throw Error('동료 3마리를 팀에 편성한 뒤 시련에 도전하세요.');
+      const spawn=Trials.spawn(stage);spawn.x=player.x;spawn.z=player.z;
+      return {battleId:(await createBattleRecord(room,'field',player,spawn)).id};
+    }
+    if(['rune-upgrade','legacy-research'].includes(name)){rate(player,'specialize',500);return Trials.command(player,name,payload,store);}
+    if(['craft','lure','explore-event','ecology-claim','nectar'].includes(name)){
+      rate(player,'ecology',500);
+      return EcologyServer.command({room,player,name,payload,now:clock(),store,rng});
+    }
     if(name==='home-travel'){
+
       rate(player,'home-travel',600);
       const destination=String(payload.destination||'home');
       if(destination==='home'){
@@ -309,7 +329,7 @@ function createGameServer(options = {}) {
         if(destination!=='field'&&!camp)throw Error('이동할 장소를 선택해 주세요.');
         player.realm='';player.regionId=camp?camp.id:'safe';const entrance=Regions.spawn(player.regionId);player.x=entrance.x;player.z=entrance.z;player.profile.regionId=player.regionId;player.profile.location={...entrance};player.profile=await store.save(player.profile);
       }
-      player.moveActive=false;player.sprinting=false;player.mount='';player.lastMoveAt=clock();
+      player.moveActive=false;player.mount=player.realm?'':player.profile.mounts.equipped||'';player.lastMoveAt=clock();
       room.challenges.forEach((c,id)=>{if(c.from===player.uid||c.to===player.uid)room.challenges.delete(id);});
       return {message:destination==='home'?'정원에 도착했어요.':destination==='field'?'마을로 돌아왔어요.':Data.constructionCamps.find(c=>c.id===destination).name+'에 도착했어요. 가까운 채집물을 선택하세요.'};
     }
@@ -336,11 +356,11 @@ function createGameServer(options = {}) {
       const node=room.resources.find(n=>n.id===payload.nodeId);
       if(!node||node.regionId!==player.regionId||!Data.resources[node.kind]?.construction||node.respawnAt>clock()||(node.harvestBy&&node.harvestUntil>clock()))throw Error('지금은 채집할 수 없는 자재입니다.');
       if(World.distance(player,node)>4||World.segmentBlocked(player,node))throw Error('채집물 가까이 다가가 주세요.');
-      player.harvest={nodeId:node.id,kind:node.kind,startedAt:clock(),finishAt:clock()+2400};player.moveActive=false;player.sprinting=false;player.mount='';
+      player.harvest={nodeId:node.id,kind:node.kind,startedAt:clock(),finishAt:clock()+2400,resumeSprint:!!player.sprinting};player.moveActive=false;player.sprinting=false;player.mount='';
       node.harvestBy=player.uid;node.harvestUntil=clock()+15000;return {...player.harvest};
     }
     if(name==='gather-cancel'){
-      const node=room.resources.find(n=>n.id===player.harvest?.nodeId);if(node?.harvestBy===player.uid){node.harvestBy=null;node.harvestUntil=0;}player.harvest=null;return {message:'채집을 취소했어요.'};
+      const node=room.resources.find(n=>n.id===player.harvest?.nodeId);if(node?.harvestBy===player.uid){node.harvestBy=null;node.harvestUntil=0;}player.mount=player.profile.mounts.equipped||'';player.sprinting=!!player.harvest?.resumeSprint;player.harvest=null;return {message:'채집을 취소했어요.'};
     }
     if (name === 'auto-battle') {
       const record=room.battles.get(player.battleId),side=record?.sides.get(player.uid);
@@ -387,7 +407,9 @@ function createGameServer(options = {}) {
       const next = JSON.parse(JSON.stringify(player.profile));
       const reward=building?{kind:node.kind,amount,gold:0,message:Data.resources[node.kind].name+' '+amount+'개를 가방에 넣었어요!'}:Expedition.gather(next,node,rng);
       if(building){next.resources[node.kind]+=amount;Expedition.advance(next,1);}
+      next.ecology.gathered++;
       player.profile = await store.save(next);
+      player.mount=player.profile.mounts.equipped||'';player.sprinting=player.harvest?!!player.harvest.resumeSprint:player.sprinting;
       player.harvest=null;node.harvestBy=null;node.harvestUntil=0;
       node.respawnAt = clock()+(building?15000:node.kind==='egg'?180000:node.kind==='crystal'?60000:30000);
       return reward;
@@ -630,7 +652,9 @@ function createGameServer(options = {}) {
       if (!record || !side || player.battleId !== record.id || Number(payload.turn) !== record.state.turn) throw new Error('현재 전투 턴과 맞지 않는 명령입니다.');
       const action = payload.action && typeof payload.action === 'object' ? payload.action : { type: payload.action, creatureId: payload.creatureId };
       if (action.type === 'capture' && player.profile.collection.length >= 120) throw new Error('곤충 보관함이 가득 찼습니다.');
+      if(action.type==='tonic'&&(player.profile.resources.tonic||0)<1)throw Error('제작한 버섯 회복제가 없어요.');
       const outcome = Battle.submitAction(record.state, side, action, { now: clock(), rng });
+      if(action.type==='tonic'){const next=structuredClone(player.profile);next.resources.tonic--;player.profile=await store.save(next);}
       record.state = outcome.state;
       if(outcome.resolved)record.nextAutoAt=clock()+3500;
       if (record.state.status !== 'active') { record.finishedAt = clock(); await completeBattle(room, record); }

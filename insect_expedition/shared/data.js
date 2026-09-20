@@ -121,6 +121,10 @@
   const resources = {
     berries: {name:'숲 열매',icon:'🫐',sell:5}, ore: {name:'빛나는 광석',icon:'💎',sell:9}, crystal: {name:'온기 수정',icon:'🔮',sell:0}, egg: {name:'동굴의 알',icon:'🥚',sell:0}
   };
+  Object.assign(resources,{
+    sap:{name:'황금 수액',icon:'🍯',sell:7},mushroom:{name:'이슬 버섯',icon:'🍄',sell:6},pollen:{name:'달꽃 가루',icon:'🌼',sell:6},
+    shard:{name:'시련 문장',icon:'🔱',sell:0},essence:{name:'수호 정수',icon:'✦',sell:0},bait:{name:'수액 유인 먹이',icon:'🍯',sell:0},tonic:{name:'버섯 회복제',icon:'🧪',sell:0},nectar:{name:'성장 농축액',icon:'💧',sell:0}
+  });
   const resourceNodes = [
     {id:'berries-camp',kind:'berries',name:'산딸기 덤불',x:-5,z:26},
     {id:'ore-camp',kind:'ore',name:'반짝 광맥',x:18,z:23},

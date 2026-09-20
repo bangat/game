@@ -9,9 +9,9 @@ const fixed = value => () => value;
 const tests = [];
 const test = (name, fn) => tests.push([name, fn]);
 
-test('곤충과 공룡 30종의 공격·스킬 구성이 유효하다', () => {
-  assert.equal(Data.species.length, 30);
-  assert.equal(new Set(Data.species.map(s => s.id)).size, 30);
+test('기본종과 각성체 39종의 공격·스킬 구성이 유효하다', () => {
+  assert.equal(Data.species.length, 39);
+  assert.equal(new Set(Data.species.map(s => s.id)).size, 39);
   assert.equal(Data.species.filter(s=>s.category==='공룡').length,7);
   for (const item of Data.species) {
     assert.ok(item.normalAttack && item.normalAttack.name);
