@@ -44,9 +44,19 @@
     row('cave_stag', '동굴사슴벌레', '사슴벌레', '성충', '동굴', { time: '모두', weather: '모두', near: '수정광맥' }, 'elite', [88, 31, 28, 14], attack('antler_toss', '큰턱 뒤집기', 28, 0.91), skill('crystal_clamp', '수정턱 봉쇄', 46, 0.84, 3, { status: 'stunned', turns: 1 }, '수정처럼 단단한 턱으로 행동을 봉쇄한다'), 72, 1.7, 'stag', 'king_stag'),
     row('king_stag', '왕사슴벌레', '사슴벌레', '성충', '동굴', { time: '모두', weather: '모두', near: '수정광맥' }, 'monster', [118, 42, 34, 18], attack('royal_clamp', '왕턱 내려찍기', 35, 0.92), skill('kingdom_crush', '왕의 협공', 58, 0.86, 3, { status: 'exposed', turns: 2 }, '거대한 턱으로 적의 빈틈을 완전히 드러낸다'), 82, 2.08, 'stag'),
     row('storm_cicada', '폭우울림매미', '매미', '성충', '숲', { time: '낮', weather: '비', near: '큰 나무' }, 'elite', [82, 29, 21, 23], attack('sound_burst', '울림 파동', 27, 0.93, 'sonic'), skill('storm_chorus', '폭우합창', 43, 0.88, 3, { status: 'weakened', turns: 2 }, '굵은 울음으로 공격력을 떨어뜨린다'), 74, 1.65, 'cicada'),
-    row('ancient_rhino', '고목왕장수풍뎅이', '장수풍뎅이', '성충', '고목숲', { time: '밤', weather: '모두', near: '천년고목' }, 'monster', [132, 38, 34, 16], attack('horn_drive', '왕뿔 밀어붙이기', 31, 0.91), skill('forest_upheaval', '고목숲 뒤엎기', 54, 0.83, 3, { status: 'exposed', turns: 2 }, '뿔로 땅을 들어 올려 큰 충격을 준다'), 88, 2.35, 'rhino_boss')
+    row('ancient_rhino', '고목왕장수풍뎅이', '장수풍뎅이', '성충', '고목숲', { time: '밤', weather: '모두', near: '천년고목' }, 'monster', [132, 38, 34, 16], attack('horn_drive', '왕뿔 밀어붙이기', 31, 0.91), skill('forest_upheaval', '고목숲 뒤엎기', 54, 0.83, 3, { status: 'exposed', turns: 2 }, '뿔로 땅을 들어 올려 큰 충격을 준다'), 88, 2.35, 'rhino_boss'),
+    row('fern_raptor','새싹랩터','공룡','유체','초원',{near:'고사리 군락'},'uncommon',[65,22,15,24],attack('raptor_pounce','날쌘 발톱',22,.96),null,28,1.1,'dino_raptor','ember_raptor'),
+    row('marsh_spitter','늪독딜로','공룡','성체','습지',{near:'늪 웅덩이'},'rare',[85,31,22,25],attack('venom_glob','독액 발사',25,.95,'ranged'),skill('venom_comet','맹독 혜성',43,.91,3,{status:'weakened',turns:2},'멀리서 커다란 독액을 발사한다'),61,1.3,'dino_spitter'),
+    row('granite_triceratops','화강트리케라','공룡','성체','바위터',{near:'거석'},'elite',[120,38,40,16],attack('triple_horn','세뿔 돌진',29,.94),skill('granite_charge','거석 파쇄',48,.91,3,{status:'guard',turns:2},'뿔을 낮춰 돌진한 뒤 단단한 방어 자세를 취한다'),72,1.65,'dino_trike'),
+    row('crystal_ankylosaur','수정안킬로','공룡','성체','동굴',{near:'푸른 수정'},'elite',[140,42,48,12],attack('crystal_tail','수정 꼬리치기',32,.95),skill('crystal_quake','수정 대지진',52,.92,3,{status:'exposed',turns:2},'꼬리로 땅을 내리쳐 수정 충격파를 퍼뜨린다'),77,1.8,'dino_anky'),
+    row('ember_raptor','화염랩터','공룡','성체','폐시설',{near:'붉은 균열'},'elite',[110,49,29,34],attack('ember_claw','화염 발톱',32,.96),skill('ember_blast','화염탄 폭격',55,.9,3,{status:'exposed',turns:2},'몸을 낮춘 뒤 거대한 화염탄을 발사한다'),78,1.5,'dino_raptor','ancient_rex'),
+    row('ancient_rex','고대폭군렉스','공룡','고대종','동굴',{near:'고대 화석'},'monster',[195,65,48,26],attack('tyrant_bite','폭군의 이빨',39,.93),skill('tyrant_roar','폭군의 포효',68,.9,3,{status:'weakened',turns:2},'거대한 포효의 파동으로 사냥터를 뒤흔든다'),90,2.25,'dino_rex')
+
   ];
 
+  const rangedNormals = new Set(['honey_mason_bee','moon_moth','mist_butterfly','storm_cicada','marsh_spitter']);
+  const rangedSkills = new Set(['sky_current','moon_drowse','mist_mirror','storm_chorus','venom_comet','ember_blast','tyrant_roar','crystal_quake']);
+  species.forEach(s=>{if(rangedNormals.has(s.id))s.normalAttack.kind='ranged';if(s.skill)s.skill.kind=rangedSkills.has(s.skill.id)?'ranged':'physical';});
   const speciesById = Object.fromEntries(species.map(item => [item.id, item]));
   const biomes = [
     { id:'forest', name:'솔방울 숲', habitat:'숲', habitats:['숲','고목숲'], center:{x:-72,z:-72}, radius:36, safe:false, color:'#315f45' },
@@ -59,6 +69,8 @@
     { id:'cave', name:'울림 동굴', habitat:'동굴', center:{x:0,z:72}, radius:36, safe:false, color:'#4b4b55' },
     { id:'facility', name:'버려진 온실', habitat:'폐시설', center:{x:72,z:72}, radius:36, safe:false, color:'#59666a' }
   ];
+  const huntingLevels = {safe:[1,2],grassland:[3,7],farm:[6,11],wetland:[9,14],river:[12,17],rock:[15,20],forest:[17,23],facility:[22,28],cave:[26,32]};
+  biomes.forEach(b=>{b.center.x*=2;b.center.z*=2;if(!b.safe)b.radius=72;b.levels=huntingLevels[b.id];});
   // 현재 지역은 고정된 탐험 시간대입니다. 낮밤·날씨 조건을 구현된 기능으로 표시하지 않습니다.
   species.forEach(item => { item.spawnConditions.time = '모두'; item.spawnConditions.weather = '모두'; });
   const obstacles = [
@@ -71,6 +83,7 @@
     { id: 'facility-main', type: 'box', x: 73, z: 75, width: 25, depth: 17 },
     { id: 'facility-tank', type: 'circle', x: 93, z: 91, radius: 6 }
   ];
+  obstacles.forEach(o=>{if(o.id!=='lab'){o.x*=2;o.z*=2;}});
   const characters = [
     { id: 'original', name: '나의 탐험가', role: '익숙한 모습', body: '#5ed6f3', accent: '#fff0a6', skin: '#f2c9a5', hair: '#3c2b32', shape: 'round', accessory: 'badge', free: true },
     { id: 'scout', name: '솔잎 정찰가', role: '숲길 안내', body: '#4fb477', accent: '#d9f99d', skin: '#dca982', hair: '#27352c', shape: 'light', accessory: 'scarf', free: true },
@@ -99,14 +112,50 @@
     {id:'ore-cave',kind:'ore',name:'동굴 입구 광맥',x:18,z:55},
     {id:'berries-farm',kind:'berries',name:'농장 열매',x:-55,z:58}
   ];
+  resourceNodes.forEach(n=>{if(!n.id.endsWith('-camp')){n.x*=2;n.z*=2;}});
+  const mounts = {motorcycle:{name:'숲길 오토바이',icon:'🏍️',speed:22},handcart:{name:'탐험 리어카',icon:'🛒',speed:18}};
   const shop = [
+    {id:'mount-motorcycle',name:'숲길 오토바이',price:2000,mountId:'motorcycle',description:'영구 보유 · 이동 속도 22 · 스태미나 소모 없음'},
+    {id:'mount-handcart',name:'탐험 리어카',price:1000,mountId:'handcart',description:'영구 보유 · 이동 속도 18 · 스태미나 소모 없음'},
     {id:'feed',name:'곤충 사료',price:15,feeds:1,description:'경험치 +84 · 보유 곤충에게 사용'},
     {id:'feed-pack',name:'사료 묶음',price:60,feeds:5,description:'곤충 사료 5개 · 낱개보다 저렴해요'},
     {id:'stone-egg',name:'돌틈 알',price:120,speciesId:'stone_ground_beetle',level:2,description:'Lv.2 돌틈먼지벌레가 바로 부화해요'},
     {id:'moon-cocoon',name:'달빛 고치',price:320,speciesId:'moon_moth',level:3,description:'Lv.3 달무늬큰나방이 바로 깨어나요'},
     {id:'stag-egg',name:'동굴의 알',price:650,speciesId:'cave_stag',level:3,description:'Lv.3 동굴사슴벌레가 바로 부화해요'}
   ];
-  const collectionMilestones = [{ count: 5, feeds: 5 }, { count: 10, feeds: 10 }, { count: 15, feeds: 15 }, { count: 21, feeds: 25 }];
+  const skillEffects = {
+    sky_current:{color:'#75e6ff',style:'wave',pitch:520}, moon_drowse:{color:'#d5b2ff',style:'wave',pitch:660},
+    golden_guard:{color:'#ffe077',style:'guard',pitch:220}, violet_cross:{color:'#d884ff',style:'slash',pitch:880},
+    mist_mirror:{color:'#a0ffe3',style:'wave',pitch:740}, crystal_clamp:{color:'#83caff',style:'slash',pitch:330},
+    kingdom_crush:{color:'#ffba66',style:'slash',pitch:160}, storm_chorus:{color:'#a0b5ff',style:'wave',pitch:260},
+    forest_upheaval:{color:'#a9df78',style:'wave',pitch:100},
+    venom_comet:{color:'#c1fa64',style:'wave',pitch:240},granite_charge:{color:'#ffcb89',style:'guard',pitch:180},
+    crystal_quake:{color:'#8feaff',style:'wave',pitch:130},ember_blast:{color:'#ff9255',style:'wave',pitch:200},tyrant_roar:{color:'#ff5474',style:'wave',pitch:85}
+  };
+  const startVillage = { x: 7, z: 14 };
+  const fieldBosses = [
+    ['forest','ancient_rhino',27,-182,-176,'천년고목의 수호자'],
+    ['grassland','fern_raptor',10,36,-116,'초원의 새싹왕'],
+    ['rock','granite_triceratops',24,106,-178,'거석의 세뿔 군주'],
+    ['wetland','marsh_spitter',18,-182,32,'독안개의 지배자'],
+    ['river','azure_dragonfly',21,180,34,'은물결의 비행왕'],
+    ['farm','sun_scarab',14,-106,108,'해바라기의 파수꾼'],
+    ['cave','ancient_rex',36,-38,124,'울림 동굴의 고대폭군'],
+    ['facility','ember_raptor',32,104,108,'화염 온실의 추적자']
+  ].map(([biomeId,speciesId,level,x,z,name])=>({id:'boss-'+biomeId,biomeId,speciesId,level,x,z,name}));
+  const fusionTargets = {
+    fern_raptor:'marsh_spitter',marsh_spitter:'ember_raptor',granite_triceratops:'ancient_rex',crystal_ankylosaur:'ancient_rex',ember_raptor:'ancient_rex',
+    dew_ladybird:'honey_mason_bee',reed_cricket:'stream_nymph',clover_grasshopper:'orchard_longhorn',
+    bark_ant:'stone_ground_beetle',pond_skater:'stream_nymph',moss_caterpillar:'moon_moth',
+    amber_grub:'sun_scarab',granary_weevil:'orchard_longhorn',stream_nymph:'azure_dragonfly',
+    stone_ground_beetle:'sun_scarab',orchard_longhorn:'sun_scarab',honey_mason_bee:'azure_dragonfly',
+    azure_dragonfly:'storm_cicada',moon_moth:'storm_cicada',sun_scarab:'cave_stag',
+    mist_butterfly:'storm_cicada',violet_mantis:'cave_stag',cave_stag:'king_stag',storm_cicada:'ancient_rhino'
+  };
+  const fusionRecipes = Object.fromEntries(Object.entries(fusionTargets).map(([id,result])=>[id,{
+    result, count:3, gold:[60,120,240,400,700][rarityOrder.indexOf(speciesById[id].rarity)]
+  }]));
+  const collectionMilestones = [{ count: 5, feeds: 5 }, { count: 10, feeds: 10 }, { count: 15, feeds: 15 }, { count: 21, feeds: 25 }, { count: 27, feeds: 40 }];
 
-  return Object.freeze({ title: '이슬숲 탐험대', world: { minX: -120, maxX: 120, minZ: -120, maxZ: 120, spawn: { x: 0, y: 1, z: 0 }, arena: { x: 0, y: 1, z: 0 } }, rarity, rarityOrder, quests, resources, resourceNodes, shop, collectionMilestones, species, speciesById, biomes, obstacles, characters });
+  return Object.freeze({ title: '이슬숲 탐험대', world: { minX: -240, maxX: 240, minZ: -240, maxZ: 240, spawn: { x: 0, y: 1, z: 0 }, arena: { x: 0, y: 1, z: 0 } }, skillEffects, startVillage, fieldBosses, fusionRecipes, rarity, rarityOrder, quests, resources, resourceNodes, mounts, shop, collectionMilestones, species, speciesById, biomes, obstacles, characters });
 });

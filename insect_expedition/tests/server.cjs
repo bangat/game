@@ -51,7 +51,7 @@ test('프로필 구버전 자료를 제한된 최신 스키마로 이관하고 �
   assert.equal(migrated.version, 5);
   assert.equal(migrated.collection[0].level, 50);
   assert.deepEqual(migrated.team, ['c1']);
-  assert.deepEqual(migrated.location, { x: 120, z: -120 });
+  assert.deepEqual(migrated.location, { x: 240, z: -240 });
   const dbPath = tempDb();
   const store = createStore({ dbPath, starterIds: ['dew_ladybird'] });
   const profile = store.get('u1', '테스터');
@@ -88,12 +88,12 @@ test('방 종류, 상태, 멤버십을 모두 검증한다', async () => {
 test('모든 종을 실제 서식지에 장애물과 겹치지 않게 배치한다', () => {
   const spawns = World.makeSpawns(Data.species, Data.biomes);
   const habitatSpawns = spawns.filter((spawn) => spawn.id.startsWith('habitat-'));
-  assert.equal(habitatSpawns.length, Data.species.length);
+  assert.equal(habitatSpawns.length, Data.species.length * 3);
   for (const species of Data.species) {
     const spawn = habitatSpawns.find((item) => item.speciesId === species.id);
     const biome = Data.biomes.find((item) => (item.habitats || [item.habitat]).includes(species.habitat));
     assert.ok(spawn && biome, `${species.id} 서식지 누락`);
-    assert.ok(World.distance(spawn, biome.center) <= 30, `${species.id}가 ${biome.name} 밖에 배치됨`);
+    assert.ok(World.distance(spawn, biome.center) <= biome.radius, `${species.id}가 ${biome.name} 밖에 배치됨`);
     assert.equal(World.pointBlocked(spawn, 2), false, `${species.id}가 장애물과 겹침`);
   }
 });
@@ -190,7 +190,7 @@ test('두 WebSocket 클라이언트의 권위 명령, 중복 제거, PvP와 재�
   a.send({ type: 'command', id: 'return-field', name: 'return', payload: { battleId: fieldRecord.id } });
   assert.equal((await a.next((m) => m.type === 'ack' && m.id === 'return-field')).ok, true);
   room.players.get('a').x = -30; room.players.get('a').z = 0;
-  room.players.get('b').x = 30; room.players.get('b').z = 0;
+  room.players.get('b').x = -35; room.players.get('b').z = 0;
   a.send({ type: 'command', id: 'decline-request', name: 'challenge', payload: { targetUid: 'b' } });
   const declineRequest = await a.next((m) => m.type === 'ack' && m.id === 'decline-request');
   b.send({ type: 'command', id: 'decline-response', name: 'respond', payload: { requestId: declineRequest.result.requestId, accept: false } });

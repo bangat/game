@@ -31,7 +31,7 @@ test('실제 Chromium에서 탐험 월드와 전투 타격 프레임을 렌더�
   assert.ok(exploration.meshes > 30);
   assert.ok(exploration.merged > 0, '정적 환경 메시가 재질별로 병합되어야 한다');
   assert.equal(exploration.active, 'explore-camera');
-  assert.equal(exploration.size, 240);
+  assert.equal(exploration.size, 480);
   assert.equal(exploration.selfDuplicate, false);
   assert.equal(exploration.friend, true);
   await page.evaluate(() => { const button = document.createElement('button'); button.id = 'focus-button'; document.body.appendChild(button); button.focus(); });
@@ -65,6 +65,13 @@ test('실제 Chromium에서 탐험 월드와 전투 타격 프레임을 렌더�
   assert.equal(await page.evaluate(() => smoke.world.scene.meshes.filter((mesh) => mesh.name === 'hit-spark' && !mesh.isDisposed()).length), 6, '일반 공격은 고유 스킬 파티클 수를 사용하지 않아야 한다');
   if (process.env.WORLD_SCREENSHOT) await page.screenshot({ path: `${process.env.WORLD_SCREENSHOT}-battle.png` });
   await page.waitForTimeout(1000);
+  for(const type of ['attack','skill']) {
+    await page.evaluate(type=>{smoke.rangedDone=false;smoke.world.playEvents([{type,attackKind:'ranged',skillId:'venom_comet',actorSide:'a',targetSide:'b'}]).then(()=>{smoke.rangedDone=true;});},type);
+    await page.waitForFunction(type=>smoke.world.scene.meshes.some(m=>m.name===(type==='skill'?'skill-projectile':'normal-projectile')),type);
+    const shot=await page.evaluate(type=>{const actor=smoke.world.scene.transformNodes.find(n=>n.metadata?.side==='player'),projectile=smoke.world.scene.meshes.find(m=>m.name===(type==='skill'?'skill-projectile':'normal-projectile'));return {actorX:actor.position.x,diameter:projectile.getBoundingInfo().boundingBox.extendSize.x*2,effects:smoke.world.scene.transformNodes.some(n=>n.name.startsWith('skill-effect-'))};},type);
+    assert(shot.actorX<=-6.5,'원거리 공격은 제자리 발사');assert.equal(shot.effects,type==='skill');assert(type==='skill'?shot.diameter>1:shot.diameter<.6,'일반탄과 기술탄의 크기 구분');
+    await page.waitForFunction(()=>smoke.rangedDone);
+  }
   const returnMaterials = await page.evaluate(() => {
     smoke.world.setState({battle:null});
     const scene=smoke.world.scene;

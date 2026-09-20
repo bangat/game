@@ -16,6 +16,7 @@
     connection(message, false);
   }
   function send(name, payload) {
+    if (name === 'navigate') { if(snapshot?.battle)return Promise.reject(new Error('전투를 마친 뒤 길 안내를 시작해 주세요.')); const target=InsectNavigation.destination(payload.id); if(!target)return Promise.reject(new Error('목적지를 찾지 못했어요.')); world.setNavigation(target); return Promise.resolve({message:target.name+' 길 안내를 시작합니다. 화살표를 따라 이동하세요.'}); }
     if (name === 'exit') return leave();
     if (name === 'sound') return Promise.resolve({message: InsectAudio.toggle() ? '효과음을 켰습니다.' : '효과음을 껐습니다.'});
     if (animating && (name === 'action' || name === 'return')) return Promise.reject(new Error('전투 연출이 끝나면 다음 행동을 선택해 주세요.'));
@@ -28,6 +29,7 @@
     });
   }
   async function leave() {
+    InsectAudio.setBattle(false);
     stopped = true; clearTimeout(retryTimer);
     if (socket) socket.close();
     if (user && roomId) {
@@ -97,11 +99,13 @@
               animationBatches -= 1; animating = animationBatches > 0;
               if (!animating) { ui.setAnimating(false); animationView = null; if (snapshot) { ui.setState(snapshot); shownState = snapshot; } }
               if (!animating && snapshot && snapshot.battle && snapshot.battle.status === 'finished') {
+                InsectAudio.setBattle(false);
                 const ownSide = snapshot.battle.sides.a.uid === snapshot.you ? 'a' : 'b';
-                InsectAudio.play(snapshot.battle.result && snapshot.battle.result.winner === ownSide ? 'victory' : 'failure');
+                InsectAudio.play(snapshot.battle.result && snapshot.battle.result.winner === ownSide ? 'victory' : 'defeat');
               }
             });
           } else if (!animating) { ui.setState(value); shownState = value; }
+          if (!animating) InsectAudio.setBattle(battle?.status === 'active');
           if (seenEvents.size > 2000) seenEvents.clear();
         } else if (value.type === 'error') {
           connection(value.error || value.message || '접속을 확인해 주세요.', false);
@@ -109,6 +113,7 @@
         }
       };
       socket.onclose = () => {
+        InsectAudio.setBattle(false);
         connection('연결이 끊겼습니다. 기록을 보존하고 다시 연결합니다…', false);
         for (const request of pending.values()) { clearTimeout(request.timer); request.reject(new Error('연결이 끊겼습니다. 서버 기록을 복원합니다.')); }
         pending.clear();
@@ -124,8 +129,12 @@
       selectedCharacter = id; if (window.InsectCharacters) InsectCharacters.select(id);
       if (world) world.setCharacter(id);
     }, onEnter: () => { if (world && world.setEnabled) world.setEnabled(true); const canvas = document.getElementById('game-canvas'); canvas.tabIndex = 0; canvas.focus(); } });
-    world = InsectWorld.create({ canvas: document.getElementById('game-canvas'), enabled: false, onMove: value => { moveIntent = value; }, onSelect: selection => { if (ui.setSelection) ui.setSelection(selection); }, onFootstep: step => InsectAudio.footstep(step), onBattleHit: event => {
-      InsectAudio.play(event.type === 'skill' ? 'skill' : 'hit');
+    world = InsectWorld.create({ canvas: document.getElementById('game-canvas'), enabled: false, onMove: value => { moveIntent = value; }, onSelect: selection => { if (ui.setSelection) ui.setSelection(selection); }, onFootstep: step => InsectAudio.footstep(step), onSkillStart: event => InsectAudio.play('skill',event.skillId), onBattleSwitch: event => {
+      const side=animationView?.battle?.sides[event.actorSide];if(!side)return;
+      const index=side.team.findIndex(c=>c.id===event.creatureId);if(index>=0)side.active=index;
+      animationView.battle.events=[event];ui.setState(animationView);
+    }, onBattleHit: event => {
+      InsectAudio.play(event.missed ? 'failure' : 'hit');
       if (!animationView || !animationView.battle || event.missed) return;
       const side = animationView.battle.sides && animationView.battle.sides[event.targetSide];
       const target = side && (side.team.find(creature => creature.id === event.targetCreatureId) || side.team[side.active]);

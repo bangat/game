@@ -33,7 +33,7 @@ test('여섯 캐릭터 ID와 무료 선택 저장 계약을 지킨다', () => {
 test('월드 경계, 안전 구역, 서버 공유 장애물 형식이 안정적이다', () => {
   const window = load('world.js');
   const api = window.InsectWorld;
-  assert.equal(api.worldSize, 240);
+  assert.equal(api.worldSize, 480);
   assert.deepEqual(JSON.parse(JSON.stringify(api.safeZone)), { x: 0, z: 0, radius: 22 });
   assert.equal(api.biomes.length, 9);
   assert.deepEqual(Array.from(api.biomes, (item) => item.id), ['forest', 'grassland', 'rock', 'wetland', 'safe', 'river', 'farm', 'cave', 'facility']);
@@ -62,7 +62,9 @@ test('달리기는 실제로 빠르고 스태미나 소진 후 자동 해제·�
   World.movePlayer(walk,{x:1,z:0},1200); World.movePlayer(run,{x:1,z:0},1200);
   assert(run.x > walk.x * 1.7);
   for(let now=1400;now<=8000;now+=200) { run.x=0;run.z=40;World.movePlayer(run,{x:1,z:0},now); }
+  assert.equal(run.sprinting,true);assert(run.stamina>70,'7초 달려도 70 이상 유지');
+  for(let now=8200;now<=27000;now+=200) { run.x=0;run.z=40;World.movePlayer(run,{x:1,z:0},now); }
   assert.equal(run.sprinting,false);assert(run.stamina<15);
-  World.movePlayer(run,{x:0,z:0},8200);const depleted=run.stamina;
-  World.updateStamina(run,10200);assert(run.stamina>depleted&&run.stamina<100);
+  World.movePlayer(run,{x:0,z:0},27200);const depleted=run.stamina;
+  World.updateStamina(run,29200);assert(run.stamina>depleted&&run.stamina<100);
 });

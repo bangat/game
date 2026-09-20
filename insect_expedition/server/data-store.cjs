@@ -48,6 +48,7 @@ function createProfile(uid, nickname, starterIds = []) {
     discoveries: collection.map((item) => item.speciesId),
     encyclopedia: { seen: collection.map(item => item.speciesId), claimed: [], milestones: [] },
     bonuses: { collection: 0 },
+    mounts: {owned:[],equipped:''},
     gold: 0, resources: {berries:0,ore:0},
     supplies: { heals: 3, feeds: 0 },
     quest: { id: 'dew-sample', status: 'available', progress: 0, target: 3 },
@@ -90,6 +91,10 @@ function migrateProfile(input, uid, nickname, starterIds) {
       claimed: [...new Set((Array.isArray(old.encyclopedia?.claimed) ? old.encyclopedia.claimed : []).filter(id => VALID_SPECIES.has(id)))],
       milestones: [...new Set((Array.isArray(old.encyclopedia?.milestones) ? old.encyclopedia.milestones : []).filter(n => Data.collectionMilestones.some(m => m.count === n)))]
     },
+    mounts: {
+      owned: [...new Set((Array.isArray(old.mounts?.owned)?old.mounts.owned:[]).filter(id=>Data.mounts[id]))],
+      equipped: Data.mounts[old.mounts?.equipped] && Array.isArray(old.mounts?.owned) && old.mounts.owned.includes(old.mounts.equipped) ? old.mounts.equipped : ''
+    },
     bonuses: { collection: Math.max(0, Math.min(0.35, Number(old.bonuses && old.bonuses.collection) || 0)) },
     gold: Math.max(0, Math.min(999999, Math.floor(finiteNumber(old.gold,0)))),
     resources: Object.fromEntries(Object.keys(Data.resources).map(id => [id,Math.max(0, Math.min(9999, Math.floor(finiteNumber(old.resources?.[id],0))))])),
@@ -105,8 +110,8 @@ function migrateProfile(input, uid, nickname, starterIds) {
       completed: Math.max(0, Math.floor(finiteNumber(old.quest && old.quest.completed, 0)))
     },
     location: {
-      x: Math.max(-120, Math.min(120, finiteNumber(old.location && old.location.x, base.location.x))),
-      z: Math.max(-120, Math.min(120, finiteNumber(old.location && old.location.z, base.location.z)))
+      x: Math.max(Data.world.minX, Math.min(Data.world.maxX, finiteNumber(old.location && old.location.x, base.location.x))),
+      z: Math.max(Data.world.minX, Math.min(Data.world.maxX, finiteNumber(old.location && old.location.z, base.location.z)))
     },
     processedRewards: (Array.isArray(old.processedRewards) ? old.processedRewards : []).filter((id) => typeof id === 'string').slice(-100),
     interruptedBattle: old.interruptedBattle && typeof old.interruptedBattle === 'object' ? old.interruptedBattle : null,

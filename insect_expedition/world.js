@@ -2,7 +2,7 @@
   'use strict';
 
   var B = global.BABYLON;
-  var WORLD_HALF = 120;
+  var WORLD_HALF = 240;
   var ASSET_ROOT = '';
   if (typeof document !== 'undefined') { for (var scriptIndex = document.scripts.length - 1; scriptIndex >= 0; scriptIndex -= 1) { var scriptSrc = document.scripts[scriptIndex].src || ''; if (/\/world\.js(?:\?|$)/.test(scriptSrc)) { ASSET_ROOT = scriptSrc.slice(0, scriptSrc.lastIndexOf('/') + 1); break; } } }
   var CHARACTER_IDS = ['original', 'scout', 'botanist', 'beekeeper', 'miner', 'river'];
@@ -28,6 +28,8 @@
     { id: 'facility-tank', type: 'circle', x: 93, z: 91, radius: 6 }
   ];
 
+  OBSTACLES = global.InsectData ? global.InsectData.obstacles : OBSTACLES.map(function(o){return Object.assign({},o,o.id==='lab'?{}:{x:o.x*2,z:o.z*2});});
+
   function hex(value) { return B.Color3.FromHexString(value); }
   function clamp(value, min, max) { return Math.max(min, Math.min(max, Number(value) || 0)); }
   function material(scene, name, color, emissive, alpha) {
@@ -43,6 +45,12 @@
     mat.diffuseColor = B.Color3.Lerp(hex(biome.color), new B.Color3(1, 1, 1), .28);
     mat.emissiveColor = hex(biome.color).scale(.06);
     if (typeof document === 'undefined') return mat;
+    if(['cave','rock','facility'].indexOf(biome.id)>=0){
+      var stone=new B.DynamicTexture('stone-ground-'+biome.id,{width:256,height:256},scene,false),ctx=stone.getContext(),r=seeded(seed);
+      ctx.fillStyle=biome.color;ctx.fillRect(0,0,256,256);
+      for(var i=0;i<65;i++){var x=r()*256,y=r()*256;ctx.fillStyle=i%3?'rgba(12,18,28,.16)':'rgba(175,204,210,.14)';ctx.fillRect(x,y,8+r()*30,3+r()*16);ctx.strokeStyle='rgba(12,16,24,.24)';ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+18,y+8);ctx.lineTo(x+25,y-6);ctx.stroke();}
+      stone.wrapU=stone.wrapV=B.Texture.WRAP_ADDRESSMODE;stone.uScale=stone.vScale=16;stone.update(false);mat.diffuseTexture=stone;return mat;
+    }
     var mossTexture = new B.Texture(ASSET_ROOT + 'assets/ground-moss.png', scene, false, true);
     mossTexture.wrapU = mossTexture.wrapV = B.Texture.WRAP_ADDRESSMODE; mossTexture.uScale = mossTexture.vScale = biome.id === 'arena' ? 4 : 8;
     mat.diffuseTexture = mossTexture; mat.specularColor = new B.Color3(0.035, 0.05, 0.035);
@@ -148,6 +156,34 @@
     return root;
   }
 
+  function equipVehicle(avatar, id) {
+    var rig=avatar.metadata;if(rig.mount===id)return;
+    if(rig.vehicle)disposeNode(rig.vehicle);rig.vehicle=null;rig.wheels=[];rig.mount=id||'';
+    rig.legs.forEach(function(leg,i){leg.position.x=i? .23:-.23;leg.rotation.z=0;});
+    if(!id)return;
+    var scene=avatar.getScene(),bike=id==='motorcycle',vehicle=new B.TransformNode('ride-'+id,scene);vehicle.parent=avatar;rig.vehicle=vehicle;
+    var paint=material(scene,'ride-paint',bike?'#db6e41':'#d9ac6c'),steel=material(scene,'ride-steel','#849caa'),rubber=material(scene,'ride-rubber','#20313a'),lamp=material(scene,'ride-lamp','#fff4b0',.65);
+    vehicle.position.y=bike?-.36:-.2;
+    var points=bike?[[0,-.1,-.95],[0,-.1,1.03]]:[[-.8,-.22,-.45],[.8,-.22,-.45]];
+    points.forEach(function(p){var wheel=new B.TransformNode('ride-wheel',scene);wheel.parent=vehicle;wheel.position.set(p[0],p[1],p[2]);rig.wheels.push(wheel);part(scene,wheel,'tire','cylinder',{height:.24,diameter:.78,tessellation:20},[0,0,0],rubber).rotation.z=Math.PI/2;part(scene,wheel,'rim','cylinder',{height:.26,diameter:.53,tessellation:12},[0,0,0],steel).rotation.z=Math.PI/2;for(var k=0;k<4;k++){var spoke=part(scene,wheel,'spoke','box',{width:.28,height:.045,depth:.52},[0,0,0],paint);spoke.rotation.x=k*Math.PI/4;}});
+    if(bike){
+      part(scene,vehicle,'bike-frame','box',{width:.36,height:.25,depth:1.7},[0,.1,0],steel);
+      part(scene,vehicle,'bike-engine','box',{width:.5,height:.48,depth:.62},[0,.35,.08],rubber);
+      part(scene,vehicle,'bike-tank','sphere',{diameterX:.65,diameterY:.55,diameterZ:.83,segments:12},[0,.78,.3],paint);
+      part(scene,vehicle,'bike-seat','box',{width:.67,height:.15,depth:.66},[0,1,-.29],rubber);
+      part(scene,vehicle,'bike-fork','cylinder',{height:1.1,diameter:.12,tessellation:8},[0,.45,.94],steel).rotation.x=-.18;
+      part(scene,vehicle,'bike-headlight','sphere',{diameter:.31,segments:10},[0,.93,1.13],lamp);
+      part(scene,vehicle,'bike-tail-light','box',{width:.24,height:.12,depth:.08},[0,.7,-.8],paint);
+      part(scene,vehicle,'bike-footrests','box',{width:1.06,height:.07,depth:.15},[0,.6,.22],steel);
+    }else{
+      part(scene,vehicle,'cart-deck','box',{width:1.6,height:.16,depth:1.65},[0,.02,-.2],paint);
+      [-.76,.76].forEach(function(x){part(scene,vehicle,'cart-rail','box',{width:.09,height:.4,depth:1.6},[x,.28,-.2],paint);part(scene,vehicle,'cart-handle-post','cylinder',{height:1.4,diameter:.09,tessellation:8},[x,.72,.74],steel);});
+      for(var plank=0;plank<6;plank++)part(scene,vehicle,'cart-plank','box',{width:1.48,height:.025,depth:.018},[0,.115,-.87+plank*.26],steel);
+      part(scene,vehicle,'cart-back','box',{width:1.6,height:.35,depth:.09},[0,.25,-1.01],paint);
+    }
+    part(scene,vehicle,'ride-handle','box',{width:1.45,height:.1,depth:.12},[0,bike?1.61:1.46,.77],rubber);
+  }
+
   function createCreature(scene, speciesId, target) {
     var root = new B.TransformNode('creature-' + target.id, scene);
     var data = global.InsectData && (global.InsectData.speciesById ? global.InsectData.speciesById[speciesId] : null);
@@ -155,6 +191,7 @@
     var style = String((data && data.animationSet) || category).toLowerCase();
     var rare = data && (data.rarity === 'rare' || data.rarity === 'elite' || data.rarity === 'legendary');
     var colors = {
+      fern_raptor:'#72b876',marsh_spitter:'#778ccb',granite_triceratops:'#aa9070',crystal_ankylosaur:'#588fb8',ember_raptor:'#d9774b',ancient_rex:'#874e60',
       dew_ladybird: '#a94748', reed_cricket: '#625844', clover_grasshopper: '#668654', bark_ant: '#713f35', pond_skater: '#35494a', moss_caterpillar: '#718e58', amber_grub: '#b29158', stream_nymph: '#647b71', granary_weevil: '#765642', stone_ground_beetle: '#2e4045', orchard_longhorn: '#81583f', honey_mason_bee: '#ad843a', azure_dragonfly: '#478f97', moon_moth: '#9b91ae', sun_scarab: '#9d8335', violet_mantis: '#667658', mist_butterfly: '#679ca8', cave_stag: '#493641', king_stag: '#38233c', storm_cicada: '#557c73', ancient_rhino: '#37513c'
     };
     var bodyColor = colors[speciesId] || (rare ? '#d99aff' : '#334c38');
@@ -180,7 +217,7 @@
       if (speciesId === 'mist_butterfly' || speciesId === 'moon_moth') { wingContext.fillStyle = speciesId === 'moon_moth' ? 'rgba(43,36,60,.72)' : 'rgba(246,244,184,.86)'; wingContext.beginPath(); wingContext.arc(154, 104, 24, 0, Math.PI * 2); wingContext.fill(); wingContext.fillStyle = 'rgba(245,245,224,.84)'; wingContext.beginPath(); wingContext.arc(154, 104, 10, 0, Math.PI * 2); wingContext.fill(); }
       wingTexture.hasAlpha = true; wingTexture.update(false); wingMat.diffuseTexture = wingTexture; wingMat.opacityTexture = wingTexture; wingMat.useAlphaFromDiffuseTexture = true;
     }
-    var wings = [];
+    var wings = [], dinoLegs = [], dinoTail = null;
     function sphere(name, x, y, z, sx, sy, sz, mat) { return part(scene, root, name, 'sphere', { diameterX: sx, diameterY: sy, diameterZ: sz, segments: 9 }, [x, y, z], mat || bodyMat); }
     function bar(name, x, y, z, width, height, depth, mat, rx, ry, rz) { var mesh = part(scene, root, name, 'box', { width: width, height: height, depth: depth }, [x, y, z], mat || darkMat); mesh.rotation.set(rx || 0, ry || 0, rz || 0); return mesh; }
     function cylinder(name, x, y, z, height, diameter, mat, rx, ry, rz, top) { var mesh = part(scene, root, name, 'cylinder', { height: height, diameter: diameter, diameterTop: top === undefined ? diameter : top, tessellation: 8 }, [x, y, z], mat || bodyMat); mesh.rotation.set(rx || 0, ry || 0, rz || 0); return mesh; }
@@ -220,7 +257,32 @@
     var isRhino = style === 'rhino_boss';
     var isSpider = category.indexOf('거미') >= 0 || category.indexOf('spider') >= 0;
 
-    if (isLarva) {
+    if (style.indexOf('dino_')===0) {
+      var heavy=style==='dino_trike'||style==='dino_anky',rex=style==='dino_rex',spitter=style==='dino_spitter';
+      sphere('dinosaur-body',0,heavy?.9:1.3,-.2,heavy?1.55:1.05,heavy?1.05:1.5,heavy?2.25:1.45);
+      sphere('dinosaur-belly',0,heavy?.7:1.1,.17,heavy?1.12:.73,heavy?.62:1.1,heavy?1.5:1.05,accentMat);
+      tube('dinosaur-neck',[[0,heavy?1:1.6,.32],[0,heavy?1.1:1.94,.64],[0,heavy?1.12:2.05,.96]],heavy?.42:.32,heavy?.38:.27,bodyMat);
+      sphere('dinosaur-head',0,heavy?1.15:2.08,1.12,heavy?.86:rex?1.08:.72,heavy?.72:rex?.8:.64,heavy?1.08:rex?1.4:1.06);
+      sphere('dinosaur-muzzle',0,heavy?1:1.93,1.63,heavy?.64:rex?.82:.6,.26,.65,bodyMat);
+      sphere('dinosaur-mouth',0,heavy?.9:1.82,1.64,heavy?.57:rex?.74:.52,.08,.59,darkMat);
+      sphere('dinosaur-lower-jaw',0,heavy?.85:1.77,1.6,heavy?.58:rex?.75:.52,.12,.64,accentMat);
+      eyes(1.43,heavy?.34:rex?.43:.29,heavy?1.36:2.25);
+      for(var tooth=0;tooth<6;tooth++){var ts=tooth%2?-1:1;cylinder('dinosaur-tooth',ts*(rex?.29:.23),heavy?.98:1.91,1.48+Math.floor(tooth/2)*.15,.16,.09,accentMat,Math.PI,0,0,.015);}
+      for(var ds=-1;ds<=1;ds+=2){
+        var leg=new B.TransformNode('dinosaur-leg',scene);leg.parent=root;leg.position.set(ds*(heavy?.58:.43),heavy?.76:.96,heavy?-.54:-.32);
+        part(scene,leg,'dinosaur-thigh','sphere',{diameterX:.46,diameterY:.75,diameterZ:.6},[0,-.13,0],bodyMat);
+        part(scene,leg,'dinosaur-shin','cylinder',{height:.63,diameter:.24,tessellation:8},[0,-.57,.18],bodyMat);
+        part(scene,leg,'dinosaur-foot','sphere',{diameterX:.46,diameterY:.2,diameterZ:.7,segments:8},[0,-.86,.32],bodyMat);
+        for(var toe=-1;toe<=1;toe++)part(scene,leg,'dinosaur-toe','sphere',{diameterX:.08,diameterY:.07,diameterZ:.22,segments:6},[toe*.12,-.85,.64],accentMat);dinoLegs.push(leg);
+        if(heavy){var front=new B.TransformNode('dinosaur-front-leg',scene);front.parent=root;front.position.set(ds*.55,.67,.65);part(scene,front,'dinosaur-front-shin','cylinder',{height:.65,diameter:.3,tessellation:8},[0,-.22,0],bodyMat);part(scene,front,'dinosaur-front-foot','sphere',{diameterX:.4,diameterY:.18,diameterZ:.55,segments:8},[0,-.57,.12],bodyMat);dinoLegs.push(front);}
+        else {tube('dinosaur-arm',[[ds*.34,1.58,.38],[ds*.52,1.35,.62],[ds*.49,1.29,.94]],.11,.06,bodyMat);tube('dinosaur-claw',[[ds*.49,1.29,.94],[ds*.49,1.2,1.1]],.05,.01,accentMat);}
+      }
+      dinoTail=tube('dinosaur-tail',[[0,heavy?.9:1.1,-.84],[0,heavy?.8:1.2,-1.35],[0,.9,-2.03],[0,.72,-2.8]],heavy?.32:.25,.035,bodyMat);
+      if(style==='dino_anky'){sphere('tail-club',0,.72,-2.66,.84,.65,.7,accentMat);for(var plate=0;plate<7;plate++){var px=(plate%3-1)*.39,pz=-.83+Math.floor(plate/3)*.52;cylinder('crystal-armor',px,1.52,pz,.62,.3,wingMat,0,0,0,.02);}}
+      if(style==='dino_trike'){sphere('dinosaur-frill',0,1.38,.8,1.38,1.05,.22,accentMat);for(var horn=-1;horn<=1;horn++)tube('dinosaur-horn',[[horn*.28,1.4,1.38],[horn*.31,1.58,1.75],[horn*.28,1.6,2.04]],.12,.012,accentMat);}
+      if(spitter){for(var fin=-1;fin<=1;fin+=2)sphere('dinosaur-crest',fin*.2,2.45,1.06,.13,.5,.8,accentMat);}
+      for(var stripe=0;stripe<4;stripe++)sphere('dinosaur-back-scale',0,heavy?1.5:1.85,-.8+stripe*.31,.3,.18,.16,accentMat);
+    } else if (isLarva) {
       for (var segment = 0; segment < 7; segment += 1) {
         var size = 0.5 + Math.sin((segment + 1) / 8 * Math.PI) * 0.2;
         sphere('larva-segment', 0, 0.38 + (segment % 2) * 0.04, -0.9 + segment * 0.31, size, size * 0.75, size, segment === 6 ? accentMat : bodyMat);
@@ -276,16 +338,16 @@
       if (speciesId === 'sun_scarab') { var shellLine = bar('shell-line', 0, 0.88, -0.23, 0.045, 0.06, 1.08, accentMat); shellLine.rotation.x = 0; }
     }
     var authoredScale = data && Number(data.scale) ? clamp(Number(data.scale), 0.65, 2.5) : 1;
-    mergeByMaterial(root, 'creature-merged', wings);
-    var overallScale = (rare ? 1.18 : 1) * authoredScale;
+    mergeByMaterial(root, 'creature-merged', wings.concat(dinoLegs.flatMap(function(n){return n.getChildMeshes();})).concat(dinoTail?[dinoTail]:[]));
+    var overallScale = (rare ? 1.18 : 1) * authoredScale * (target.boss ? 1.65 : 1);
     root.scaling.setAll(overallScale);
     if (target && Number.isFinite(Number(target.level))) {
-      var creatureName = data && data.name ? data.name : '야생 곤충';
-      var nameplate = label(scene, root, '[' + global.InsectData.rarity[data.rarity].label + '] Lv.' + Math.max(1, Math.floor(Number(target.level))) + ' ' + creatureName, Math.max(2.6, overallScale * 2) / overallScale, '#ffffff');
+      var creatureName = target.bossName || (data && data.name ? data.name : '야생 곤충');
+      var nameplate = label(scene, root, (target.boss ? '♛ 보스 [' : '[') + global.InsectData.rarity[data.rarity].label + '] Lv.' + Math.max(1, Math.floor(Number(target.level))) + ' ' + creatureName, Math.max(2.6, overallScale * 2) / overallScale, '#ffffff');
       nameplate.scaling.setAll(1 / overallScale);
     }
     root.getChildMeshes().forEach(function (mesh) { mesh.isPickable = true; mesh.metadata = { selectTarget: { type: 'spawn', id: target.id } }; });
-    root.metadata = { speciesId: speciesId, ownedMaterials: [bodyMat,darkMat,accentMat,wingMat,eyeMat], wings: wings, baseY: 0, phase: Math.random() * 10 };
+    root.metadata = { speciesId: speciesId, ownedMaterials: [bodyMat,darkMat,accentMat,wingMat,eyeMat], wings: wings, dinoLegs: dinoLegs, dinoTail: dinoTail, baseY: 0, phase: Math.random() * 10 };
     return root;
   }
 
@@ -468,6 +530,19 @@
     var tank = worldPart('tank', 'cylinder', { height: 8, diameter: 10, tessellation: 14 }, [93, 4, 91], mats.metal);
     var cave = worldPart('cave-mound', 'sphere', { diameter: 30, segments: 10 }, [1, 7, 85], mats.rock); cave.scaling.y = 0.65;
     worldPart('cave-mouth', 'cylinder', { height: 4, diameter: 9, tessellation: 12 }, [1, 2, 70], material(scene, 'caveDark', '#151d20')).rotation.x = Math.PI / 2;
+    // Expand the authored landscape while keeping village buildings and collision sizes unchanged.
+    worldRoot.getChildren().forEach(function(node){
+      if(node.name==='research-lab'||node.name==='safe-zone-ring'||node.name.indexOf('village-')===0||node.name.indexOf('welcome-')===0)return;
+      node.position.x*=2;node.position.z*=2;
+      if(/^(biome-|road-|distant-|river$|crop-row$)/.test(node.name)){node.scaling.x*=2;node.scaling.z*=2;}
+      if(node.name==='cave-mouth')node.position.z=155;
+    });
+    var crystalMat=material(scene,'cave-crystal','#82dcff',.65),emberMat=material(scene,'ember-crack','#ed7948',.5);
+    for(var landmark=0;landmark<24;landmark++){
+      var la=landmark*2.39996,lr=25+(landmark%4)*12;
+      var shard=worldPart('cave-crystal','cylinder',{height:2+landmark%4,diameterTop:0,diameterBottom:1.2,tessellation:5},[Math.cos(la)*lr,1.1,144+Math.sin(la)*lr],crystalMat);shard.rotation.z=(landmark%3-1)*.2;
+      if(landmark<16)worldPart('facility-ember','box',{width:3,height:.12,depth:.5},[144+Math.cos(la)*lr,.12,144+Math.sin(la)*lr],emberMat);
+    }
     mergeByMaterial(worldRoot, 'world-static');
     worldRoot.getChildMeshes().forEach(function (staticMesh) { staticMesh.freezeWorldMatrix(); });
 
@@ -485,8 +560,30 @@
     });
     var localAvatar = createAvatar(scene, characterInfo(options.characterId || 'original').id, '', null); localAvatar.parent = worldRoot; localAvatar.position.set(0, 0.4, 12);
     addShadowModel(localAvatar);
-    var companions = {}, resourceModels = {}, followTrail = [], serverPositionAt = 0, localSprint = false;
+    var companions = {}, resourceModels = {}, followTrail = [], serverPositionAt = 0, localSprint = false, localMount = '';
     var remote = {}, spawns = {}, latest = { players: [], spawns: [] }, battleActors = {}, battleViewSide = 'a', arenaDecor = [], eventQueue = [], activeEvent = null, battleMode = false;
+    var navTarget=null,navRoute=[],navUpdated=0;
+    var navArrow = new B.TransformNode('navigation-arrow',scene);navArrow.parent=worldRoot;navArrow.setEnabled(false);
+    var arrowMat=material(scene,'navigation-gold','#ffe284',1);
+    var arrowShaft=B.MeshBuilder.CreateBox('navigation-shaft',{width:.32,height:.14,depth:1.8},scene);arrowShaft.parent=navArrow;arrowShaft.material=arrowMat;
+    for(var arrowSide=-1;arrowSide<=1;arrowSide+=2){var wing=B.MeshBuilder.CreateBox('navigation-tip',{width:.32,height:.14,depth:1.15},scene);wing.parent=navArrow;wing.position.set(arrowSide*.36,0,.72);wing.rotation.y=-arrowSide*.7;wing.material=arrowMat;}
+    navArrow.getChildMeshes().forEach(function(m){m.isPickable=false;});
+    var navHud=document.createElement('div');navHud.className='ix-navigation';navHud.hidden=true;navHud.setAttribute('role','status');
+    var navText=document.createElement('span'),navCancel=document.createElement('button');navCancel.textContent='안내 종료';navCancel.setAttribute('aria-label','길 안내 종료');navHud.append(navText,navCancel);document.body.appendChild(navHud);
+    var skillBanner=document.createElement('div');skillBanner.className='ix-skill-banner';skillBanner.hidden=true;document.body.appendChild(skillBanner);
+    navCancel.addEventListener('click',function(){setNavigation(null);});
+    function setNavigation(target){navTarget=target;navRoute=[];navUpdated=0;navHud.hidden=!target;navArrow.setEnabled(!!target);}
+    function updateNavigation(now){
+      var shown=!!navTarget&&controlsEnabled&&!battleMode;navHud.hidden=!shown;navArrow.setEnabled(shown);if(!shown)return;
+      var point={x:localAvatar.position.x,z:localAvatar.position.z},N=global.InsectNavigation;
+      if(N.distance(point,navTarget)<4){navText.textContent=navTarget.name+' 도착!';navArrow.setEnabled(false);return;}
+      if(now-navUpdated>700||!navUpdated){navRoute=N.route(point,navTarget);navUpdated=now;}
+      if(!navRoute.length){navText.textContent='경로를 다시 찾는 중…';navArrow.setEnabled(false);return;}
+      var next=navRoute[0],dx=next.x-point.x,dz=next.z-point.z;
+      navArrow.position.set(point.x,3.9+Math.sin(now/250)*.12,point.z);navArrow.rotation.y=Math.atan2(dx,dz);
+      var remaining=N.distance(point,next);for(var i=1;i<navRoute.length;i++)remaining+=N.distance(navRoute[i-1],navRoute[i]);
+      navText.textContent='➤ '+navTarget.name+' · '+Math.ceil(remaining)+'m'+(navRoute.length>1?' · 장애물 우회':'');
+    }
     var controlsEnabled = options.enabled !== false;
     var input = { up: false, down: false, left: false, right: false, joyX: 0, joyZ: 0, sentX: 99, sentZ: 99 };
     function key(event, down) {
@@ -535,6 +632,7 @@
         var id = String(item[idKey] || item.id || ''); if (!id) return; present[id] = true;
         if (idKey === 'uid' && map[id] && item.character && map[id].metadata.id !== item.character) { disposeNode(map[id]); delete map[id]; }
         if (!map[id]) map[id] = make(item);
+        if(idKey==='uid')equipVehicle(map[id],item.mount||'');
         map[id].metadata.targetX = clamp(item.x, -WORLD_HALF + 2, WORLD_HALF - 2); map[id].metadata.targetZ = clamp(item.z, -WORLD_HALF + 2, WORLD_HALF - 2);
       });
       Object.keys(map).forEach(function (id) { if (!present[id]) { disposeNode(map[id]); delete map[id]; } });
@@ -585,6 +683,7 @@
         if(Math.hypot(dx,dz)>18){model.position.x=target.x;model.position.z=target.z;}
         else {var blend=1-Math.exp(-dt*10);model.position.x+=dx*blend;model.position.z+=dz*blend;}
         if(Math.hypot(dx,dz)>.06){var angle=Math.atan2(dx,dz)-model.rotation.y;model.rotation.y+=Math.atan2(Math.sin(angle),Math.cos(angle))*(1-Math.exp(-dt*12));}
+        (model.metadata.dinoLegs||[]).forEach(function(leg,li){leg.rotation.x=Math.sin(now/120+(li%2?Math.PI:0))*Math.min(.4,Math.hypot(dx,dz)*.2);});
         model.position.y=.25+Math.abs(Math.sin(now/150+model.metadata.slot))*Math.min(.14,Math.hypot(dx,dz)*.07);
         (model.metadata.wings||[]).forEach(function(wing,wi){wing.rotation.z=(wi?1:-1)*(.3+Math.abs(Math.sin(now/100))*.55);});
       });
@@ -594,8 +693,8 @@
       var localId = typeof latest.you === 'string' ? latest.you : latest.you && latest.you.uid;
       var localRecord = typeof latest.you === 'object' && latest.you ? latest.you : (latest.players || []).find(function (player) { return String(player.uid) === String(localId); });
       if (localRecord) {
-        serverPositionAt = performance.now(); localSprint = !!localRecord.sprinting;
-        localAvatar.metadata.targetX = clamp(localRecord.x, -118, 118); localAvatar.metadata.targetZ = clamp(localRecord.z, -118, 118);
+        serverPositionAt = performance.now(); localSprint = !!localRecord.sprinting;localMount=localRecord.mount||'';equipVehicle(localAvatar,localMount);
+        localAvatar.metadata.targetX = clamp(localRecord.x, -238, 238); localAvatar.metadata.targetZ = clamp(localRecord.z, -238, 238);
         if (!battleMode && Math.hypot(localAvatar.position.x - localRecord.x, localAvatar.position.z - localRecord.z) > 30) {
           followTrail = [];
           localAvatar.position.x = localAvatar.metadata.targetX; localAvatar.position.z = localAvatar.metadata.targetZ;
@@ -617,7 +716,7 @@
       }
       var otherPlayers = (latest.players || []).filter(function (player) { return !localId || String(player.uid) !== String(localId); });
       syncEntityMap(otherPlayers, remote, function (p) { var avatar = createAvatar(scene, p.character, p.nickname, { type: 'player', id: String(p.uid), busy: p.busy }); avatar.parent = worldRoot; avatar.position.set(p.x || 0, 0.4, p.z || 0); addShadowModel(avatar); return avatar; }, 'uid');
-      syncEntityMap((latest.spawns || []).filter(function (s) { return s.available !== false; }), spawns, function (s) { var creature = createCreature(scene, s.speciesId, s); creature.parent = worldRoot; creature.position.set(s.x || 0, 0.2, s.z || 0); addShadowModel(creature); return creature; }, 'id');
+      syncEntityMap((latest.spawns || []).filter(function (s) { return s.available !== false && Math.hypot(s.x-localAvatar.metadata.targetX,s.z-localAvatar.metadata.targetZ)<85; }), spawns, function (s) { var creature = createCreature(scene, s.speciesId, s);if(s.group){(s.members||[]).slice(1).forEach(function(m,i){var member=createCreature(scene,m.speciesId,Object.assign({},s,{id:s.id+'-member-'+i}));member.parent=creature;member.position.set(i?2.5:-2.5,0,1.7);member.getChildMeshes().forEach(function(mesh){mesh.isPickable=true;mesh.metadata={selectTarget:{type:'spawn',id:s.id}};});});label(scene,creature,'3마리 무리 · 자동 턴제',3.1,'#ffc96e');} creature.parent = worldRoot; creature.position.set(s.x || 0, 0.2, s.z || 0); addShadowModel(creature); return creature; }, 'id');
       syncEntityMap((latest.resources || []).filter(function(n){return n.available;}),resourceModels,createResource,'id');
       syncCompanions();
       var shouldBattle = !!latest.battle;
@@ -654,7 +753,12 @@
       battleActors[viewSide].metadata.creatureId = creature.id;
       battleActors[viewSide].rotation.y = viewSide === 'player' ? Math.PI / 2 : -Math.PI / 2; addShadowModel(battleActors[viewSide]);
     }
-    function refreshBattleActors() { refreshBattleSide(battleViewSide); refreshBattleSide(battleViewSide === 'a' ? 'b' : 'a'); }
+    var battleReserves=[];
+    function refreshReserves(){
+      battleReserves.forEach(disposeNode);battleReserves=[];if(!battleMode||!latest.battle?.sides)return;
+      ['a','b'].forEach(function(key){var side=latest.battle.sides[key],mine=key===battleViewSide,n=0;side.team.forEach(function(c,i){if(i===side.active||c.hp<=0)return;var model=createCreature(scene,c.speciesId,{id:'reserve-'+c.id});model.parent=battleRoot;model.position.set(mine?-12:12,40.5,(n++?4:-4));model.scaling.setAll(1.65);model.rotation.y=mine?Math.PI/2:-Math.PI/2;model.metadata.reserve=true;label(scene,model,(i+1)+'번 · 대기',2,'#d5e8dd');battleReserves.push(model);});});
+    }
+    function refreshBattleActors() { refreshBattleSide(battleViewSide); refreshBattleSide(battleViewSide === 'a' ? 'b' : 'a');refreshReserves(); }
     function switchBattle(enabled, battle) {
       if (enabled) explorationCamera = { alpha: camera.alpha, beta: camera.beta, radius: camera.radius };
       camera.inertialAlphaOffset = camera.inertialBetaOffset = camera.inertialRadiusOffset = 0;
@@ -663,16 +767,24 @@
       battleMode = enabled; releaseInput(); worldRoot.setEnabled(!enabled); battleRoot.setEnabled(enabled); eventQueue.length = 0; activeEvent = null;
       if (joystickElement) joystickElement.style.display = !enabled && controlsEnabled && global.matchMedia && global.matchMedia('(pointer:coarse)').matches ? 'block' : 'none';
       Object.keys(battleActors).forEach(function (key) { disposeNode(battleActors[key]); }); battleActors = {};
-      arenaDecor.forEach(disposeNode); arenaDecor = [];
+      arenaDecor.forEach(disposeNode); arenaDecor = [];battleReserves.forEach(disposeNode);battleReserves=[];
       if (enabled) {
+        var arenaBiome=global.InsectData.biomes.find(function(b){return b.id===battle.biomeId;})||global.InsectData.biomes.find(function(b){return b.id==='safe';});
+        var rockyArena=['cave','rock','facility'].indexOf(arenaBiome.id)>=0;
+        scene.clearColor=rockyArena?new B.Color4(.09,.13,.2,1):new B.Color4(.48,.63,.65,1);
+        scene.fogColor=rockyArena?new B.Color3(.09,.13,.2):new B.Color3(.48,.63,.65);
         var floor = B.MeshBuilder.CreateCylinder('arena-floor', { height: 0.9, diameter: 54, tessellation: 56 }, scene); floor.parent = battleRoot; floor.position.y = 40;
-        floor.material = groundMaterial(scene, { id: 'arena', color: '#61745a' }, 909); floor.receiveShadows = true; arenaDecor.push(floor);
+        floor.material = groundMaterial(scene, { id: rockyArena?arenaBiome.id:'arena', color: arenaBiome.color }, 909); floor.receiveShadows = true; arenaDecor.push(floor);
         for (var arenaRock=0;arenaRock<18;arenaRock+=1){var rockAngle=arenaRock/18*Math.PI*2,rockRadius=25.5+(arenaRock%3)*.32;var boundaryRock=part(scene,battleRoot,'arena-boundary-rock','sphere',{diameterX:1.4+(arenaRock%3)*.35,diameterY:.8+(arenaRock%2)*.35,diameterZ:1.2+(arenaRock%4)*.22,segments:7},[Math.cos(rockAngle)*rockRadius,40.72,Math.sin(rockAngle)*rockRadius],mats.rock);boundaryRock.rotation.y=rockAngle;arenaDecor.push(boundaryRock);}
-        for(var arenaGrass=0;arenaGrass<24;arenaGrass+=1){var grassAngle=arenaGrass/24*Math.PI*2+.18,grassRadius=18.5+(arenaGrass%5)*1.15;for(var blade=0;blade<2;blade+=1){var grassBlade=part(scene,battleRoot,'arena-grass','cylinder',{height:.8+(blade*.14),diameter:.07,tessellation:5},[Math.cos(grassAngle)*grassRadius+(blade-.5)*.18,41.0,Math.sin(grassAngle)*grassRadius],mats.leaf);grassBlade.rotation.z=(blade-.5)*.25;arenaDecor.push(grassBlade);}}
+        for(var arenaGrass=0;arenaGrass<(rockyArena?0:24);arenaGrass+=1){var grassAngle=arenaGrass/24*Math.PI*2+.18,grassRadius=18.5+(arenaGrass%5)*1.15;for(var blade=0;blade<2;blade+=1){var grassBlade=part(scene,battleRoot,'arena-grass','cylinder',{height:.8+(blade*.14),diameter:.07,tessellation:5},[Math.cos(grassAngle)*grassRadius+(blade-.5)*.18,41.0,Math.sin(grassAngle)*grassRadius],mats.leaf);grassBlade.rotation.z=(blade-.5)*.25;arenaDecor.push(grassBlade);}}
         for(var logIndex=0;logIndex<4;logIndex+=1){var logAngle=logIndex*Math.PI/2+.6;var log=part(scene,battleRoot,'arena-log','cylinder',{height:4.2,diameter:.72,tessellation:10},[Math.cos(logAngle)*22.5,40.8,Math.sin(logAngle)*22.5],mats.wood);log.rotation.z=Math.PI/2;log.rotation.y=-logAngle;arenaDecor.push(log);}
-        for(var arenaTree=0;arenaTree<15;arenaTree+=1){var treeAngle=arenaTree/15*Math.PI*2+.12,treeRadius=25+(arenaTree%2)*1.1,treeX=Math.cos(treeAngle)*treeRadius,treeZ=Math.sin(treeAngle)*treeRadius,farCanopy=Math.sin(treeAngle)>-.05?1.45:1;var arenaTrunk=part(scene,battleRoot,'arena-tree-trunk','cylinder',{height:8+(arenaTree%3),diameterTop:.72,diameterBottom:1.45,tessellation:9},[treeX,44.6,treeZ],mats.wood);arenaTrunk.rotation.z=(arenaTree%3-1)*.04;arenaDecor.push(arenaTrunk);for(var branchSide=-1;branchSide<=1;branchSide+=2){var arenaBranch=part(scene,battleRoot,'arena-tree-branch','cylinder',{height:3.2,diameterTop:.22,diameterBottom:.48,tessellation:7},[treeX+branchSide*.85,47.0,treeZ],mats.wood);arenaBranch.rotation.z=branchSide*1.0;arenaBranch.rotation.y=-treeAngle;arenaDecor.push(arenaBranch);}for(var crownIndex=0;crownIndex<3;crownIndex+=1){var crownMat=crownIndex%2?mats.leafLight:mats.leaf;var arenaCrown=part(scene,battleRoot,'arena-tree-crown','sphere',{diameterX:(5.2+crownIndex*.6)*farCanopy,diameterY:(4.1+crownIndex*.35)*farCanopy,diameterZ:(5.0+crownIndex*.5)*farCanopy,segments:9},[treeX+(crownIndex-1)*1.2,48.0+crownIndex*.78,treeZ+(crownIndex%2?1:-.7)],crownMat);arenaDecor.push(arenaCrown);}}
-        for(var hedgeIndex=0;hedgeIndex<9;hedgeIndex+=1){var hedgeAngle=.08+hedgeIndex/8*(Math.PI-.16),hedgeRadius=23.8;var hedge=part(scene,battleRoot,'arena-understory','sphere',{diameterX:6.3,diameterY:3.8,diameterZ:5.2,segments:8},[Math.cos(hedgeAngle)*hedgeRadius,42.8,Math.sin(hedgeAngle)*hedgeRadius],hedgeIndex%2?mats.leafLight:mats.leaf);arenaDecor.push(hedge);}
-        for(var fernIndex=0;fernIndex<16;fernIndex+=1){var fernAngle=fernIndex/16*Math.PI*2+.3,fernRadius=20.5+(fernIndex%4)*1.2;for(var frond=0;frond<3;frond+=1){var fern=part(scene,battleRoot,'arena-fern','sphere',{diameterX:.22,diameterY:.12,diameterZ:1.6,segments:6},[Math.cos(fernAngle)*fernRadius+Math.sin(frond)*.35,41.05+frond*.08,Math.sin(fernAngle)*fernRadius+Math.cos(frond)*.35],frond%2?mats.leafLight:mats.leaf);fern.rotation.y=fernAngle+(frond-1)*.34;fern.rotation.x=.2;arenaDecor.push(fern);}}
+        for(var arenaTree=0;arenaTree<(rockyArena?0:15);arenaTree+=1){var treeAngle=arenaTree/15*Math.PI*2+.12,treeRadius=25+(arenaTree%2)*1.1,treeX=Math.cos(treeAngle)*treeRadius,treeZ=Math.sin(treeAngle)*treeRadius,farCanopy=Math.sin(treeAngle)>-.05?1.45:1;var arenaTrunk=part(scene,battleRoot,'arena-tree-trunk','cylinder',{height:8+(arenaTree%3),diameterTop:.72,diameterBottom:1.45,tessellation:9},[treeX,44.6,treeZ],mats.wood);arenaTrunk.rotation.z=(arenaTree%3-1)*.04;arenaDecor.push(arenaTrunk);for(var branchSide=-1;branchSide<=1;branchSide+=2){var arenaBranch=part(scene,battleRoot,'arena-tree-branch','cylinder',{height:3.2,diameterTop:.22,diameterBottom:.48,tessellation:7},[treeX+branchSide*.85,47.0,treeZ],mats.wood);arenaBranch.rotation.z=branchSide*1.0;arenaBranch.rotation.y=-treeAngle;arenaDecor.push(arenaBranch);}for(var crownIndex=0;crownIndex<3;crownIndex+=1){var crownMat=crownIndex%2?mats.leafLight:mats.leaf;var arenaCrown=part(scene,battleRoot,'arena-tree-crown','sphere',{diameterX:(5.2+crownIndex*.6)*farCanopy,diameterY:(4.1+crownIndex*.35)*farCanopy,diameterZ:(5.0+crownIndex*.5)*farCanopy,segments:9},[treeX+(crownIndex-1)*1.2,48.0+crownIndex*.78,treeZ+(crownIndex%2?1:-.7)],crownMat);arenaDecor.push(arenaCrown);}}
+        for(var hedgeIndex=0;hedgeIndex<(rockyArena?0:9);hedgeIndex+=1){var hedgeAngle=.08+hedgeIndex/8*(Math.PI-.16),hedgeRadius=23.8;var hedge=part(scene,battleRoot,'arena-understory','sphere',{diameterX:6.3,diameterY:3.8,diameterZ:5.2,segments:8},[Math.cos(hedgeAngle)*hedgeRadius,42.8,Math.sin(hedgeAngle)*hedgeRadius],hedgeIndex%2?mats.leafLight:mats.leaf);arenaDecor.push(hedge);}
+        for(var fernIndex=0;fernIndex<(rockyArena?0:16);fernIndex+=1){var fernAngle=fernIndex/16*Math.PI*2+.3,fernRadius=20.5+(fernIndex%4)*1.2;for(var frond=0;frond<3;frond+=1){var fern=part(scene,battleRoot,'arena-fern','sphere',{diameterX:.22,diameterY:.12,diameterZ:1.6,segments:6},[Math.cos(fernAngle)*fernRadius+Math.sin(frond)*.35,41.05+frond*.08,Math.sin(fernAngle)*fernRadius+Math.cos(frond)*.35],frond%2?mats.leafLight:mats.leaf);fern.rotation.y=fernAngle+(frond-1)*.34;fern.rotation.x=.2;arenaDecor.push(fern);}}
+        if(rockyArena){
+          var arenaGlow=material(scene,'arena-crystal',arenaBiome.id==='facility'?'#ff8658':'#8adeff',.7);
+          for(var crystal=0;crystal<16;crystal++){var angle=crystal/16*Math.PI*2;var shard=part(scene,battleRoot,'arena-crystal','cylinder',{height:3+crystal%4,diameterBottom:1.2,diameterTop:0,tessellation:5},[Math.cos(angle)*23,42,Math.sin(angle)*23],arenaGlow);shard.rotation.z=(crystal%3-1)*.18;arenaDecor.push(shard);}
+        }
         arenaDecor = arenaDecor.concat(mergeByMaterial(battleRoot, 'arena-static'));
         arenaDecor.forEach(function(staticArenaMesh){if(!staticArenaMesh.isDisposed())staticArenaMesh.freezeWorldMatrix();});
         var viewerId = typeof latest.you === 'string' ? latest.you : latest.you && latest.you.uid;
@@ -683,8 +795,9 @@
         battleActors.player = arenaCreature(your && (your.name || your.nickname || your.displayName), -7, 0, your && your.speciesId, 'player');
         battleActors.enemy = arenaCreature(enemy && (enemy.name || enemy.nickname || enemy.displayName), 7, 0, enemy && enemy.speciesId, 'enemy'); battleActors.enemy.rotation.y = -Math.PI / 2; battleActors.player.rotation.y = Math.PI / 2;
         battleActors.player.metadata.creatureId = your && your.id; battleActors.enemy.metadata.creatureId = enemy && enemy.id;
+        refreshReserves();
         camera.setTarget(new B.Vector3(0, 41.4, 0)); camera.alpha = -Math.PI / 2; camera.beta = 1.12; camera.radius = 25;
-      } else { camera.setTarget(localAvatar.position.add(new B.Vector3(0, 1.5, 0))); camera.alpha = explorationCamera.alpha; camera.beta = explorationCamera.beta; camera.radius = explorationCamera.radius; }
+      } else { scene.clearColor=new B.Color4(.48,.63,.65,1);scene.fogColor=new B.Color3(.48,.63,.65);camera.setTarget(localAvatar.position.add(new B.Vector3(0, 1.5, 0))); camera.alpha = explorationCamera.alpha; camera.beta = explorationCamera.beta; camera.radius = explorationCamera.radius; }
     }
     function playEvents(events) {
       if (!Array.isArray(events)) events = events ? [events] : [];
@@ -693,8 +806,10 @@
       })).then(function (completed) { if (battleMode && latest.battle && latest.battle.sides) refreshBattleActors(); return completed; });
     }
     function finishBattleEvent() {
+      skillBanner.hidden=true;
       if (activeEvent && activeEvent.effect) disposeNode(activeEvent.effect);
-      if (activeEvent && activeEvent.data && activeEvent.data.type === 'switch') refreshBattleSide(activeEvent.data.actorSide || activeEvent.data.side || battleViewSide, activeEvent.data.creatureId);
+      if (activeEvent && activeEvent.projectile) disposeNode(activeEvent.projectile);
+      if (activeEvent && activeEvent.data && activeEvent.data.type === 'switch') { refreshBattleSide(activeEvent.data.actorSide || activeEvent.data.side || battleViewSide, activeEvent.data.creatureId); if(options.onBattleSwitch)options.onBattleSwitch(activeEvent.data); }
       if (activeEvent && activeEvent.resolve) activeEvent.resolve(activeEvent.data);
       activeEvent = null;
     }
@@ -704,14 +819,15 @@
       var ev = activeEvent.data;
       if (!activeEvent.prepared) {
         activeEvent.prepared = true;
-        if (ev.actorCreatureId && (ev.actorSide === 'a' || ev.actorSide === 'b')) refreshBattleSide(ev.actorSide, ev.actorCreatureId);
+        if(ev.type==='skill'){skillBanner.textContent=ev.message;skillBanner.hidden=false;if(options.onSkillStart)options.onSkillStart(ev);}
+        if ((ev.type==='attack'||ev.type==='skill') && ev.actorCreatureId && (ev.actorSide === 'a' || ev.actorSide === 'b')) refreshBattleSide(ev.actorSide, ev.actorCreatureId);
         if (ev.targetCreatureId && (ev.targetSide === 'a' || ev.targetSide === 'b')) refreshBattleSide(ev.targetSide, ev.targetCreatureId);
       }
       var actorSide = ev.actorSide || ev.side || (ev.actor === 'enemy' ? 'enemy' : 'player'), targetSide = ev.targetSide || (actorSide === 'player' ? 'enemy' : 'player');
       if (actorSide === 'a' || actorSide === 'b') actorSide = actorSide === battleViewSide ? 'player' : 'enemy';
       if (targetSide === 'a' || targetSide === 'b') targetSide = targetSide === battleViewSide ? 'player' : 'enemy';
       var actor = battleActors[actorSide], target = battleActors[targetSide]; if (!actor || !target) { finishBattleEvent(); return; }
-      activeEvent.time = (performance.now() - activeEvent.startedAt) / 1000; var t = activeEvent.time, type = ev.type || ev.action || 'attack', skill = type === 'skill';
+      activeEvent.time = (performance.now() - activeEvent.startedAt) / 1000; var t = activeEvent.time, type = ev.type || ev.action || 'attack', skill = type === 'skill', ranged = ev.attackKind === 'ranged' || ev.attackKind === 'sonic';
       var skillCode = String(ev.skillId || ''), skillSeed = 0; for (var si = 0; si < skillCode.length; si += 1) skillSeed += skillCode.charCodeAt(si); var skillStyle = skillSeed % 3;
       if (type === 'victory' || type === 'defeat') { actor.rotation.y += dt * 7; actor.position.y = 40.5 + Math.abs(Math.sin(t * 8)) * 1.3; if (t > 1.6) finishBattleEvent(); return; }
       if (type === 'switch') { actor.rotation.y += dt * 9; actor.scaling.setAll(Math.max(.08, 2.25 * (1 - t / .68))); if (t > .68) finishBattleEvent(); return; }
@@ -720,22 +836,48 @@
         activeEvent.effect.rotation.y += dt*8; activeEvent.effect.scaling.setAll(.65+Math.sin(Math.min(1,t/.8)*Math.PI)*.5); if(t>1.05)finishBattleEvent(); return;
       }
       if (type !== 'attack' && type !== 'skill') { actor.position.y = actor.metadata.home.y + Math.abs(Math.sin(t*8))*.18; if(t>.5){actor.position.copyFrom(actor.metadata.home);finishBattleEvent();} return; }
+      var fx = global.InsectData.skillEffects[ev.skillId] || {color:'#d5b2ff',style:'wave'};
+      if(skill){
+        if(!activeEvent.effect){
+          var effect=new B.TransformNode('skill-effect-'+ev.skillId,scene);effect.parent=battleRoot;
+          var effectMat=material(scene,'skill-light-'+ev.skillId,fx.color,1);effectMat.disableLighting=true;
+          for(var f=0;f<3;f++){
+            var mesh=fx.style==='slash'?B.MeshBuilder.CreateBox('skill-slash',{width:5,height:.12,depth:.23},scene):B.MeshBuilder.CreateTorus('skill-ring',{diameter:3+f*.8,thickness:.09,tessellation:36},scene);
+            mesh.parent=effect;mesh.material=effectMat;mesh.isPickable=false;
+            mesh.rotation.set(fx.style==='guard'?f*Math.PI/3:Math.PI/2,0,fx.style==='slash'?(f-1)*.7:f*.4);mesh.position.y=f*.24;
+          }
+          activeEvent.effect=effect;
+        }
+        var center=t<.5||fx.style==='guard'?actor:target;
+        activeEvent.effect.position.copyFrom(center.position.add(new B.Vector3(0,1.3,0)));
+        activeEvent.effect.rotation.y+=dt*2;activeEvent.effect.scaling.setAll(.5+Math.min(1,t*1.8));
+        activeEvent.effect.getChildMeshes().forEach(function(m){m.visibility=Math.max(0,1-Math.max(0,t-.85)*2);});
+      }
       var home = actor.metadata.home, direction = target.position.subtract(home), distance = direction.length(); if (distance > 0.01) direction.normalize();
       var progress = t < 0.42 ? t / 0.42 : t < 0.82 ? 1 : t < 1.35 ? 1 - (t - 0.82) / 0.53 : 0;
-      actor.position.copyFrom(home.add(direction.scale(Math.max(0, progress) * Math.max(0, distance - 3.2))));
+      actor.position.copyFrom(ranged ? home : home.add(direction.scale(Math.max(0, progress) * Math.max(0, distance - 3.2))));
+      if(ranged){
+        actor.position.x+=Math.sin(Math.min(1,t/.65)*Math.PI)*(actorSide==='player'?-.4:.4);
+        if(t>=.2&&t<.63){
+          if(!activeEvent.projectile){var shot=B.MeshBuilder.CreateSphere(skill?'skill-projectile':'normal-projectile',{diameter:skill?1.25:.48,segments:10},scene);shot.parent=battleRoot;shot.material=material(scene,'projectile-light',skill?fx.color:'#aeeeff',1);shot.isPickable=false;activeEvent.projectile=shot;}
+          var flight=Math.max(0,Math.min(1,(t-.2)/.36)),origin=home.add(new B.Vector3(0,1.5,0)),destination=target.metadata.home.add(new B.Vector3(0,1.4,0));
+          activeEvent.projectile.position.copyFrom(B.Vector3.Lerp(origin,destination,flight));activeEvent.projectile.position.y+=Math.sin(flight*Math.PI)*(skill?1.2:.35);activeEvent.projectile.scaling.setAll(skill?1+Math.sin(t*35)*.15:1);
+        }else if(activeEvent.projectile){disposeNode(activeEvent.projectile);activeEvent.projectile=null;}
+      }
       if (skill) { actor.rotation.z = Math.sin(t * (16 + skillStyle * 3)) * (0.14 + skillStyle * .04); actor.rotation.y = (actorSide === 'player' ? Math.PI / 2 : -Math.PI / 2) + Math.sin(t * (5 + skillStyle)) * (.12 + skillStyle * .05); actor.position.y += Math.max(0, Math.sin(Math.min(1, t / .72) * Math.PI)) * (.28 + skillStyle * .17); actor.scaling.setAll(2.25 + Math.max(0, Math.sin(Math.min(1, t / 0.65) * Math.PI)) * (0.52 + skillStyle * .1)); }
       else {
         actor.rotation.x = -Math.sin(Math.min(1, t / .56) * Math.PI) * .28;
         actor.position.y += Math.sin(Math.min(1, t / .82) * Math.PI) * .85;
         actor.rotation.z = Math.sin(t * 18) * .08;
       }
+      if(ranged){actor.position.y=home.y+Math.sin(Math.min(1,t/.8)*Math.PI)*(skill?.3:.12);actor.rotation.x=-Math.sin(t*6)*(skill?.2:.09);}
       (actor.metadata.wings || []).forEach(function(wing, wi){wing.rotation.z=(wi ? 1 : -1) * (.3 + Math.abs(Math.sin(t * 32)) * .9);});
       if (t >= 0.56 && !activeEvent.hit) {
         activeEvent.hit = true;
         if (ev.missed) { onBattleHit(ev); return; }
         target.scaling.set(2.55, 1.75, 2.55); target.rotation.z += actorSide === 'player' ? -0.28 : 0.28;
         onBattleHit(ev);
-        var skillColors = ['#c4a7ff', '#7de3c4', '#ff9f7d']; var burstMat = material(scene, 'hitBurst', skill ? skillColors[skillStyle] : '#ffe17a', 0.9);
+        var skillColors = ['#c4a7ff', '#7de3c4', '#ff9f7d']; var burstMat = material(scene, 'hitBurst', skill ? fx.color : '#ffe17a', 0.9);
         for (var i = 0; i < (skill ? 12 : 6); i += 1) { var spark = B.MeshBuilder.CreateSphere('hit-spark', { diameter: skill ? 0.34 : 0.24, segments: 5 }, scene); spark.parent = battleRoot; spark.position.copyFrom(target.position.add(new B.Vector3((i % 4 - 1.5) * 0.45, 1.0 + (i % 3) * 0.42, (i % 2 - 0.5) * 0.8))); spark.material = burstMat; setTimeout(function (mesh) { disposeNode(mesh); }, 440, spark); }
       }
       if (t > 0.9) { target.scaling.setAll(2.25); target.rotation.z *= 0.82; }
@@ -745,6 +887,12 @@
       if (!avatar || !avatar.metadata || !avatar.metadata.legs) return;
       var rig = avatar.metadata, weight = speed > 0.15 ? clamp(speed / 7, 0, 1) : 0;
       rig.walkWeight += (weight - rig.walkWeight) * Math.min(1, dt * 14);
+      if(rig.mount){
+        var bike=rig.mount==='motorcycle';rig.walk+=dt*speed;avatar.position.y=(bike?.9:.83)+Math.sin(rig.walk*1.3)*.017*weight;
+        rig.legs.forEach(function(leg,i){leg.position.x=(i?1:-1)*(bike?.42:.3);leg.rotation.x=bike?-1.12:-.1;leg.rotation.z=(i?1:-1)*.06;});
+        rig.knees.forEach(function(knee){knee.rotation.x=bike?1.37:.18;});rig.arms.forEach(function(arm){arm.rotation.x=-1.13;});
+        rig.wheels.forEach(function(wheel){wheel.rotation.x+=dt*speed/.39;});return false;
+      }
       var previousStep = Math.floor((rig.walk + Math.PI / 2) / Math.PI);
       rig.walk += dt * (3 + Math.min(speed, 16) * 1.25);
       var swing = Math.sin(rig.walk) * 0.72 * rig.walkWeight;
@@ -755,15 +903,31 @@
       avatar.position.y = 0.4 + Math.abs(Math.sin(rig.walk)) * 0.075 * rig.walkWeight;
       return speed > 0.8 && rig.walkWeight > 0.2 && previousStep !== Math.floor((rig.walk + Math.PI / 2) / Math.PI);
     }
+    var radar=document.createElement('canvas');radar.className='ix-radar';radar.width=320;radar.height=354;radar.setAttribute('aria-label','몬스터 레이더: 초록 약함, 노랑 비슷함, 빨강 강함, 보라 매우 강함, 별 보스');document.body.appendChild(radar);
+    var radarAt=0;
+    function drawRadar(now){
+      radar.hidden=!controlsEnabled||battleMode||!!document.querySelector('.ix-drawer,.ix-modal-backdrop');if(radar.hidden||now-radarAt<100)return;radarAt=now;
+      var ctx=radar.getContext('2d'),cx=160,cy=160,r=142,range=65;ctx.clearRect(0,0,320,354);ctx.save();ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.fillStyle='rgba(9,30,30,.83)';ctx.fill();ctx.clip();
+      ctx.strokeStyle='rgba(139,209,183,.23)';ctx.lineWidth=2;[r/3,r*2/3,r].forEach(function(radius){ctx.beginPath();ctx.arc(cx,cy,radius,0,Math.PI*2);ctx.stroke();});ctx.beginPath();ctx.moveTo(cx-r,cy);ctx.lineTo(cx+r,cy);ctx.moveTo(cx,cy-r);ctx.lineTo(cx,cy+r);ctx.stroke();
+      var profile=latest.profile||{},team=(profile.team||[]).map(function(id){return(profile.collection||[]).find(function(c){return c.id===id;});}).filter(Boolean),level=team.length?team.reduce(function(n,c){return n+c.level;},0)/team.length:1;
+      (latest.spawns||[]).forEach(function(s){if(!s.available)return;var dx=s.x-localAvatar.position.x,dz=s.z-localAvatar.position.z;if(Math.hypot(dx,dz)>range)return;var x=cx+dx/range*r,y=cy+dz/range*r,diff=s.level-level,color=diff>=10?'#cf87ff':diff>=4?'#ff7474':diff>=-2?'#ffe077':'#76e1a1';ctx.fillStyle=s.reservedBy?'#86969b':color;ctx.strokeStyle='#10252a';ctx.lineWidth=2;
+        if(s.boss){ctx.beginPath();for(var p=0;p<10;p++){var a=p*Math.PI/5-Math.PI/2,rr=p%2?6:14;ctx.lineTo(x+Math.cos(a)*rr,y+Math.sin(a)*rr);}ctx.closePath();ctx.fill();ctx.stroke();}
+        else {ctx.beginPath();ctx.arc(x,y,s.group?7:4.5,0,Math.PI*2);ctx.fill();if(s.group){ctx.beginPath();ctx.arc(x,y,11,0,Math.PI*2);ctx.strokeStyle=color;ctx.stroke();}}
+      });
+      (latest.players||[]).filter(function(p){return p.uid!==latest.you;}).forEach(function(p){var dx=(p.x-localAvatar.position.x)/range*r,dz=(p.z-localAvatar.position.z)/range*r;if(Math.hypot(dx,dz)>r)return;ctx.fillStyle='#7bddff';ctx.fillRect(cx+dx-4,cy+dz-4,8,8);});
+      ctx.translate(cx,cy);ctx.rotate(-localAvatar.rotation.y);ctx.fillStyle='#ffffff';ctx.beginPath();ctx.moveTo(0,12);ctx.lineTo(-7,-7);ctx.lineTo(0,-3);ctx.lineTo(7,-7);ctx.closePath();ctx.fill();ctx.restore();
+      ctx.strokeStyle='#91c9b3';ctx.lineWidth=3;ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.stroke();ctx.fillStyle='#eafff4';ctx.font='bold 18px sans-serif';ctx.textAlign='center';ctx.fillText('북',160,17);ctx.font='17px sans-serif';ctx.fillText('주변 65m · ★ 보스',160,326);ctx.font='14px sans-serif';[['약함','#76e1a1'],['비슷','#ffe077'],['강함','#ff7474'],['위험','#cf87ff']].forEach(function(item,i){ctx.fillStyle=item[1];ctx.fillText(item[0],52+i*72,349);});
+    }
     var lastIntentAt = 0;
     scene.onBeforeRenderObservable.add(function () {
       var dt = Math.min(0.05, engine.getDeltaTime() / 1000), now = performance.now();
+      updateNavigation(now);drawRadar(now);
       if (battleMode) { runBattleEvent(dt); return; }
       cloudBase.forEach(function (cloud) { cloud.root.position.x = cloud.x + Math.sin(now / 35000 + cloud.index) * 9; });
       questMarker.position.y = 3.9 + Math.sin(now / 550) * .12;
       var x = clamp((input.right ? 1 : 0) - (input.left ? 1 : 0) + input.joyX, -1, 1), z = clamp((input.down ? 1 : 0) - (input.up ? 1 : 0) + input.joyZ, -1, 1), length = Math.hypot(x, z);
       if (length > 1) { x /= length; z /= length; }
-      if (!controlsEnabled) { x = z = 0; }
+      if (!controlsEnabled || document.querySelector('.ix-modal-backdrop,.ix-drawer')) { x = z = 0; length = 0; }
       // Map screen right/down to the camera's horizontal world axes, also while orbiting.
       var strength = Math.hypot(x, z);
       var screenX = x, screenZ = z, alpha = camera.alpha;
@@ -775,18 +939,18 @@
       var beforeX = localAvatar.position.x, beforeZ = localAvatar.position.z;
       if (latest.you) {
         var lead = length > .05 ? Math.min(.12,Math.max(0,(now-serverPositionAt)/1000)+.04) : 0;
-        var visualX=clamp(localAvatar.metadata.targetX+x*(localSprint?16:9)*lead,-118,118),visualZ=clamp(localAvatar.metadata.targetZ+z*(localSprint?16:9)*lead,-118,118);
+        var visualX=clamp(localAvatar.metadata.targetX+x*(global.InsectData.mounts[localMount]?.speed||(localSprint?16:9))*lead,-238,238),visualZ=clamp(localAvatar.metadata.targetZ+z*(global.InsectData.mounts[localMount]?.speed||(localSprint?16:9))*lead,-238,238);
         var blocked=OBSTACLES.some(function(o){return o.type==='circle'?Math.hypot(visualX-o.x,visualZ-o.z)<o.radius+1.15:Math.abs(visualX-o.x)<o.width/2+1.15&&Math.abs(visualZ-o.z)<o.depth/2+1.15;});
         if(blocked){visualX=localAvatar.metadata.targetX;visualZ=localAvatar.metadata.targetZ;}
         var smooth=1-Math.exp(-dt*22);localAvatar.position.x+=(visualX-localAvatar.position.x)*smooth;localAvatar.position.z+=(visualZ-localAvatar.position.z)*smooth;
       }
-      else { localAvatar.position.x = clamp(localAvatar.position.x + x * dt * 9, -118, 118); localAvatar.position.z = clamp(localAvatar.position.z + z * dt * 9, -118, 118); }
+      else { localAvatar.position.x = clamp(localAvatar.position.x + x * dt * 9, -238, 238); localAvatar.position.z = clamp(localAvatar.position.z + z * dt * 9, -238, 238); }
       var actualX = localAvatar.position.x - beforeX, actualZ = localAvatar.position.z - beforeZ;
       if (Math.hypot(actualX,actualZ)>.002 || length>.05) { var facing=Math.atan2(length>.05?x:actualX,length>.05?z:actualZ)-localAvatar.rotation.y;localAvatar.rotation.y+=Math.atan2(Math.sin(facing),Math.cos(facing))*(1-Math.exp(-dt*20)); }
       followCompanions(dt,now);
       var stepped = animateAvatar(localAvatar, dt, Math.hypot(actualX, actualZ) / Math.max(dt, 0.001));
       if (stepped && controlsEnabled && length > 0.05 && !document.hidden) {
-        var onPath = [-72, 0, 72].some(function (axis) { return Math.abs(localAvatar.position.x - axis) < 4.5 || Math.abs(localAvatar.position.z - axis) < 4.5; });
+        var onPath = [-144, 0, 144].some(function (axis) { return Math.abs(localAvatar.position.x - axis) < 4.5 || Math.abs(localAvatar.position.z - axis) < 4.5; });
         onFootstep({ surface: onPath ? 'path' : 'grass', foot: Math.floor((localAvatar.metadata.walk + Math.PI / 2) / Math.PI) % 2 });
       }
       if (controlsEnabled && Math.abs(camera.radius - lastRadius) > 0.02) {
@@ -796,7 +960,7 @@
       }
       camera.target.x += (localAvatar.position.x - camera.target.x) * Math.min(1, dt * 6); camera.target.z += (localAvatar.position.z - camera.target.z) * Math.min(1, dt * 6); camera.target.y = 1.4;
       Object.keys(remote).forEach(function (id) { var avatar = remote[id], dx = avatar.metadata.targetX - avatar.position.x, dz = avatar.metadata.targetZ - avatar.position.z, moving = Math.abs(dx) + Math.abs(dz) > 0.025, blend = Math.min(1, dt * 8); avatar.position.x += dx * blend; avatar.position.z += dz * blend; if (moving) avatar.rotation.y = Math.atan2(dx, dz); animateAvatar(avatar, dt, Math.hypot(dx, dz) * blend / Math.max(dt, 0.001)); });
-      Object.keys(spawns).forEach(function (id) { var creature = spawns[id]; creature.position.x += (creature.metadata.targetX - creature.position.x) * Math.min(1, dt * 7); creature.position.z += (creature.metadata.targetZ - creature.position.z) * Math.min(1, dt * 7); creature.metadata.phase += dt * 4; creature.position.y = 0.25 + Math.abs(Math.sin(creature.metadata.phase)) * 0.17; creature.metadata.wings.forEach(function (wing, wi) { wing.rotation.z = (wi ? 1 : -1) * (0.3 + Math.abs(Math.sin(creature.metadata.phase * 3)) * 0.55); }); });
+      Object.keys(spawns).forEach(function (id) { var creature = spawns[id]; creature.position.x += (creature.metadata.targetX - creature.position.x) * Math.min(1, dt * 7); creature.position.z += (creature.metadata.targetZ - creature.position.z) * Math.min(1, dt * 7); creature.metadata.phase += dt * 4; (creature.metadata.dinoLegs||[]).forEach(function(leg,li){leg.rotation.x=Math.sin(creature.metadata.phase+(li%2?Math.PI:0))*.25;}); if(creature.metadata.dinoTail)creature.metadata.dinoTail.rotation.y=Math.sin(creature.metadata.phase*.6)*.1; creature.position.y = 0.25 + Math.abs(Math.sin(creature.metadata.phase)) * 0.17; creature.metadata.wings.forEach(function (wing, wi) { wing.rotation.z = (wi ? 1 : -1) * (0.3 + Math.abs(Math.sin(creature.metadata.phase * 3)) * 0.55); }); });
     });
     function resize() { engine.resize(); } global.addEventListener('resize', resize);
     engine.runRenderLoop(function () { scene.render(); });
@@ -807,16 +971,17 @@
       eventQueue.forEach(function (queued) { if (queued.resolve) queued.resolve(queued.data); });
       global.removeEventListener('keydown', keyDown); global.removeEventListener('keyup', keyUp); global.removeEventListener('blur', releaseInput); global.removeEventListener('resize', resize);
       if (joystickElement) { joystickElement.removeEventListener('pointerdown', pointerDown); joystickElement.removeEventListener('pointermove', pointerMove); joystickElement.removeEventListener('pointerup', pointerUp); joystickElement.removeEventListener('pointercancel', pointerUp); joystickElement.removeEventListener('lostpointercapture', pointerUp); joystickElement.remove(); }
+      navHud.remove();skillBanner.remove();radar.remove();
       scene.dispose(); engine.dispose();
     }
-    return { setState: setState, setCharacter: setCharacter, setEnabled: setEnabled, playEvents: playEvents, dispose: dispose, scene: scene, camera: camera };
+    return { setNavigation: setNavigation, getNavigation: function(){return {target:navTarget,route:navRoute};}, setState: setState, setCharacter: setCharacter, setEnabled: setEnabled, playEvents: playEvents, dispose: dispose, scene: scene, camera: camera };
   }
 
   global.InsectWorld = Object.freeze({
     create: create,
     createCreatureModel: function (scene, speciesId, id) { return createCreature(scene, speciesId, { id: id || ('preview-' + speciesId) }); },
     createAvatarModel: function (scene, characterId, name) { return createAvatar(scene, characterId, name || '', null); },
-    biomes: BIOMES,
+    biomes: BIOMES.map(function(b){return Object.assign({},b,{x:b.x*2,z:b.z*2});}),
     obstacles: OBSTACLES,
     worldSize: WORLD_HALF * 2,
     safeZone: Object.freeze({ x: 0, z: 0, radius: 22 })

@@ -70,7 +70,7 @@ function createRoom(id) {
 }
 
 function publicPlayer(player) {
-  return { uid: player.uid, nickname: player.nickname, x: player.x, z: player.z, character: player.character, busy: Boolean(player.busy), stamina: Math.floor(player.stamina ?? 100), sprinting: !!player.sprinting };
+  return { uid: player.uid, nickname: player.nickname, x: player.x, z: player.z, character: player.character, mount: player.mount || '', busy: Boolean(player.busy), stamina: Math.floor(player.stamina ?? 100), sprinting: !!player.sprinting };
 }
 
 function challengeList(room, uid) {
@@ -117,7 +117,7 @@ function createGameServer(options = {}) {
 
   app.disable('x-powered-by');
   app.get('/insect_expedition/api/health', (_req, res) => {
-    res.json({ ok: true, release: '2026.09.20.7', storage: process.env.INSECT_PROFILE_BUCKET ? 'cloud' : 'local', now: clock(), rooms: rooms.size, online: [...rooms.values()].reduce((sum, room) => sum + [...room.players.values()].filter((p) => p.connected).length, 0) });
+    res.json({ ok: true, release: '2026.09.20.10', storage: process.env.INSECT_PROFILE_BUCKET ? 'cloud' : 'local', now: clock(), rooms: rooms.size, online: [...rooms.values()].reduce((sum, room) => sum + [...room.players.values()].filter((p) => p.connected).length, 0) });
   });
   app.get('*path', (req, res, next) => {
     let requested;
@@ -163,7 +163,7 @@ function createGameServer(options = {}) {
     spawn.reservedBy = null;
     if (consumed) {
       spawn.available = false;
-      spawn.respawnAt = clock() + (spawn.field ? 90000 : 30000);
+      spawn.respawnAt = clock() + (spawn.boss ? 300000 : spawn.field ? 90000 : 30000);
     }
   }
 
@@ -200,7 +200,8 @@ function createGameServer(options = {}) {
             const enemy = record.state.sides.b.team[0];
             const rank = Data.speciesById[enemy.speciesId].rarity;
             const rankIndex = Data.rarityOrder.indexOf(rank);
-            const xp = 24 + enemy.level * 9;
+            const groupSize=record.state.sides.b.team.length;
+            const xp = (24 + enemy.level * 9) * (record.spawn?.boss ? 2 : groupSize);
             result.xpPerCreature = xp;
             for (const { id } of record.state.sides[sideKey].team) {
               const index = nextProfile.collection.findIndex(item => item.id === id);
@@ -210,26 +211,26 @@ function createGameServer(options = {}) {
               result.totalXp += applied.gained;
               if (applied.levels.length) result.levelUps.push({ creatureId: id, levels: applied.levels });
             }
-            const earnedFeeds = 1 + Math.floor(rankIndex / 2);
+            const earnedFeeds = 1 + Math.floor(rankIndex / 2) + (record.spawn?.boss ? 3 : 0);
             result.feeds = Math.min(earnedFeeds, 9999 - nextProfile.supplies.feeds);
             nextProfile.supplies.feeds += result.feeds;
-            result.gold = Math.min(999999 - nextProfile.gold, 12 + enemy.level * 4 + rankIndex * 8);
+            result.gold = Math.min(999999 - nextProfile.gold, (12 + enemy.level * 4 + rankIndex * 8) * (record.spawn?.boss ? 3 : groupSize));
             nextProfile.gold += result.gold;
-            if (!record.state.victoryCapture) {
-              const team = record.state.sides[sideKey].team;
-              const healthScore = team.reduce((n, c) => n + c.hp / c.maxHp, 0) / team.length;
-              const performanceBonus = healthScore * .08 + (record.state.turn <= 3 ? .04 : 0);
-              const chance = Math.min(.98, Data.rarity[rank].capture + performanceBonus + nextProfile.bonuses.collection);
-              const success = result.reason === 'capture' || rng() < chance;
-              record.state.victoryCapture = { chance, performanceBonus, success, speciesId: enemy.speciesId };
+            if (!record.state.victoryCaptures) {
+              const team=record.state.sides[sideKey].team,healthScore=team.reduce((n,c)=>n+c.hp/c.maxHp,0)/team.length;
+              const performanceBonus=healthScore*.08+(record.state.turn<=3?.04:0);
+              record.state.victoryCaptures=record.state.sides.b.team.map(enemy=>{
+                const rank=Data.speciesById[enemy.speciesId].rarity,chance=Math.min(.98,Data.rarity[rank].capture+performanceBonus+nextProfile.bonuses.collection);
+                return {chance,performanceBonus,success:result.reason==='capture'||rng()<chance,speciesId:enemy.speciesId,level:enemy.level};
+              });
             }
-            const capture = { source: 'victory', ...record.state.victoryCapture };
-            if (capture.success && nextProfile.collection.length >= 120) { capture.success = false; capture.failureReason = 'inventory-full'; }
-            if (capture.success) {
-              const added = addCreature(nextProfile, enemy.speciesId, enemy.level);
-              capture.isNew = added.isNew; capture.creatureId = added.creature.id;
-            }
-            result.captureSummary = capture;
+            result.captureSummaries=record.state.victoryCaptures.map(raw=>{
+              const capture={source:'victory',...raw};
+              if(capture.success&&nextProfile.collection.length>=120){capture.success=false;capture.failureReason='inventory-full';}
+              if(capture.success){const added=addCreature(nextProfile,capture.speciesId,capture.level);capture.isNew=added.isNew;capture.creatureId=added.creature.id;}
+              return capture;
+            });
+            result.captureSummary=result.captureSummaries.find(c=>c.success)||result.captureSummaries[0];
           }
         }
       }
@@ -239,7 +240,7 @@ function createGameServer(options = {}) {
       player.busy = false;
     }
     result.recovered = true;
-    if (record.spawn) releaseSpawn(room, record.spawn, true);
+    if (record.spawn) releaseSpawn(room, record.spawn, result.winner === 'a' && result.reason === 'defeat');
     record.state.rewardProcessed = true;
   }
 
@@ -251,14 +252,17 @@ function createGameServer(options = {}) {
     if (type === 'field') {
       spawn = bPlayerOrSpawn;
       const species = Data.speciesById[spawn.speciesId];
-      b = { uid: `field:${spawn.id}`, name: species.name, team: [{ id: `field:${spawn.id}`, speciesId: spawn.speciesId, nickname: species.name, level: spawn.level, xp: 0, hp: null }] };
+      b = { uid: `field:${spawn.id}`, name: species.name, team: (spawn.members || [{speciesId:spawn.speciesId,level:spawn.level}]).map((m,i)=>({id:`field:${spawn.id}:${i}`,speciesId:m.speciesId,nickname:spawn.bossName || Data.speciesById[m.speciesId].name,level:m.level,xp:0,hp:null})) };
     } else {
       const opponent = bPlayerOrSpawn;
       b = { uid: opponent.uid, name: opponent.nickname, team: selectedTeam(opponent.profile) };
       sides.set(opponent.uid, 'b');
     }
     const state = Battle.createBattle({ id, type, a: { uid: aPlayer.uid, name: aPlayer.nickname, team: selectedTeam(aPlayer.profile) }, b, now: clock() });
-    const record = { id, state, sides, spawn, origins: new Map(), finishedAt: 0 };
+    state.boss = !!spawn?.boss;
+    state.biomeId = spawn?.biomeId || Data.biomes.reduce((best,b)=>World.distance(aPlayer,b.center)<World.distance(aPlayer,best.center)?b:best,Data.biomes[0]).id;
+    for(const side of ['a','b'])state.sides[side].auto=true;
+    const record = { id, state, sides, spawn, nextAutoAt:clock()+3500, origins: new Map(), finishedAt: 0 };
     for (const uid of sides.keys()) {
       const player = room.players.get(uid);
       record.origins.set(uid, { x: player.x, z: player.z });
@@ -280,7 +284,21 @@ function createGameServer(options = {}) {
   }
 
   async function execute(room, player, name, payload = {}) {
-    if (player.battleId && !['action', 'return'].includes(name)) throw new Error('전투 결과에서 돌아가기를 눌러 탐험을 계속해 주세요.');
+    if (player.battleId && !['action', 'return', 'auto-battle'].includes(name)) throw new Error('전투 결과에서 돌아가기를 눌러 탐험을 계속해 주세요.');
+    if (name === 'auto-battle') {
+      const record=room.battles.get(player.battleId),side=record?.sides.get(player.uid);
+      if(!record||!side||record.state.status!=='active')throw new Error('진행 중인 전투가 없습니다.');
+      record.state.sides[side].auto=payload.enabled===true;
+      if(payload.enabled)record.nextAutoAt=Math.max(record.nextAutoAt||0,clock()+1200);
+      return {enabled:record.state.sides[side].auto,message:payload.enabled?'자동 전투를 시작합니다.':'자동 전투를 멈췄어요. 행동을 직접 고를 수 있습니다.'};
+    }
+    if (name === 'mount') {
+      const id=String(payload.id||'');
+      if(id&&(!Data.mounts[id]||!player.profile.mounts.owned.includes(id)))throw new Error('상점에서 먼저 구매한 탈것만 탈 수 있어요.');
+      const next=JSON.parse(JSON.stringify(player.profile));next.mounts.equipped=id;player.profile=await store.save(next);
+      player.mount=id;player.sprinting=false;
+      return {id,message:id?Data.mounts[id].name+' 탑승! 스태미나 없이 이동합니다.':'탈것에서 내렸어요.'};
+    }
     if (name === 'move') {
       rate(player, 'move', 25);
       if (player.busy) throw new Error('전투 중에는 월드에서 이동할 수 없습니다.');
@@ -310,9 +328,10 @@ function createGameServer(options = {}) {
       if (item.feeds && next.supplies.feeds + item.feeds > 9999) throw new Error('사료를 사용한 뒤 구입해 주세요.');
       const captured = item.speciesId ? addCreature(next,item.speciesId,item.level,false) : null;
       if (item.feeds) next.supplies.feeds += item.feeds;
+      if(item.mountId){if(next.mounts.owned.includes(item.mountId))throw new Error('이미 보유한 탈것입니다.');next.mounts.owned.push(item.mountId);}
       next.gold -= item.price;
       player.profile = await store.save(next);
-      return {itemId:item.id,creature:captured?.creature,isNew:captured?.isNew,message:captured ? Data.speciesById[item.speciesId].name+' 부화! 팀 편성에서 배치하세요.' : item.name+' 구입 완료! 성장 메뉴에서 사용할 수 있어요.'};
+      return {itemId:item.id,creature:captured?.creature,isNew:captured?.isNew,message:captured ? Data.speciesById[item.speciesId].name+' 부화! 팀 편성에서 배치하세요.' : item.name+(item.mountId?' 구입 완료! 상점에서 탑승할 수 있어요.':' 구입 완료! 성장 메뉴에서 사용할 수 있어요.')};
     }
     if (name === 'sell-materials') {
       rate(player, 'shop', 400);
@@ -328,6 +347,7 @@ function createGameServer(options = {}) {
       rate(player, 'sprint', 200);
       World.updateStamina(player, clock());
       const enabled = payload.enabled === true;
+      if(enabled&&player.mount)throw new Error('탈것은 스태미나 없이 빠르게 이동해요.');
       if (enabled && player.stamina < 15) throw new Error('스태미나가 15 이상 회복되면 다시 달릴 수 있어요.');
       player.sprinting = enabled;
       return { enabled, stamina: Math.floor(player.stamina) };
@@ -394,6 +414,25 @@ function createGameServer(options = {}) {
       rate(player, 'heal', 1000);
       player.profile = await store.save(Battle.healProfile(player.profile));
       return { heals: player.profile.supplies.heals, safeCamp: safe, message: '모든 곤충이 회복됐어요. 다시 도전해 보세요!' };
+    }
+    if (name === 'fuse') {
+      rate(player, 'manage', 400);
+      const next = JSON.parse(JSON.stringify(player.profile));
+      const base = next.collection.find(c => c.id === String(payload.creatureId));
+      const recipe = base && Data.fusionRecipes[base.speciesId];
+      if (!recipe) throw new Error('다음 단계 조합이 없는 곤충입니다.');
+      const ids = payload.materialIds;
+      if (!Array.isArray(ids) || ids.length !== 2 || new Set(ids).size !== 2 || ids.includes(base.id)) throw new Error('서로 다른 재료 곤충 2마리를 선택해 주세요.');
+      const materials = ids.map(id => next.collection.find(c => c.id === id));
+      if (materials.some(c => !c || c.speciesId !== base.speciesId || next.team.includes(c.id))) throw new Error('같은 종류이며 팀에 편성되지 않은 곤충만 재료로 쓸 수 있어요.');
+      if (next.gold < recipe.gold) throw new Error('조합에 필요한 골드가 부족해요.');
+      base.speciesId = recipe.result; base.nickname = Data.speciesById[recipe.result].name;
+      base.hp = Battle.statsForCreature(base).maxHealth;
+      next.collection = next.collection.filter(c => !ids.includes(c.id));
+      next.gold -= recipe.gold;
+      if (!next.discoveries.includes(base.speciesId)) next.discoveries.push(base.speciesId);
+      player.profile = await store.save(next);
+      return {creature:base,message:base.nickname+' 조합 성공! 기준 곤충의 레벨과 팀 배치를 유지했어요.'};
     }
     if (name === 'evolve') {
       if (player.busy) throw new Error('전투 중에는 성장시킬 수 없습니다.');
@@ -463,7 +502,8 @@ function createGameServer(options = {}) {
       rate(player, 'challenge', 5000);
       const target = room.players.get(String(payload.targetUid));
       if (!target || !target.connected || target.uid === player.uid) throw new Error('대전 상대를 찾을 수 없습니다.');
-      if (player.busy || target.busy || World.inSafeZone(player) || World.inSafeZone(target)) throw new Error('현재 위치에서는 대전을 신청할 수 없습니다.');
+      if (player.busy || target.busy || target.battleId || World.inSafeZone(player) || World.inSafeZone(target)) throw new Error('현재 위치에서는 대전을 신청할 수 없습니다.');
+      if (World.distance(player,target)>10 || World.segmentBlocked(player,target)) throw new Error('상대 탐험가 10m 이내로 다가가 주세요.');
       if (!selectedTeam(player.profile).length || !selectedTeam(target.profile).length) throw new Error('양쪽 모두 전투 가능한 팀이 필요합니다.');
       const item = { id: crypto.randomUUID(), from: player.uid, to: target.uid, createdAt: clock(), expiresAt: clock() + 15000 };
       room.challenges.set(item.id, item);
@@ -475,7 +515,8 @@ function createGameServer(options = {}) {
       room.challenges.delete(item.id);
       if (!payload.accept) return { accepted: false };
       const challenger = room.players.get(item.from);
-      if (!challenger || !challenger.connected || challenger.busy || player.busy || World.inSafeZone(challenger) || World.inSafeZone(player)) throw new Error('대전을 시작할 수 없는 상태입니다.');
+      if (!challenger || !challenger.connected || challenger.busy || challenger.battleId || player.busy || World.inSafeZone(challenger) || World.inSafeZone(player)) throw new Error('대전을 시작할 수 없는 상태입니다.');
+      if (World.distance(player,challenger)>10 || World.segmentBlocked(player,challenger)) throw new Error('상대가 멀어졌어요. 가까이에서 다시 신청해 주세요.');
       return { accepted: true, battleId: (await createBattleRecord(room, 'pvp', challenger, player)).id };
     }
     if (name === 'action') {
@@ -487,6 +528,7 @@ function createGameServer(options = {}) {
       if (action.type === 'capture' && player.profile.collection.length >= 120) throw new Error('곤충 보관함이 가득 찼습니다.');
       const outcome = Battle.submitAction(record.state, side, action, { now: clock(), rng });
       record.state = outcome.state;
+      if(outcome.resolved)record.nextAutoAt=clock()+7000;
       if (record.state.status !== 'active') { record.finishedAt = clock(); await completeBattle(room, record); }
       return { resolved: outcome.resolved, events: outcome.events, result: outcome.result };
     }
@@ -536,12 +578,13 @@ function createGameServer(options = {}) {
             Object.assign(profile, Battle.healProfile(profile), { interruptedBattle: null });
             await store.save(profile);
           }
-          const location = existing ? { x: existing.x, z: existing.z } : profile.location || { x: 0, z: 22 };
+          const location = existing ? { x: existing.x, z: existing.z } : { ...Data.startVillage };
+          profile.location = { ...location };
           player = existing || { uid: joined.uid, rates: new Map(), commands: new Map(), inflight: new Map(), busy: false, battleId: null, stamina: 100, staminaAt: clock(), sprinting: false, moveActive: false };
           player.inflight ||= new Map();
           const character = Data.characters.some((item) => item.id === message.character) ? message.character : Data.characters.some((item) => item.id === profile.characterId) ? profile.characterId : Data.characters[0].id;
           profile.characterId = character;
-          Object.assign(player, { ws, connected: true, nickname: profile.adventurerName || joined.nickname, profile, character, x: location.x, z: location.z, disconnectedAt: 0 });
+          Object.assign(player, { ws, connected: true, nickname: profile.adventurerName || joined.nickname, profile, character, mount:profile.mounts.equipped, x: location.x, z: location.z, disconnectedAt: 0 });
           room.players.set(player.uid, player);
           sessions.set(player.uid, { room, player });
           clearTimeout(joinTimer);
@@ -600,11 +643,15 @@ function createGameServer(options = {}) {
           }
           continue;
         }
-        if (record.state.deadline > now) continue;
+        if(now >= record.nextAutoAt){
+          for(const key of ['a','b'])if(!record.state.sides[key].pending && record.state.sides[key].auto) record.state.sides[key].pending=Battle.autoAction(record.state,key,rng);
+        }
+        if (record.state.deadline > now && !(record.state.sides.a.pending&&record.state.sides.b.pending)) continue;
         try {
           for (const side of ['a', 'b']) if (!record.state.sides[side].pending) record.state.sides[side].pending = Battle.autoAction(record.state, side, rng);
           const outcome = Battle.resolveTurn(record.state, { now, rng });
           record.state = outcome.state;
+          record.nextAutoAt=now+7000;
           if (record.state.status !== 'active') { record.finishedAt = now; await completeBattle(room, record); }
         } catch { record.state.status = 'finished'; record.state.result = { winner: null, reason: 'invalid' }; await completeBattle(room, record); }
       }

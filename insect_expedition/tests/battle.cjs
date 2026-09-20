@@ -9,9 +9,10 @@ const fixed = value => () => value;
 const tests = [];
 const test = (name, fn) => tests.push([name, fn]);
 
-test('collectible data contains 21 species with valid skill rules', () => {
-  assert.equal(Data.species.length, 21);
-  assert.equal(new Set(Data.species.map(s => s.id)).size, 21);
+test('곤충과 공룡 27종의 공격·스킬 구성이 유효하다', () => {
+  assert.equal(Data.species.length, 27);
+  assert.equal(new Set(Data.species.map(s => s.id)).size, 27);
+  assert.equal(Data.species.filter(s=>s.category==='공룡').length,6);
   for (const item of Data.species) {
     assert.ok(item.normalAttack && item.normalAttack.name);
     if (item.rarity === 'common') assert.equal(item.skill, null, `${item.id} common skill`);

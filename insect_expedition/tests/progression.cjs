@@ -96,6 +96,7 @@ test('실제 채집 3회 → 보상 중복 방지 → 먹이 3개 → 진화 →
   const battle=game.rooms.get('quest-room').battles.get(entered.battleId);
   battle.state.sides.a.team.forEach(c=>{c.hp=1;c.speed=0;});
   battle.state.sides.b.team[0].attack=500;
+  battle.state.sides.b.team[0].hp=10000;
   for(let n=0;n<6&&battle.state.status==='active';n++) await command('action',{battleId:battle.id,turn:battle.state.turn,action:{type:'attack'}});
   assert.equal(battle.state.result.winner,'b');
   assert.equal(battle.state.result.recovered,true);

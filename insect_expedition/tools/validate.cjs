@@ -1,7 +1,7 @@
 'use strict';
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm'), crypto = require('node:crypto');
 const root = path.resolve(__dirname, '..'), site = path.dirname(root);
-const files = ['index.html','game.html','landscape.js','config.js','emulator.js','main.js','audio.js','characters.js','world.js','ui.js','styles.css','shared/data.js','shared/battle.cjs','package.json','package-lock.json','README.md','ASSET_SOURCES.md','Start-Local.ps1','Start-Firebase.ps1','firebase.emulator.json'];
+const files = ['index.html','game.html','landscape.js','config.js','emulator.js','main.js','audio.js','characters.js','world.js','ui.js','styles.css','shared/data.js','shared/navigation.js','shared/battle.cjs','package.json','package-lock.json','README.md','ASSET_SOURCES.md','Start-Local.ps1','Start-Firebase.ps1','firebase.emulator.json'];
 for (const entry of fs.readdirSync(path.join(root, 'server'))) if (entry.endsWith('.cjs')) files.push('server/' + entry);
 function assets(directory) { for (const item of fs.readdirSync(path.join(root,directory),{withFileTypes:true})) { const name=directory+'/'+item.name; if(item.isDirectory()) assets(name); else files.push(name); } }
 assets('assets');

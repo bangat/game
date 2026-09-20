@@ -2,21 +2,13 @@
 
 const crypto = require('node:crypto');
 
-const WORLD_LIMIT = 120;
+const Data = require('../shared/data.js');
+const WORLD_LIMIT = Data.world.maxX;
 const SAFE_RADIUS = 22;
 const PLAYER_RADIUS = 1.15;
 const MOVE_SPEED = 9;
 const SPRINT_SPEED = 16;
-const OBSTACLES = Object.freeze([
-  { id: 'lab', type: 'box', x: 0, z: -6, width: 18, depth: 10 },
-  { id: 'forest-log', type: 'box', x: -68, z: -62, width: 18, depth: 4 },
-  { id: 'rock-arch-a', type: 'circle', x: 73, z: -70, radius: 6 },
-  { id: 'rock-arch-b', type: 'circle', x: 91, z: -83, radius: 5 },
-  { id: 'farm-barn', type: 'box', x: -82, z: 80, width: 18, depth: 14 },
-  { id: 'cave-mound', type: 'circle', x: 1, z: 85, radius: 14 },
-  { id: 'facility-main', type: 'box', x: 73, z: 75, width: 25, depth: 17 },
-  { id: 'facility-tank', type: 'circle', x: 93, z: 91, radius: 6 }
-]);
+const OBSTACLES = Object.freeze(Data.obstacles);
 
 const TUTORIAL_POINTS = Object.freeze([[-8, 18], [8, 17], [-12, 25], [12, 28], [28, 22], [-30, 18]]);
 const HABITAT_OFFSETS = Object.freeze([[-17, -13], [17, -14], [-17, 14], [18, 15], [0, -19], [0, 19], [-21, 0], [21, 0]]);
@@ -46,9 +38,9 @@ function updateStamina(player, now = Date.now()) {
   if (!Number.isFinite(player.stamina)) player.stamina = 100;
   const since = Number.isFinite(player.staminaAt) ? player.staminaAt : now;
   const seconds = Math.max(0, (now - since) / 1000);
-  const movingSeconds = player.sprinting && player.moveActive && !player.busy
+  const movingSeconds = player.sprinting && player.moveActive && !player.busy && !player.mount
     ? Math.max(0, (Math.min(now, (player.lastMoveAt || since) + 350) - since) / 1000) : 0;
-  player.stamina = clamp(player.stamina - movingSeconds * 16 + (seconds - movingSeconds) * 9, 0, 100);
+  player.stamina = clamp(player.stamina - movingSeconds * 4 + (seconds - movingSeconds) * 14, 0, 100);
   if (player.stamina <= 0) player.sprinting = false;
   player.staminaAt = now;
 }
@@ -62,7 +54,7 @@ function movePlayer(player, intent, now = Date.now()) {
   player.lastMoveAt = now;
   player.moveActive = magnitude > 0;
   if (!magnitude) return false;
-  const factor = (player.sprinting && player.stamina > 0 ? SPRINT_SPEED : MOVE_SPEED) * elapsed / Math.max(1, magnitude);
+  const factor = (Data.mounts[player.mount]?.speed || (player.sprinting && player.stamina > 0 ? SPRINT_SPEED : MOVE_SPEED)) * elapsed / Math.max(1, magnitude);
   const candidate = {
     x: clamp(player.x + ix * factor, -WORLD_LIMIT, WORLD_LIMIT),
     z: clamp(player.z + iz * factor, -WORLD_LIMIT, WORLD_LIMIT)
@@ -83,22 +75,31 @@ function makeSpawns(species, biomes) {
     return makeSpawn(`tutorial-${index + 1}`, creature && creature.id, x, z, index === 4, 1);
   });
   const counts = new Map();
-  const habitat = catalog.map((creature, index) => {
-    const biome = regions.find((item) => (item.habitats || [item.habitat]).includes(creature.habitat)) || regions.find((item) => item.id === 'safe') || { center: { x: 0, z: 0 } };
-    const used = counts.get(biome.id) || 0;
-    counts.set(biome.id, used + 1);
-    let point = null;
-    for (let attempt = 0; attempt < HABITAT_OFFSETS.length; attempt += 1) {
-      const offset = HABITAT_OFFSETS[(used + attempt) % HABITAT_OFFSETS.length];
-      const candidate = { x: clamp(biome.center.x + offset[0], -110, 110), z: clamp(biome.center.z + offset[1], -110, 110) };
-      if (!pointBlocked(candidate, 2)) { point = candidate; break; }
-    }
-    point ||= { x: clamp(biome.center.x, -110, 110), z: clamp(biome.center.z, -110, 110) };
-    const field = ['rare', 'evolved', 'elite', 'monster'].includes(creature.rarity);
-    const level = field ? 5 + ['rare', 'evolved', 'elite', 'monster'].indexOf(creature.rarity) * 2 + index % 3 : 1 + index % 4;
-    return makeSpawn(`habitat-${creature.id}`, creature.id, point.x, point.z, field, level);
+  const habitat = catalog.flatMap((creature) => {
+    const biome = regions.find(b=>!b.safe&&(b.habitats||[b.habitat]).includes(creature.habitat));
+    if(!biome)return [];
+    return [0,1,2].map(pack=>{
+      const used=counts.get(biome.id)||0;counts.set(biome.id,used+1);
+      let point;
+      for(let attempt=0;attempt<32;attempt++){
+        const angle=(used+attempt)*2.39996, radius=18+((used+attempt)%4)*11;
+        const p={x:biome.center.x+Math.cos(angle)*radius,z:biome.center.z+Math.sin(angle)*radius};
+        if(!pointBlocked(p,3)){point=p;break;}
+      }
+      point ||= {x:biome.center.x,z:biome.center.z-25};
+      const rank=Math.max(0,Data.rarityOrder.indexOf(creature.rarity));
+      const range=biome.levels||[3,8],level=Math.min(range[1],range[0]+Math.floor(rank/2)+pack);
+      return {...makeSpawn('habitat-'+creature.id+(pack?'-'+(pack+1):''),creature.id,point.x,point.z,true,level),biomeId:biome.id};
+    });
   });
-  return [...tutorial, ...habitat];
+  const bosses = require('../shared/data.js').fieldBosses.map(b => ({...makeSpawn(b.id,b.speciesId,b.x,b.z,true,b.level),boss:true,biomeId:b.biomeId,bossName:b.name}));
+  const groups=regions.filter(b=>!b.safe).map(b=>{
+    const local=catalog.filter(c=>(b.habitats||[b.habitat]).includes(c.habitat));
+    const members=[0,1,2].map((n)=>({speciesId:local[(local.length-1+n)%local.length].id,level:b.levels[0]+n}));
+    let point={x:b.center.x+36,z:b.center.z+24};if(pointBlocked(point,4))point={x:b.center.x-36,z:b.center.z-24};
+    return {...makeSpawn('group-'+b.id,members[0].speciesId,point.x,point.z,true,members[0].level),biomeId:b.id,members,group:true};
+  });
+  return [...tutorial, ...habitat, ...bosses, ...groups];
 }
 
 function makeSpawn(id, speciesId, x, z, field, level) {
@@ -116,7 +117,7 @@ function updateSpawns(spawns, now = Date.now()) {
 }
 
 function publicSpawn(spawn) {
-  return { id: spawn.id, speciesId: spawn.speciesId, x: spawn.x, z: spawn.z, available: spawn.available, reservedBy: spawn.reservedBy, field: spawn.field, level: spawn.level };
+  return { id: spawn.id, speciesId: spawn.speciesId, x: spawn.x, z: spawn.z, available: spawn.available, reservedBy: spawn.reservedBy, field: spawn.field, level: spawn.level, group: !!spawn.group, members: spawn.members, boss: !!spawn.boss, biomeId: spawn.biomeId, bossName: spawn.bossName, respawnAt: spawn.respawnAt };
 }
 
 module.exports = {

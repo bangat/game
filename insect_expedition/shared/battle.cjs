@@ -161,7 +161,7 @@ function processAttack(state, sideKey, action, rng, events) {
   const move = action.type === 'skill' ? species.skill : species.normalAttack;
   let accuracy = move.accuracy;
   if (actor.status.some(s => s.id === 'blur')) accuracy *= 0.76;
-  events.push({ type: action.type, actorSide: sideKey, targetSide: foeKey, actorCreatureId: actor.id, targetCreatureId: target.id, skillId: move.id, message: `${actor.nickname}의 ${move.name}!` });
+  events.push({ type: action.type, actorSide: sideKey, targetSide: foeKey, actorCreatureId: actor.id, targetCreatureId: target.id, skillId: move.id, attackKind: move.kind || 'physical', message: `${actor.nickname}의 ${move.name}!` });
   if (roll(rng) >= accuracy) {
     events.push({ type: 'miss', actorSide: sideKey, targetSide: foeKey, actorCreatureId: actor.id, targetCreatureId: target.id, skillId: move.id, amount: 0, remainingHp: target.hp, message: '공격이 빗나갔다.' });
     return;
@@ -208,6 +208,7 @@ function ensureActive(state, sideKey, events) {
   const next = livingIndexes(side)[0];
   if (next == null) return false;
   side.active = next;
+  side.entryPriority = active(side).id;
   events.push({ type: 'switch', actorSide: sideKey, targetSide: sideKey, creatureId: active(side).id, forced: true, message: `${active(side).nickname}이 이어서 나섰다!` });
   return true;
 }
@@ -220,11 +221,13 @@ function resolveTurn(input, options) {
   if (!state.sides.a.pending || !state.sides.b.pending) throw new Error('양쪽 행동이 모두 준비되지 않았습니다.');
   const events = [];
   const round = state.turn;
-  const choices = ['a', 'b'].map(key => ({ key, action: state.sides[key].pending, actorId: active(state.sides[key]).id, speed: effectiveSpeed(active(state.sides[key])) }));
+  const choices = ['a', 'b'].map(key => ({ key, action: state.sides[key].pending, actorId: active(state.sides[key]).id, entryPriority: state.sides[key].entryPriority === active(state.sides[key]).id, speed: effectiveSpeed(active(state.sides[key])) }));
+  for (const key of ['a', 'b']) state.sides[key].entryPriority = null;
   choices.sort((x, y) => {
     const xPriority = x.action.type === 'switch' ? 3 : x.action.type === 'retreat' ? 4 : x.action.type === 'capture' ? 2 : 1;
     const yPriority = y.action.type === 'switch' ? 3 : y.action.type === 'retreat' ? 4 : y.action.type === 'capture' ? 2 : 1;
     if (xPriority !== yPriority) return yPriority - xPriority;
+    if (x.entryPriority !== y.entryPriority) return Number(y.entryPriority) - Number(x.entryPriority);
     if (x.speed !== y.speed) return y.speed - x.speed;
     return x.key === (round % 2 ? 'a' : 'b') ? -1 : 1;
   });
