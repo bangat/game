@@ -6,7 +6,7 @@ const MAX_TEAM = 3;
 
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 const roll = rng => clamp(Number((rng || Math.random)()), 0, 0.999999);
-const xpForLevel = level => 36 + Math.max(0, level - 1) * 18;
+const xpForLevel = Data.xpForLevel;
 
 function statsForCreature(creature) {
   const species = Data.speciesById[creature.speciesId];
@@ -151,7 +151,8 @@ function processAttack(state, sideKey, action, rng, events) {
   const foeKey = other(sideKey);
   const foe = state.sides[foeKey];
   const actor = active(side);
-  const target = active(foe);
+  const targets = livingIndexes(foe);
+  const target = foe.team[targets[Math.floor(roll(rng) * targets.length)]];
   if (!actor || actor.hp <= 0 || !target || target.hp <= 0) return;
   if (actor.status.some(s => s.id === 'stunned')) {
     events.push({ type: 'status', actorSide: sideKey, targetSide: sideKey, status: 'stunned', message: `${actor.nickname}은 몸을 움직이지 못했다!` });
@@ -246,6 +247,14 @@ function resolveTurn(input, options) {
     }
   }
   for (const key of ['a', 'b']) {
+    const side=state.sides[key];
+    const prior=choices.find(c=>c.key===key);
+    if(state.status==='active' && !side.entryPriority && prior.action.type!=='switch') {
+      for(let step=1;step<=side.team.length;step++) {
+        const index=(side.active+step)%side.team.length;
+        if(side.team[index].hp>0){side.active=index;break;}
+      }
+    }
     state.sides[key].pending = null;
     state.sides[key].team.forEach(tickCreature);
   }

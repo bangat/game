@@ -54,6 +54,11 @@
 
   ];
 
+  // 동굴 전용종은 일반 출현과 조합 결과에서 제외한다.
+  [['prism_stag','프리즘사슴벌레','cave_stag','elite'],['lunar_moth','월광수호나방','moon_moth','elite'],['aurora_rex','오로라렉스','ancient_rex','monster']].forEach(([id,name,base,rank])=>{
+    const source=species.find(s=>s.id===base);
+    species.push({...source,id,name,rarity:rank,habitat:'알 동굴',eggOnly:true,modelId:base,evolvesTo:null,baseStats:Object.fromEntries(Object.entries(source.baseStats).map(([k,v])=>[k,Math.round(v*1.18)]))});
+  });
   const rangedNormals = new Set(['honey_mason_bee','moon_moth','mist_butterfly','storm_cicada','marsh_spitter']);
   const rangedSkills = new Set(['sky_current','moon_drowse','mist_mirror','storm_chorus','venom_comet','ember_blast','tyrant_roar','crystal_quake']);
   species.forEach(s=>{if(rangedNormals.has(s.id))s.normalAttack.kind='ranged';if(s.skill)s.skill.kind=rangedSkills.has(s.skill.id)?'ranged':'physical';});
@@ -71,6 +76,11 @@
   ];
   const huntingLevels = {safe:[1,2],grassland:[3,7],farm:[6,11],wetland:[9,14],river:[12,17],rock:[15,20],forest:[17,23],facility:[22,28],cave:[26,32]};
   biomes.forEach(b=>{b.center.x*=2;b.center.z*=2;if(!b.safe)b.radius=72;b.levels=huntingLevels[b.id];});
+  biomes.push(
+    {id:'mine',name:'별빛 광산',habitat:'광산',center:{x:0,z:-224},radius:25,safe:false,color:'#536c82',levels:[24,32],special:true,description:'부화에 쓰는 온기 수정 채광'},
+    {id:'nest',name:'달빛 알 동굴',habitat:'알 동굴',center:{x:224,z:0},radius:25,safe:false,color:'#8e78a7',levels:[30,38],special:true,description:'전용종 알 발굴 · 수정 3개로 부화 시작'},
+    {id:'sanctum',name:'고대 수호자의 터',habitat:'성역',center:{x:0,z:224},radius:25,safe:false,color:'#be9360',levels:[42,50],special:true,description:'보스 연구 4종 + 부화 2회로 수호자 도전'}
+  );
   // 현재 지역은 고정된 탐험 시간대입니다. 낮밤·날씨 조건을 구현된 기능으로 표시하지 않습니다.
   species.forEach(item => { item.spawnConditions.time = '모두'; item.spawnConditions.weather = '모두'; });
   const obstacles = [
@@ -101,7 +111,7 @@
     {id:'battle-veteran',name:'숙련 탐험가',type:'victory',target:5,feeds:7,description:'야생 곤충과 전투에서 5회 승리'}
   ];
   const resources = {
-    berries: {name:'숲 열매',icon:'🫐',sell:5}, ore: {name:'빛나는 광석',icon:'💎',sell:9}
+    berries: {name:'숲 열매',icon:'🫐',sell:5}, ore: {name:'빛나는 광석',icon:'💎',sell:9}, crystal: {name:'온기 수정',icon:'🔮',sell:0}, egg: {name:'동굴의 알',icon:'🥚',sell:0}
   };
   const resourceNodes = [
     {id:'berries-camp',kind:'berries',name:'산딸기 덤불',x:-5,z:26},
@@ -113,6 +123,16 @@
     {id:'berries-farm',kind:'berries',name:'농장 열매',x:-55,z:58}
   ];
   resourceNodes.forEach(n=>{if(!n.id.endsWith('-camp')){n.x*=2;n.z*=2;}});
+  resourceNodes.push(...[-12,0,12].map((x,i)=>({id:'crystal-'+i,kind:'crystal',name:'온기 수정 광맥',x,z:-218+(i%2)*8})),...[-12,0,12].map((z,i)=>({id:'egg-'+i,kind:'egg',name:'달빛 알 둥지',x:218+(i%2)*8,z})));
+  const eggKinds={prism:{name:'프리즘 알',speciesId:'prism_stag',steps:12},lunar:{name:'월광 알',speciesId:'lunar_moth',steps:16},aurora:{name:'오로라 알',speciesId:'aurora_rex',steps:24}};
+  const researchGoals=[
+    {id:'first-boss',name:'지역의 수호자',text:'서로 다른 지역 보스 1종 처치',metric:'bosses',target:1,gold:200,feeds:5},
+    {id:'miner',name:'별빛 광부',text:'별빛 광산에서 온기 수정 6개 채광',metric:'crystals',target:6,gold:300,feeds:8},
+    {id:'hatcher',name:'알 연구가',text:'탐험으로 동굴 전용종 2마리 부화',metric:'hatched',target:2,gold:500,feeds:12},
+    {id:'explorer',name:'사방의 수호자',text:'서로 다른 지역 보스 4종 처치',metric:'bosses',target:4,gold:700,feeds:20},
+    {id:'guardian',name:'고대의 계승자',text:'고대 수호자의 터 보스 처치',metric:'guardian',target:1,gold:1500,feeds:30}
+  ];
+  const xpForLevel=level=>36+Math.max(0,level-1)*18+Math.max(0,level-10)**2*3;
   const mounts = {motorcycle:{name:'숲길 오토바이',icon:'🏍️',speed:22},handcart:{name:'탐험 리어카',icon:'🛒',speed:18}};
   const shop = [
     {id:'mount-motorcycle',name:'숲길 오토바이',price:2000,mountId:'motorcycle',description:'영구 보유 · 이동 속도 22 · 스태미나 소모 없음'},
@@ -143,6 +163,11 @@
     ['cave','ancient_rex',36,-38,124,'울림 동굴의 고대폭군'],
     ['facility','ember_raptor',32,104,108,'화염 온실의 추적자']
   ].map(([biomeId,speciesId,level,x,z,name])=>({id:'boss-'+biomeId,biomeId,speciesId,level,x,z,name}));
+  fieldBosses.push(
+    {id:'boss-mine',biomeId:'mine',speciesId:'crystal_ankylosaur',level:35,x:14,z:-232,name:'광맥을 지키는 수정갑주'},
+    {id:'boss-nest',biomeId:'nest',speciesId:'king_stag',level:40,x:232,z:18,name:'달빛 둥지의 문지기'},
+    {id:'boss-sanctum',biomeId:'sanctum',speciesId:'aurora_rex',level:50,x:16,z:228,name:'고대의 오로라 수호자'}
+  );
   const fusionTargets = {
     fern_raptor:'marsh_spitter',marsh_spitter:'ember_raptor',granite_triceratops:'ancient_rex',crystal_ankylosaur:'ancient_rex',ember_raptor:'ancient_rex',
     dew_ladybird:'honey_mason_bee',reed_cricket:'stream_nymph',clover_grasshopper:'orchard_longhorn',
@@ -157,5 +182,5 @@
   }]));
   const collectionMilestones = [{ count: 5, feeds: 5 }, { count: 10, feeds: 10 }, { count: 15, feeds: 15 }, { count: 21, feeds: 25 }, { count: 27, feeds: 40 }];
 
-  return Object.freeze({ title: '이슬숲 탐험대', world: { minX: -240, maxX: 240, minZ: -240, maxZ: 240, spawn: { x: 0, y: 1, z: 0 }, arena: { x: 0, y: 1, z: 0 } }, skillEffects, startVillage, fieldBosses, fusionRecipes, rarity, rarityOrder, quests, resources, resourceNodes, mounts, shop, collectionMilestones, species, speciesById, biomes, obstacles, characters });
+  return Object.freeze({ title: '이슬숲 탐험대', world: { minX: -240, maxX: 240, minZ: -240, maxZ: 240, spawn: { x: 0, y: 1, z: 0 }, arena: { x: 0, y: 1, z: 0 } }, xpForLevel, eggKinds, researchGoals, skillEffects, startVillage, fieldBosses, fusionRecipes, rarity, rarityOrder, quests, resources, resourceNodes, mounts, shop, collectionMilestones, species, speciesById, biomes, obstacles, characters });
 });

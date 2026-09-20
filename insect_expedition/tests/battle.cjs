@@ -9,10 +9,10 @@ const fixed = value => () => value;
 const tests = [];
 const test = (name, fn) => tests.push([name, fn]);
 
-test('곤충과 공룡 27종의 공격·스킬 구성이 유효하다', () => {
-  assert.equal(Data.species.length, 27);
-  assert.equal(new Set(Data.species.map(s => s.id)).size, 27);
-  assert.equal(Data.species.filter(s=>s.category==='공룡').length,6);
+test('곤충과 공룡 30종의 공격·스킬 구성이 유효하다', () => {
+  assert.equal(Data.species.length, 30);
+  assert.equal(new Set(Data.species.map(s => s.id)).size, 30);
+  assert.equal(Data.species.filter(s=>s.category==='공룡').length,7);
   for (const item of Data.species) {
     assert.ok(item.normalAttack && item.normalAttack.name);
     if (item.rarity === 'common') assert.equal(item.skill, null, `${item.id} common skill`);
@@ -34,7 +34,7 @@ test('faster creature acts first and a defeated queued actor cannot pass its mov
     b: { uid: 'b', team: [creature('b1', 'azure_dragonfly')] }
   });
   state = Battle.submitAction(state, 'a', { type: 'attack' }, { now: 1001, rng: fixed(.5) }).state;
-  const result = Battle.submitAction(state, 'b', { type: 'attack' }, { now: 1002, rng: fixed(.5) });
+  const result = Battle.submitAction(state, 'b', { type: 'attack' }, { now: 1002, rng: fixed(0) });
   assert.equal(result.state.sides.a.active, 1);
   assert.ok(result.events.some(e => e.type === 'skip' && e.actorCreatureId === 'a1'));
   assert.equal(result.state.sides.b.team[0].hp, result.state.sides.b.team[0].maxHp);

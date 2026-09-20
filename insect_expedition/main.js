@@ -129,7 +129,11 @@
       selectedCharacter = id; if (window.InsectCharacters) InsectCharacters.select(id);
       if (world) world.setCharacter(id);
     }, onEnter: () => { if (world && world.setEnabled) world.setEnabled(true); const canvas = document.getElementById('game-canvas'); canvas.tabIndex = 0; canvas.focus(); } });
-    world = InsectWorld.create({ canvas: document.getElementById('game-canvas'), enabled: false, onMove: value => { moveIntent = value; }, onSelect: selection => { if (ui.setSelection) ui.setSelection(selection); }, onFootstep: step => InsectAudio.footstep(step), onSkillStart: event => InsectAudio.play('skill',event.skillId), onBattleSwitch: event => {
+    world = InsectWorld.create({ canvas: document.getElementById('game-canvas'), enabled: false, onMove: value => { moveIntent = value; }, onSelect: selection => { if (ui.setSelection) ui.setSelection(selection); }, onFootstep: step => InsectAudio.footstep(step), onSkillStart: event => InsectAudio.play('skill',event.skillId), onBattleActor:event=>{
+      if(!animationView?.battle)return;
+      for(const [key,id] of [[event.actorSide,event.actorCreatureId],[event.targetSide,event.targetCreatureId]]){const side=animationView.battle.sides[key];const index=side?.team.findIndex(c=>c.id===id);if(index>=0)side.active=index;}
+      ui.setState(animationView);
+    }, onBattleSwitch: event => {
       const side=animationView?.battle?.sides[event.actorSide];if(!side)return;
       const index=side.team.findIndex(c=>c.id===event.creatureId);if(index>=0)side.active=index;
       animationView.battle.events=[event];ui.setState(animationView);

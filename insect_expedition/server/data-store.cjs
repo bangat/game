@@ -6,7 +6,7 @@ const crypto = require('node:crypto');
 const Data = require('../shared/data.js');
 
 const Battle = require('../shared/battle.cjs');
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 const VALID_SPECIES = new Set(Data.species.map((item) => item.id));
 
 function clone(value) {
@@ -49,6 +49,7 @@ function createProfile(uid, nickname, starterIds = []) {
     encyclopedia: { seen: collection.map(item => item.speciesId), claimed: [], milestones: [] },
     bonuses: { collection: 0 },
     mounts: {owned:[],equipped:''},
+    expedition: {bosses:[],crystals:0,hatched:0,claimed:[],eggs:[],walk:0},
     gold: 0, resources: {berries:0,ore:0},
     supplies: { heals: 3, feeds: 0 },
     quest: { id: 'dew-sample', status: 'available', progress: 0, target: 3 },
@@ -94,6 +95,14 @@ function migrateProfile(input, uid, nickname, starterIds) {
     mounts: {
       owned: [...new Set((Array.isArray(old.mounts?.owned)?old.mounts.owned:[]).filter(id=>Data.mounts[id]))],
       equipped: Data.mounts[old.mounts?.equipped] && Array.isArray(old.mounts?.owned) && old.mounts.owned.includes(old.mounts.equipped) ? old.mounts.equipped : ''
+    },
+    expedition: {
+      bosses:[...new Set((Array.isArray(old.expedition?.bosses)?old.expedition.bosses:[]).filter(id=>Data.fieldBosses.some(b=>b.id===id)))],
+      crystals:Math.max(0,Math.min(999999,Math.floor(finiteNumber(old.expedition?.crystals,0)))),
+      hatched:Math.max(0,Math.min(999999,Math.floor(finiteNumber(old.expedition?.hatched,0)))),
+      claimed:[...new Set((Array.isArray(old.expedition?.claimed)?old.expedition.claimed:[]).filter(id=>Data.researchGoals.some(g=>g.id===id)))],
+      walk:Math.max(0,Math.min(79.99,finiteNumber(old.expedition?.walk,0))),
+      eggs:(Array.isArray(old.expedition?.eggs)?old.expedition.eggs:[]).filter(e=>e&&Data.eggKinds[e.kind]).slice(0,12).map(e=>({id:boundedText(e.id,crypto.randomUUID(),80),kind:e.kind,incubating:!!e.incubating,progress:Math.max(0,Math.min(Data.eggKinds[e.kind].steps,Math.floor(finiteNumber(e.progress,0))))}))
     },
     bonuses: { collection: Math.max(0, Math.min(0.35, Number(old.bonuses && old.bonuses.collection) || 0)) },
     gold: Math.max(0, Math.min(999999, Math.floor(finiteNumber(old.gold,0)))),

@@ -19,7 +19,7 @@
     if(boss)return {id,name:boss.name,x:boss.x,z:boss.z};
     const biome=Data.biomes.find(b=>b.id===id);
     if(!biome)return null;
-    const point=biome.safe?Data.startVillage:{x:biome.center.x,z:biome.center.z-18};
+    const point=biome.safe?Data.startVillage:{x:biome.center.x,z:biome.center.z+(biome.center.z < -210 ? 18 : -18)};
     return {id,name:biome.name,...point};
   }
   function route(start,goal) {

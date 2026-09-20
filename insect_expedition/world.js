@@ -72,7 +72,7 @@
     return mesh;
   }
   function label(scene, parent, text, y, color) {
-    var plane = B.MeshBuilder.CreatePlane('label', { width: 4.4, height: 0.7 }, scene);
+    var plane = B.MeshBuilder.CreatePlane('label', { width: 3.1, height: 0.46 }, scene);
     plane.parent = parent; plane.position.y = y; plane.billboardMode = B.Mesh.BILLBOARDMODE_ALL; plane.isPickable = false;
     if (typeof document === 'undefined' && typeof OffscreenCanvas === 'undefined') { plane.isVisible = false; return plane; }
     var texture = new B.DynamicTexture('labelTexture', { width: 512, height: 80 }, scene, false);
@@ -543,6 +543,20 @@
       var shard=worldPart('cave-crystal','cylinder',{height:2+landmark%4,diameterTop:0,diameterBottom:1.2,tessellation:5},[Math.cos(la)*lr,1.1,144+Math.sin(la)*lr],crystalMat);shard.rotation.z=(landmark%3-1)*.2;
       if(landmark<16)worldPart('facility-ember','box',{width:3,height:.12,depth:.5},[144+Math.cos(la)*lr,.12,144+Math.sin(la)*lr],emberMat);
     }
+    global.InsectData.biomes.filter(function(b){return b.special;}).forEach(function(b){
+      var x=b.center.x,z=b.center.z,groundMat=material(scene,'special-ground-'+b.id,b.color),rim=material(scene,'special-rim-'+b.id,b.id==='nest'?'#c6a5ed':b.id==='mine'?'#8edde8':'#e5c181',.4);
+      worldPart('special-floor-'+b.id,'cylinder',{diameter:49,height:.25,tessellation:36},[x,.03,z],groundMat);
+      for(var n=0;n<14;n++){
+        var angle=n/14*Math.PI*2;if(b.id==='mine'?Math.sin(angle)>.75:b.id==='nest'?Math.cos(angle)<-.75:Math.sin(angle)<-.75)continue;
+        worldPart('special-wall-'+b.id,'sphere',{diameterX:6,diameterY:7+n%3,diameterZ:5,segments:7},[x+Math.cos(angle)*24,2,z+Math.sin(angle)*24],mats.rock);
+        worldPart('special-crystal-'+b.id,'cylinder',{diameterTop:0,diameterBottom:1.3,height:3+n%3,tessellation:5},[x+Math.cos(angle)*20,2,z+Math.sin(angle)*20],rim);
+      }
+      var sign=label(scene,worldRoot,b.name,0,'#fff1c4');sign.position.set(b.id==='nest'?x-19:x,4,b.id==='mine'?z+19:b.id==='nest'?z:z-19);
+      // 표지와 랜턴을 입구에 모아 출입구를 알아보기 쉽게 한다.
+      [-5,5].forEach(function(dx){worldPart('entry-post','cylinder',{height:4,diameter:.45,tessellation:8},[b.id==='nest'?x-20:x+dx,2,b.id==='mine'?z+20:b.id==='nest'?z+dx:z-20],mats.wood);worldPart('entry-lamp','sphere',{diameter:.8,segments:8},[b.id==='nest'?x-20:x+dx,4,b.id==='mine'?z+20:b.id==='nest'?z+dx:z-20],rim);});
+      if(b.id==='mine')for(var rail=0;rail<2;rail++)worldPart('mine-rail','box',{width:.16,height:.15,depth:23},[x+(rail?1.3:-1.3),.3,z-9],mats.metal);
+      if(b.id==='sanctum')worldPart('guardian-ring','torus',{diameter:18,thickness:.3,tessellation:40},[x,.35,z],rim);
+    });
     mergeByMaterial(worldRoot, 'world-static');
     worldRoot.getChildMeshes().forEach(function (staticMesh) { staticMesh.freezeWorldMatrix(); });
 
@@ -643,6 +657,10 @@
         part(scene,root,'berry-bush','sphere',{diameterX:2.1,diameterY:1.5,diameterZ:1.8,segments:8},[0,.7,0],mats.leaf);
         var berryMat=material(scene,'berry-red','#d65780',.2);
         for(var i=0;i<7;i++)part(scene,root,'berry-fruit','sphere',{diameter:.27,segments:6},[Math.sin(i*2.4)*.8,1+(i%3)*.17,Math.cos(i*2.4)*.65],berryMat);
+      } else if(node.kind==='egg') {
+        part(scene,root,'egg-nest','torus',{diameter:2.2,thickness:.3,tessellation:16},[0,.25,0],mats.wood);
+        var eggMat=material(scene,'moon-egg','#efe4ff',.35);
+        part(scene,root,'cave-egg','sphere',{diameterX:.95,diameterY:1.4,diameterZ:.95,segments:14},[0,.85,0],eggMat);
       } else {
         part(scene,root,'ore-rock','sphere',{diameterX:2,diameterY:1.2,diameterZ:1.6,segments:6},[0,.45,0],mats.rock);
         var crystalMat=material(scene,'ore-crystal','#8ee1df',.6);
@@ -662,7 +680,7 @@
           model.scaling.scaleInPlace(.6);model.position.set(localAvatar.position.x, .25, localAvatar.position.z-(index+1)*1.7);
           model.metadata.companionId=id;
           model.getChildMeshes().forEach(function(mesh){mesh.isPickable=false;mesh.metadata={};});
-          label(scene,model,creature.nickname || global.InsectData.speciesById[creature.speciesId].name,2.1,'#c4ffd3');
+          // 동료 이름은 팀 HUD에 표시해 캐릭터 주변을 가리지 않는다.
           companions[id]=model;addShadowModel(model);
         }
         companions[id].metadata.slot=index;
@@ -704,7 +722,7 @@
         if (localRecord.nickname && localAvatar.metadata.nickname !== localRecord.nickname) {
           localAvatar.metadata.nickname = localRecord.nickname;
           var plate = localAvatar.getChildMeshes().find(function(mesh){return mesh.name === 'label';});
-          if (plate && plate.material && plate.material.diffuseTexture) plate.material.diffuseTexture.drawText(localRecord.nickname, null, 55, 'bold 40px sans-serif', '#ffffff', 'rgba(14,30,25,.82)', true);
+          if (plate && plate.material && plate.material.diffuseTexture) {plate.material.diffuseTexture.getContext().clearRect(0,0,512,80);plate.material.diffuseTexture.drawText(localRecord.nickname, null, 55, 'bold 40px sans-serif', '#ffffff', 'rgba(14,30,25,.82)', true);}
         }
       }
       var quest = latest.profile && latest.profile.quest;
@@ -712,6 +730,7 @@
       var markerText = !quest || quest.status === 'available' ? '! 새 의뢰' : quest.status === 'ready' ? '✓ 보상 받기' : quest.status === 'complete' ? '! 다음 의뢰' : definition.name + ' ' + quest.progress + '/' + quest.target;
       if (questMarker.metadata !== markerText && questMarker.material && questMarker.material.diffuseTexture) {
         questMarker.metadata = markerText;
+        questMarker.material.diffuseTexture.getContext().clearRect(0,0,512,80);
         questMarker.material.diffuseTexture.drawText(markerText, null, 55, 'bold 40px sans-serif', '#ffe99b', 'rgba(14,30,25,.82)', true);
       }
       var otherPlayers = (latest.players || []).filter(function (player) { return !localId || String(player.uid) !== String(localId); });
@@ -740,37 +759,38 @@
       var displayName = name || species && species.name || '미확인 곤충';
       var root = createCreature(scene, color || 'beetle', { id: 'arena-' + side + '-' + displayName }); root.parent = battleRoot; root.scaling.setAll(2.25); root.position.set(x, 40.5, z); root.metadata.home = root.position.clone(); root.metadata.side = side; label(scene, root, displayName, 1.55, side === 'player' ? '#bfffe0' : '#ffd1c7'); return root;
     }
-    function refreshBattleSide(rawSide, creatureId) {
-      var battle = latest.battle, sides = battle && battle.sides; if (!sides || !sides[rawSide]) return;
-      var viewSide = rawSide === battleViewSide ? 'player' : 'enemy', side = sides[rawSide], creature = side.team && (side.team.find(function(c){return c.id === creatureId;}) || side.team[side.active || 0]); if (!creature) return;
-      var existing = battleActors[viewSide], displayName = creature.name || creature.nickname || creature.displayName || (global.InsectData.speciesById[creature.speciesId] || {}).name;
-      if (existing && existing.metadata.speciesId === creature.speciesId && existing.name === 'creature-arena-' + viewSide + '-' + displayName && existing.scaling.x > 1) {
-        existing.metadata.creatureId = creature.id;
-        existing.position.copyFrom(existing.metadata.home); existing.scaling.setAll(2.25); existing.rotation.set(0,viewSide === 'player' ? Math.PI/2 : -Math.PI/2,0); return;
-      }
-      disposeNode(battleActors[viewSide]);
-      battleActors[viewSide] = arenaCreature(creature.name || creature.nickname || creature.displayName, viewSide === 'player' ? -7 : 7, 0, creature.speciesId, viewSide);
-      battleActors[viewSide].metadata.creatureId = creature.id;
-      battleActors[viewSide].rotation.y = viewSide === 'player' ? Math.PI / 2 : -Math.PI / 2; addShadowModel(battleActors[viewSide]);
+    var battleModels={},battleReserves=[];
+    function refreshBattleSide(rawSide,creatureId){
+      var side=latest.battle?.sides?.[rawSide];if(!side)return;
+      var c=side.team.find(function(c){return c.id===creatureId;})||side.team[side.active||0];
+      if(c&&battleModels[c.id]){battleActors[rawSide===battleViewSide?'player':'enemy']=battleModels[c.id];battleModels[c.id].setEnabled(true);}
     }
-    var battleReserves=[];
     function refreshReserves(){
-      battleReserves.forEach(disposeNode);battleReserves=[];if(!battleMode||!latest.battle?.sides)return;
-      ['a','b'].forEach(function(key){var side=latest.battle.sides[key],mine=key===battleViewSide,n=0;side.team.forEach(function(c,i){if(i===side.active||c.hp<=0)return;var model=createCreature(scene,c.speciesId,{id:'reserve-'+c.id});model.parent=battleRoot;model.position.set(mine?-12:12,40.5,(n++?4:-4));model.scaling.setAll(1.65);model.rotation.y=mine?Math.PI/2:-Math.PI/2;model.metadata.reserve=true;label(scene,model,(i+1)+'번 · 대기',2,'#d5e8dd');battleReserves.push(model);});});
+      if(!latest.battle?.sides)return;
+      ['a','b'].forEach(function(key){var side=latest.battle.sides[key],mine=key===battleViewSide;
+        side.team.forEach(function(c,i){
+          var model=battleModels[c.id];
+          if(!model){model=arenaCreature(c.nickname,mine?-7:7,(i-(side.team.length-1)/2)*6,c.speciesId,mine?'player':'enemy');model.metadata.creatureId=c.id;model.rotation.y=mine?Math.PI/2:-Math.PI/2;battleModels[c.id]=model;addShadowModel(model);}
+          model.metadata.reserve=i!==side.active;
+          model.setEnabled(c.hp>0);model.position.copyFrom(model.metadata.home);model.scaling.setAll(2.25);model.rotation.x=model.rotation.z=0;
+        });
+      });
+      battleReserves=Object.values(battleModels).filter(function(m){return m.metadata.reserve;});
     }
-    function refreshBattleActors() { refreshBattleSide(battleViewSide); refreshBattleSide(battleViewSide === 'a' ? 'b' : 'a');refreshReserves(); }
+    function refreshBattleActors(){refreshReserves();refreshBattleSide(battleViewSide);refreshBattleSide(battleViewSide==='a'?'b':'a');}
     function switchBattle(enabled, battle) {
       if (enabled) explorationCamera = { alpha: camera.alpha, beta: camera.beta, radius: camera.radius };
       camera.inertialAlphaOffset = camera.inertialBetaOffset = camera.inertialRadiusOffset = 0;
+      if(activeEvent?.data?.remainingHp===0){var down=battleModels[activeEvent.data.targetCreatureId];if(down)down.setEnabled(false);}
       if (activeEvent && activeEvent.resolve) activeEvent.resolve(activeEvent.data);
       eventQueue.forEach(function (queued) { if (queued.resolve) queued.resolve(queued.data); });
       battleMode = enabled; releaseInput(); worldRoot.setEnabled(!enabled); battleRoot.setEnabled(enabled); eventQueue.length = 0; activeEvent = null;
       if (joystickElement) joystickElement.style.display = !enabled && controlsEnabled && global.matchMedia && global.matchMedia('(pointer:coarse)').matches ? 'block' : 'none';
-      Object.keys(battleActors).forEach(function (key) { disposeNode(battleActors[key]); }); battleActors = {};
+      Object.values(battleModels).forEach(disposeNode);battleModels={};battleActors={};
       arenaDecor.forEach(disposeNode); arenaDecor = [];battleReserves.forEach(disposeNode);battleReserves=[];
       if (enabled) {
         var arenaBiome=global.InsectData.biomes.find(function(b){return b.id===battle.biomeId;})||global.InsectData.biomes.find(function(b){return b.id==='safe';});
-        var rockyArena=['cave','rock','facility'].indexOf(arenaBiome.id)>=0;
+        var rockyArena=['cave','rock','facility','mine','nest','sanctum'].indexOf(arenaBiome.id)>=0;
         scene.clearColor=rockyArena?new B.Color4(.09,.13,.2,1):new B.Color4(.48,.63,.65,1);
         scene.fogColor=rockyArena?new B.Color3(.09,.13,.2):new B.Color3(.48,.63,.65);
         var floor = B.MeshBuilder.CreateCylinder('arena-floor', { height: 0.9, diameter: 54, tessellation: 56 }, scene); floor.parent = battleRoot; floor.position.y = 40;
@@ -792,11 +812,8 @@
         var foeSide = battleViewSide === 'a' ? 'b' : 'a', yourSide = battle && battle.sides && battle.sides[battleViewSide], enemySide = battle && battle.sides && battle.sides[foeSide];
         var your = yourSide && yourSide.team && yourSide.team[yourSide.active || 0] || battle && (battle.yourActive || battle.player || battle.you);
         var enemy = enemySide && enemySide.team && enemySide.team[enemySide.active || 0] || battle && (battle.enemyActive || battle.enemy || battle.opponent);
-        battleActors.player = arenaCreature(your && (your.name || your.nickname || your.displayName), -7, 0, your && your.speciesId, 'player');
-        battleActors.enemy = arenaCreature(enemy && (enemy.name || enemy.nickname || enemy.displayName), 7, 0, enemy && enemy.speciesId, 'enemy'); battleActors.enemy.rotation.y = -Math.PI / 2; battleActors.player.rotation.y = Math.PI / 2;
-        battleActors.player.metadata.creatureId = your && your.id; battleActors.enemy.metadata.creatureId = enemy && enemy.id;
-        refreshReserves();
-        camera.setTarget(new B.Vector3(0, 41.4, 0)); camera.alpha = -Math.PI / 2; camera.beta = 1.12; camera.radius = 25;
+        refreshBattleActors();
+        camera.setTarget(new B.Vector3(0, 41.4, 0)); camera.alpha = -Math.PI / 2; camera.beta = 1.12; camera.radius = 31;
       } else { scene.clearColor=new B.Color4(.48,.63,.65,1);scene.fogColor=new B.Color3(.48,.63,.65);camera.setTarget(localAvatar.position.add(new B.Vector3(0, 1.5, 0))); camera.alpha = explorationCamera.alpha; camera.beta = explorationCamera.beta; camera.radius = explorationCamera.radius; }
     }
     function playEvents(events) {
@@ -819,6 +836,7 @@
       var ev = activeEvent.data;
       if (!activeEvent.prepared) {
         activeEvent.prepared = true;
+        if((ev.type==='attack'||ev.type==='skill')&&options.onBattleActor)options.onBattleActor(ev);
         if(ev.type==='skill'){skillBanner.textContent=ev.message;skillBanner.hidden=false;if(options.onSkillStart)options.onSkillStart(ev);}
         if ((ev.type==='attack'||ev.type==='skill') && ev.actorCreatureId && (ev.actorSide === 'a' || ev.actorSide === 'b')) refreshBattleSide(ev.actorSide, ev.actorCreatureId);
         if (ev.targetCreatureId && (ev.targetSide === 'a' || ev.targetSide === 'b')) refreshBattleSide(ev.targetSide, ev.targetCreatureId);

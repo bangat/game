@@ -6,8 +6,8 @@ test('강제 교체 다음 턴은 느린 새 곤충이 먼저 행동하고 그 �
  for(const lostSide of ['a','b']){
   let state=Battle.createBattle({id:'entry-'+lostSide,type:'pvp',a:{uid:'a',team:[{id:'a1',speciesId:'dew_ladybird'},{id:'a2',speciesId:'dew_ladybird'}]},b:{uid:'b',team:[{id:'b1',speciesId:'azure_dragonfly'},{id:'b2',speciesId:'dew_ladybird'}]}});
   const foe=lostSide==='a'?'b':'a';state.sides[lostSide].team[0].hp=1;state.sides[foe].team[0].speed=999;
-  state.sides[foe].team[0].hp=1000;state.sides[lostSide].team[1].hp=1000;
-  function round(){state=Battle.submitAction(state,'a',{type:'attack'},{rng:()=>.5}).state;state=Battle.submitAction(state,'b',{type:'attack'},{rng:()=>.5}).state;return state.events.filter(e=>e.type==='attack');}
+  state.sides[foe].team.forEach(c=>{c.hp=1000;c.speed=999;});state.sides[lostSide].team[1].hp=1000;
+  function round(){state=Battle.submitAction(state,'a',{type:'attack'},{rng:()=>0}).state;state=Battle.submitAction(state,'b',{type:'attack'},{rng:()=>0}).state;return state.events.filter(e=>e.type==='attack');}
   const first=round();assert.equal(first.length,1);assert.equal(state.sides[lostSide].active,1);
   assert.equal(round()[0].actorSide,lostSide);assert.equal(state.sides[lostSide].entryPriority,null);
   assert.equal(round()[0].actorSide,foe);
@@ -20,7 +20,7 @@ test('모든 사냥터·보스까지 건물 충돌 없는 경로와 사냥터당
  assert(cave.length>=9&&cave.every(s=>s.level>=26));assert(Math.min(...cave.map(s=>s.level))>Math.max(...grass.map(s=>s.level)));
  assert(cave.some(s=>s.speciesId==='ancient_rex'));assert(cave.some(s=>s.speciesId==='crystal_ankylosaur'));assert(!cave.some(s=>grass.some(g=>g.speciesId===s.speciesId)));
  assert.equal(Data.world.maxX-Data.world.minX,480);assert.equal(bosses.find(s=>s.biomeId==='cave').level,36);
- assert.equal(bosses.length,8);assert.equal(new Set(bosses.map(s=>s.biomeId)).size,8);assert(!bosses.some(b=>b.biomeId==='safe'));
+ assert.equal(bosses.length,11);assert.equal(new Set(bosses.map(s=>s.biomeId)).size,11);assert(!bosses.some(b=>b.biomeId==='safe'));
  const destinations=[...Data.biomes,...Data.fieldBosses].map(b=>Nav.destination(b.id));
  for(const start of [Data.startVillage,{x:0,z:-30},{x:-110,z:110},...destinations])for(const goal of destinations){
   const route=Nav.route(start,goal);assert(route.length,JSON.stringify({start,goal}));let previous=start;

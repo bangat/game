@@ -68,14 +68,14 @@ function movePlayer(player, intent, now = Date.now()) {
 function makeSpawns(species, biomes) {
   const catalog = Array.isArray(species) ? species : [];
   const regions = Array.isArray(biomes) ? biomes : [];
-  const fieldCatalog = catalog.filter((item) => ['uncommon', 'rare', 'evolved', 'elite', 'monster'].includes(item.rarity));
+  const fieldCatalog = catalog.filter(item=>!item.eggOnly).filter((item) => ['uncommon', 'rare', 'evolved', 'elite', 'monster'].includes(item.rarity));
   const commonCatalog = catalog.filter((item) => item.rarity === 'common');
   const tutorial = TUTORIAL_POINTS.map(([x, z], index) => {
     const creature = index === 4 ? fieldCatalog[0] : commonCatalog[index % Math.max(1, commonCatalog.length)];
     return makeSpawn(`tutorial-${index + 1}`, creature && creature.id, x, z, index === 4, 1);
   });
   const counts = new Map();
-  const habitat = catalog.flatMap((creature) => {
+  const habitat = catalog.filter(c=>!c.eggOnly).flatMap((creature) => {
     const biome = regions.find(b=>!b.safe&&(b.habitats||[b.habitat]).includes(creature.habitat));
     if(!biome)return [];
     return [0,1,2].map(pack=>{
@@ -93,7 +93,7 @@ function makeSpawns(species, biomes) {
     });
   });
   const bosses = require('../shared/data.js').fieldBosses.map(b => ({...makeSpawn(b.id,b.speciesId,b.x,b.z,true,b.level),boss:true,biomeId:b.biomeId,bossName:b.name}));
-  const groups=regions.filter(b=>!b.safe).map(b=>{
+  const groups=regions.filter(b=>!b.safe&&!b.special).map(b=>{
     const local=catalog.filter(c=>(b.habitats||[b.habitat]).includes(c.habitat));
     const members=[0,1,2].map((n)=>({speciesId:local[(local.length-1+n)%local.length].id,level:b.levels[0]+n}));
     let point={x:b.center.x+36,z:b.center.z+24};if(pointBlocked(point,4))point={x:b.center.x-36,z:b.center.z-24};
