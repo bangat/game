@@ -1068,6 +1068,7 @@
                 </div>
             </div>
 
+            <button id="insect-public-open" class="menu-btn primary" style="width:100%;margin:8px 0;white-space:normal">🪲 이슬숲 탐험대 · 함께 탐험하기</button>
             <div id="lobby-bottom-actions">
                 <button id="toggle-chat-btn" class="menu-btn secondary">💬 채팅</button>
                 <button id="create-room-btn" class="menu-btn primary">➕ 방 만들기</button>
@@ -1075,6 +1076,13 @@
         </div>
     </div>
 
+    <div id="insect-public-modal" class="overlay" role="dialog" aria-modal="true" aria-labelledby="insect-public-title">
+        <div class="modal-content">
+            <div class="modal-header"><button class="back-btn" data-close aria-label="닫기">‹</button><h2 id="insect-public-title">🪲 이슬숲 탐험대</h2></div>
+            <div class="modal-body"><p>참가하면 모두 같은 이슬숲에서 탐험합니다.</p><p>지도에서 지역별 인원을 확인하고 친구가 있는 곳으로 이동하세요.</p><p>키우던 캐릭터와 마지막 위치에서 이어집니다.</p></div>
+            <div class="modal-footer"><button class="menu-btn primary" id="insect-public-join">참가</button></div>
+        </div>
+    </div>
     <div id="profile-dashboard-modal" class="overlay">
         <div class="modal-content">
             <div class="modal-header"><h2>내 정보</h2></div>
@@ -1683,6 +1691,7 @@ const inviteSound = document.getElementById('invite-sound');
                     const staleWaitingTime = 20 * 60 * 1000;
                     snapshot.forEach(child => {
                         const room = { key: child.key, ...child.val() };
+                        if (room.gameType === 'insectExpedition') return;
                         const hasPlayers = room.players && Object.keys(room.players).length > 0;
                         const createdAt = Number(room.createdAt || 0);
                         const isStaleWaiting = room.status !== 'playing' && createdAt > 0 && (now - createdAt > staleWaitingTime);
@@ -2208,6 +2217,16 @@ const inviteSound = document.getElementById('invite-sound');
                 });
             }
             
+            function openInsectExpedition(){
+                closeAllModals();
+                showModal(document.getElementById('insect-public-modal'));
+                document.getElementById('insect-public-join').focus();
+            }
+            document.getElementById('insect-public-open').addEventListener('click',openInsectExpedition);
+            document.getElementById('insect-public-join').addEventListener('click',()=>{
+                if(!currentUser){showToast('로그인한 뒤 참가해 주세요.');return;}
+                window.location.href='insect_expedition/index.html';
+            });
             createRoomBtn.addEventListener('click', () => { 
                 if (gameSettings.sfx) clickSound.play();
                 showModal(gameSelectModal, () => renderGameOptions('multi'));
@@ -2302,7 +2321,7 @@ const inviteSound = document.getElementById('invite-sound');
                 gamesToShow.forEach(game => {
                     let description = '';
                     if (mode === 'multi') {
-                        description = `최대 ${game.maxPlayers}명`;
+                        description = game.id==='insectExpedition'?'공용 탐험 · 참가하면 바로 합류':`최대 ${game.maxPlayers}명`;
                     } else {
                         if (game.canSolo && !game.isSolo) {
                             description = `최대 ${game.maxPlayers}명 | 혼자/같이`;
@@ -2330,6 +2349,7 @@ const inviteSound = document.getElementById('invite-sound');
                     
                     item.onclick = () => {
                         if (gameSettings.sfx) clickSound.play();
+                        if (game.id === 'insectExpedition') {openInsectExpedition();return;}
                         if (game.id === 'quiz' && mode === 'solo') {
                             window.location.href = `게임방.html?roomId=solo_quiz_temp&mode=solo`;
                         }
@@ -2474,6 +2494,7 @@ const inviteSound = document.getElementById('invite-sound');
             }
 
             async function createNewRoom(gameId) {
+                if(gameId==='insectExpedition'){openInsectExpedition();return;}
                 if (!currentUser || !currentUser.uid) {
                     showToast('로그인 상태를 확인한 뒤 다시 시도해주세요.');
                     return;

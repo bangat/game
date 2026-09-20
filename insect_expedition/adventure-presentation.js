@@ -5,7 +5,7 @@
     const live=new Set(),overlay=document.createElement('div');overlay.className='ix-scene-transition';overlay.setAttribute('aria-hidden','true');overlay.innerHTML='<div class="ix-transition-rings"></div><strong></strong><span></span>';document.body.appendChild(overlay);
     let timer;
     function transition(name,battle){
-      clearTimeout(timer);overlay.classList.remove('is-active');void overlay.offsetWidth;overlay.dataset.kind=battle?'battle':'portal';overlay.querySelector('strong').textContent=battle?'전투 돌입':name;overlay.querySelector('span').textContent=battle?'탐험대, 전투 준비!':'포탈을 지나 새로운 지역으로';overlay.classList.add('is-active');document.body.classList.add('is-scene-transition');
+      clearTimeout(timer);overlay.classList.remove('is-active');void overlay.offsetWidth;overlay.dataset.kind=battle?'battle':'portal';overlay.querySelector('strong').textContent=battle?'전투 돌입':name;overlay.querySelector('span').textContent=battle?'탐험대, 전투 준비!':'새로운 탐험지에 도착합니다';overlay.classList.add('is-active');document.body.classList.add('is-scene-transition');
       global.InsectAudio?.play(battle?'battle-enter':'portal');timer=setTimeout(()=>{overlay.classList.remove('is-active');document.body.classList.remove('is-scene-transition');},850);
     }
     function burst(position,color,style='burst'){

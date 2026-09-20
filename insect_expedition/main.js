@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const roomId = new URLSearchParams(location.search).get('roomId');
+  const roomId = 'isulsup-public';
   const banner = document.getElementById('connection-banner');
   let socket, user, ui, world, snapshot, stopped = false, connected = false, retryTimer, sequence = 0;
   const pending = new Map(), seenEvents = new Set();
@@ -41,22 +41,6 @@
     InsectAudio.setBattle(false);
     stopped = true; clearTimeout(retryTimer);
     if (socket) socket.close();
-    if (user && roomId) {
-      const ref = firebase.database().ref('rooms/' + roomId);
-      let timer;
-      const listener = () => {}; ref.on('value', listener);
-      await Promise.race([ref.once('value').then(() => ref.transaction(room => {
-        if (!room || !room.players || !room.players[user.uid]) return;
-        delete room.players[user.uid];
-        const ids = Object.keys(room.players);
-        if (!ids.length) return null;
-        if (room.hostId === user.uid) room.hostId = ids.sort()[0];
-        ids.forEach(uid => { room.players[uid].isHost = uid === room.hostId; });
-        return room;
-      })).catch(() => {}), new Promise(resolve => { timer = setTimeout(resolve, 5000); })]);
-      clearTimeout(timer);
-      ref.off('value', listener);
-    }
     window.top.location.href = new URL('../대기실.html', location.href).href;
   }
   async function connect() {
@@ -84,6 +68,7 @@
           }
         } else if (value.type === 'state') {
           const previous = snapshot;
+          if(previous&&(previous.regionId!==value.regionId||previous.realm!==value.realm)){moveIntent={x:0,z:0};world.setNavigation(null);}
           snapshot = value; connection('연결됨', true); app.ready = true;
           if (!previous && value.profile && value.profile.characterId) {
             selectedCharacter = InsectCharacters.select(value.profile.characterId).id;
@@ -132,7 +117,6 @@
     } catch (problem) { connection(problem.message, false); if (!stopped) retryTimer = setTimeout(connect, 3000); }
   }
   async function boot() {
-    if (!roomId) { window.top.location.replace(new URL('../대기실.html' + (window.InsectEmulator ? '?emulator=1' : ''), location.href).href); return; }
     if (!window.BABYLON || !window.InsectWorld || !window.InsectUI) throw new Error('게임 자원을 불러오지 못했습니다. 다시 열어 주세요.');
     ui = InsectUI.create({send,
       onCustomize:(active,created)=>{if(world)world.setEnabled(!active && !!(created || snapshot?.profile?.characterCreated));},
@@ -159,24 +143,6 @@
     if (!firebase.apps.length) firebase.initializeApp({ apiKey:'AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw',authDomain:'goodluck-7c14b.firebaseapp.com',databaseURL:'https://goodluck-7c14b-default-rtdb.firebaseio.com',projectId:'goodluck-7c14b',appId:'1:858281658455:web:9131280a459be983933b12' });
     user = await new Promise((resolve, reject) => { const off = firebase.auth().onAuthStateChanged(value => { off(); resolve(value); }, reject); });
     if (!user) throw new Error('기존 계정으로 로그인한 뒤 대기실에서 참가해 주세요.');
-    const db = firebase.database(), roomRef = db.ref('rooms/' + roomId);
-    const current = (await roomRef.once('value')).val();
-    if (!current || current.gameType !== 'insectExpedition' || current.status !== 'playing') throw new Error('시작된 이슬숲 방이 아닙니다. 대기실에서 방을 만들어 주세요.');
-    if (!current.players || !current.players[user.uid]) {
-      const profile = (await db.ref('users/' + user.uid + '/profile').once('value')).val() || {};
-      const listener = () => {}; roomRef.on('value', listener); await roomRef.once('value');
-      try {
-        const joined = await roomRef.transaction(room => {
-          if (!room || room.gameType !== 'insectExpedition' || room.status !== 'playing') return;
-          const players = room.players || {};
-          if (players[user.uid]) return room;
-          if (Object.keys(players).length >= 6) return;
-          players[user.uid] = { nickname: profile.nickname || '탐험가', avatar: profile.avatar || '🙂', isHost: false };
-          return { ...room, players };
-        });
-        if (!joined.committed) throw new Error('방이 가득 찼거나 종료되었습니다.');
-      } finally { roomRef.off('value', listener); }
-    }
     await connect();
     let sentMoving = false;
     setInterval(() => {

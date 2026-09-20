@@ -16,10 +16,11 @@ const Trials=require('./trials.cjs');
 const H=require('../shared/housing.js'),Housing=require('./housing.cjs');
 const { createStore } = require('./data-store.cjs');
 const { createCloudStore } = require('./cloud-store.cjs');
-const { createFirebaseAuthority, authorizeJoin } = require('./auth.cjs');
+const { createFirebaseAuthority, authorizeJoin, PUBLIC_ROOM_ID } = require('./auth.cjs');
 const World = require('./world.cjs');
 
 const MAX_ROOM_PLAYERS = 6;
+const MAX_PUBLIC_PLAYERS = 100;
 const COMMAND_LIMIT = 200;
 const ALLOWED_EXTENSIONS = new Set(['.html', '.js', '.css', '.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg', '.ico', '.webmanifest', '.mp3', '.wav', '.ogg', '.woff', '.woff2', '.ttf', '.json']);
 const BLOCKED_PARTS = new Set(['.git', '.aircodex', '.codex_bridge', 'private', 'server', 'tests', 'data', 'node_modules']);
@@ -92,7 +93,10 @@ function makeState(room, player, now = nowMs()) {
   const homeOwner=player.realm?room.players.get(player.realm):null,home=homeOwner?.profile.housing;
   return {
     ecology:player.realm?null:EcologyServer.state(player,room,now),
-    regionId:player.regionId||'safe',portals:player.realm?[]:Regions.portals(player.regionId||'safe'),
+    regionId:player.regionId||'safe',portals:[],
+    worldId:room.id,worldName:room.id===PUBLIC_ROOM_ID?'이슬숲 공용 탐험':'이슬숲 탐험',
+    onlineCount:[...room.players.values()].filter(p=>p.connected).length,
+    regionPopulation:Object.fromEntries(Data.biomes.map(b=>[b.id,[...room.players.values()].filter(p=>p.connected&&!p.realm&&p.regionId===b.id).length])),
     realm:player.realm||'',home:homeOwner?{ownerUid:homeOwner.uid,name:homeOwner.nickname,...home}:null,
     neighbors:[...room.players.values()].filter(p=>p.connected&&p.profile.housing.plot).map(p=>({uid:p.uid,name:p.nickname})),
     type: 'state',
@@ -128,7 +132,7 @@ function createGameServer(options = {}) {
 
   app.disable('x-powered-by');
   app.get('/insect_expedition/api/health', (_req, res) => {
-    res.json({ ok: true, release: '2026.09.20.15', storage: process.env.INSECT_PROFILE_BUCKET ? 'cloud' : 'local', now: clock(), rooms: rooms.size, online: [...rooms.values()].reduce((sum, room) => sum + [...room.players.values()].filter((p) => p.connected).length, 0) });
+    res.json({ ok: true, release: '2026.09.20.16', storage: process.env.INSECT_PROFILE_BUCKET ? 'cloud' : 'local', now: clock(), rooms: rooms.size, online: [...rooms.values()].reduce((sum, room) => sum + [...room.players.values()].filter((p) => p.connected).length, 0) });
   });
   app.get('*path', (req, res, next) => {
     let requested;
@@ -303,7 +307,7 @@ function createGameServer(options = {}) {
   async function execute(room, player, name, payload = {}) {
     if (player.battleId && !['action', 'return', 'auto-battle'].includes(name)) throw new Error('전투 결과에서 돌아가기를 눌러 탐험을 계속해 주세요.');
     if(player.harvest&&!['move','gather','gather-cancel'].includes(name))throw Error('자재 채집을 마치거나 취소한 뒤 이용해 주세요.');
-    if(player.realm&&!['move','home-travel','land-claim','house-place','house-remove','house-door','character','appearance','sell-resource','sell-materials','rename','feed','team','team-slot','dex-seen','dex-claim','incubate','hatch','research-claim','heal','fuse','evolve'].includes(name))throw Error('탐험지로 돌아간 뒤 이용해 주세요.');
+    if(player.realm&&!['move','travel','home-travel','land-claim','house-place','house-remove','house-door','character','appearance','sell-resource','sell-materials','rename','feed','team','team-slot','dex-seen','dex-claim','incubate','hatch','research-claim','heal','fuse','evolve'].includes(name))throw Error('탐험지로 돌아간 뒤 이용해 주세요.');
     if(name==='trial-start'){
       rate(player,'trial',1200);const stage=Number(payload.stage),team=selectedTeam(player.profile);
       if(!Number.isInteger(stage)||stage<1||stage>24||stage>player.profile.trials.cleared+1)throw Error('앞 단계를 돌파하면 다음 시련이 열려요.');
@@ -603,12 +607,15 @@ function createGameServer(options = {}) {
     }
     if (name === 'portal' || name === 'travel') {
       rate(player,'travel',900);
-      const portal=Regions.portals(player.regionId).find(p=>name==='portal'?p.id===payload.portalId:p.to===payload.biomeId);
-      if(!portal||World.distance(player,portal)>7)throw Error('빛나는 포탈 가까이에서 입장해 주세요. 지도에서 포탈까지 안내받을 수 있어요.');
-      const point=Regions.spawn(portal.to),next={...player.profile,regionId:portal.to,location:{...point}};
-      player.profile=await store.save(next);player.regionId=portal.to;player.x=point.x;player.z=point.z;player.lastMoveAt=clock();player.moveActive=false;
+      // Legacy clients may still send a portal command; current clients use the map.
+      const targetId=name==='portal'?Regions.portals(player.regionId).find(p=>p.id===payload.portalId)?.to:payload.biomeId;
+      const target=Data.biomes.find(b=>b.id===targetId);
+      if(!target)throw Error('지도에서 이동할 지역을 선택해 주세요.');
+      if(!player.realm&&target.id===player.regionId)return {regionId:target.id,message:'이미 이 지역에 있어요.'};
+      const point=Regions.spawn(target.id),next={...player.profile,regionId:target.id,location:{...point}};
+      player.profile=await store.save(next);player.realm='';player.regionId=target.id;player.x=point.x;player.z=point.z;player.lastMoveAt=clock();player.moveActive=false;player.mount=player.profile.mounts.equipped||'';
       room.challenges.forEach((item,id)=>{if(item.from===player.uid||item.to===player.uid)room.challenges.delete(id);});
-      return {regionId:portal.to,message:Regions.get(portal.to).name+'에 도착했어요.'};
+      return {regionId:target.id,message:target.name+'에 도착했어요.'};
     }
     if (name === 'encounter' || name === 'collect') {
       rate(player, 'interact', 800);
@@ -699,7 +706,7 @@ function createGameServer(options = {}) {
           room = roomFor(roomId);
           const existing = room.players.get(joined.uid);
           const connectedCount = [...room.players.values()].filter((item) => item.connected && item.uid !== joined.uid).length;
-          if (!existing && connectedCount >= MAX_ROOM_PLAYERS) throw new Error('방의 동시 접속 인원이 가득 찼습니다.');
+          if (connectedCount >= (roomId===PUBLIC_ROOM_ID?MAX_PUBLIC_PLAYERS:MAX_ROOM_PLAYERS)) throw new Error('탐험 공간이 가득 찼습니다. 잠시 뒤 다시 참가해 주세요.');
           if (existing && existing.connected && existing.ws !== ws) existing.ws.close(4002, 'reconnected');
           const profile = existing ? existing.profile : await store.get(joined.uid, joined.nickname);
           if (!existing && profile.interruptedBattle) {

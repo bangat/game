@@ -26,7 +26,7 @@ let browser,page;
   return {page:p,frame,context};
  }
  const first=await open('alice',true);page=first.page;const f=first.frame;
- const room=game.rooms.get('ui-room'),a=room.players.get('alice');
+ const room=game.rooms.get('isulsup-public'),a=room.players.get('alice');
  assert.deepEqual(await f.evaluate(()=>[innerWidth,innerHeight]),[844,390]);assert.deepEqual({x:a.x,z:a.z},Data.startVillage);
  await f.evaluate(()=>{window.playedSounds=[];const play=InsectAudio.play;InsectAudio.play=function(kind,...args){playedSounds.push(kind);return play(kind,...args);};});
  async function publish(){await f.evaluate(()=>InsectApp.send('heal'));await page.waitForTimeout(300);}
@@ -53,14 +53,11 @@ let browser,page;
  await page.screenshot({path:path.join(output,'adventure-fusion-confirm.png')});await f.locator('[data-act="confirm-fuse"]').click();
  await f.locator('[aria-label="획득 알림"]').waitFor();assert.equal(a.profile.collection[0].speciesId,'storm_cicada');assert.equal(a.profile.collection[0].level,10);
  await f.locator('[data-act="close-reward"]').click();await f.locator('[data-act="close-panel"]').click();
- await f.locator('[data-value="map"]').click();assert.equal(await f.locator('.ix-boss-route').count(),8);
- assert(await f.evaluate(()=>Array.from(document.querySelectorAll('.ix-map-region')).every(el=>el.clientHeight>=54)),'지도 지역 이름과 보스 버튼이 접히지 않음');
- await page.screenshot({path:path.join(output,'adventure-map-mobile.png')});const before={x:a.x,z:a.z};await f.locator('[data-act="navigate"][data-id="grassland"]').click();
- assert.deepEqual({x:a.x,z:a.z},before,'길 안내 선택만으로 순간이동하지 않음');await f.locator('.ix-navigation').waitFor();
- const navBefore=await f.locator('.ix-navigation').innerText();
- await f.evaluate(async()=>{for(let n=0;n<18;n++){const s=InsectApp.getSnapshot(),p=s.players.find(p=>p.uid===s.you),route=InsectNavigation.route(p,InsectNavigation.destination('grassland')),t=route[0],d=Math.hypot(t.x-p.x,t.z-p.z);await InsectApp.send('move',{x:(t.x-p.x)/d,z:(t.z-p.z)/d});await new Promise(r=>setTimeout(r,110));}await InsectApp.send('move',{x:0,z:0});});
- await page.waitForTimeout(900);assert.notEqual(await f.locator('.ix-navigation').innerText(),navBefore);assert(await f.evaluate(()=>InsectApp.world.scene.getTransformNodeByName('navigation-arrow').isEnabled()));
- await page.screenshot({path:path.join(output,'adventure-navigation.png')});await f.locator('[aria-label="길 안내 종료"]').click();
+ await f.locator('[data-value="map"]').click();
+ assert(await f.evaluate(()=>Array.from(document.querySelectorAll('.ix-map-region')).every(el=>el.clientHeight>=54)),'지도 지역 이름과 이동 버튼이 접히지 않음');
+ await page.screenshot({path:path.join(output,'adventure-map-mobile.png')});
+ if(a.regionId==='grassland')await f.locator('[data-act="close-panel"]').click();
+ else{await f.locator('[data-act="map-travel"][data-id="grassland"]').click();await f.waitForFunction(()=>InsectApp.getSnapshot().regionId==='grassland');}
  const pack=room.spawns.find(s=>s.id==='group-grassland');a.x=pack.x;a.z=pack.z+2;await publish();await f.evaluate(()=>InsectApp.ui.setSelection({type:'spawn',id:'group-grassland'}));
  assert(await f.evaluate(()=>InsectApp.world.scene.transformNodes.filter(n=>n.name.startsWith('creature-group-grassland')).length===3),'필드 무리 3마리 렌더');
  await f.locator('[data-act="encounter"]').click();await f.waitForFunction(()=>InsectApp.getSnapshot().battle?.sides.b.team.length===3);

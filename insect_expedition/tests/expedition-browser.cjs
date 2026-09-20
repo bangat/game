@@ -14,7 +14,7 @@ let browser,page;
  await page.goto('http://127.0.0.1:'+address.port+'/insect_expedition/index.html?roomId=expedition');
  const f=await(await page.locator('#game-frame').elementHandle()).contentFrame();await f.waitForFunction(()=>InsectApp?.ready);
  await f.locator('#explorer-name').fill('하나');await f.locator('#enter-world').click();
- const room=game.rooms.get('expedition'),player=room.players.get('alice');
+ const room=game.rooms.get('isulsup-public'),player=room.players.get('alice');
  const send=(name,payload={})=>f.evaluate(({name,payload})=>InsectApp.send(name,payload),{name,payload});
  async function settle(){await page.waitForTimeout(550);}
  for(const size of [{width:844,height:390},{width:1728,height:1438},{width:1280,height:800},{width:390,height:844}]){

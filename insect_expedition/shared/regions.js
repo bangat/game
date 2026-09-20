@@ -1,7 +1,7 @@
 (function(root,factory){const api=factory(typeof module==='object'&&module.exports?require('./data.js'):root.InsectData);if(typeof module==='object'&&module.exports)module.exports=api;else root.InsectRegions=api;})(typeof globalThis!=='undefined'?globalThis:this,function(Data){
   'use strict';
   const themes={
-    safe:{sky:'#b8dce6',ground:'#93b16e',leaf:'#62936a',height:1,description:'평화로운 마을 · 각 지역으로 이어지는 포탈 광장'},
+    safe:{sky:'#b8dce6',ground:'#93b16e',leaf:'#62936a',height:1,description:'평화로운 마을 · 탐험가가 모이는 만남의 광장'},
     grassland:{sky:'#a5d9ef',ground:'#86ad52',leaf:'#71984b',height:7,description:'완만한 언덕과 바람개비 · 초원 곤충과 새싹랩터'},
     forest:{sky:'#718d89',ground:'#486f43',leaf:'#31543e',height:11,description:'안개 낀 거목 숲과 구릉 · 나방과 고목의 수호자'},
     rock:{sky:'#e7c9a2',ground:'#ac9478',leaf:'#9b795b',height:16,description:'층층이 솟은 붉은 바위 언덕 · 트리케라와 돌틈 곤충'},

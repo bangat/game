@@ -15,7 +15,7 @@
     let snapshot = { players: [], spawns: [], profile: { collection: [], team: [], discoveries: [] }, challenges: [] };
     let selection = null, celebration = null, fusionReview = null;
     const announcedBattles = new Set();
-    let panel = null, panelHistory=[];
+    let panel = null, panelHistory=[], travelPending=false;
     function openPanel(next){if(next===panel)return;if(panel)panelHistory.push(panel);else panelHistory=[];panel=next;}
     function backPanel(){panel=panelHistory.pop()||null;selection=null;render();}
     const H=global.InsectHousing;
@@ -124,7 +124,7 @@
 
     function topBar(profile) {
       const online = listOf(snapshot.players).length;
-      return `<header class="ix-top"><div><p class="ix-eyebrow">현재 지역</p><strong>${escapeHtml(snapshot.locationName || '해오름 초원')}</strong></div><div class="ix-online"><i></i>${online}명 탐험 중</div><button class="ix-feed" data-act="panel" data-value="collection" title="사료로 동료 성장">🍀 ${profile.supplies && profile.supplies.feeds || 0}</button><button class="ix-town-return" data-act="town-return" title="마을로 바로 귀환" ${(!snapshot.realm&&snapshot.regionId==='safe')||listOf(snapshot.players).find(p=>p.uid===snapshot.you)?.harvest?'disabled':''}>⌂ 귀환</button><button data-act="heal" data-action="heal" title="팀 전체 회복">회복</button><button data-act="sound" title="효과음 켜기·끄기">${global.InsectAudio?.isEnabled()?'소리 켜짐':'소리 꺼짐'}</button><button class="ix-exit" data-act="exit" title="대기실로 돌아가기">나가기</button></header>`;
+      return `<header class="ix-top"><button class="ix-location" data-act="open-map" aria-label="현재 지역과 지도"><span>📍 현재 지역 · 지도 열기</span><strong>${escapeHtml(snapshot.locationName || '이슬숲 마을')}</strong><small>이 지역 ${online}명 · 전체 ${snapshot.onlineCount??online}명</small></button><div class="ix-online"><i></i>${escapeHtml(snapshot.worldName||'이슬숲 공용 탐험')}</div><button class="ix-feed" data-act="panel" data-value="collection" title="사료로 동료 성장">🍀 ${profile.supplies && profile.supplies.feeds || 0}</button><button class="ix-town-return" data-act="town-return" title="마을로 바로 귀환" ${(!snapshot.realm&&snapshot.regionId==='safe')||listOf(snapshot.players).find(p=>p.uid===snapshot.you)?.harvest?'disabled':''}>⌂ 귀환</button><button data-act="heal" data-action="heal" title="팀 전체 회복">회복</button><button data-act="sound" title="효과음 켜기·끄기">${global.InsectAudio?.isEnabled()?'소리 켜짐':'소리 꺼짐'}</button><button class="ix-exit" data-act="exit" title="대기실로 돌아가기">나가기</button></header>`;
     }
 
     function nearbySpawn(state) {
@@ -155,11 +155,8 @@
       const nodes=(state.resources||[]).filter(n=>n.available&&Math.hypot(n.x-me.x,n.z-me.z)<=4).sort((a,b)=>Math.hypot(a.x-me.x,a.z-me.z)-Math.hypot(b.x-me.x,b.z-me.z));
       return nodes.find(n=>selection?.type==='resource'&&selection.id===n.id)||nodes[0]||null;
     }
-    function nearbyPortal(){const me=listOf(snapshot.players).find(p=>p.uid===snapshot.you);if(!me||snapshot.realm||snapshot.battle)return null;const gates=snapshot.portals||[],chosen=gates.find(p=>selection?.type==='portal'&&selection.id===p.id);return chosen||gates.find(p=>Math.hypot(p.x-me.x,p.z-me.z)<=7);}
     function nearbyPanel() {
       if (panel || (selection && selection.type === 'npc') || (snapshot.challenges || []).some(c => c.to === snapshot.you)) return '';
-      const gate=nearbyPortal(),me=listOf(snapshot.players).find(p=>p.uid===snapshot.you);
-      if(gate){const near=Math.hypot(me.x-gate.x,me.z-gate.z)<=7;return '<div class="ix-nearby ix-portal-action"><span>✦ '+escapeHtml(gate.name)+' 포탈</span><button data-act="'+(near?'portal':'navigate')+'" data-id="'+gate.id+'">'+(near?'포탈 입장':'포탈까지 길 안내')+'</button></div>';}
       const spawn = nearbySpawn(snapshot), resource=nearbyResource(snapshot);
       if(resource && (!spawn || selection?.type==='resource')) return `<div class="ix-nearby"><span>${Data.resources[resource.kind].icon} ${escapeHtml(resource.name)}</span><button data-act="gather" data-id="${resource.id}">${resource.kind === 'wood' ? '🪓 목재 벌목' : resource.kind === 'stone' ? '⛏️ 석재 채광' : resource.kind === 'sand' ? '⛏️ 모래 채집' : resource.kind === 'egg' ? '전용 알 발굴' : resource.kind === 'crystal' ? '온기 수정 채광' : '재료 채집 · 골드 +2'}</button></div>`;
       if (!spawn) return '';
@@ -224,7 +221,7 @@
         const p=profile.expedition||{bosses:[],crystals:0,hatched:0,claimed:[],eggs:[]};
         const value=g=>g.metric==='bosses'?p.bosses.length:g.metric==='guardian'?Number(p.bosses.includes('boss-sanctum')):p[g.metric]||0;
         return '<aside class="ix-drawer ix-research-drawer">'+head('탐험 → 수정 → 전용 알 → 고대 수호자','탐험 연구','🔮 '+(profile.resources?.crystal||0))+
-          '<div class="ix-drawer-scroll"><div class="ix-research-intro"><strong>최종 목표 · 고대의 오로라 수호자</strong><p>지역 보스 4종 연구 + 동굴 알 2회 부화 후 Lv.50 수호자에 도전하세요. 부화 동료는 Lv.1부터 직접 성장합니다.</p><div><button data-act="navigate" data-id="mine">광산 길 안내</button><button data-act="navigate" data-id="nest">알 동굴 길 안내</button><button data-act="navigate" data-id="sanctum">수호자의 터</button></div></div>'+
+          '<div class="ix-drawer-scroll"><div class="ix-research-intro"><strong>최종 목표 · 고대의 오로라 수호자</strong><p>지역 보스 4종 연구 + 동굴 알 2회 부화 후 Lv.50 수호자에 도전하세요. 부화 동료는 Lv.1부터 직접 성장합니다.</p><div><button data-act="map-travel" data-id="mine">광산 이동</button><button data-act="map-travel" data-id="nest">알 동굴 이동</button><button data-act="map-travel" data-id="sanctum">수호자의 터</button></div></div>'+
           '<h3>부화실 · '+p.eggs.filter(e=>e.incubating).length+'/3 · 알 '+p.eggs.length+'/12</h3><p class="ix-map-copy">수정 3개로 부화 시작 · 이동 80m / 채집 +1 · 전투 승리 +2. 접속을 종료해도 진행은 저장돼요.</p><div class="ix-egg-grid">'+(p.eggs.length?p.eggs.map(e=>{const kind=Data.eggKinds[e.kind],ready=e.progress>=kind.steps;return '<article class="ix-egg"><span>🥚</span><strong>'+kind.name+'</strong><small>'+Data.speciesById[kind.speciesId].name+' · 동굴 전용</small><progress max="'+kind.steps+'" value="'+e.progress+'"></progress><small>'+e.progress+'/'+kind.steps+' 탐험 온기</small><button data-act="'+(e.incubating?'hatch':'incubate')+'" data-id="'+escapeHtml(e.id)+'" '+(e.incubating?!ready?'disabled':'':(profile.resources?.crystal||0)<3||p.eggs.filter(x=>x.incubating).length>=3?'disabled':'')+'>'+(e.incubating?ready?'부화한 동료 받기':'탐험하며 부화 중':'수정 3개 · 부화 시작')+'</button></article>';}).join(''):'<p class="ix-panel-empty">알 동굴의 둥지를 채집하면 전용 알을 얻어요. 먼저 광산에서 수정을 모아 보세요!</p>')+'</div><h3>연구 기록 · 보상은 한 번씩</h3>'+Data.researchGoals.map(g=>'<article class="ix-research-goal"><div><strong>'+g.name+'</strong><small>'+g.text+' · '+Math.min(g.target,value(g))+'/'+g.target+'</small><small>골드 '+g.gold+' · 사료 '+g.feeds+'</small></div><button data-act="research-claim" data-id="'+g.id+'" '+(value(g)<g.target||p.claimed.includes(g.id)?'disabled':'')+'>'+(p.claimed.includes(g.id)?'수령 완료':'보상 받기')+'</button></article>').join('')+'</div></aside>';
       }
       if (panel === 'shop') return '<aside class="ix-drawer ix-shop-drawer">' + head('전투 승리 · 채집 · 재료 판매로 골드 획득', '연구소 상점', '🪙 ' + (profile.gold || 0))
@@ -243,10 +240,14 @@
             return '<button data-act="team-slot" data-index="' + index + '" aria-pressed="' + (teamSlot === index) + '"><b>' + (index === 0 ? '1 · 선봉' : (index + 1) + ' · 공격 순서') + '</b>' + (c ? modelFor(c.speciesId) + '<strong>' + escapeHtml(c.nickname || speciesOf(c).name) + '</strong><small>Lv.' + c.level + ' · 전투력 ' + c.combatPower + '</small>' : '<span class="ix-slot-empty">＋</span><small>곤충을 배치하세요</small>') + '</button>';
           }).join('') + '</div>' + rankTabs(collection) + '<div class="ix-team-options ix-drawer-scroll">' + (filtered.length ? filtered.map(c => '<button data-act="assign-team" data-id="' + escapeHtml(c.id) + '">' + modelFor(c.speciesId) + '<span><strong>' + escapeHtml(c.nickname || speciesOf(c).name) + '</strong><small>' + rankBadge(speciesOf(c)) + ' Lv.' + c.level + ' · 전투력 ' + c.combatPower + '</small></span><b>' + (profile.team.includes(c.id) ? (profile.team.indexOf(c.id)+1)+'번 배치' : '배치') + '</b></button>').join('') : '<p class="ix-panel-empty">해당 등급의 곤충이 없습니다.</p>') + '</div></aside>';
       }
-      if (panel === 'map') return '<aside class="ix-drawer ix-map-drawer">'+head('빛나는 포탈로 오가는 독립 지역', '포탈 지도', '')+'<p class="ix-map-copy">각 지역은 별도의 넓은 지도입니다. 목적지를 고르면 포탈까지 안내하며, 가까이 다가가 입장하세요. 다른 지역으로 갈 때는 마을을 거칩니다.</p><div class="ix-map-list">'+Data.biomes.map(b=>{
-        const boss=(snapshot.spawns||[]).find(s=>s.boss&&s.biomeId===b.id), status=boss?(boss.reservedBy?'전투 중':boss.available?'출현 중':'재출현 대기'):'';
-        return '<div class="ix-map-region"><button data-act="navigate" data-id="'+b.id+'" class="'+(snapshot.locationName===b.name?'is-here':'')+'"><i style="background:'+b.color+'"></i><span><b>'+b.name+'</b><small>'+(b.safe?'포탈 광장 · 회복과 의뢰':'Lv.'+b.levels.join('–')+' · '+(global.InsectRegions?.themes[b.id]?.description||b.habitat))+'</small></span><em>포탈 안내</em></button>'+(boss?'<button class="ix-boss-route" data-act="navigate" data-id="'+boss.id+'"><span>♛ '+boss.bossName+' · Lv.'+boss.level+'</span><small>'+status+' · 위치 안내</small></button>':'')+'</div>';
-      }).join('')+'</div></aside>';
+      if (panel === 'map') {
+        const locked=travelPending||!!snapshot.battle||!!listOf(snapshot.players).find(p=>p.uid===snapshot.you)?.harvest;
+        return '<aside class="ix-drawer ix-map-drawer">'+head('같은 지역에서 다른 탐험가를 만나요', '세계 지도', '')+'<div class="ix-map-current"><strong>📍 현재 위치 · '+escapeHtml(snapshot.locationName)+'</strong><span>'+escapeHtml(snapshot.worldName||'이슬숲 공용 탐험')+' · 전체 '+(snapshot.onlineCount??listOf(snapshot.players).length)+'명 접속</span></div><p class="ix-map-copy">이동할 지역을 누르면 바로 도착합니다. 지역 인원에는 나도 포함돼요.'+(locked?' 전투나 채집을 마친 뒤 이동할 수 있어요.':'')+'</p><div class="ix-map-list">'+Data.biomes.map(b=>{
+          const here=!snapshot.realm&&snapshot.regionId===b.id,count=snapshot.regionPopulation?.[b.id]||0;
+          const boss=(snapshot.spawns||[]).find(s=>s.boss&&s.biomeId===b.id),status=boss?(boss.reservedBy?'전투 중':boss.available?'출현 중':'재출현 대기'):'';
+          return '<div class="ix-map-region"><button data-act="map-travel" data-id="'+b.id+'" class="'+(here?'is-here':'')+'" '+(here?'aria-current="location" ':'')+(here||locked?'disabled':'')+'><i style="background:'+b.color+'"></i><span><b>'+b.name+'</b><small>'+(b.safe?'마을 광장 · 회복과 의뢰':'Lv.'+b.levels.join('–')+' · '+(global.InsectRegions?.themes[b.id]?.description||b.habitat))+'</small><small class="ix-map-population">'+(count?'● '+count+'명 탐험 중':'현재 탐험가 없음')+'</small></span><em>'+(here?'현재 위치':'이동')+'</em></button>'+(boss?'<button class="ix-boss-route" data-act="navigate" data-id="'+boss.id+'"><span>♛ '+boss.bossName+' · Lv.'+boss.level+'</span><small>'+status+' · 위치 안내</small></button>':'')+'</div>';
+        }).join('')+'</div></aside>';
+      }
 
       const known = new Set(profile.discoveries || []), claimed = new Set(profile.encyclopedia?.claimed || []);
       const reward = rewardCount(profile);
@@ -340,7 +341,7 @@
       const battle = state.battle || null;
       return JSON.stringify({
         you: state.you, locationName: state.locationName, selectionDistance: selection?.type === "player" ? listOf(state.players).map(p=>[p.uid,Math.round(p.x),Math.round(p.z)]) : null,
-        regionId:state.regionId,portal:nearbyPortal()?.id,
+        regionId:state.regionId,realm:state.realm,regionPopulation:state.regionPopulation,onlineCount:state.onlineCount,
         profile: { appearance:profile.appearance, characterCreated:profile.characterCreated, characterId: profile.characterId, adventurerName: profile.adventurerName, team: profile.team, collection: profile.collection, discoveries: profile.discoveries, supplies: profile.supplies, quest: profile.quest, encyclopedia: profile.encyclopedia, gold: profile.gold, resources: profile.resources, mounts:profile.mounts },
         players: listOf(state.players).map(p => [p.uid || p.id, p.name || p.nickname, Boolean(p.busy), p.characterId, p.mount, p.uid === state.you ? p.stamina : null, p.uid === state.you ? p.sprinting : null]),
         spawns: listOf(state.spawns).map(s => [s.id, s.speciesId, s.available, s.reservedBy, s.field, s.level, s.boss, s.respawnAt]),
@@ -389,6 +390,7 @@
         fusionReview = {creatureId:id,materialIds:materials.map(c=>c.id)}; render(); return;
       }
       if (act === 'confirm-fuse') { if (busy || !fusionReview) return; const payload = fusionReview; fusionReview = null; await command('fuse',payload); render(); return; }
+      if(act==='open-map'){openPanel('map');render();return;}
       if (act === 'navigate') { const result=await command('navigate',{id}); if(result){panel=null;selection=null;render();} return; }
       if (act === 'customize') { openEditor(false); return; }
 
@@ -406,7 +408,11 @@
       if (act === 'mount') { const result=await command('mount',{id});if(result){panel=null;render();}return; }
       if (act === 'auto-battle') { const side=Object.values(snapshot.battle.sides).find(s=>s.uid===snapshot.you);return command('auto-battle',{enabled:!side.auto}); }
       if (act === 'buy') return command('buy', {itemId:id});
-      if(act==='portal'){const result=await command('portal',{portalId:id});if(result){selection=null;panel=null;render();}return;}
+      if(act==='map-travel'){
+        if(travelPending)return;travelPending=true;render();
+        try{const result=await command('travel',{biomeId:id});if(result){selection=null;panel=null;panelHistory=[];homeTool.building=false;homeTool.deed=null;syncHomeTool();}}
+        finally{travelPending=false;render();}return;
+      }
       if(act==='sell-resource')return command('sell-resource',{kind:id,count:button.dataset.count==='all'?'all':Number(button.dataset.count)});
       if (act === 'sell-materials') return command('sell-materials', {});
       if (act === 'gather') return command('gather', {nodeId:id});

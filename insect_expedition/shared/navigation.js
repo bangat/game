@@ -18,7 +18,7 @@
     return true;
   }
   function destination(id,regionId) {
-    if(regionId&&Regions){const boss=Data.fieldBosses.find(b=>b.id===id);if(boss&&boss.biomeId===regionId)return {x:0,z:-117,name:boss.name};const target=boss?.biomeId||id;const gates=Regions.portals(regionId),gate=gates.find(p=>p.id===target||p.to===target)||gates.find(p=>p.to==='safe');return gate?{...gate,name:gate.name+' 포탈'}:null;}
+    if(regionId&&Regions){const boss=Data.fieldBosses.find(b=>b.id===id);return boss&&boss.biomeId===regionId?{x:0,z:-117,name:boss.name}:null;}
     const boss=Data.fieldBosses.find(b=>b.id===id);
     if(boss)return {id,name:boss.name,x:boss.x,z:boss.z};
     const biome=Data.biomes.find(b=>b.id===id);

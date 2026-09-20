@@ -21,7 +21,7 @@ async function shot(p,name){await p.waitForTimeout(350);await p.screenshot({path
   await f.locator('.ix-wardrobe').waitFor();await bounds(f);await shot(page,'appearance-create-desktop');
   await f.locator('#enter-world').click();assert.match(await f.locator('.ix-style-error').innerText(),/이름/);
   await f.locator('[data-editor="preset"][data-index="1"]').click();await f.locator('#explorer-name').fill('하나');await f.locator('#enter-world').click();await f.locator('.ix-wardrobe').waitFor({state:'detached'});await f.locator('[data-act="customize"]').waitFor();
-  const player=game.rooms.get('styles').players.get('alice');assert.equal(player.profile.appearance.body,'girl');assert.equal(player.profile.adventurerName,'하나');
+  const player=game.rooms.get('isulsup-public').players.get('alice');assert.equal(player.profile.appearance.body,'girl');assert.equal(player.profile.adventurerName,'하나');
   // Desktop preview uses the same model, then cancelling must not change the saved outfit.
   await f.locator('[data-act="customize"]').click();assert.equal(await f.locator('#explorer-name').count(),0);assert.equal(await f.locator('[data-key="body"]').count(),0);
   await f.locator('[data-editor="preset"][data-index="2"]').click();

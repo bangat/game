@@ -20,7 +20,7 @@ const gameServer=createGameServer({dbPath:path.join(fs.mkdtempSync(path.join(os.
   await game.locator('#explorer-name').fill('숲모험가');await game.locator('#enter-world').tap();
   await game.waitForFunction(()=>InsectApp.getSnapshot().profile.adventurerName==='숲모험가');
   uid=await game.evaluate(()=>InsectApp.getSnapshot().you);
-  const room=gameServer.rooms.get(roomId),player=room.players.get(uid);
+  const room=gameServer.rooms.get('isulsup-public'),player=room.players.get(uid);
   const position=await game.evaluate(()=>{const s=InsectApp.getSnapshot();const p=s.players.find(p=>p.uid===s.you);return {x:p.x,z:p.z};});
   await game.locator('[data-act="quest-guide"]').tap();
   await game.waitForFunction(()=>InsectApp.getSnapshot().profile.quest.status==='active');

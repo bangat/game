@@ -105,7 +105,7 @@
         add('research-roof','cylinder',{diameter:17,height:5,tessellation:4},0,8,-6,mat('roof','#637b98')).rotation.y=Math.PI/4;
         for(const x of [-5,5])add('lab-window','box',{width:3,height:2.8,depth:.1},x,4,-.95,glow);
         add('lab-door','box',{width:2.4,height:3.5,depth:.1},0,1.8,-.9,wood);
-        const sign=label(scene,root,'포탈 광장 · 빛나는 문으로 다른 지역에 입장',5,'#fff1bf');sign.position.z=12;
+        const sign=label(scene,root,'이슬숲 마을 · 지도에서 다음 탐험지를 선택하세요',5,'#fff1bf');sign.position.z=12;
       }
       if(id==='grassland'||id==='farm'){
         const field=mat('gold-field','#d5bf64');
@@ -125,13 +125,6 @@
       if(['lumber','quarry','sandpit'].includes(id)){
         for(let i=0;i<8;i++)add('camp-stock','box',{width:5,height:1.4,depth:3},-28+i*8,.7,-16,id==='lumber'?wood:stone);
         const sign=label(scene,root,biome.name+' · 채집한 자재는 상점에서 판매',4,'#fff0bf');sign.position.z=-12;
-      }
-      for(const p of R.portals(id)){
-        const gate=new B.TransformNode(p.id,scene);gate.parent=root;gate.position.set(p.x,R.terrain(id,p.x,p.z),p.z);
-        const gateMat=mat(p.id,p.color,.6),ring=part(scene,gate,'portal-ring','torus',{diameter:5,thickness:.25,tessellation:48},[0,3,0],gateMat);ring.rotation.x=Math.PI/2;
-        const surface=B.MeshBuilder.CreateDisc('portal-surface',{radius:2.35,tessellation:48,sideOrientation:B.Mesh.DOUBLESIDE},scene);surface.parent=gate;surface.position.y=3;surface.material=gateMat;surface.visibility=.3;
-        label(scene,gate,p.name,6.4,'#ffffff');label(scene,gate,'가까이에서 포탈 입장',5.75,'#e1eaff');
-        gate.getChildMeshes().forEach(m=>{m.isPickable=true;m.metadata={selectTarget:{type:'portal',id:p.id}};});gates.push({root:gate,ring,surface});
       }
       occluders=root.getChildMeshes().filter(m=>['tree-trunk','tree-crown','ancient-tree','ancient-canopy','cave-mound','distant-ridge','hill-strata'].includes(m.name));
       applyAtmosphere();
