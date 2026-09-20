@@ -19,7 +19,7 @@ const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; ch
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const browser = await chromium.launch({ channel: 'chrome', headless: true });
   try {
-    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, isMobile: true, hasTouch: true });
     const errors = []; page.on('pageerror', error => errors.push(error.message));
     await page.goto(`http://127.0.0.1:${server.address().port}/insect_expedition/tests/world-smoke.html`);
     await page.evaluate(() => { const base = document.createElement('base'); base.href = '/insect_expedition/'; document.head.appendChild(base); });
@@ -38,6 +38,7 @@ const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; ch
     await page.locator('[data-act="panel"][data-value="map"]').click();
     await page.waitForSelector('.ix-map-list');
     assert.equal(await page.locator('.ix-map-list button').count(), 9);
+    assert.equal(await page.locator('[aria-label="이동 스틱"]').isVisible(), false, '지도 위에 이동 스틱이 남지 않아야 함');
     await page.setViewportSize({ width: 390, height: 844 });
     assert.equal(await page.locator('.ix-npc').count(), 0, '지도와 NPC 대화가 겹치지 않아야 함');
     await page.screenshot({ path: path.join(root, 'insect_expedition', 'test-output', 'quest-map-mobile.png') });
