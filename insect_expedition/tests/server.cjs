@@ -48,7 +48,7 @@ function openClient(url) {
 
 test('프로필 구버전 자료를 제한된 최신 스키마로 이관하고 원자 저장한다', () => {
   const migrated = migrateProfile({ collection: [{ id: 'c1', speciesId: 'dew_ladybird', level: 999, xp: -3 }], team: ['c1', 'c1'], location: { x: 999, z: -999 } }, 'u1', '테스터', ['dew_ladybird']);
-  assert.equal(migrated.version, 5);
+  assert.equal(migrated.version, 7);
   assert.equal(migrated.collection[0].level, 50);
   assert.deepEqual(migrated.team, ['c1']);
   assert.deepEqual(migrated.location, { x: 240, z: -240 });
@@ -88,8 +88,8 @@ test('방 종류, 상태, 멤버십을 모두 검증한다', async () => {
 test('모든 종을 실제 서식지에 장애물과 겹치지 않게 배치한다', () => {
   const spawns = World.makeSpawns(Data.species, Data.biomes);
   const habitatSpawns = spawns.filter((spawn) => spawn.id.startsWith('habitat-'));
-  assert.equal(habitatSpawns.length, Data.species.length * 3);
-  for (const species of Data.species) {
+  assert.equal(habitatSpawns.length, Data.species.filter(s=>!s.eggOnly).length * 3);
+  for (const species of Data.species.filter(s=>!s.eggOnly)) {
     const spawn = habitatSpawns.find((item) => item.speciesId === species.id);
     const biome = Data.biomes.find((item) => (item.habitats || [item.habitat]).includes(species.habitat));
     assert.ok(spawn && biome, `${species.id} 서식지 누락`);
@@ -182,8 +182,8 @@ test('두 WebSocket 클라이언트의 권위 명령, 중복 제거, PvP와 재�
   assert.equal(fieldRecord.state.status, 'finished', JSON.stringify(fieldHit));
   assert.equal(room.players.get('a').profile.processedRewards.filter((id) => id === fieldRecord.id).length, 1);
   assert.equal(fieldRecord.state.rewardProcessed, true);
-  assert.equal(fieldRecord.state.result.xpPerCreature, 33);
-  assert.equal(fieldRecord.state.result.totalXp, 99);
+  assert.equal(fieldRecord.state.result.xpPerCreature, 29);
+  assert.equal(fieldRecord.state.result.totalXp, 87);
   assert.deepEqual(fieldRecord.state.result.levelUps, [{ creatureId: fedId, levels: [3] }]);
   assert.equal(fieldRecord.state.result.captureSummary.success, false);
   assert.equal(fieldRecord.state.result.captureSummary.failureReason, 'inventory-full');

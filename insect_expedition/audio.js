@@ -58,6 +58,8 @@
   }
   function play(kind, skillId) {
     unlock();
+    if(kind==='chop'){tone(105,.1,0,'triangle',.09,42);tone(320,.045,0,'square',.025,90);}
+    if(kind==='mine'){tone(920,.12,0,'triangle',.05,390);tone(180,.07,0,'sine',.055,60);}
     if (kind === 'hit') { tone(160,.16,0,'triangle',.08,48); tone(820,.055,0,'sine',.025,170); }
     if (kind === 'skill') {
       const fx=window.InsectData?.skillEffects[skillId]||{pitch:440,style:'wave'},p=fx.pitch;

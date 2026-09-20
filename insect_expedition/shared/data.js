@@ -133,8 +133,13 @@
     {id:'guardian',name:'고대의 계승자',text:'고대 수호자의 터 보스 처치',metric:'guardian',target:1,gold:1500,feeds:30}
   ];
   const xpForLevel=level=>36+Math.max(0,level-1)*18+Math.max(0,level-10)**2*3;
+  const constructionCamps=[{id:'lumber',name:'솔향 벌목장',kind:'wood',x:-214,z:-214},{id:'quarry',name:'조약돌 채석장',kind:'stone',x:214,z:-214},{id:'sandpit',name:'은모래 채집장',kind:'sand',x:-214,z:214}];
+  Object.assign(resources,{wood:{name:'건축 목재',icon:'🪵',sell:0,construction:true},stone:{name:'건축 석재',icon:'🪨',sell:0,construction:true},sand:{name:'고운 모래',icon:'⏳',sell:0,construction:true}});
+  constructionCamps.forEach(c=>{biomes.push({id:c.id,name:c.name,habitat:'건축 자재',center:{x:c.x,z:c.z},radius:20,safe:false,special:true,color:c.kind==='wood'?'#53764a':c.kind==='stone'?'#93938b':'#c7b47e',levels:[1,1],description:resources[c.kind].name+' 채집'});[-8,0,8].forEach((dx,i)=>resourceNodes.push({id:c.id+'-'+i,kind:c.kind,name:resources[c.kind].name+' 채집터',x:c.x+dx,z:c.z+(i%2)*6}));});
   const mounts = {motorcycle:{name:'숲길 오토바이',icon:'🏍️',speed:22},handcart:{name:'탐험 리어카',icon:'🛒',speed:18}};
   const shop = [
+    {id:'deed-small',name:'5평 땅문서',price:2000,deed:'small',description:'가방에서 사용 · 개인 부지 4×4칸 · 계정당 토지 1곳'},
+    {id:'deed-large',name:'10평 땅문서',price:3000,deed:'large',description:'가방에서 사용 · 개인 부지 6×5칸 · 계정당 토지 1곳'},
     {id:'mount-motorcycle',name:'숲길 오토바이',price:2000,mountId:'motorcycle',description:'영구 보유 · 이동 속도 22 · 스태미나 소모 없음'},
     {id:'mount-handcart',name:'탐험 리어카',price:1000,mountId:'handcart',description:'영구 보유 · 이동 속도 18 · 스태미나 소모 없음'},
     {id:'feed',name:'곤충 사료',price:15,feeds:1,description:'경험치 +84 · 보유 곤충에게 사용'},
@@ -182,5 +187,5 @@
   }]));
   const collectionMilestones = [{ count: 5, feeds: 5 }, { count: 10, feeds: 10 }, { count: 15, feeds: 15 }, { count: 21, feeds: 25 }, { count: 27, feeds: 40 }];
 
-  return Object.freeze({ title: '이슬숲 탐험대', world: { minX: -240, maxX: 240, minZ: -240, maxZ: 240, spawn: { x: 0, y: 1, z: 0 }, arena: { x: 0, y: 1, z: 0 } }, xpForLevel, eggKinds, researchGoals, skillEffects, startVillage, fieldBosses, fusionRecipes, rarity, rarityOrder, quests, resources, resourceNodes, mounts, shop, collectionMilestones, species, speciesById, biomes, obstacles, characters });
+  return Object.freeze({ title: '이슬숲 탐험대', world: { minX: -240, maxX: 240, minZ: -240, maxZ: 240, spawn: { x: 0, y: 1, z: 0 }, arena: { x: 0, y: 1, z: 0 } }, constructionCamps, xpForLevel, eggKinds, researchGoals, skillEffects, startVillage, fieldBosses, fusionRecipes, rarity, rarityOrder, quests, resources, resourceNodes, mounts, shop, collectionMilestones, species, speciesById, biomes, obstacles, characters });
 });

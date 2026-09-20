@@ -16,6 +16,16 @@
     let selection = null, celebration = null, fusionReview = null;
     const announcedBattles = new Set();
     let panel = null;
+    const H=global.InsectHousing;
+    let homeTool={building:false,deed:null,kind:'floor',rotation:0,cell:{x:0,z:0},pieceId:null,siteId:null};
+    function syncHomeTool(){options.send?.('home-tool',homeTool);}
+    const costText=cost=>Object.entries(cost).map(([k,n])=>Data.resources[k].icon+' '+n).join(' · ');
+    function housingOverlay(profile){
+      if(homeTool.deed)return '<section class="ix-land-picker" aria-label="토지 선택"><strong>📜 '+H.deeds[homeTool.deed].name+' 사용</strong><p>초록색 땅 또는 아래 위치를 고르세요.<br>확정하기 전에는 문서를 소모하지 않습니다.</p>'+H.sites.map(site=>'<button data-act="home-site" data-id="'+site.id+'" aria-pressed="'+(homeTool.siteId===site.id)+'">🟩 '+site.name+'</button>').join('')+'<div><button data-act="home-cancel">취소</button><button class="is-primary" data-act="land-confirm" '+(!homeTool.siteId?'disabled':'')+'>이 땅으로 확정</button></div></section>';
+      if(!homeTool.building||!snapshot.home?.plot)return '';
+      const piece=snapshot.home.pieces.find(p=>p.id===homeTool.pieceId),def=H.parts[homeTool.kind],error=H.placementError(snapshot.home,{...homeTool.cell,kind:homeTool.kind,rotation:homeTool.rotation},profile.resources);
+      return '<section class="ix-build-toolbar" aria-label="집 건축"><div class="ix-build-heading"><strong>🔨 집 꾸미기</strong><span>🪵 '+profile.resources.wood+' · 🪨 '+profile.resources.stone+' · ⏳ '+profile.resources.sand+'</span><button data-act="home-cancel">완료</button></div><div class="ix-build-parts">'+Object.entries(H.parts).map(([id,p])=>'<button data-act="build-part" data-id="'+id+'" aria-pressed="'+(homeTool.kind===id)+'">'+p.icon+' '+p.name+'</button>').join('')+'</div><div class="ix-build-placement"><div><strong>'+def.name+' · '+costText(def.cost)+'</strong><small>격자 '+(homeTool.cell.x+1)+', '+(homeTool.cell.z+1)+' · '+homeTool.rotation*90+'° · '+(error||'초록 미리보기 위치에 설치 가능')+'</small></div><button data-act="build-rotate">↻ 회전</button><button data-act="build-place" '+(error?'disabled':'')+'>설치</button></div><div class="ix-build-nudge">'+[['←',-1,0],['↑',0,-1],['↓',0,1],['→',1,0]].map(([label,x,z])=>'<button data-act="build-nudge" data-x="'+x+'" data-z="'+z+'">'+label+'</button>').join('')+'<select aria-label="이 칸의 건축물 선택" data-home-piece><option value="">이 칸의 건축물 선택</option>'+snapshot.home.pieces.filter(p=>p.x===homeTool.cell.x&&p.z===homeTool.cell.z).map(p=>'<option value="'+escapeHtml(p.id)+'" '+(p.id===homeTool.pieceId?'selected':'')+'>'+H.parts[p.kind].name+' · '+p.rotation*90+'°</option>').join('')+'</select><button data-act="build-remove" '+(!piece?'disabled':'')+'>'+(piece?H.parts[piece.kind].name+' 철거':'건축물 선택 후 철거')+'</button></div></section>';
+    }
     let rarityFilter = 'all', teamSlot = 0, animationPlaying = false;
     let entered = false;
     const storedCharacter = (() => { try { return localStorage.getItem('insectExpedition.character.v1'); } catch (_) { return null; } })();
@@ -137,7 +147,7 @@
     function nearbyPanel() {
       if (panel || (selection && selection.type === 'npc') || (snapshot.challenges || []).some(c => c.to === snapshot.you)) return '';
       const spawn = nearbySpawn(snapshot), resource=nearbyResource(snapshot);
-      if(resource && (!spawn || selection?.type==='resource')) return `<div class="ix-nearby"><span>${Data.resources[resource.kind].icon} ${escapeHtml(resource.name)}</span><button data-act="gather" data-id="${resource.id}">${resource.kind === 'egg' ? '전용 알 발굴' : resource.kind === 'crystal' ? '온기 수정 채광' : '재료 채집 · 골드 +2'}</button></div>`;
+      if(resource && (!spawn || selection?.type==='resource')) return `<div class="ix-nearby"><span>${Data.resources[resource.kind].icon} ${escapeHtml(resource.name)}</span><button data-act="gather" data-id="${resource.id}">${resource.kind === 'wood' ? '🪓 목재 벌목' : resource.kind === 'stone' ? '⛏️ 석재 채광' : resource.kind === 'sand' ? '⛏️ 모래 채집' : resource.kind === 'egg' ? '전용 알 발굴' : resource.kind === 'crystal' ? '온기 수정 채광' : '재료 채집 · 골드 +2'}</button></div>`;
       if (!spawn) return '';
       const species = speciesOf(spawn), action = 'encounter';
       return `<div class="ix-nearby" aria-label="가까운 곤충"><span>${spawn.boss ? "♛ 필드 보스 · " : spawn.group ? "3마리 무리 · " : ""}${rankBadge(species)} Lv.${spawn.level || 1} ${escapeHtml(species.name)}</span><button id="selected-${action}" data-act="${action}" data-action="${action}" data-id="${escapeHtml(spawn.id)}">⚔ 전투하고 채집</button></div>`;
@@ -186,6 +196,15 @@
       const collection = profile.collection || [];
       const filtered = collection.filter(c => rarityFilter === 'all' || speciesOf(c).rarity === rarityFilter);
       const head = (small, title, count) => '<div class="ix-drawer-head"><div><small>' + small + '</small><h2>' + title + ' <b>' + count + '</b></h2></div><button data-act="close-panel" aria-label="닫기">×</button></div>';
+      if(panel==='bag'){
+        const slots=[];for(const [id,n] of Object.entries(profile.bag?.deeds||{}))if(n)slots.push('<article class="ix-bag-slot"><b>📜</b><strong>'+H.deeds[id].name+'</strong><small>'+n+'개 · 미사용</small><button data-act="deed-use" data-id="'+id+'">사용 · 토지 선택</button></article>');
+        for(const [id,def] of Object.entries(Data.resources)){const count=profile.resources?.[id]||0;if(count)slots.push('<article class="ix-bag-slot"><b>'+def.icon+'</b><strong>'+def.name+'</strong><small>'+count+'개</small></article>');}
+        if(profile.supplies?.feeds)slots.push('<article class="ix-bag-slot"><b>🍀</b><strong>곤충 사료</strong><small>'+profile.supplies.feeds+'개</small><button data-act="panel" data-value="collection">성장에 사용</button></article>');
+        if(profile.expedition?.eggs.length)slots.push('<article class="ix-bag-slot"><b>🥚</b><strong>동굴의 알</strong><small>'+profile.expedition.eggs.length+'개</small><button data-act="panel" data-value="research">부화실 열기</button></article>');
+        const used=slots.length;while(slots.length<16)slots.push('<div class="ix-bag-slot is-empty">빈 칸</div>');
+        return '<aside class="ix-drawer">'+head('종류별 묶음 보관 · 건축 자재는 모두 판매에서 보호됩니다.','가방',used+'종')+'<div class="ix-bag-grid ix-drawer-scroll">'+slots.join('')+'</div></aside>';
+      }
+      if(panel==='housing')return '<aside class="ix-drawer ix-housing-drawer">'+head('채집해서 직접 짓는 나의 3D 집','집 꾸미기',profile.housing?.plot?H.deeds[profile.housing.plot.size].label+' 보유':'토지 미보유')+'<div class="ix-drawer-scroll"><div class="ix-home-intro"><strong>'+(profile.housing?.plot?'내 집을 꾸미고 친구를 초대하세요.':'상점에서 땅문서 구매 → 가방에서 사용 → 초록색 땅 선택')+'</strong><p>바닥·벽·문·지붕을 직접 배치하고 문을 열어 안으로 들어가요. 건축은 소유자만 가능하며 철거하면 자재를 모두 돌려받습니다.</p><div><button data-act="home-travel" data-id="home">내 정원으로 이동</button>'+(profile.housing?.plot?'<button data-act="build-enter">집 건축 시작</button>':'<button data-act="panel" data-value="shop">땅문서 상점</button><button data-act="panel" data-value="bag">가방 열기</button>')+'<button data-act="home-travel" data-id="field">탐험 마을로 이동</button></div></div><h3>건축 자재 채집장</h3><div class="ix-camp-list">'+Data.constructionCamps.map(c=>'<article><span>'+Data.resources[c.kind].icon+'</span><div><strong>'+c.name+'</strong><small>'+Data.resources[c.kind].name+' · 보유 '+(profile.resources[c.kind]||0)+'개</small><small>가까이 다가가 채집 · 도구는 자동 장착</small></div><button data-act="home-travel" data-id="'+c.id+'">이동</button></article>').join('')+'</div><h3>같은 방 친구의 집</h3>'+((snapshot.neighbors||[]).filter(p=>p.uid!==snapshot.you).map(p=>'<button class="ix-visit" data-act="home-visit" data-id="'+escapeHtml(p.uid)+'">🏠 '+escapeHtml(p.name)+'의 집 방문</button>').join('')||'<p class="ix-map-copy">같은 방에 집을 가진 친구가 접속하면 여기에 표시됩니다.</p>')+'</div></aside>';
       if(panel==='research') {
         const p=profile.expedition||{bosses:[],crystals:0,hatched:0,claimed:[],eggs:[]};
         const value=g=>g.metric==='bosses'?p.bosses.length:g.metric==='guardian'?Number(p.bosses.includes('boss-sanctum')):p[g.metric]||0;
@@ -195,7 +214,7 @@
       }
       if (panel === 'shop') return '<aside class="ix-drawer ix-shop-drawer">' + head('전투 승리 · 채집 · 재료 판매로 골드 획득', '연구소 상점', '🪙 ' + (profile.gold || 0))
         + '<div class="ix-materials"><span>' + Object.entries(Data.resources).map(([id,r])=>r.icon+' '+r.name+' '+(profile.resources?.[id]||0)).join(' · ') + '</span><button data-act="sell-materials" '+(Object.values(profile.resources||{}).some(n=>n>0)?'':'disabled')+'>재료 모두 판매</button></div>'
-        + '<div class="ix-shop-list ix-drawer-scroll">' + Data.shop.map(item=>'<article><div class="ix-shop-icon">'+(item.mountId?Data.mounts[item.mountId].icon:item.speciesId?modelFor(item.speciesId):'🍀')+'</div><div><strong>'+item.name+'</strong><small>'+item.description+'</small>'+(item.speciesId?rankBadge(Data.speciesById[item.speciesId]):'')+'</div>'+(item.mountId&&profile.mounts?.owned.includes(item.mountId)?'<button data-act="mount" data-id="'+(profile.mounts.equipped===item.mountId?'':item.mountId)+'">'+(profile.mounts.equipped===item.mountId?'내리기':'탑승')+'<small>보유 중</small></button>':'<button data-act="buy" data-id="'+item.id+'" '+((profile.gold||0)<item.price?'disabled':'')+'>🪙 '+item.price+'<small>구입</small></button>')+'</article>').join('')+'</div></aside>';
+        + '<div class="ix-shop-list ix-drawer-scroll">' + Data.shop.map(item=>'<article><div class="ix-shop-icon">'+(item.deed?'📜':item.mountId?Data.mounts[item.mountId].icon:item.speciesId?modelFor(item.speciesId):'🍀')+'</div><div><strong>'+item.name+'</strong><small>'+item.description+'</small>'+(item.speciesId?rankBadge(Data.speciesById[item.speciesId]):'')+'</div>'+(item.mountId&&profile.mounts?.owned.includes(item.mountId)?'<button data-act="mount" data-id="'+(profile.mounts.equipped===item.mountId?'':item.mountId)+'">'+(profile.mounts.equipped===item.mountId?'내리기':'탑승')+'<small>보유 중</small></button>':'<button data-act="buy" data-id="'+item.id+'" '+((profile.gold||0)<item.price?'disabled':'')+'>🪙 '+item.price+'<small>구입</small></button>')+'</article>').join('')+'</div></aside>';
       if (panel === 'fusion') return '<aside class="ix-drawer ix-collection-drawer">'+head('같은 종류 3마리 + 골드 → 다음 단계 · 성공 확률 100%', '동료 조합', '🪙 '+(profile.gold||0))+'<p class="ix-map-copy">기준 곤충의 레벨·경험치·팀 배치를 유지해요. 재료는 팀 밖의 낮은 레벨 2마리를 먼저 제안하며, 확인 후 소모됩니다.</p><div class="ix-drawer-scroll">'+collection.filter(c=>Data.fusionRecipes[c.speciesId]).map(c=>{
           const recipe=Data.fusionRecipes[c.speciesId], materials=collection.filter(m=>m.id!==c.id&&m.speciesId===c.speciesId&&!profile.team.includes(m.id));
           return '<article class="ix-fusion-row">'+modelFor(c.speciesId)+'<div><strong>'+escapeHtml(c.nickname||speciesOf(c).name)+' Lv.'+c.level+'</strong><small>→ '+Data.speciesById[recipe.result].name+' · '+recipe.gold+'골드</small><small>팀 밖 재료 '+Math.min(2,materials.length)+'/2마리</small></div><button data-act="fuse-review" data-id="'+escapeHtml(c.id)+'" '+(materials.length<2||profile.gold<recipe.gold?'disabled':'')+'>조합 확인</button></article>';
@@ -294,10 +313,10 @@
       const quest = profile.quest || { status: 'available', progress: 0, target: 3 };
       const definition = Data.quests.find(q => q.id === quest.id) || Data.quests[0];
       const questText = quest.status === 'available' || quest.status === 'complete' ? '새 퀘스트 받기 · 현재 위치에서 바로 수락' : quest.status === 'active' ? `${definition.name} · ${definition.description} ${quest.progress}/${quest.target}` : `${definition.name} 완료! 눌러서 사료 보상 받기`;
-      root.innerHTML = `${topBar(profile)}<nav class="ix-nav"><button data-act="panel" data-value="research"><span>🥚</span>탐험 연구</button><button class="${panel === 'team' ? 'is-active' : ''}" data-act="panel" data-value="team"><span>⚔</span>팀 편성</button><button class="${panel === 'collection' ? 'is-active' : ''}" data-act="panel" data-value="collection"><span>🪲</span>성장</button><button class="${panel === 'encyclopedia' ? 'is-active' : ''}" data-act="panel" data-value="encyclopedia"><span>▦</span>도감${unread ? `<b class="ix-badge" aria-label="새 도감 ${unread}종">${unread}</b>` : ''}</button><button class="${panel === 'map' ? 'is-active' : ''}" data-act="panel" data-value="map"><span>🗺️</span>지도</button><button class="${panel === 'shop' ? 'is-active' : ''}" data-act="panel" data-value="shop"><span>🛒</span>상점</button></nav>
+      root.innerHTML = `${topBar(profile)}<nav class="ix-nav"><button data-act="panel" data-value="bag"><span>🎒</span>가방</button><button data-act="panel" data-value="housing"><span>🏠</span>집 꾸미기</button><button data-act="panel" data-value="research"><span>🥚</span>탐험 연구</button><button class="${panel === 'team' ? 'is-active' : ''}" data-act="panel" data-value="team"><span>⚔</span>팀 편성</button><button class="${panel === 'collection' ? 'is-active' : ''}" data-act="panel" data-value="collection"><span>🪲</span>성장</button><button class="${panel === 'encyclopedia' ? 'is-active' : ''}" data-act="panel" data-value="encyclopedia"><span>▦</span>도감${unread ? `<b class="ix-badge" aria-label="새 도감 ${unread}종">${unread}</b>` : ''}</button><button class="${panel === 'map' ? 'is-active' : ''}" data-act="panel" data-value="map"><span>🗺️</span>지도</button><button class="${panel === 'shop' ? 'is-active' : ''}" data-act="panel" data-value="shop"><span>🛒</span>상점</button></nav>
         <button class="ix-team" data-act="panel" data-value="team" aria-label="현재 팀 편성"><small>전투 팀 ${team.length}/3</small>${team.map(c => `<span title="${escapeHtml(c.nickname || speciesOf(c).name)}">${modelFor(c.speciesId, speciesOf(c).category)}</span>`).join('')} ${team.length ? '' : '<b>곤충을 팀에 편성하세요</b>'}</button>
         ${panel ? '' : me.mount?`<button class="ix-sprint is-active" data-act="mount" data-id=""><strong>${Data.mounts[me.mount].icon} ${Data.mounts[me.mount].name}</strong><small>스태미나 소모 없음 · 내리기</small></button>`:`<button class="ix-sprint ${me.sprinting ? 'is-active' : ''}" data-act="sprint" aria-pressed="${!!me.sprinting}"><strong>${me.sprinting ? '달리기 켜짐' : '달리기'}</strong><span class="ix-stamina"><i style="width:${me.stamina ?? 100}%"></i></span><small>스태미나 ${me.stamina ?? 100}/100</small></button>`}
-        <button class="ix-quest-strip" ${panel ? 'hidden' : ''} data-act="quest-guide">📜 ${escapeHtml(questText)}</button>${nearbyPanel()}${selectionPanel()}${drawer(profile)}${challengeModal()}${battleModal(profile)}${centerModal()}<div class="ix-toast ${toastState ? 'is-visible' : ''}" data-tone="${toastState ? toastState.tone : 'info'}" role="status">${toastState ? escapeHtml(toastState.message) : ''}</div>`;
+        <button class="ix-quest-strip" ${panel ? 'hidden' : ''} data-act="quest-guide">📜 ${escapeHtml(questText)}</button>${nearbyPanel()}${selectionPanel()}${drawer(profile)}${housingOverlay(profile)}${challengeModal()}${battleModal(profile)}${centerModal()}<div class="ix-toast ${toastState ? 'is-visible' : ''}" data-tone="${toastState ? toastState.tone : 'info'}" role="status">${toastState ? escapeHtml(toastState.message) : ''}</div>`;
     }
 
     function signature(state) {
@@ -308,18 +327,32 @@
         profile: { characterId: profile.characterId, adventurerName: profile.adventurerName, team: profile.team, collection: profile.collection, discoveries: profile.discoveries, supplies: profile.supplies, quest: profile.quest, encyclopedia: profile.encyclopedia, gold: profile.gold, resources: profile.resources, mounts:profile.mounts },
         players: listOf(state.players).map(p => [p.uid || p.id, p.name || p.nickname, Boolean(p.busy), p.characterId, p.mount, p.uid === state.you ? p.stamina : null, p.uid === state.you ? p.sprinting : null]),
         spawns: listOf(state.spawns).map(s => [s.id, s.speciesId, s.available, s.reservedBy, s.field, s.level, s.boss, s.respawnAt]),
-        resources: state.resources,
+        resources: state.resources,realm:state.realm,home:state.home,neighbors:state.neighbors,
         challenges: state.challenges,
         battle: battle && { id: battle.id, status: battle.status, turn: battle.turn, deadline: battle.deadline, sides: battle.sides, events: battle.events, result: battle.result },
         selection, nearby: (nearbySpawn(state) || {}).id, nearbyResource: (nearbyResource(state) || {}).id
       });
     }
 
+    root.addEventListener('change',event=>{if(event.target.matches('[data-home-piece]')){homeTool.pieceId=event.target.value||null;syncHomeTool();render();}});
     root.addEventListener('input', event => { if (event.target.id === 'explorer-name') { explorerName = event.target.value; nameEdited = true; } });
     root.addEventListener('click', async event => {
       const button = event.target.closest('[data-act]');
       if (!button || button.disabled) return;
       const act = button.dataset.act, id = button.dataset.id;
+      if(act==='deed-use'){const result=await command('home-travel',{destination:'home'});if(result){panel=null;homeTool={...homeTool,deed:id,siteId:null,building:false};syncHomeTool();render();}return;}
+      if(act==='home-site'){homeTool.siteId=id;syncHomeTool();render();return;}
+      if(act==='land-confirm'){const result=await command('land-claim',{deed:homeTool.deed,siteId:homeTool.siteId});if(result){homeTool.deed=null;homeTool.building=true;homeTool.cell={x:0,z:0};syncHomeTool();render();}return;}
+      if(act==='home-cancel'){homeTool.deed=null;homeTool.building=false;homeTool.pieceId=null;syncHomeTool();render();return;}
+      if(act==='home-travel'||act==='home-visit'||act==='build-enter'){
+        const result=await command('home-travel',{destination:act==='home-travel'?id:'home',ownerUid:act==='home-visit'?id:undefined});
+        if(result){panel=null;selection=null;homeTool.deed=null;homeTool.building=act==='build-enter';homeTool.cell={x:0,z:0};homeTool.pieceId=null;syncHomeTool();render();}return;
+      }
+      if(act==='build-part'){homeTool.kind=id;homeTool.pieceId=null;syncHomeTool();render();return;}
+      if(act==='build-rotate'){homeTool.rotation=(homeTool.rotation+1)%4;syncHomeTool();render();return;}
+      if(act==='build-nudge'){const d=H.deeds[snapshot.home.plot.size];homeTool.cell={x:Math.max(0,Math.min(d.width-1,homeTool.cell.x+Number(button.dataset.x))),z:Math.max(0,Math.min(d.depth-1,homeTool.cell.z+Number(button.dataset.z)))};homeTool.pieceId=null;syncHomeTool();render();return;}
+      if(act==='build-place')return command('house-place',{...homeTool.cell,kind:homeTool.kind,rotation:homeTool.rotation});
+      if(act==='build-remove'){const result=await command('house-remove',{pieceId:homeTool.pieceId});if(result){homeTool.pieceId=null;syncHomeTool();render();}return;}
       if (act === 'close-reward') { celebration = null; fusionReview = null; render(); return; }
       if (act === 'fuse-review') {
         const base = snapshot.profile.collection.find(c=>c.id===id);
@@ -381,7 +414,15 @@
     }, 250);
     return {
       setState(next) { if (next && next.serverTime > lastServerStamp) { lastServerStamp = next.serverTime; serverOffset = next.serverTime - Date.now(); } snapshot = next || snapshot; if (!nameEdited && snapshot.profile?.adventurerName && explorerName !== snapshot.profile.adventurerName) { explorerName = snapshot.profile.adventurerName; if (!entered) render(); } if (!entered) { if (snapshot.you && typeof snapshot.you === 'object' && snapshot.you.inWorld) entered = true; else { const saved = snapshot.profile && snapshot.profile.characterId; if (!characterChosenHere && Data.characters.some(c => c.id === saved) && chosenCharacter !== saved) { chosenCharacter = saved; try { localStorage.setItem('insectExpedition.character.v1', saved); } catch (_) {} render(); } return; } } const nextSignature = signature(snapshot); if (nextSignature !== lastSignature) { lastSignature = nextSignature; render(); } },
-      setSelection(next) { selection = next && next.id ? { type: next.type, id: next.id } : null; lastSignature = ''; if (entered) render(); },
+      setSelection(next) {
+        if(next?.type==='home-land'&&homeTool.deed){homeTool.siteId=next.id;syncHomeTool();render();return;}
+        if(next?.type==='home-cell'&&homeTool.building){homeTool.cell={x:next.x,z:next.z};homeTool.pieceId=null;syncHomeTool();render();return;}
+        if(next?.type==='home-piece'){
+          const p=snapshot.home?.pieces.find(p=>p.id===next.id);if(!p)return;
+          if(homeTool.building){homeTool.cell={x:p.x,z:p.z};homeTool.pieceId=p.id;syncHomeTool();render();}
+          else if(p.kind==='door')command('house-door',{pieceId:p.id});return;
+        }
+        selection = next && next.id ? { type: next.type, id: next.id } : null; lastSignature = ''; if (entered) render(); },
       setAnimating(value) { animationPlaying = !!value; root.classList.toggle('is-animating', animationPlaying); },
       notify,
       dispose() { clearTimeout(toastTimer); clearInterval(clock); root.innerHTML = ''; root.classList.remove('ix-ui', 'is-busy'); }

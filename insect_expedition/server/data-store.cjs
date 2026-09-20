@@ -6,7 +6,8 @@ const crypto = require('node:crypto');
 const Data = require('../shared/data.js');
 
 const Battle = require('../shared/battle.cjs');
-const SCHEMA_VERSION = 6;
+const H=require('../shared/housing.js');
+const SCHEMA_VERSION = 7;
 const VALID_SPECIES = new Set(Data.species.map((item) => item.id));
 
 function clone(value) {
@@ -49,6 +50,7 @@ function createProfile(uid, nickname, starterIds = []) {
     encyclopedia: { seen: collection.map(item => item.speciesId), claimed: [], milestones: [] },
     bonuses: { collection: 0 },
     mounts: {owned:[],equipped:''},
+    bag:{deeds:{small:0,large:0}}, housing:{plot:null,pieces:[]},
     expedition: {bosses:[],crystals:0,hatched:0,claimed:[],eggs:[],walk:0},
     gold: 0, resources: {berries:0,ore:0},
     supplies: { heals: 3, feeds: 0 },
@@ -96,6 +98,8 @@ function migrateProfile(input, uid, nickname, starterIds) {
       owned: [...new Set((Array.isArray(old.mounts?.owned)?old.mounts.owned:[]).filter(id=>Data.mounts[id]))],
       equipped: Data.mounts[old.mounts?.equipped] && Array.isArray(old.mounts?.owned) && old.mounts.owned.includes(old.mounts.equipped) ? old.mounts.equipped : ''
     },
+    bag:{deeds:Object.fromEntries(Object.keys(H.deeds).map(k=>[k,Math.max(0,Math.min(20,Math.floor(finiteNumber(old.bag?.deeds?.[k],0))))]))},
+    housing:H.normalize(old.housing),
     expedition: {
       bosses:[...new Set((Array.isArray(old.expedition?.bosses)?old.expedition.bosses:[]).filter(id=>Data.fieldBosses.some(b=>b.id===id)))],
       crystals:Math.max(0,Math.min(999999,Math.floor(finiteNumber(old.expedition?.crystals,0)))),
