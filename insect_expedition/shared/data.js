@@ -87,7 +87,26 @@
     {id:'forest-collection',name:'숲 친구 모으기',type:'capture',target:4,feeds:6,description:'전투에서 승리해 곤충 4마리 채집'},
     {id:'battle-veteran',name:'숙련 탐험가',type:'victory',target:5,feeds:7,description:'야생 곤충과 전투에서 5회 승리'}
   ];
+  const resources = {
+    berries: {name:'숲 열매',icon:'🫐',sell:5}, ore: {name:'빛나는 광석',icon:'💎',sell:9}
+  };
+  const resourceNodes = [
+    {id:'berries-camp',kind:'berries',name:'산딸기 덤불',x:-5,z:26},
+    {id:'ore-camp',kind:'ore',name:'반짝 광맥',x:18,z:23},
+    {id:'berries-forest',kind:'berries',name:'숲 열매 덤불',x:-60,z:-50},
+    {id:'berries-grass',kind:'berries',name:'들딸기 덤불',x:10,z:-50},
+    {id:'ore-rock',kind:'ore',name:'볕바위 광맥',x:55,z:-50},
+    {id:'ore-cave',kind:'ore',name:'동굴 입구 광맥',x:18,z:55},
+    {id:'berries-farm',kind:'berries',name:'농장 열매',x:-55,z:58}
+  ];
+  const shop = [
+    {id:'feed',name:'곤충 사료',price:15,feeds:1,description:'경험치 +84 · 보유 곤충에게 사용'},
+    {id:'feed-pack',name:'사료 묶음',price:60,feeds:5,description:'곤충 사료 5개 · 낱개보다 저렴해요'},
+    {id:'stone-egg',name:'돌틈 알',price:120,speciesId:'stone_ground_beetle',level:2,description:'Lv.2 돌틈먼지벌레가 바로 부화해요'},
+    {id:'moon-cocoon',name:'달빛 고치',price:320,speciesId:'moon_moth',level:3,description:'Lv.3 달무늬큰나방이 바로 깨어나요'},
+    {id:'stag-egg',name:'동굴의 알',price:650,speciesId:'cave_stag',level:3,description:'Lv.3 동굴사슴벌레가 바로 부화해요'}
+  ];
   const collectionMilestones = [{ count: 5, feeds: 5 }, { count: 10, feeds: 10 }, { count: 15, feeds: 15 }, { count: 21, feeds: 25 }];
 
-  return Object.freeze({ title: '이슬숲 탐험대', world: { minX: -120, maxX: 120, minZ: -120, maxZ: 120, spawn: { x: 0, y: 1, z: 0 }, arena: { x: 0, y: 1, z: 0 } }, rarity, rarityOrder, quests, collectionMilestones, species, speciesById, biomes, obstacles, characters });
+  return Object.freeze({ title: '이슬숲 탐험대', world: { minX: -120, maxX: 120, minZ: -120, maxZ: 120, spawn: { x: 0, y: 1, z: 0 }, arena: { x: 0, y: 1, z: 0 } }, rarity, rarityOrder, quests, resources, resourceNodes, shop, collectionMilestones, species, speciesById, biomes, obstacles, characters });
 });

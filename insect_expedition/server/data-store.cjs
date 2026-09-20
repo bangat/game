@@ -6,7 +6,7 @@ const crypto = require('node:crypto');
 const Data = require('../shared/data.js');
 
 const Battle = require('../shared/battle.cjs');
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 const VALID_SPECIES = new Set(Data.species.map((item) => item.id));
 
 function clone(value) {
@@ -48,6 +48,7 @@ function createProfile(uid, nickname, starterIds = []) {
     discoveries: collection.map((item) => item.speciesId),
     encyclopedia: { seen: collection.map(item => item.speciesId), claimed: [], milestones: [] },
     bonuses: { collection: 0 },
+    gold: 0, resources: {berries:0,ore:0},
     supplies: { heals: 3, feeds: 0 },
     quest: { id: 'dew-sample', status: 'available', progress: 0, target: 3 },
     location: { x: 0, z: 22 },
@@ -90,6 +91,8 @@ function migrateProfile(input, uid, nickname, starterIds) {
       milestones: [...new Set((Array.isArray(old.encyclopedia?.milestones) ? old.encyclopedia.milestones : []).filter(n => Data.collectionMilestones.some(m => m.count === n)))]
     },
     bonuses: { collection: Math.max(0, Math.min(0.35, Number(old.bonuses && old.bonuses.collection) || 0)) },
+    gold: Math.max(0, Math.min(999999, Math.floor(finiteNumber(old.gold,0)))),
+    resources: Object.fromEntries(Object.keys(Data.resources).map(id => [id,Math.max(0, Math.min(9999, Math.floor(finiteNumber(old.resources?.[id],0))))])),
     supplies: {
       heals: Math.max(0, Math.min(99, Math.floor(finiteNumber(old.supplies && old.supplies.heals, base.supplies.heals)))),
       feeds: Math.max(0, Math.min(9999, Math.floor(finiteNumber(old.supplies && old.supplies.feeds, base.supplies.feeds))))

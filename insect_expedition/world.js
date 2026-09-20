@@ -69,7 +69,8 @@
     if (typeof document === 'undefined' && typeof OffscreenCanvas === 'undefined') { plane.isVisible = false; return plane; }
     var texture = new B.DynamicTexture('labelTexture', { width: 512, height: 80 }, scene, false);
     texture.hasAlpha = true;
-    texture.drawText(String(text || '').slice(0, 18), null, 55, 'bold 40px sans-serif', color || '#ffffff', 'rgba(14,30,25,.82)', true);
+    var caption=String(text || '').slice(0,30),fontSize=Math.min(40,Math.floor(480/Math.max(1,caption.length)));
+    texture.drawText(caption, null, 55, 'bold '+fontSize+'px sans-serif', color || '#ffffff', 'rgba(14,30,25,.82)', true);
     var mat = material(scene, 'labelMaterial', '#ffffff', 1); mat.diffuseTexture = texture; mat.opacityTexture = texture; mat.disableLighting = true;
     plane.material = mat; return plane;
   }
@@ -484,6 +485,7 @@
     });
     var localAvatar = createAvatar(scene, characterInfo(options.characterId || 'original').id, '', null); localAvatar.parent = worldRoot; localAvatar.position.set(0, 0.4, 12);
     addShadowModel(localAvatar);
+    var companions = {}, resourceModels = {}, followTrail = [], serverPositionAt = 0, localSprint = false;
     var remote = {}, spawns = {}, latest = { players: [], spawns: [] }, battleActors = {}, battleViewSide = 'a', arenaDecor = [], eventQueue = [], activeEvent = null, battleMode = false;
     var controlsEnabled = options.enabled !== false;
     var input = { up: false, down: false, left: false, right: false, joyX: 0, joyZ: 0, sentX: 99, sentZ: 99 };
@@ -514,11 +516,13 @@
     }
     function pointerMove(event) {
       if (!joystick || joystick.id !== event.pointerId) return;
-      input.joyX = clamp((event.clientX - joystick.x) / 38, -1, 1); input.joyZ = clamp((event.clientY - joystick.y) / 38, -1, 1);
+      var dx = (event.clientX - joystick.x) / 38, dz = (event.clientY - joystick.y) / 38, distance = Math.hypot(dx,dz);
+      var strength = distance < .1 ? 0 : Math.min(1,(distance-.1)/.9);
+      input.joyX = distance ? dx/distance*strength : 0; input.joyZ = distance ? dz/distance*strength : 0;
       if (joystickKnob) joystickKnob.style.transform = 'translate(' + (input.joyX * 28) + 'px,' + (input.joyZ * 28) + 'px)'; event.preventDefault();
     }
     function pointerUp(event) { if (joystick && joystick.id === event.pointerId) { joystick = null; input.joyX = 0; input.joyZ = 0; if (joystickKnob) joystickKnob.style.transform = 'translate(0,0)'; event.stopPropagation(); } }
-    if (joystickElement) { joystickElement.addEventListener('pointerdown', pointerDown); joystickElement.addEventListener('pointermove', pointerMove, { passive: false }); joystickElement.addEventListener('pointerup', pointerUp); joystickElement.addEventListener('pointercancel', pointerUp); }
+    if (joystickElement) { joystickElement.addEventListener('pointerdown', pointerDown); joystickElement.addEventListener('pointermove', pointerMove, { passive: false }); joystickElement.addEventListener('pointerup', pointerUp); joystickElement.addEventListener('pointercancel', pointerUp); joystickElement.addEventListener('lostpointercapture', pointerUp); }
     scene.onPointerObservable.add(function (info) {
       if (cameraDragged || viewPointers.size > 1 || info.type !== B.PointerEventTypes.POINTERPICK || !info.pickInfo || !info.pickInfo.hit) return;
       var target = info.pickInfo.pickedMesh && info.pickInfo.pickedMesh.metadata && info.pickInfo.pickedMesh.metadata.selectTarget;
@@ -535,13 +539,65 @@
       });
       Object.keys(map).forEach(function (id) { if (!present[id]) { disposeNode(map[id]); delete map[id]; } });
     }
+    function createResource(node) {
+      var root = new B.TransformNode('resource-' + node.id, scene); root.parent = worldRoot; root.position.set(node.x,0,node.z);root.metadata={kind:node.kind};
+      if(node.kind==='berries') {
+        part(scene,root,'berry-bush','sphere',{diameterX:2.1,diameterY:1.5,diameterZ:1.8,segments:8},[0,.7,0],mats.leaf);
+        var berryMat=material(scene,'berry-red','#d65780',.2);
+        for(var i=0;i<7;i++)part(scene,root,'berry-fruit','sphere',{diameter:.27,segments:6},[Math.sin(i*2.4)*.8,1+(i%3)*.17,Math.cos(i*2.4)*.65],berryMat);
+      } else {
+        part(scene,root,'ore-rock','sphere',{diameterX:2,diameterY:1.2,diameterZ:1.6,segments:6},[0,.45,0],mats.rock);
+        var crystalMat=material(scene,'ore-crystal','#8ee1df',.6);
+        for(var j=0;j<3;j++){var crystal=part(scene,root,'ore-spire','cylinder',{height:1.1+j*.25,diameterTop:0,diameterBottom:.45,tessellation:5},[(j-1)*.45,1.05,(j%2)*.3],crystalMat);crystal.rotation.z=(j-1)*.3;}
+      }
+      label(scene,root,node.name,2.25,'#ffe39a');
+      root.getChildMeshes().forEach(function(mesh){mesh.isPickable=true;mesh.metadata={selectTarget:{type:'resource',id:node.id}};});
+      addShadowModel(root);return root;
+    }
+    function syncCompanions() {
+      var profile=latest.profile || {}, collection=profile.collection || [], present={};
+      (profile.team || []).forEach(function(id,index){
+        var creature=collection.find(function(c){return c.id===id;});if(!creature)return;present[id]=true;
+        var old=companions[id];if(old&&old.metadata.speciesId!==creature.speciesId){disposeNode(old);delete companions[id];}
+        if(!companions[id]) {
+          var model=createCreature(scene,creature.speciesId,{id:'companion-'+id});model.parent=worldRoot;
+          model.scaling.scaleInPlace(.6);model.position.set(localAvatar.position.x, .25, localAvatar.position.z-(index+1)*1.7);
+          model.metadata.companionId=id;
+          model.getChildMeshes().forEach(function(mesh){mesh.isPickable=false;mesh.metadata={};});
+          label(scene,model,creature.nickname || global.InsectData.speciesById[creature.speciesId].name,2.1,'#c4ffd3');
+          companions[id]=model;addShadowModel(model);
+        }
+        companions[id].metadata.slot=index;
+      });
+      Object.keys(companions).forEach(function(id){if(!present[id]){disposeNode(companions[id]);delete companions[id];}});
+    }
+    function followCompanions(dt,now) {
+      var head={x:localAvatar.position.x,z:localAvatar.position.z};
+      if(!followTrail.length || Math.hypot(head.x-followTrail[0].x,head.z-followTrail[0].z)>.3){followTrail.unshift(head);if(followTrail.length>120)followTrail.pop();}
+      Object.keys(companions).forEach(function(id){
+        var model=companions[id],gap=2.3+model.metadata.slot*1.6, remaining=gap;
+        var target={x:head.x-Math.sin(localAvatar.rotation.y)*gap,z:head.z-Math.cos(localAvatar.rotation.y)*gap};
+        for(var i=1;i<followTrail.length;i++){
+          var a=followTrail[i-1],b=followTrail[i],d=Math.hypot(a.x-b.x,a.z-b.z);
+          if(d>=remaining){var f=remaining/Math.max(d,.001);target={x:a.x+(b.x-a.x)*f,z:a.z+(b.z-a.z)*f};break;}remaining-=d;
+        }
+        var dx=target.x-model.position.x,dz=target.z-model.position.z;
+        if(Math.hypot(dx,dz)>18){model.position.x=target.x;model.position.z=target.z;}
+        else {var blend=1-Math.exp(-dt*10);model.position.x+=dx*blend;model.position.z+=dz*blend;}
+        if(Math.hypot(dx,dz)>.06){var angle=Math.atan2(dx,dz)-model.rotation.y;model.rotation.y+=Math.atan2(Math.sin(angle),Math.cos(angle))*(1-Math.exp(-dt*12));}
+        model.position.y=.25+Math.abs(Math.sin(now/150+model.metadata.slot))*Math.min(.14,Math.hypot(dx,dz)*.07);
+        (model.metadata.wings||[]).forEach(function(wing,wi){wing.rotation.z=(wi?1:-1)*(.3+Math.abs(Math.sin(now/100))*.55);});
+      });
+    }
     function setState(snapshot) {
       snapshot = snapshot || {}; latest = Object.assign({}, latest, snapshot);
       var localId = typeof latest.you === 'string' ? latest.you : latest.you && latest.you.uid;
       var localRecord = typeof latest.you === 'object' && latest.you ? latest.you : (latest.players || []).find(function (player) { return String(player.uid) === String(localId); });
       if (localRecord) {
+        serverPositionAt = performance.now(); localSprint = !!localRecord.sprinting;
         localAvatar.metadata.targetX = clamp(localRecord.x, -118, 118); localAvatar.metadata.targetZ = clamp(localRecord.z, -118, 118);
         if (!battleMode && Math.hypot(localAvatar.position.x - localRecord.x, localAvatar.position.z - localRecord.z) > 30) {
+          followTrail = [];
           localAvatar.position.x = localAvatar.metadata.targetX; localAvatar.position.z = localAvatar.metadata.targetZ;
           camera.target.x = localAvatar.position.x; camera.target.z = localAvatar.position.z;
         }
@@ -553,7 +609,8 @@
         }
       }
       var quest = latest.profile && latest.profile.quest;
-      var markerText = !quest || quest.status === 'available' ? '! 채집 의뢰' : quest.status === 'ready' ? '✓ 보상 받기' : quest.status === 'complete' ? '! 다음 의뢰' : '채집 ' + quest.progress + '/' + quest.target;
+      var definition=global.InsectData.quests.find(function(q){return q.id === (quest && quest.id);}) || global.InsectData.quests[0];
+      var markerText = !quest || quest.status === 'available' ? '! 새 의뢰' : quest.status === 'ready' ? '✓ 보상 받기' : quest.status === 'complete' ? '! 다음 의뢰' : definition.name + ' ' + quest.progress + '/' + quest.target;
       if (questMarker.metadata !== markerText && questMarker.material && questMarker.material.diffuseTexture) {
         questMarker.metadata = markerText;
         questMarker.material.diffuseTexture.drawText(markerText, null, 55, 'bold 40px sans-serif', '#ffe99b', 'rgba(14,30,25,.82)', true);
@@ -561,6 +618,8 @@
       var otherPlayers = (latest.players || []).filter(function (player) { return !localId || String(player.uid) !== String(localId); });
       syncEntityMap(otherPlayers, remote, function (p) { var avatar = createAvatar(scene, p.character, p.nickname, { type: 'player', id: String(p.uid), busy: p.busy }); avatar.parent = worldRoot; avatar.position.set(p.x || 0, 0.4, p.z || 0); addShadowModel(avatar); return avatar; }, 'uid');
       syncEntityMap((latest.spawns || []).filter(function (s) { return s.available !== false; }), spawns, function (s) { var creature = createCreature(scene, s.speciesId, s); creature.parent = worldRoot; creature.position.set(s.x || 0, 0.2, s.z || 0); addShadowModel(creature); return creature; }, 'id');
+      syncEntityMap((latest.resources || []).filter(function(n){return n.available;}),resourceModels,createResource,'id');
+      syncCompanions();
       var shouldBattle = !!latest.battle;
       if (shouldBattle !== battleMode) switchBattle(shouldBattle, latest.battle);
     }
@@ -707,17 +766,24 @@
       if (!controlsEnabled) { x = z = 0; }
       // Map screen right/down to the camera's horizontal world axes, also while orbiting.
       var strength = Math.hypot(x, z);
-      var screenX = x, screenZ = z / Math.max(0.2, Math.cos(camera.beta)), alpha = camera.alpha;
+      var screenX = x, screenZ = z, alpha = camera.alpha;
       x = -screenX * Math.sin(alpha) + screenZ * Math.cos(alpha);
       z = screenX * Math.cos(alpha) + screenZ * Math.sin(alpha);
       var worldLength = Math.hypot(x, z);
       if (worldLength > 0) { x *= strength / worldLength; z *= strength / worldLength; }
       if (now - lastIntentAt > 48 && (Math.abs(x - input.sentX) > 0.02 || Math.abs(z - input.sentZ) > 0.02 || length > 0)) { onMove({ x: x, z: z }); input.sentX = x; input.sentZ = z; lastIntentAt = now; }
       var beforeX = localAvatar.position.x, beforeZ = localAvatar.position.z;
-      if (latest.you) { localAvatar.position.x += (localAvatar.metadata.targetX - localAvatar.position.x) * Math.min(1, dt * 13); localAvatar.position.z += (localAvatar.metadata.targetZ - localAvatar.position.z) * Math.min(1, dt * 13); }
+      if (latest.you) {
+        var lead = length > .05 ? Math.min(.12,Math.max(0,(now-serverPositionAt)/1000)+.04) : 0;
+        var visualX=clamp(localAvatar.metadata.targetX+x*(localSprint?16:9)*lead,-118,118),visualZ=clamp(localAvatar.metadata.targetZ+z*(localSprint?16:9)*lead,-118,118);
+        var blocked=OBSTACLES.some(function(o){return o.type==='circle'?Math.hypot(visualX-o.x,visualZ-o.z)<o.radius+1.15:Math.abs(visualX-o.x)<o.width/2+1.15&&Math.abs(visualZ-o.z)<o.depth/2+1.15;});
+        if(blocked){visualX=localAvatar.metadata.targetX;visualZ=localAvatar.metadata.targetZ;}
+        var smooth=1-Math.exp(-dt*22);localAvatar.position.x+=(visualX-localAvatar.position.x)*smooth;localAvatar.position.z+=(visualZ-localAvatar.position.z)*smooth;
+      }
       else { localAvatar.position.x = clamp(localAvatar.position.x + x * dt * 9, -118, 118); localAvatar.position.z = clamp(localAvatar.position.z + z * dt * 9, -118, 118); }
       var actualX = localAvatar.position.x - beforeX, actualZ = localAvatar.position.z - beforeZ;
-      if (Math.hypot(actualX, actualZ) > 0.002) localAvatar.rotation.y = Math.atan2(actualX, actualZ);
+      if (Math.hypot(actualX,actualZ)>.002 || length>.05) { var facing=Math.atan2(length>.05?x:actualX,length>.05?z:actualZ)-localAvatar.rotation.y;localAvatar.rotation.y+=Math.atan2(Math.sin(facing),Math.cos(facing))*(1-Math.exp(-dt*20)); }
+      followCompanions(dt,now);
       var stepped = animateAvatar(localAvatar, dt, Math.hypot(actualX, actualZ) / Math.max(dt, 0.001));
       if (stepped && controlsEnabled && length > 0.05 && !document.hidden) {
         var onPath = [-72, 0, 72].some(function (axis) { return Math.abs(localAvatar.position.x - axis) < 4.5 || Math.abs(localAvatar.position.z - axis) < 4.5; });
@@ -740,7 +806,7 @@
       if (activeEvent && activeEvent.resolve) activeEvent.resolve(activeEvent.data);
       eventQueue.forEach(function (queued) { if (queued.resolve) queued.resolve(queued.data); });
       global.removeEventListener('keydown', keyDown); global.removeEventListener('keyup', keyUp); global.removeEventListener('blur', releaseInput); global.removeEventListener('resize', resize);
-      if (joystickElement) { joystickElement.removeEventListener('pointerdown', pointerDown); joystickElement.removeEventListener('pointermove', pointerMove); joystickElement.removeEventListener('pointerup', pointerUp); joystickElement.removeEventListener('pointercancel', pointerUp); joystickElement.remove(); }
+      if (joystickElement) { joystickElement.removeEventListener('pointerdown', pointerDown); joystickElement.removeEventListener('pointermove', pointerMove); joystickElement.removeEventListener('pointerup', pointerUp); joystickElement.removeEventListener('pointercancel', pointerUp); joystickElement.removeEventListener('lostpointercapture', pointerUp); joystickElement.remove(); }
       scene.dispose(); engine.dispose();
     }
     return { setState: setState, setCharacter: setCharacter, setEnabled: setEnabled, playEvents: playEvents, dispose: dispose, scene: scene, camera: camera };

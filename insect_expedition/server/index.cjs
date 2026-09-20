@@ -66,7 +66,7 @@ function progressQuest(profile, type) {
 }
 
 function createRoom(id) {
-  return { id, players: new Map(), spawns: World.makeSpawns(Data.species, Data.biomes), challenges: new Map(), battles: new Map(), lastBroadcastAt: 0, broadcastTimer: null };
+  return { id, players: new Map(), spawns: World.makeSpawns(Data.species, Data.biomes), resources: Data.resourceNodes.map(n => ({...n,respawnAt:0})), challenges: new Map(), battles: new Map(), lastBroadcastAt: 0, broadcastTimer: null };
 }
 
 function publicPlayer(player) {
@@ -77,7 +77,7 @@ function challengeList(room, uid) {
   return [...room.challenges.values()].filter((item) => item.from === uid || item.to === uid).map((item) => ({ ...item }));
 }
 
-function makeState(room, player) {
+function makeState(room, player, now = nowMs()) {
   let battle = null;
   if (player.battleId) {
     const record = room.battles.get(player.battleId);
@@ -88,10 +88,11 @@ function makeState(room, player) {
     you: player.uid,
     players: [...room.players.values()].filter((item) => item.connected).map(publicPlayer),
     spawns: room.spawns.map(World.publicSpawn),
+    resources: room.resources.map(n => ({...n,available:n.respawnAt<=now})),
     profile: publicProfile(player.profile),
     battle,
     challenges: challengeList(room, player.uid),
-    serverTime: nowMs(),
+    serverTime: now,
     safeRadius: World.SAFE_RADIUS,
     locationName: locationName(player)
   };
@@ -116,7 +117,7 @@ function createGameServer(options = {}) {
 
   app.disable('x-powered-by');
   app.get('/insect_expedition/api/health', (_req, res) => {
-    res.json({ ok: true, release: '2026.09.20.6', storage: process.env.INSECT_PROFILE_BUCKET ? 'cloud' : 'local', now: clock(), rooms: rooms.size, online: [...rooms.values()].reduce((sum, room) => sum + [...room.players.values()].filter((p) => p.connected).length, 0) });
+    res.json({ ok: true, release: '2026.09.20.7', storage: process.env.INSECT_PROFILE_BUCKET ? 'cloud' : 'local', now: clock(), rooms: rooms.size, online: [...rooms.values()].reduce((sum, room) => sum + [...room.players.values()].filter((p) => p.connected).length, 0) });
   });
   app.get('*path', (req, res, next) => {
     let requested;
@@ -149,7 +150,7 @@ function createGameServer(options = {}) {
     if (room.broadcastTimer) { clearTimeout(room.broadcastTimer); room.broadcastTimer = null; }
     room.lastBroadcastAt = clock();
     World.updateSpawns(room.spawns, clock());
-    for (const player of room.players.values()) if (player.connected) send(player.ws, makeState(room, player));
+    for (const player of room.players.values()) if (player.connected) send(player.ws, makeState(room, player, clock()));
   }
 
   function queueBroadcast(room) {
@@ -171,14 +172,14 @@ function createGameServer(options = {}) {
     profile.collection.forEach((item) => { if (hp.has(item.id)) item.hp = hp.get(item.id); });
   }
 
-  function addCreature(profile, speciesId, level = 1) {
+  function addCreature(profile, speciesId, level = 1, fromBattle = true) {
     if (profile.collection.length >= 120) throw new Error('곤충 보관함이 가득 찼습니다.');
     const creature = store.createCreature(speciesId, level, Data.speciesById[speciesId] && Data.speciesById[speciesId].name);
     creature.hp = Battle.statsForCreature(creature).maxHealth;
     profile.collection.push(creature);
     const isNew = !profile.discoveries.includes(speciesId);
     if (isNew) profile.discoveries.push(speciesId);
-    progressQuest(profile, 'capture');
+    if (fromBattle) progressQuest(profile, 'capture');
     return { creature, isNew };
   }
 
@@ -193,7 +194,7 @@ function createGameServer(options = {}) {
         nextProfile.processedRewards.push(record.state.id);
         nextProfile.processedRewards = nextProfile.processedRewards.slice(-100);
         if (record.state.type === 'field') {
-          result.xpPerCreature = 0; result.totalXp = 0; result.levelUps = []; result.captureSummary = null; result.feeds = 0;
+          result.xpPerCreature = 0; result.totalXp = 0; result.levelUps = []; result.captureSummary = null; result.feeds = 0; result.gold = 0;
           if (result.winner === sideKey && ['defeat', 'capture'].includes(result.reason)) {
             progressQuest(nextProfile, 'victory');
             const enemy = record.state.sides.b.team[0];
@@ -212,6 +213,8 @@ function createGameServer(options = {}) {
             const earnedFeeds = 1 + Math.floor(rankIndex / 2);
             result.feeds = Math.min(earnedFeeds, 9999 - nextProfile.supplies.feeds);
             nextProfile.supplies.feeds += result.feeds;
+            result.gold = Math.min(999999 - nextProfile.gold, 12 + enemy.level * 4 + rankIndex * 8);
+            nextProfile.gold += result.gold;
             if (!record.state.victoryCapture) {
               const team = record.state.sides[sideKey].team;
               const healthScore = team.reduce((n, c) => n + c.hp / c.maxHp, 0) / team.length;
@@ -284,6 +287,42 @@ function createGameServer(options = {}) {
       const changed = World.movePlayer(player, payload, clock());
       player.profile.location = { x: player.x, z: player.z };
       return { x: player.x, z: player.z, changed };
+    }
+    if (name === 'gather') {
+      rate(player, 'gather', 600);
+      const node = room.resources.find(n => n.id === payload.nodeId);
+      if (!node || node.respawnAt > clock()) throw new Error('아직 다시 채집할 수 없어요. 다른 채집물을 찾아보세요.');
+      if (World.distance(player,node)>4 || World.segmentBlocked(player,node)) throw new Error('채집물 가까이 다가가 주세요.');
+      if (player.profile.resources[node.kind]>=9999) throw new Error('상점에서 재료를 판매한 뒤 채집해 주세요.');
+      const next = JSON.parse(JSON.stringify(player.profile));
+      next.resources[node.kind] += 1;
+      next.gold = Math.min(999999,next.gold+2);
+      player.profile = await store.save(next);
+      node.respawnAt = clock()+30000;
+      return {kind:node.kind,amount:1,gold:2,message:Data.resources[node.kind].name+' 1개 채집! 골드 +2 · 상점에서 재료를 팔 수 있어요.'};
+    }
+    if (name === 'buy') {
+      rate(player, 'shop', 400);
+      const item = Data.shop.find(i => i.id === payload.itemId);
+      if (!item) throw new Error('판매하지 않는 상품입니다.');
+      if (player.profile.gold < item.price) throw new Error('골드가 부족해요. 전투 승리와 재료 판매로 모아 보세요.');
+      const next = JSON.parse(JSON.stringify(player.profile));
+      if (item.feeds && next.supplies.feeds + item.feeds > 9999) throw new Error('사료를 사용한 뒤 구입해 주세요.');
+      const captured = item.speciesId ? addCreature(next,item.speciesId,item.level,false) : null;
+      if (item.feeds) next.supplies.feeds += item.feeds;
+      next.gold -= item.price;
+      player.profile = await store.save(next);
+      return {itemId:item.id,creature:captured?.creature,isNew:captured?.isNew,message:captured ? Data.speciesById[item.speciesId].name+' 부화! 팀 편성에서 배치하세요.' : item.name+' 구입 완료! 성장 메뉴에서 사용할 수 있어요.'};
+    }
+    if (name === 'sell-materials') {
+      rate(player, 'shop', 400);
+      const next = JSON.parse(JSON.stringify(player.profile));
+      const value = Object.entries(Data.resources).reduce((n,[id,item])=>n+next.resources[id]*item.sell,0);
+      if (!value) throw new Error('팔 수 있는 채집 재료가 없어요.');
+      if (next.gold+value>999999) throw new Error('골드를 사용한 뒤 재료를 판매해 주세요.');
+      next.gold += value; Object.keys(Data.resources).forEach(id=>{next.resources[id]=0;});
+      player.profile = await store.save(next);
+      return {gold:value,message:'채집 재료 판매 완료! 골드 +'+value};
     }
     if (name === 'sprint') {
       rate(player, 'sprint', 200);

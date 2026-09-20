@@ -124,16 +124,23 @@
       return chosen ? chosen.spawn : null;
     }
 
+    function nearbyResource(state) {
+      if(state.battle) return null;
+      const me=listOf(state.players).find(p=>p.uid===state.you);if(!me)return null;
+      const nodes=(state.resources||[]).filter(n=>n.available&&Math.hypot(n.x-me.x,n.z-me.z)<=4).sort((a,b)=>Math.hypot(a.x-me.x,a.z-me.z)-Math.hypot(b.x-me.x,b.z-me.z));
+      return nodes.find(n=>selection?.type==='resource'&&selection.id===n.id)||nodes[0]||null;
+    }
     function nearbyPanel() {
       if (panel || (selection && selection.type === 'npc') || (snapshot.challenges || []).some(c => c.to === snapshot.you)) return '';
-      const spawn = nearbySpawn(snapshot);
+      const spawn = nearbySpawn(snapshot), resource=nearbyResource(snapshot);
+      if(resource && (!spawn || selection?.type==='resource')) return `<div class="ix-nearby"><span>${Data.resources[resource.kind].icon} ${escapeHtml(resource.name)}</span><button data-act="gather" data-id="${resource.id}">재료 채집 · 골드 +2</button></div>`;
       if (!spawn) return '';
       const species = speciesOf(spawn), action = 'encounter';
       return `<div class="ix-nearby" aria-label="가까운 곤충"><span>${rankBadge(species)} Lv.${spawn.level || 1} ${escapeHtml(species.name)}</span><button id="selected-${action}" data-act="${action}" data-action="${action}" data-id="${escapeHtml(spawn.id)}">⚔ 전투하고 채집</button></div>`;
     }
 
     function selectionPanel() {
-      if (panel || !selection || selection.type === 'spawn') return '';
+      if (panel || !selection || selection.type === 'spawn' || selection.type === 'resource') return '';
       if (selection.type === 'npc' && selection.id === 'guide-mira') {
         const quest = snapshot.profile && snapshot.profile.quest || { status: 'available', progress: 0, target: 3 };
         const definition = Data.quests.find(q => q.id === quest.id) || Data.quests[0];
@@ -173,6 +180,9 @@
       const collection = profile.collection || [];
       const filtered = collection.filter(c => rarityFilter === 'all' || speciesOf(c).rarity === rarityFilter);
       const head = (small, title, count) => '<div class="ix-drawer-head"><div><small>' + small + '</small><h2>' + title + ' <b>' + count + '</b></h2></div><button data-act="close-panel" aria-label="닫기">×</button></div>';
+      if (panel === 'shop') return '<aside class="ix-drawer ix-shop-drawer">' + head('전투 승리 · 채집 · 재료 판매로 골드 획득', '연구소 상점', '🪙 ' + (profile.gold || 0))
+        + '<div class="ix-materials"><span>' + Object.entries(Data.resources).map(([id,r])=>r.icon+' '+r.name+' '+(profile.resources?.[id]||0)).join(' · ') + '</span><button data-act="sell-materials" '+(Object.values(profile.resources||{}).some(n=>n>0)?'':'disabled')+'>재료 모두 판매</button></div>'
+        + '<div class="ix-shop-list ix-drawer-scroll">' + Data.shop.map(item=>'<article><div class="ix-shop-icon">'+(item.speciesId?modelFor(item.speciesId):'🍀')+'</div><div><strong>'+item.name+'</strong><small>'+item.description+'</small>'+(item.speciesId?rankBadge(Data.speciesById[item.speciesId]):'')+'</div><button data-act="buy" data-id="'+item.id+'" '+((profile.gold||0)<item.price?'disabled':'')+'>🪙 '+item.price+'<small>구입</small></button></article>').join('')+'</div></aside>';
       if (panel === 'collection') return '<aside class="ix-drawer ix-collection-drawer">' + head('전투 승리 · 도감 보상으로 사료 획득', '곤충 성장', '🍀 ' + (profile.supplies?.feeds || 0)) + rankTabs(collection) + '<div class="ix-drawer-scroll">' + (filtered.length ? filtered.map(c => creatureCard(c, profile, false)).join('') : '<p class="ix-panel-empty">이 등급의 곤충은 아직 없어요. 전투에서 승리해 모아 보세요.</p>') + '</div></aside>';
       if (panel === 'team') {
         const team = (profile.team || []).map(id => collection.find(c => c.id === id)).filter(Boolean);
@@ -216,7 +226,7 @@
       const outcome = battle.result;
       const capture = outcome && outcome.captureSummary;
       const captureText = capture && capture.success ? `${escapeHtml(Data.speciesById[capture.speciesId] && Data.speciesById[capture.speciesId].name || '야생 곤충')}를 채집했습니다!${capture.isNew ? ' 새 도감 등록 +1' : ''}` : capture && capture.failureReason === 'inventory-full' ? '보관함이 가득 차 포획 보상을 받지 못했습니다.' : capture && capture.success === false ? `채집 실패 · 곤충이 달아났어요. 성공 확률 ${Math.round((capture.chance || 0) * 100)}%` : '';
-      const rewardText = [outcome && outcome.totalXp > 0 ? `총 경험치 +${outcome.totalXp} · 참여 곤충당 ${outcome.xpPerCreature}` : '', outcome && outcome.feeds ? `사료 +${outcome.feeds}` : '', captureText, outcome && outcome.recovered ? '전원 자동 회복 완료' : ''].filter(Boolean).join(' · ') || '전투 기록이 안전하게 저장됩니다.';
+      const rewardText = [outcome && outcome.totalXp > 0 ? `총 경험치 +${outcome.totalXp} · 참여 곤충당 ${outcome.xpPerCreature}` : '', outcome && outcome.gold ? `골드 +${outcome.gold}` : '', outcome && outcome.feeds ? `사료 +${outcome.feeds}` : '', captureText, outcome && outcome.recovered ? '전원 자동 회복 완료' : ''].filter(Boolean).join(' · ') || '전투 기록이 안전하게 저장됩니다.';
       const levelText = outcome && outcome.levelUps && outcome.levelUps.length ? ` · ${outcome.levelUps.length}마리 레벨 상승!` : '';
       return `<section class="ix-battle" aria-label="턴제 전투"><header><div><small>${battle.type === 'pvp' ? '탐험가 대전 · 3 대 3' : '필드 전투 · 3 대 1'}</small><strong>턴 ${battle.turn}</strong></div><div class="ix-turn"><i style="--time:${Math.min(25, time)}"></i><b>${time}</b>초</div></header>
         <div class="ix-battlefield"><div class="ix-fighter is-enemy"><div class="ix-fighter-info"><strong>${escapeHtml(foeActive.nickname || foeSpecies.name)}</strong><span>${rankBadge(foeSpecies)} Lv.${foeActive.level}</span><div class="ix-hp"><i style="width:${hpPercent(foeActive)}%"></i></div><small>${foeActive.hp}/${foeActive.maxHp}</small></div></div>
@@ -244,7 +254,7 @@
       const quest = profile.quest || { status: 'available', progress: 0, target: 3 };
       const definition = Data.quests.find(q => q.id === quest.id) || Data.quests[0];
       const questText = quest.status === 'available' || quest.status === 'complete' ? '새 퀘스트 받기 · 현재 위치에서 바로 수락' : quest.status === 'active' ? `${definition.name} · ${definition.description} ${quest.progress}/${quest.target}` : `${definition.name} 완료! 눌러서 사료 보상 받기`;
-      root.innerHTML = `${topBar(profile)}<nav class="ix-nav"><button class="${panel === 'team' ? 'is-active' : ''}" data-act="panel" data-value="team"><span>⚔</span>팀 편성</button><button class="${panel === 'collection' ? 'is-active' : ''}" data-act="panel" data-value="collection"><span>🪲</span>성장</button><button class="${panel === 'encyclopedia' ? 'is-active' : ''}" data-act="panel" data-value="encyclopedia"><span>▦</span>도감${unread ? `<b class="ix-badge" aria-label="새 도감 ${unread}종">${unread}</b>` : ''}</button><button class="${panel === 'map' ? 'is-active' : ''}" data-act="panel" data-value="map"><span>🗺️</span>지도</button></nav>
+      root.innerHTML = `${topBar(profile)}<nav class="ix-nav"><button class="${panel === 'team' ? 'is-active' : ''}" data-act="panel" data-value="team"><span>⚔</span>팀 편성</button><button class="${panel === 'collection' ? 'is-active' : ''}" data-act="panel" data-value="collection"><span>🪲</span>성장</button><button class="${panel === 'encyclopedia' ? 'is-active' : ''}" data-act="panel" data-value="encyclopedia"><span>▦</span>도감${unread ? `<b class="ix-badge" aria-label="새 도감 ${unread}종">${unread}</b>` : ''}</button><button class="${panel === 'map' ? 'is-active' : ''}" data-act="panel" data-value="map"><span>🗺️</span>지도</button><button class="${panel === 'shop' ? 'is-active' : ''}" data-act="panel" data-value="shop"><span>🛒</span>상점</button></nav>
         <button class="ix-team" data-act="panel" data-value="team" aria-label="현재 팀 편성"><small>전투 팀 ${team.length}/3</small>${team.map(c => `<span title="${escapeHtml(c.nickname || speciesOf(c).name)}">${modelFor(c.speciesId, speciesOf(c).category)}</span>`).join('')} ${team.length ? '' : '<b>곤충을 팀에 편성하세요</b>'}</button>
         ${panel ? '' : `<button class="ix-sprint ${me.sprinting ? 'is-active' : ''}" data-act="sprint" aria-pressed="${!!me.sprinting}"><strong>${me.sprinting ? '달리기 켜짐' : '달리기'}</strong><span class="ix-stamina"><i style="width:${me.stamina ?? 100}%"></i></span><small>스태미나 ${me.stamina ?? 100}/100</small></button>`}
         <button class="ix-quest-strip" ${panel ? 'hidden' : ''} data-act="quest-guide">📜 ${escapeHtml(questText)}</button>${nearbyPanel()}${selectionPanel()}${drawer(profile)}${challengeModal()}${battleModal(profile)}<div class="ix-toast ${toastState ? 'is-visible' : ''}" data-tone="${toastState ? toastState.tone : 'info'}" role="status">${toastState ? escapeHtml(toastState.message) : ''}</div>`;
@@ -255,12 +265,13 @@
       const battle = state.battle || null;
       return JSON.stringify({
         you: state.you, locationName: state.locationName,
-        profile: { characterId: profile.characterId, adventurerName: profile.adventurerName, team: profile.team, collection: profile.collection, discoveries: profile.discoveries, supplies: profile.supplies, quest: profile.quest, encyclopedia: profile.encyclopedia },
+        profile: { characterId: profile.characterId, adventurerName: profile.adventurerName, team: profile.team, collection: profile.collection, discoveries: profile.discoveries, supplies: profile.supplies, quest: profile.quest, encyclopedia: profile.encyclopedia, gold: profile.gold, resources: profile.resources },
         players: listOf(state.players).map(p => [p.uid || p.id, p.name || p.nickname, Boolean(p.busy), p.characterId, p.uid === state.you ? p.stamina : null, p.uid === state.you ? p.sprinting : null]),
         spawns: listOf(state.spawns).map(s => [s.id, s.speciesId, s.available, s.reservedBy, s.field, s.level]),
+        resources: state.resources,
         challenges: state.challenges,
         battle: battle && { id: battle.id, status: battle.status, turn: battle.turn, deadline: battle.deadline, sides: battle.sides, events: battle.events, result: battle.result },
-        selection, nearby: (nearbySpawn(state) || {}).id
+        selection, nearby: (nearbySpawn(state) || {}).id, nearbyResource: (nearbyResource(state) || {}).id
       });
     }
 
@@ -282,6 +293,9 @@
         else ids[slot] = id;
         await command('team', {ids}); render(); return;
       }
+      if (act === 'buy') return command('buy', {itemId:id});
+      if (act === 'sell-materials') return command('sell-materials', {});
+      if (act === 'gather') return command('gather', {nodeId:id});
       if (act === 'dex-claim') return command('dex-claim', {});
       if (act === 'sprint') { const me = listOf(snapshot.players).find(p => p.uid === snapshot.you); return command('sprint', { enabled: !me?.sprinting }); }
       if (act === 'close-panel') { panel = null; render(); return; }

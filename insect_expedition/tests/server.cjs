@@ -48,7 +48,7 @@ function openClient(url) {
 
 test('프로필 구버전 자료를 제한된 최신 스키마로 이관하고 원자 저장한다', () => {
   const migrated = migrateProfile({ collection: [{ id: 'c1', speciesId: 'dew_ladybird', level: 999, xp: -3 }], team: ['c1', 'c1'], location: { x: 999, z: -999 } }, 'u1', '테스터', ['dew_ladybird']);
-  assert.equal(migrated.version, 4);
+  assert.equal(migrated.version, 5);
   assert.equal(migrated.collection[0].level, 50);
   assert.deepEqual(migrated.team, ['c1']);
   assert.deepEqual(migrated.location, { x: 120, z: -120 });

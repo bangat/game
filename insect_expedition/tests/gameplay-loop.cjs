@@ -39,7 +39,7 @@ const gameServer=createGameServer({dbPath:path.join(fs.mkdtempSync(path.join(os.
   async function walk(id){await game.evaluate(async id=>{
     const wait=ms=>new Promise(r=>setTimeout(r,ms));
     for(let n=0;n<160;n++){
-      const s=InsectApp.getSnapshot(),p=s.players.find(p=>p.uid===s.you),target=s.spawns.find(s=>s.id===id);
+      const s=InsectApp.getSnapshot(),p=s.players.find(p=>p.uid===s.you),target=[...s.spawns,...(s.resources||[])].find(s=>s.id===id);
       const dx=target.x-p.x,dz=target.z-p.z,d=Math.hypot(dx,dz);
       if(d<3){await InsectApp.send('move',{x:0,z:0});return;}
       await InsectApp.send('move',{x:dx/d,z:dz/d});await wait(160);
@@ -65,7 +65,23 @@ const gameServer=createGameServer({dbPath:path.join(fs.mkdtempSync(path.join(os.
     await game.locator('[data-act="return"]').tap();
     await game.waitForFunction(()=>!InsectApp.getSnapshot().battle);
   }
+  await walk('berries-camp');
+  await game.evaluate(()=>InsectApp.ui.setSelection({type:'resource',id:'berries-camp'}));
+  await game.locator('[data-act="gather"]').tap();
+  await game.waitForFunction(()=>InsectApp.getSnapshot().profile.resources.berries===1);
+  assert.equal(player.profile.gold,2);
+  await page.screenshot({path:path.join(__dirname,'../test-output/loop-followers-gather.png')});
+  assert.equal(await game.evaluate(()=>InsectApp.world.scene.transformNodes.filter(n=>n.metadata?.companionId).length),3);
   await win('tutorial-6');
+  await game.locator('[data-act="panel"][data-value="shop"]').tap();
+  assert.equal(await game.locator('[data-act="buy"]').count(),5);
+  await game.locator('[data-act="sell-materials"]').tap();await page.waitForTimeout(450);
+  const goldBefore=player.profile.gold,foodBefore=player.profile.supplies.feeds;
+  await game.locator('[data-act="buy"][data-id="feed"]').tap();
+  await game.waitForFunction(v=>InsectApp.getSnapshot().profile.gold===v,goldBefore-15);
+  assert.equal(player.profile.supplies.feeds,foodBefore+1);
+  await page.screenshot({path:path.join(__dirname,'../test-output/loop-shop.png')});
+  await game.locator('[data-act="close-panel"]').tap();
   assert.equal(await game.locator('.ix-badge').innerText(),'1');
   await game.locator('[data-act="panel"][data-value="encyclopedia"]').tap();
   await game.locator('[data-act="dex-claim"]').tap();
