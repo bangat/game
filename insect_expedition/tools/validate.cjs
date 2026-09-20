@@ -1,7 +1,7 @@
 'use strict';
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm'), crypto = require('node:crypto');
 const root = path.resolve(__dirname, '..'), site = path.dirname(root);
-const files = ['index.html','config.js','emulator.js','main.js','audio.js','characters.js','world.js','ui.js','styles.css','shared/data.js','shared/battle.cjs','package.json','package-lock.json','README.md','ASSET_SOURCES.md','Start-Local.ps1','Start-Firebase.ps1','firebase.emulator.json'];
+const files = ['index.html','game.html','landscape.js','config.js','emulator.js','main.js','audio.js','characters.js','world.js','ui.js','styles.css','shared/data.js','shared/battle.cjs','package.json','package-lock.json','README.md','ASSET_SOURCES.md','Start-Local.ps1','Start-Firebase.ps1','firebase.emulator.json'];
 for (const entry of fs.readdirSync(path.join(root, 'server'))) if (entry.endsWith('.cjs')) files.push('server/' + entry);
 function assets(directory) { for (const item of fs.readdirSync(path.join(root,directory),{withFileTypes:true})) { const name=directory+'/'+item.name; if(item.isDirectory()) assets(name); else files.push(name); } }
 assets('assets');
@@ -21,7 +21,7 @@ for (const file of ['index.html', '대기실.html', '게임방.html']) {
   if (file !== 'index.html' && !text.includes("id: 'insectExpedition'")) throw new Error('메뉴 연결 누락: ' + file);
   for (const script of text.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)) if (script[1].trim()) new vm.Script(script[1], { filename: file });
 }
-for (const match of fs.readFileSync(path.join(root, 'index.html'), 'utf8').matchAll(/(?:src|href)="([^"?]+)"/g)) {
+for (const match of (fs.readFileSync(path.join(root, 'index.html'), 'utf8') + fs.readFileSync(path.join(root, 'game.html'), 'utf8')).matchAll(/(?:src|href)="([^"?]+)"/g)) {
   if (/^https?:/.test(match[1])) continue;
   if (!fs.existsSync(path.resolve(root, match[1]))) throw new Error('자원 누락: ' + match[1]);
 }

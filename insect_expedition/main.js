@@ -46,7 +46,7 @@
       clearTimeout(timer);
       ref.off('value', listener);
     }
-    location.href = '../대기실.html';
+    window.top.location.href = new URL('../대기실.html', location.href).href;
   }
   async function connect() {
     if (stopped) return;
@@ -118,7 +118,7 @@
     } catch (problem) { connection(problem.message, false); if (!stopped) retryTimer = setTimeout(connect, 3000); }
   }
   async function boot() {
-    if (!roomId) { location.replace('../대기실.html' + (window.InsectEmulator ? '?emulator=1' : '')); return; }
+    if (!roomId) { window.top.location.replace(new URL('../대기실.html' + (window.InsectEmulator ? '?emulator=1' : ''), location.href).href); return; }
     if (!window.BABYLON || !window.InsectWorld || !window.InsectUI) throw new Error('게임 자원을 불러오지 못했습니다. 다시 열어 주세요.');
     ui = InsectUI.create({ send, onCharacter: id => {
       selectedCharacter = id; if (window.InsectCharacters) InsectCharacters.select(id);
