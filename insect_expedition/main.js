@@ -87,7 +87,7 @@
           snapshot = value; connection('연결됨', true); app.ready = true;
           if (!previous && value.profile && value.profile.characterId) {
             selectedCharacter = InsectCharacters.select(value.profile.characterId).id;
-            world.setCharacter(selectedCharacter);
+            world.setCharacter(selectedCharacter,value.profile.appearance);
           }
           world.setState(value);
           const battle = value.battle;
@@ -134,10 +134,10 @@
   async function boot() {
     if (!roomId) { window.top.location.replace(new URL('../대기실.html' + (window.InsectEmulator ? '?emulator=1' : ''), location.href).href); return; }
     if (!window.BABYLON || !window.InsectWorld || !window.InsectUI) throw new Error('게임 자원을 불러오지 못했습니다. 다시 열어 주세요.');
-    ui = InsectUI.create({ send, onCharacter: id => {
-      selectedCharacter = id; if (window.InsectCharacters) InsectCharacters.select(id);
-      if (world) world.setCharacter(id);
-    }, onEnter: () => { if (world && world.setEnabled) world.setEnabled(true); const canvas = document.getElementById('game-canvas'); canvas.tabIndex = 0; canvas.focus(); } });
+    ui = InsectUI.create({send,
+      onCustomize:(active,created)=>{if(world)world.setEnabled(!active && !!(created || snapshot?.profile?.characterCreated));},
+      onEnter:()=>{if(world)world.setEnabled(!document.body.classList.contains('is-customizing'));const canvas=document.getElementById('game-canvas');canvas.tabIndex=0;if(!document.body.classList.contains('is-customizing'))canvas.focus();}
+    });
     world = InsectWorld.create({ canvas: document.getElementById('game-canvas'), enabled: false, onMove: value => { moveIntent = value; }, onSelect: selection => { if (ui.setSelection) ui.setSelection(selection); }, onFootstep: step => InsectAudio.footstep(step), onSkillStart: event => InsectAudio.play('skill',event.skillId), onBattleActor:event=>{
       if(!animationView?.battle)return;
       for(const [key,id] of [[event.actorSide,event.actorCreatureId],[event.targetSide,event.targetCreatureId]]){const side=animationView.battle.sides[key];const index=side?.team.findIndex(c=>c.id===id);if(index>=0)side.active=index;}

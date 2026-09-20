@@ -1,4 +1,5 @@
 'use strict';
+const Appearance = require('../shared/appearance.js');
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -72,7 +73,7 @@ function createRoom(id) {
 }
 
 function publicPlayer(player) {
-  return { uid: player.uid, nickname: player.nickname, x: player.x, z: player.z, character: player.character, realm:player.realm||'',harvest:player.harvest||null, mount: player.mount || '', busy: Boolean(player.busy), stamina: Math.floor(player.stamina ?? 100), sprinting: !!player.sprinting };
+  return { uid: player.uid, nickname: player.nickname, x: player.x, z: player.z, character: player.character, appearance: player.profile.appearance, realm:player.realm||'',harvest:player.harvest||null, mount: player.mount || '', busy: Boolean(player.busy), stamina: Math.floor(player.stamina ?? 100), sprinting: !!player.sprinting };
 }
 
 function challengeList(room, uid) {
@@ -122,7 +123,7 @@ function createGameServer(options = {}) {
 
   app.disable('x-powered-by');
   app.get('/insect_expedition/api/health', (_req, res) => {
-    res.json({ ok: true, release: '2026.09.20.12', storage: process.env.INSECT_PROFILE_BUCKET ? 'cloud' : 'local', now: clock(), rooms: rooms.size, online: [...rooms.values()].reduce((sum, room) => sum + [...room.players.values()].filter((p) => p.connected).length, 0) });
+    res.json({ ok: true, release: '2026.09.20.13', storage: process.env.INSECT_PROFILE_BUCKET ? 'cloud' : 'local', now: clock(), rooms: rooms.size, online: [...rooms.values()].reduce((sum, room) => sum + [...room.players.values()].filter((p) => p.connected).length, 0) });
   });
   app.get('*path', (req, res, next) => {
     let requested;
@@ -293,7 +294,7 @@ function createGameServer(options = {}) {
   async function execute(room, player, name, payload = {}) {
     if (player.battleId && !['action', 'return', 'auto-battle'].includes(name)) throw new Error('전투 결과에서 돌아가기를 눌러 탐험을 계속해 주세요.');
     if(player.harvest&&!['move','gather','gather-cancel'].includes(name))throw Error('자재 채집을 마치거나 취소한 뒤 이용해 주세요.');
-    if(player.realm&&!['move','home-travel','land-claim','house-place','house-remove','house-door','character','rename','feed','team','team-slot','dex-seen','dex-claim','incubate','hatch','research-claim','heal','fuse','evolve'].includes(name))throw Error('탐험지로 돌아간 뒤 이용해 주세요.');
+    if(player.realm&&!['move','home-travel','land-claim','house-place','house-remove','house-door','character','appearance','rename','feed','team','team-slot','dex-seen','dex-claim','incubate','hatch','research-claim','heal','fuse','evolve'].includes(name))throw Error('탐험지로 돌아간 뒤 이용해 주세요.');
     if(name==='home-travel'){
       rate(player,'home-travel',600);
       const destination=String(payload.destination||'home');
@@ -460,16 +461,25 @@ function createGameServer(options = {}) {
     }
     if (name === 'character') {
       rate(player, 'manage', 300);
-      if (player.busy) throw new Error('전투 중에는 캐릭터를 바꿀 수 없습니다.');
+      if (player.profile.characterCreated) throw new Error('이미 만든 캐릭터와 이름은 변경할 수 없어요. 꾸미기 메뉴를 이용해 주세요.');
       const id = cleanId(payload.id, 40);
       if (!Data.characters.some((item) => item.id === id)) throw new Error('선택할 수 없는 캐릭터입니다.');
-      if (payload.name !== undefined && !/^[가-힣]{1,6}$/.test(String(payload.name))) throw new Error('탐험가 이름은 한글 1~6자로 지어 주세요.');
-      if (payload.name !== undefined) player.profile.adventurerName = String(payload.name);
-      player.nickname = player.profile.adventurerName || player.nickname;
-      player.character = id;
-      player.profile.characterId = id;
-      player.profile = await store.save(player.profile);
+      if (typeof payload.name !== 'string' || !/^[가-힣]{1,6}$/.test(payload.name)) throw new Error('탐험가 이름은 한글 1~6자로 지어 주세요.');
+      if (payload.appearance !== undefined && !Appearance.valid(payload.appearance)) throw new Error('꾸미기 항목을 다시 확인해 주세요.');
+      const next = {...player.profile, adventurerName:payload.name, characterId:id, characterCreated:true, appearance:Appearance.normalize(payload.appearance,id)};
+      player.profile = await store.save(next);
+      player.nickname = player.profile.adventurerName;
+      player.character = player.profile.characterId;
       return { id };
+    }
+    if (name === 'appearance') {
+      rate(player, 'manage', 300);
+      if (!player.profile.characterCreated) throw new Error('먼저 캐릭터와 이름을 만들어 주세요.');
+      if (!Appearance.valid(payload.appearance)) throw new Error('꾸미기 항목을 다시 확인해 주세요.');
+      if (payload.appearance.body !== player.profile.appearance.body) throw new Error('처음 만든 캐릭터는 유지됩니다. 헤어와 의상을 꾸며 주세요.');
+      const next = {...player.profile, appearance:Appearance.normalize(payload.appearance)};
+      player.profile = await store.save(next);
+      return {appearance:player.profile.appearance,message:'새로운 스타일을 저장했어요!'};
     }
     if (name === 'team') {
       rate(player, 'manage', 300);
@@ -670,7 +680,7 @@ function createGameServer(options = {}) {
           profile.location = { ...location };
           player = existing || { uid: joined.uid, rates: new Map(), commands: new Map(), inflight: new Map(), busy: false, battleId: null, stamina: 100, staminaAt: clock(), sprinting: false, moveActive: false };
           player.inflight ||= new Map();
-          const character = Data.characters.some((item) => item.id === message.character) ? message.character : Data.characters.some((item) => item.id === profile.characterId) ? profile.characterId : Data.characters[0].id;
+          const character = Data.characters.some((item) => item.id === profile.characterId) ? profile.characterId : Data.characters[0].id;
           profile.characterId = character;
           Object.assign(player, { ws, connected: true, nickname: profile.adventurerName || joined.nickname, profile, character, mount:profile.mounts.equipped, x: location.x, z: location.z, disconnectedAt: 0 });
           room.players.set(player.uid, player);

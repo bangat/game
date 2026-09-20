@@ -28,10 +28,22 @@
     }
     let rarityFilter = 'all', teamSlot = 0, animationPlaying = false;
     let entered = false;
-    const storedCharacter = (() => { try { return localStorage.getItem('insectExpedition.character.v1'); } catch (_) { return null; } })();
-    let explorerName = '', nameEdited = false;
-    let chosenCharacter = Data.characters.some(c => c.id === storedCharacter) ? storedCharacter : null;
-    let characterChosenHere = false;
+    let editor = null;
+    function openEditor(first) {
+      if(editor || !snapshot.profile?.uid) return;
+      const profile=snapshot.profile;
+      editor=global.InsectAppearanceUI.open({create:first,name:profile.adventurerName,characterId:profile.characterId,appearance:profile.appearance,
+        onOpen:()=>options.onCustomize?.(true),
+        onClose:()=>{editor=null;options.onCustomize?.(false,entered);render();},
+        onSave:async ({appearance,name})=>{
+          const result=await options.send(first?'character':'appearance',first?{id:profile.characterId||'original',name,appearance}:{appearance});
+          if(result?.ok===false)throw new Error(result.error||'저장하지 못했어요.');
+          snapshot.profile={...snapshot.profile,appearance,...(first?{characterCreated:true,adventurerName:name}:{})};
+          if(first){entered=true;options.onEnter?.();}
+          notify(first?'나만의 캐릭터가 만들어졌어요!':'새로운 스타일을 저장했어요.','success');
+        }
+      });
+    }
     let detailCreatureId = null;
     let busy = false;
     let toastTimer = 0;
@@ -102,13 +114,7 @@
     }
 
     function characterScreen() {
-      const selected = chosenCharacter || (snapshot.you && snapshot.you.characterId) || Data.characters[0].id;
-      chosenCharacter = selected;
-      const current = Data.characters.find(c => c.id === selected) || Data.characters[0];
-      return `<section class="ix-onboard" aria-label="탐험가 선택"><div class="ix-onboard-copy"><p class="ix-eyebrow">공유 세계 곤충 탐험</p><h1>${Data.title}</h1><p>서로 다른 서식지를 누비며 작은 생명들과 팀을 이루세요.</p></div>
-        <div class="ix-character-stage" aria-live="polite"><img class="ix-character-render" src="assets/characters/${selected}.png" alt="${escapeHtml(current.name)} 3D 모습"><strong>${escapeHtml(current.name)}</strong><small>${escapeHtml(current.role)} · 모든 탐험가는 무료이며 능력 차이가 없습니다.</small></div>
-        <div class="ix-character-grid">${Data.characters.map(c => `<button id="character-${c.id}" class="ix-character ${c.id === selected ? 'is-selected' : ''}" data-act="character" data-action="character" data-id="${c.id}"><img class="ix-mini-render" src="assets/characters/${c.id}.png" alt=""><strong>${escapeHtml(c.name)}</strong><small>${escapeHtml(c.role)}</small></button>`).join('')}</div>
-        <div class="ix-enter-row"><label for="explorer-name">탐험가 이름 <small>한글 1~6자 · 계정에 저장</small></label><input id="explorer-name" aria-label="탐험가 이름" maxlength="6" pattern="[가-힣]{1,6}" placeholder="예: 숲탐험가" value="${escapeHtml(explorerName)}" autocomplete="off"><button id="enter-world" class="ix-enter" data-act="enter" data-action="enter">이슬숲으로 출발</button></div></section>`;
+      return '<section class="ix-onboard" aria-label="캐릭터 불러오기"><div class="ix-onboard-copy"><h1>나의 탐험가를 불러오는 중…</h1><p>계정에 저장된 캐릭터와 이름을 확인하고 있어요.</p></div></section>';
     }
 
     function topBar(profile) {
@@ -296,7 +302,7 @@
     }
 
     function render() {
-      if (!entered) { root.innerHTML = characterScreen(); return; }
+      if (!entered) { root.innerHTML = characterScreen(); if(snapshot.profile?.uid && !snapshot.profile.characterCreated) openEditor(true); return; }
       const profile = snapshot.profile || { collection: [], team: [], discoveries: [] };
       if (snapshot.battle) {
         root.innerHTML = `${battleModal(profile)}${centerModal()}<div class="ix-toast ${toastState ? 'is-visible' : ''}" data-tone="${toastState ? toastState.tone : 'info'}" role="status">${toastState ? escapeHtml(toastState.message) : ''}</div>`;
@@ -313,7 +319,7 @@
       const quest = profile.quest || { status: 'available', progress: 0, target: 3 };
       const definition = Data.quests.find(q => q.id === quest.id) || Data.quests[0];
       const questText = quest.status === 'available' || quest.status === 'complete' ? '새 퀘스트 받기 · 현재 위치에서 바로 수락' : quest.status === 'active' ? `${definition.name} · ${definition.description} ${quest.progress}/${quest.target}` : `${definition.name} 완료! 눌러서 사료 보상 받기`;
-      root.innerHTML = `${topBar(profile)}<nav class="ix-nav"><button data-act="panel" data-value="bag"><span>🎒</span>가방</button><button data-act="panel" data-value="housing"><span>🏠</span>집 꾸미기</button><button data-act="panel" data-value="research"><span>🥚</span>탐험 연구</button><button class="${panel === 'team' ? 'is-active' : ''}" data-act="panel" data-value="team"><span>⚔</span>팀 편성</button><button class="${panel === 'collection' ? 'is-active' : ''}" data-act="panel" data-value="collection"><span>🪲</span>성장</button><button class="${panel === 'encyclopedia' ? 'is-active' : ''}" data-act="panel" data-value="encyclopedia"><span>▦</span>도감${unread ? `<b class="ix-badge" aria-label="새 도감 ${unread}종">${unread}</b>` : ''}</button><button class="${panel === 'map' ? 'is-active' : ''}" data-act="panel" data-value="map"><span>🗺️</span>지도</button><button class="${panel === 'shop' ? 'is-active' : ''}" data-act="panel" data-value="shop"><span>🛒</span>상점</button></nav>
+      root.innerHTML = `${topBar(profile)}<nav class="ix-nav"><button data-act="customize"><span>🎀</span>꾸미기</button><button data-act="panel" data-value="bag"><span>🎒</span>가방</button><button data-act="panel" data-value="housing"><span>🏠</span>집 꾸미기</button><button data-act="panel" data-value="research"><span>🥚</span>탐험 연구</button><button class="${panel === 'team' ? 'is-active' : ''}" data-act="panel" data-value="team"><span>⚔</span>팀 편성</button><button class="${panel === 'collection' ? 'is-active' : ''}" data-act="panel" data-value="collection"><span>🪲</span>성장</button><button class="${panel === 'encyclopedia' ? 'is-active' : ''}" data-act="panel" data-value="encyclopedia"><span>▦</span>도감${unread ? `<b class="ix-badge" aria-label="새 도감 ${unread}종">${unread}</b>` : ''}</button><button class="${panel === 'map' ? 'is-active' : ''}" data-act="panel" data-value="map"><span>🗺️</span>지도</button><button class="${panel === 'shop' ? 'is-active' : ''}" data-act="panel" data-value="shop"><span>🛒</span>상점</button></nav>
         <button class="ix-team" data-act="panel" data-value="team" aria-label="현재 팀 편성"><small>전투 팀 ${team.length}/3</small>${team.map(c => `<span title="${escapeHtml(c.nickname || speciesOf(c).name)}">${modelFor(c.speciesId, speciesOf(c).category)}</span>`).join('')} ${team.length ? '' : '<b>곤충을 팀에 편성하세요</b>'}</button>
         ${panel ? '' : me.mount?`<button class="ix-sprint is-active" data-act="mount" data-id=""><strong>${Data.mounts[me.mount].icon} ${Data.mounts[me.mount].name}</strong><small>스태미나 소모 없음 · 내리기</small></button>`:`<button class="ix-sprint ${me.sprinting ? 'is-active' : ''}" data-act="sprint" aria-pressed="${!!me.sprinting}"><strong>${me.sprinting ? '달리기 켜짐' : '달리기'}</strong><span class="ix-stamina"><i style="width:${me.stamina ?? 100}%"></i></span><small>스태미나 ${me.stamina ?? 100}/100</small></button>`}
         <button class="ix-quest-strip" ${panel ? 'hidden' : ''} data-act="quest-guide">📜 ${escapeHtml(questText)}</button>${nearbyPanel()}${selectionPanel()}${drawer(profile)}${housingOverlay(profile)}${challengeModal()}${battleModal(profile)}${centerModal()}<div class="ix-toast ${toastState ? 'is-visible' : ''}" data-tone="${toastState ? toastState.tone : 'info'}" role="status">${toastState ? escapeHtml(toastState.message) : ''}</div>`;
@@ -324,7 +330,7 @@
       const battle = state.battle || null;
       return JSON.stringify({
         you: state.you, locationName: state.locationName, selectionDistance: selection?.type === "player" ? listOf(state.players).map(p=>[p.uid,Math.round(p.x),Math.round(p.z)]) : null,
-        profile: { characterId: profile.characterId, adventurerName: profile.adventurerName, team: profile.team, collection: profile.collection, discoveries: profile.discoveries, supplies: profile.supplies, quest: profile.quest, encyclopedia: profile.encyclopedia, gold: profile.gold, resources: profile.resources, mounts:profile.mounts },
+        profile: { appearance:profile.appearance, characterCreated:profile.characterCreated, characterId: profile.characterId, adventurerName: profile.adventurerName, team: profile.team, collection: profile.collection, discoveries: profile.discoveries, supplies: profile.supplies, quest: profile.quest, encyclopedia: profile.encyclopedia, gold: profile.gold, resources: profile.resources, mounts:profile.mounts },
         players: listOf(state.players).map(p => [p.uid || p.id, p.name || p.nickname, Boolean(p.busy), p.characterId, p.mount, p.uid === state.you ? p.stamina : null, p.uid === state.you ? p.sprinting : null]),
         spawns: listOf(state.spawns).map(s => [s.id, s.speciesId, s.available, s.reservedBy, s.field, s.level, s.boss, s.respawnAt]),
         resources: state.resources,realm:state.realm,home:state.home,neighbors:state.neighbors,
@@ -335,7 +341,7 @@
     }
 
     root.addEventListener('change',event=>{if(event.target.matches('[data-home-piece]')){homeTool.pieceId=event.target.value||null;syncHomeTool();render();}});
-    root.addEventListener('input', event => { if (event.target.id === 'explorer-name') { explorerName = event.target.value; nameEdited = true; } });
+
     root.addEventListener('click', async event => {
       const button = event.target.closest('[data-act]');
       if (!button || button.disabled) return;
@@ -363,8 +369,8 @@
       }
       if (act === 'confirm-fuse') { if (busy || !fusionReview) return; const payload = fusionReview; fusionReview = null; await command('fuse',payload); render(); return; }
       if (act === 'navigate') { const result=await command('navigate',{id}); if(result){panel=null;selection=null;render();} return; }
-      if (act === 'character') { chosenCharacter = id; characterChosenHere = true; try { localStorage.setItem('insectExpedition.character.v1', id); } catch (_) {} if (options.onCharacter) options.onCharacter(id); render(); return; }
-      if (act === 'enter') { if (!/^[가-힣]{1,6}$/.test(explorerName)) { notify('탐험가 이름을 한글 1~6자로 지어 주세요.', 'error'); root.querySelector('#explorer-name').focus(); return; } const result = await command('character', { id: chosenCharacter, name: explorerName }); if (result === null || (result && result.ok === false)) return; entered = true; if (options.onEnter) options.onEnter(chosenCharacter); render(); return; }
+      if (act === 'customize') { openEditor(false); return; }
+
       if (act === 'panel') { panel = panel === button.dataset.value ? null : button.dataset.value; rarityFilter = 'all'; render(); if (panel === 'encyclopedia') await command('dex-seen', {ids: snapshot.profile.discoveries || []}); return; }
       if (act === 'rarity-filter') { rarityFilter = id; render(); return; }
       if (act === 'team-slot') { teamSlot = Number(button.dataset.index); render(); return; }
@@ -413,7 +419,13 @@
       if (label && snapshot.battle) label.textContent = snapshot.battle.status === 'finished' ? '—' : remainingTime(snapshot.battle);
     }, 250);
     return {
-      setState(next) { if (next && next.serverTime > lastServerStamp) { lastServerStamp = next.serverTime; serverOffset = next.serverTime - Date.now(); } snapshot = next || snapshot; if (!nameEdited && snapshot.profile?.adventurerName && explorerName !== snapshot.profile.adventurerName) { explorerName = snapshot.profile.adventurerName; if (!entered) render(); } if (!entered) { if (snapshot.you && typeof snapshot.you === 'object' && snapshot.you.inWorld) entered = true; else { const saved = snapshot.profile && snapshot.profile.characterId; if (!characterChosenHere && Data.characters.some(c => c.id === saved) && chosenCharacter !== saved) { chosenCharacter = saved; try { localStorage.setItem('insectExpedition.character.v1', saved); } catch (_) {} render(); } return; } } const nextSignature = signature(snapshot); if (nextSignature !== lastSignature) { lastSignature = nextSignature; render(); } },
+      setState(next) {
+        if(next && next.serverTime > lastServerStamp){lastServerStamp=next.serverTime;serverOffset=next.serverTime-Date.now();}
+        snapshot=next||snapshot;
+        if(!entered && snapshot.profile?.characterCreated){entered=true;options.onEnter?.();}
+        if(!entered){if(snapshot.profile?.uid && !editor)render();return;}
+        const nextSignature=signature(snapshot);if(nextSignature!==lastSignature){lastSignature=nextSignature;render();}
+      },
       setSelection(next) {
         if(next?.type==='home-land'&&homeTool.deed){homeTool.siteId=next.id;syncHomeTool();render();return;}
         if(next?.type==='home-cell'&&homeTool.building){homeTool.cell={x:next.x,z:next.z};homeTool.pieceId=null;syncHomeTool();render();return;}
@@ -425,7 +437,7 @@
         selection = next && next.id ? { type: next.type, id: next.id } : null; lastSignature = ''; if (entered) render(); },
       setAnimating(value) { animationPlaying = !!value; root.classList.toggle('is-animating', animationPlaying); },
       notify,
-      dispose() { clearTimeout(toastTimer); clearInterval(clock); root.innerHTML = ''; root.classList.remove('ix-ui', 'is-busy'); }
+      dispose() { editor?.close(); clearTimeout(toastTimer); clearInterval(clock); root.innerHTML = ''; root.classList.remove('ix-ui', 'is-busy'); }
     };
   }
 

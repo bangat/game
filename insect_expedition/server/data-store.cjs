@@ -7,7 +7,8 @@ const Data = require('../shared/data.js');
 
 const Battle = require('../shared/battle.cjs');
 const H=require('../shared/housing.js');
-const SCHEMA_VERSION = 7;
+const Appearance=require('../shared/appearance.js');
+const SCHEMA_VERSION = 8;
 const VALID_SPECIES = new Set(Data.species.map((item) => item.id));
 
 function clone(value) {
@@ -43,6 +44,8 @@ function createProfile(uid, nickname, starterIds = []) {
     nickname: boundedText(nickname, '숲길 탐험가'),
     characterId: 'original',
     adventurerName: '',
+    characterCreated: false,
+    appearance: Appearance.normalize(),
     lastSeenAt: Date.now(),
     collection,
     team: collection.map((item) => item.id),
@@ -84,6 +87,8 @@ function migrateProfile(input, uid, nickname, starterIds) {
     ...base,
     nickname: boundedText(old.nickname || nickname, base.nickname),
     adventurerName: /^[가-힣]{1,6}$/.test(old.adventurerName || '') ? old.adventurerName : '',
+    characterCreated: old.characterCreated === true || /^[가-힣]{1,6}$/.test(old.adventurerName || ''),
+    appearance: Appearance.normalize(old.appearance, old.characterId || old.character),
     lastSeenAt: Math.max(0, Number(old.lastSeenAt) || Date.now()),
     characterId: boundedText(old.characterId || old.character, base.characterId, 40),
     collection: normalizedCollection,

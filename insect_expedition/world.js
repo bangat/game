@@ -103,7 +103,8 @@
     return { id: id || 'original', name: '탐험가', body: '#5ed6f3', accent: '#fff0a6', skin: '#f2c9a5', hair: '#3c2b32', shape: 'round', accessory: 'badge' };
   }
 
-  function createAvatar(scene, id, nickname, pickData) {
+  function createAvatar(scene, id, nickname, pickData, appearance) {
+    if (global.InsectAvatar) return global.InsectAvatar.create(scene,id,nickname,pickData,appearance,{part:part,material:material,label:label});
     var info = characterInfo(CHARACTER_IDS.indexOf(id) >= 0 ? id : 'original');
     var root = new B.TransformNode('avatar-' + (pickData ? pickData.id : 'local'), scene);
     var bodyMat = material(scene, 'clothes-' + info.id, info.body, 0.05);
@@ -160,6 +161,8 @@
     var rig=avatar.metadata;if(rig.mount===id)return;
     if(rig.vehicle)disposeNode(rig.vehicle);rig.vehicle=null;rig.wheels=[];rig.mount=id||'';
     rig.legs.forEach(function(leg,i){leg.position.x=i? .23:-.23;leg.rotation.z=0;});
+    if(rig.bodyRoot)rig.bodyRoot.position.y=id==='motorcycle'?.78*(1-rig.height):0;
+    if(rig.skirt){rig.skirt.scaling.y=id==='motorcycle'?.55:1;rig.skirt.position.y=id==='motorcycle'?.76:.66;}
     if(!id)return;
     var scene=avatar.getScene(),bike=id==='motorcycle',vehicle=new B.TransformNode('ride-'+id,scene);vehicle.parent=avatar;rig.vehicle=vehicle;
     var paint=material(scene,'ride-paint',bike?'#db6e41':'#d9ac6c'),steel=material(scene,'ride-steel','#849caa'),rubber=material(scene,'ride-rubber','#20313a'),lamp=material(scene,'ride-lamp','#fff4b0',.65);
@@ -652,7 +655,7 @@
       var present = {};
       (items || []).forEach(function (item) {
         var id = String(item[idKey] || item.id || ''); if (!id) return; present[id] = true;
-        if (idKey === 'uid' && map[id] && item.character && map[id].metadata.id !== item.character) { disposeNode(map[id]); delete map[id]; }
+        if (idKey === 'uid' && map[id] && (map[id].metadata.id !== item.character || (global.InsectAppearance && map[id].metadata.appearanceKey !== global.InsectAppearance.key(item.appearance)))) { disposeNode(map[id]); delete map[id]; }
         if (!map[id]) map[id] = make(item);
         if(idKey==='uid')equipVehicle(map[id],item.mount||'');
         map[id].metadata.targetX = clamp(item.x, -WORLD_HALF + 2, WORLD_HALF - 2); map[id].metadata.targetZ = clamp(item.z, -WORLD_HALF + 2, WORLD_HALF - 2);
@@ -739,7 +742,7 @@
           localAvatar.position.x = localAvatar.metadata.targetX; localAvatar.position.z = localAvatar.metadata.targetZ;
           camera.target.x = localAvatar.position.x; camera.target.z = localAvatar.position.z;
         }
-        if (!battleMode && localRecord.character && localRecord.character !== localAvatar.metadata.id) setCharacter(localRecord.character);
+        if (!battleMode && localRecord.character) setCharacter(localRecord.character,localRecord.appearance);
         if (localRecord.nickname && localAvatar.metadata.nickname !== localRecord.nickname) {
           localAvatar.metadata.nickname = localRecord.nickname;
           var plate = localAvatar.getChildMeshes().find(function(mesh){return mesh.name === 'label';});
@@ -755,7 +758,7 @@
         questMarker.material.diffuseTexture.drawText(markerText, null, 55, 'bold 40px sans-serif', '#ffe99b', 'rgba(14,30,25,.82)', true);
       }
       var otherPlayers = (latest.players || []).filter(function (player) { return !localId || String(player.uid) !== String(localId); });
-      syncEntityMap(otherPlayers, remote, function (p) { var avatar = createAvatar(scene, p.character, p.nickname, { type: 'player', id: String(p.uid), busy: p.busy }); avatar.parent = worldRoot; avatar.position.set(p.x || 0, 0.4, p.z || 0); addShadowModel(avatar); return avatar; }, 'uid');
+      syncEntityMap(otherPlayers, remote, function (p) { var avatar = createAvatar(scene, p.character, p.nickname, { type: 'player', id: String(p.uid), busy: p.busy }, p.appearance); avatar.parent = worldRoot; avatar.position.set(p.x || 0, 0.4, p.z || 0); addShadowModel(avatar); return avatar; }, 'uid');
       syncEntityMap((latest.spawns || []).filter(function (s) { return s.available !== false && Math.hypot(s.x-localAvatar.metadata.targetX,s.z-localAvatar.metadata.targetZ)<85; }), spawns, function (s) { var creature = createCreature(scene, s.speciesId, s);if(s.group){(s.members||[]).slice(1).forEach(function(m,i){var member=createCreature(scene,m.speciesId,Object.assign({},s,{id:s.id+'-member-'+i}));member.parent=creature;member.position.set(i?2.5:-2.5,0,1.7);member.getChildMeshes().forEach(function(mesh){mesh.isPickable=true;mesh.metadata={selectTarget:{type:'spawn',id:s.id}};});});label(scene,creature,'3마리 무리 · 자동 턴제',3.1,'#ffc96e');} creature.parent = worldRoot; creature.position.set(s.x || 0, 0.2, s.z || 0); addShadowModel(creature); return creature; }, 'id');
       syncEntityMap((latest.resources || []).filter(function(n){return n.available;}),resourceModels,createResource,'id');
       Object.values(remote).forEach(function(a){a.parent=latest.realm?homeView.root:worldRoot;});
@@ -763,11 +766,13 @@
       var shouldBattle = !!latest.battle;
       if (shouldBattle !== battleMode) switchBattle(shouldBattle, latest.battle);
     }
-    function setCharacter(id) {
+    function setCharacter(id,appearance) {
       id = CHARACTER_IDS.indexOf(id) >= 0 ? id : 'original';
-      if (localAvatar && localAvatar.metadata.id === id) return;
+      if (localAvatar && localAvatar.metadata.id === id && (!global.InsectAppearance || localAvatar.metadata.appearanceKey === global.InsectAppearance.key(appearance))) return;
       var position = localAvatar ? localAvatar.position.clone() : new B.Vector3(0, 0.4, 12), targetX = localAvatar ? localAvatar.metadata.targetX : position.x, targetZ = localAvatar ? localAvatar.metadata.targetZ : position.z;
-      disposeNode(localAvatar); localAvatar = createAvatar(scene, id, '', null); localAvatar.parent = battleMode ? battleRoot : latest.realm?homeView.root:worldRoot; localAvatar.position.copyFrom(position); localAvatar.metadata.targetX = targetX; localAvatar.metadata.targetZ = targetZ;
+      var facing=localAvatar ? localAvatar.rotation.y : 0;
+      disposeNode(localAvatar); localAvatar = createAvatar(scene, id, '', null,appearance); localAvatar.rotation.y=facing; localAvatar.parent = battleMode ? battleRoot : latest.realm?homeView.root:worldRoot; localAvatar.position.copyFrom(position); localAvatar.metadata.targetX = targetX; localAvatar.metadata.targetZ = targetZ;
+      equipVehicle(localAvatar,localMount);
       addShadowModel(localAvatar);
       if (global.InsectCharacters) global.InsectCharacters.select(id);
     }
@@ -1004,7 +1009,7 @@
       Object.keys(spawns).forEach(function (id) { var creature = spawns[id]; creature.position.x += (creature.metadata.targetX - creature.position.x) * Math.min(1, dt * 7); creature.position.z += (creature.metadata.targetZ - creature.position.z) * Math.min(1, dt * 7); creature.metadata.phase += dt * 4; (creature.metadata.dinoLegs||[]).forEach(function(leg,li){leg.rotation.x=Math.sin(creature.metadata.phase+(li%2?Math.PI:0))*.25;}); if(creature.metadata.dinoTail)creature.metadata.dinoTail.rotation.y=Math.sin(creature.metadata.phase*.6)*.1; creature.position.y = 0.25 + Math.abs(Math.sin(creature.metadata.phase)) * 0.17; creature.metadata.wings.forEach(function (wing, wi) { wing.rotation.z = (wi ? 1 : -1) * (0.3 + Math.abs(Math.sin(creature.metadata.phase * 3)) * 0.55); }); });
     });
     function resize() { engine.resize(); } global.addEventListener('resize', resize);
-    engine.runRenderLoop(function () { scene.render(); });
+    engine.runRenderLoop(function () { if (!document.body.classList.contains('is-customizing')) scene.render(); });
     function dispose() {
       clearTimeout(radiusSaveTimer);
       canvas.removeEventListener('pointerdown', cameraDown); canvas.removeEventListener('pointermove', cameraMove); canvas.removeEventListener('pointerup', cameraUp); canvas.removeEventListener('pointercancel', cameraUp); canvas.removeEventListener('lostpointercapture', cameraUp);
@@ -1021,7 +1026,7 @@
   global.InsectWorld = Object.freeze({
     create: create,
     createCreatureModel: function (scene, speciesId, id) { return createCreature(scene, speciesId, { id: id || ('preview-' + speciesId) }); },
-    createAvatarModel: function (scene, characterId, name) { return createAvatar(scene, characterId, name || '', null); },
+    createAvatarModel: function (scene, characterId, name, appearance) { return createAvatar(scene, characterId, name || '', null, appearance); },
     biomes: BIOMES.map(function(b){return Object.assign({},b,{x:b.x*2,z:b.z*2});}),
     obstacles: OBSTACLES,
     worldSize: WORLD_HALF * 2,
