@@ -38,7 +38,8 @@
   function setState(next){state=next;active=!!next.realm;root.setEnabled(active);const sig=JSON.stringify(next.home);if(sig!==signature){signature=sig;rebuild();}updateTool();}
   function setTool(next){tool=next||{};updateTool();}
   function frame(avatar,camera){
-   if(active){if(tool.deed){camera.setTarget(new B.Vector3(0,0,7));camera.radius=85;camera.beta=.62;}else if(tool.building&&state.home?.plot){const s=H.sites.find(s=>s.id===state.home.plot.siteId);camera.setTarget(new B.Vector3(s.x,0,s.z));camera.radius=27;camera.beta=.55;}
+   camera.targetScreenOffset.set(0,0);
+   if(active){if(tool.deed){camera.setTarget(new B.Vector3(0,0,7));camera.radius=85;camera.beta=.62;}else if(tool.building&&state.home?.plot){const s=H.sites.find(s=>s.id===state.home.plot.siteId);camera.setTarget(new B.Vector3(s.x,0,s.z));camera.radius=innerHeight<=500?36:27;camera.beta=.4;camera.alpha=-Math.PI/2;camera.targetScreenOffset.y=innerHeight<=500?5:0;}
     const home=state.home,d=home?.plot&&H.deeds[home.plot.size],s=home?.plot&&H.sites.find(s=>s.id===home.plot.siteId),inside=d&&Math.abs(avatar.position.x-s.x)<d.width*H.cell/2&&Math.abs(avatar.position.z-s.z)<d.depth*H.cell/2;
     pieces.forEach(p=>{if(p.metadata.kind==='roof')p.setEnabled(!inside&&!tool.building);});
    }
