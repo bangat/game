@@ -7,7 +7,7 @@ const BASE_PATH = SCOPE_URL.pathname.endsWith('/')
 
 /* ===== 2) 캐시 버전 및 이름 설정 ===== */
 // ✨ 앱을 업데이트할 때마다 이 버전을 변경하세요 (예: v1.0.1)
-const SW_VERSION = 'v1.2.9';
+const SW_VERSION = 'v1.3.1';
 const CACHE_NAME = `minigame-heaven-${SW_VERSION}`;
 
 /* ===== 3) 프리캐시 목록 (핵심!) ===== */
@@ -100,6 +100,8 @@ self.addEventListener('fetch', (event) => {
     if (req.method !== 'GET') return;
 
     const url = new URL(req.url);
+    if (url.pathname.includes('/insect_expedition/')) return;
+    if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') return;
 
     // [수정] 1. 페이지 이동 요청인 경우 (HTML)
     if (req.mode === 'navigate') {
