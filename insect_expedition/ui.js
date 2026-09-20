@@ -123,7 +123,7 @@
     }
 
     function nearbyPanel() {
-      if (panel || (snapshot.challenges || []).some(c => c.to === snapshot.you)) return '';
+      if (panel || (selection && selection.type === 'npc') || (snapshot.challenges || []).some(c => c.to === snapshot.you)) return '';
       const spawn = nearbySpawn(snapshot);
       if (!spawn) return '';
       const species = speciesOf(spawn), action = spawn.field ? 'encounter' : 'collect';

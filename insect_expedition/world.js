@@ -40,6 +40,8 @@
   }
   function groundMaterial(scene, biome, seed) {
     var mat = material(scene, 'ground-' + biome.id, biome.color);
+    mat.diffuseColor = B.Color3.Lerp(hex(biome.color), new B.Color3(1, 1, 1), .28);
+    mat.emissiveColor = hex(biome.color).scale(.06);
     if (typeof document === 'undefined') return mat;
     var mossTexture = new B.Texture(ASSET_ROOT + 'assets/ground-moss.png', scene, false, true);
     mossTexture.wrapU = mossTexture.wrapV = B.Texture.WRAP_ADDRESSMODE; mossTexture.uScale = mossTexture.vScale = biome.id === 'arena' ? 4 : 8;
@@ -365,6 +367,14 @@
       ground.metadata = { biome: biome.id };
       label(scene, worldRoot, biome.name, 0, '#ffffff').position.set(biome.x, 6.5, biome.z);
     });
+    // Scenery continues beyond the playable boundary; there is no cut-off terrain edge.
+    var distantMat = material(scene, 'distant-meadow', '#5e825f');
+    worldPart('distant-ground', 'box', { width: 900, height: .5, depth: 900 }, [0, -.8, 0], distantMat);
+    for (var hillIndex = 0; hillIndex < 32; hillIndex++) {
+      var hillAngle = hillIndex / 32 * Math.PI * 2;
+      var hillDistance = 170 + (hillIndex % 3) * 16;
+      worldPart('distant-hill', 'sphere', { diameterX: 62, diameterY: 34 + (hillIndex % 4) * 7, diameterZ: 56, segments: 10 }, [Math.cos(hillAngle) * hillDistance, 0, Math.sin(hillAngle) * hillDistance], distantMat);
+    }
     [-72, 0, 72].forEach(function (x) { worldPart('road-z', 'box', { width: 9, height: 0.16, depth: 240 }, [x, 0.04, 0], mats.path); });
     [-72, 0, 72].forEach(function (z) {
       [[-120, -76.5], [-67.5, -4.5], [4.5, 67.5], [76.5, 120]].forEach(function (span) {
@@ -375,7 +385,7 @@
     [-72, 0, 72].forEach(function (z) { worldPart('bridge', 'box', { width: 34, height: 0.55, depth: 7 }, [91, 0.55, z], mats.wood); });
     // 구름은 지형 경계를 부드럽게 가려 주면서 멀리 있는 사냥터의 분위기를 살린다.
     var cloudMat = material(scene, 'sky-cloud', '#f4fff9', 0.08, 0.88);
-    [[-95,-88,18],[-32,-108,23],[42,-86,19],[106,-46,24],[-105,19,20],[-37,55,26],[40,21,18],[104,91,24],[-18,-36,16],[25,-44,18]].forEach(function (cloudInfo, cloudIndex) {
+    [[-95,-88,18],[-32,-108,23],[42,-86,19],[106,-46,24],[-105,19,20],[-37,55,26],[40,21,18],[104,91,24],[-18,-36,16],[25,-44,18],[-20,-150,14],[25,-155,18],[-148,-15,18],[147,15,19],[20,150,18]].forEach(function (cloudInfo, cloudIndex) {
       for (var puff = 0; puff < 4; puff += 1) {
         var cloud = worldPart('cloud-puff', 'sphere', { diameter: 4.6 + (puff % 2), segments: 8 }, [cloudInfo[0] + puff * 2.2, cloudInfo[2] + (puff % 2) * .55, cloudInfo[1] + (puff % 3) * 1.4], cloudMat);
         cloud.scaling.y = .42 + (cloudIndex % 2) * .06; cloud.isPickable = false;
@@ -399,6 +409,16 @@
       reed.rotation.z = (rand() - 0.5) * 0.25;
     }
     var flowerMats = [material(scene, 'flowerPink', '#f5a6ba', 0.08), material(scene, 'flowerGold', '#f5d76e', 0.08), material(scene, 'flowerBlue', '#91c8eb', 0.08)];
+    // Low wildflower clusters leave room to see and approach collectible insects.
+    for (var meadow = 0; meadow < 80; meadow++) {
+      var mx = -31 + rand() * 62, mz = -116 + rand() * 74;
+      if (Math.abs(mx) < 6 || Math.abs(mz + 72) < 6) continue;
+      for (var petal = 0; petal < 3; petal++) {
+        var fx = mx + (petal - 1) * .38, fz = mz + (petal % 2) * .4;
+        worldPart('meadow-stem', 'cylinder', { height: .55, diameter: .05, tessellation: 4 }, [fx, .28, fz], mats.leaf);
+        worldPart('meadow-flower', 'sphere', { diameter: .3, segments: 5 }, [fx, .58, fz], flowerMats[meadow % 3]);
+      }
+    }
     for (var plantIndex = 0; plantIndex < 95; plantIndex += 1) {
       var px = -112 + rand() * 224, pz = -112 + rand() * 224;
       if (Math.abs(px % 72) < 8 || Math.abs(pz % 72) < 8 || Math.hypot(px, pz) < 24) continue;
@@ -521,7 +541,17 @@
       var localRecord = typeof latest.you === 'object' && latest.you ? latest.you : (latest.players || []).find(function (player) { return String(player.uid) === String(localId); });
       if (localRecord) {
         localAvatar.metadata.targetX = clamp(localRecord.x, -118, 118); localAvatar.metadata.targetZ = clamp(localRecord.z, -118, 118);
+        if (!battleMode && Math.hypot(localAvatar.position.x - localRecord.x, localAvatar.position.z - localRecord.z) > 30) {
+          localAvatar.position.x = localAvatar.metadata.targetX; localAvatar.position.z = localAvatar.metadata.targetZ;
+          camera.target.x = localAvatar.position.x; camera.target.z = localAvatar.position.z;
+        }
         if (!battleMode && localRecord.character && localRecord.character !== localAvatar.metadata.id) setCharacter(localRecord.character);
+      }
+      var quest = latest.profile && latest.profile.quest;
+      var markerText = !quest || quest.status === 'available' ? '! 채집 의뢰' : quest.status === 'ready' ? '✓ 보상 받기' : quest.status === 'complete' ? '! 다음 의뢰' : '채집 ' + quest.progress + '/' + quest.target;
+      if (questMarker.metadata !== markerText && questMarker.material && questMarker.material.diffuseTexture) {
+        questMarker.metadata = markerText;
+        questMarker.material.diffuseTexture.drawText(markerText, null, 55, 'bold 40px sans-serif', '#ffe99b', 'rgba(14,30,25,.82)', true);
       }
       var otherPlayers = (latest.players || []).filter(function (player) { return !localId || String(player.uid) !== String(localId); });
       syncEntityMap(otherPlayers, remote, function (p) { var avatar = createAvatar(scene, p.character, p.nickname, { type: 'player', id: String(p.uid), busy: p.busy }); avatar.parent = worldRoot; avatar.position.set(p.x || 0, 0.4, p.z || 0); addShadowModel(avatar); return avatar; }, 'uid');
