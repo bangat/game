@@ -58,12 +58,19 @@ function publicProfile(profile) {
   };
 }
 
+function progressQuest(profile, type) {
+  const quest = profile.quest, definition = Data.quests.find(q => q.id === quest?.id);
+  if (quest?.status !== 'active' || definition?.type !== type) return;
+  quest.progress = Math.min(quest.target, quest.progress + 1);
+  if (quest.progress >= quest.target) quest.status = 'ready';
+}
+
 function createRoom(id) {
   return { id, players: new Map(), spawns: World.makeSpawns(Data.species, Data.biomes), challenges: new Map(), battles: new Map(), lastBroadcastAt: 0, broadcastTimer: null };
 }
 
 function publicPlayer(player) {
-  return { uid: player.uid, nickname: player.nickname, x: player.x, z: player.z, character: player.character, busy: Boolean(player.busy) };
+  return { uid: player.uid, nickname: player.nickname, x: player.x, z: player.z, character: player.character, busy: Boolean(player.busy), stamina: Math.floor(player.stamina ?? 100), sprinting: !!player.sprinting };
 }
 
 function challengeList(room, uid) {
@@ -109,7 +116,7 @@ function createGameServer(options = {}) {
 
   app.disable('x-powered-by');
   app.get('/insect_expedition/api/health', (_req, res) => {
-    res.json({ ok: true, release: '2026.09.20.2', storage: process.env.INSECT_PROFILE_BUCKET ? 'cloud' : 'local', now: clock(), rooms: rooms.size, online: [...rooms.values()].reduce((sum, room) => sum + [...room.players.values()].filter((p) => p.connected).length, 0) });
+    res.json({ ok: true, release: '2026.09.20.6', storage: process.env.INSECT_PROFILE_BUCKET ? 'cloud' : 'local', now: clock(), rooms: rooms.size, online: [...rooms.values()].reduce((sum, room) => sum + [...room.players.values()].filter((p) => p.connected).length, 0) });
   });
   app.get('*path', (req, res, next) => {
     let requested;
@@ -171,6 +178,7 @@ function createGameServer(options = {}) {
     profile.collection.push(creature);
     const isNew = !profile.discoveries.includes(speciesId);
     if (isNew) profile.discoveries.push(speciesId);
+    progressQuest(profile, 'capture');
     return { creature, isNew };
   }
 
@@ -180,49 +188,55 @@ function createGameServer(options = {}) {
     for (const [uid, sideKey] of record.sides) {
       const player = room.players.get(uid);
       if (!player) continue;
-      if (record.state.type === 'field') {
-        const nextProfile = JSON.parse(JSON.stringify(player.profile));
-        syncBattleHealth(nextProfile, record.state.sides[sideKey]);
-        if (!nextProfile.processedRewards.includes(record.state.id)) {
-          nextProfile.processedRewards.push(record.state.id);
-          nextProfile.processedRewards = nextProfile.processedRewards.slice(-100);
-          result.xpPerCreature = 0;
-          result.totalXp = 0;
-          result.levelUps = [];
-          result.captureSummary = null;
-          if (result.winner === sideKey) {
+      let nextProfile = JSON.parse(JSON.stringify(player.profile));
+      if (!nextProfile.processedRewards.includes(record.state.id)) {
+        nextProfile.processedRewards.push(record.state.id);
+        nextProfile.processedRewards = nextProfile.processedRewards.slice(-100);
+        if (record.state.type === 'field') {
+          result.xpPerCreature = 0; result.totalXp = 0; result.levelUps = []; result.captureSummary = null; result.feeds = 0;
+          if (result.winner === sideKey && ['defeat', 'capture'].includes(result.reason)) {
+            progressQuest(nextProfile, 'victory');
             const enemy = record.state.sides.b.team[0];
-            if (result.reason === 'defeat') {
-              const xp = 24 + enemy.level * 9;
-              result.xpPerCreature = xp;
-              record.state.sides[sideKey].team.forEach(({ id }) => {
-                const index = nextProfile.collection.findIndex((item) => item.id === id);
-                if (index >= 0) {
-                  const applied = Battle.applyXp(nextProfile.collection[index], xp);
-                  nextProfile.collection[index] = applied.creature;
-                  result.totalXp += applied.gained;
-                  if (applied.levels.length) result.levelUps.push({ creatureId: id, levels: applied.levels });
-                }
-              });
-              const rank = Data.speciesById[enemy.speciesId].rarity;
-              const chance = rank === 'monster' ? 0.04 : rank === 'elite' ? 0.07 : 0.1;
-              const rolledSuccess = rng() < chance;
-              const hasSpace = nextProfile.collection.length < 120;
-              record.state.victoryCapture = { chance, success: rolledSuccess && hasSpace, speciesId: enemy.speciesId, failureReason: rolledSuccess && !hasSpace ? 'inventory-full' : null };
-              if (record.state.victoryCapture.success) addCreature(nextProfile, enemy.speciesId, Math.max(1, enemy.level - 1));
-              result.captureSummary = { source: 'victory', ...record.state.victoryCapture };
-            } else if (result.capturedSpeciesId) {
-              addCreature(nextProfile, result.capturedSpeciesId, Math.max(1, enemy.level - 1));
-              result.captureSummary = { source: 'battle', success: true, speciesId: result.capturedSpeciesId, chance: record.state.captureRoll && record.state.captureRoll.chance };
+            const rank = Data.speciesById[enemy.speciesId].rarity;
+            const rankIndex = Data.rarityOrder.indexOf(rank);
+            const xp = 24 + enemy.level * 9;
+            result.xpPerCreature = xp;
+            for (const { id } of record.state.sides[sideKey].team) {
+              const index = nextProfile.collection.findIndex(item => item.id === id);
+              if (index < 0) continue;
+              const applied = Battle.applyXp(nextProfile.collection[index], xp);
+              nextProfile.collection[index] = applied.creature;
+              result.totalXp += applied.gained;
+              if (applied.levels.length) result.levelUps.push({ creatureId: id, levels: applied.levels });
             }
+            const earnedFeeds = 1 + Math.floor(rankIndex / 2);
+            result.feeds = Math.min(earnedFeeds, 9999 - nextProfile.supplies.feeds);
+            nextProfile.supplies.feeds += result.feeds;
+            if (!record.state.victoryCapture) {
+              const team = record.state.sides[sideKey].team;
+              const healthScore = team.reduce((n, c) => n + c.hp / c.maxHp, 0) / team.length;
+              const performanceBonus = healthScore * .08 + (record.state.turn <= 3 ? .04 : 0);
+              const chance = Math.min(.98, Data.rarity[rank].capture + performanceBonus + nextProfile.bonuses.collection);
+              const success = result.reason === 'capture' || rng() < chance;
+              record.state.victoryCapture = { chance, performanceBonus, success, speciesId: enemy.speciesId };
+            }
+            const capture = { source: 'victory', ...record.state.victoryCapture };
+            if (capture.success && nextProfile.collection.length >= 120) { capture.success = false; capture.failureReason = 'inventory-full'; }
+            if (capture.success) {
+              const added = addCreature(nextProfile, enemy.speciesId, enemy.level);
+              capture.isNew = added.isNew; capture.creatureId = added.creature.id;
+            }
+            result.captureSummary = capture;
           }
         }
-        nextProfile.interruptedBattle = null;
-        player.profile = await store.save(nextProfile);
       }
+      nextProfile = Battle.healProfile(nextProfile);
+      nextProfile.interruptedBattle = null;
+      player.profile = await store.save(nextProfile);
       player.busy = false;
-      if (record.spawn) releaseSpawn(room, record.spawn, true);
     }
+    result.recovered = true;
+    if (record.spawn) releaseSpawn(room, record.spawn, true);
     record.state.rewardProcessed = true;
   }
 
@@ -245,6 +259,7 @@ function createGameServer(options = {}) {
     for (const uid of sides.keys()) {
       const player = room.players.get(uid);
       record.origins.set(uid, { x: player.x, z: player.z });
+      World.updateStamina(player, clock()); player.sprinting = false; player.moveActive = false;
       player.busy = true;
       player.battleId = id;
       player.profile.interruptedBattle = { roomId: room.id, battleId: id, at: clock() };
@@ -270,11 +285,43 @@ function createGameServer(options = {}) {
       player.profile.location = { x: player.x, z: player.z };
       return { x: player.x, z: player.z, changed };
     }
+    if (name === 'sprint') {
+      rate(player, 'sprint', 200);
+      World.updateStamina(player, clock());
+      const enabled = payload.enabled === true;
+      if (enabled && player.stamina < 15) throw new Error('스태미나가 15 이상 회복되면 다시 달릴 수 있어요.');
+      player.sprinting = enabled;
+      return { enabled, stamina: Math.floor(player.stamina) };
+    }
+    if (name === 'dex-seen') {
+      const ids = Array.isArray(payload.ids) ? payload.ids : [];
+      const next = JSON.parse(JSON.stringify(player.profile));
+      next.encyclopedia.seen = [...new Set([...next.encyclopedia.seen, ...ids.filter(id => next.discoveries.includes(id))])];
+      player.profile = await store.save(next);
+      return { seen: next.encyclopedia.seen };
+    }
+    if (name === 'dex-claim') {
+      rate(player, 'dex-claim', 400);
+      const next = JSON.parse(JSON.stringify(player.profile));
+      const pending = next.discoveries.filter(id => !next.encyclopedia.claimed.includes(id));
+      const milestones = Data.collectionMilestones.filter(m => next.discoveries.length >= m.count && !next.encyclopedia.milestones.includes(m.count));
+      const earned = pending.reduce((n, id) => n + Data.rarity[Data.speciesById[id].rarity].reward, 0) + milestones.reduce((n, m) => n + m.feeds, 0);
+      if (!earned) return { feeds: 0, message: '받을 도감 보상을 모두 받았어요.' };
+      if (next.supplies.feeds + earned > 9999) throw new Error('사료를 사용한 뒤 도감 보상을 받아 주세요.');
+      next.supplies.feeds += earned;
+      next.encyclopedia.claimed.push(...pending);
+      next.encyclopedia.milestones.push(...milestones.map(m => m.count));
+      player.profile = await store.save(next);
+      return { feeds: earned, message: '도감 수집 보상! 곤충 사료 ' + earned + '개를 받았어요.' };
+    }
     if (name === 'character') {
       rate(player, 'manage', 300);
       if (player.busy) throw new Error('전투 중에는 캐릭터를 바꿀 수 없습니다.');
       const id = cleanId(payload.id, 40);
       if (!Data.characters.some((item) => item.id === id)) throw new Error('선택할 수 없는 캐릭터입니다.');
+      if (payload.name !== undefined && !/^[가-힣]{1,6}$/.test(String(payload.name))) throw new Error('탐험가 이름은 한글 1~6자로 지어 주세요.');
+      if (payload.name !== undefined) player.profile.adventurerName = String(payload.name);
+      player.nickname = player.profile.adventurerName || player.nickname;
       player.character = id;
       player.profile.characterId = id;
       player.profile = await store.save(player.profile);
@@ -305,11 +352,9 @@ function createGameServer(options = {}) {
     if (name === 'heal') {
       if (player.busy) throw new Error('전투 중에는 치료할 수 없습니다.');
       const safe = World.inSafeZone(player);
-      rate(player, 'heal', safe ? 30000 : 1000);
-      if (!safe && player.profile.supplies.heals < 1) throw new Error('회복 꾸러미가 없습니다. 안전 캠프로 돌아가면 무료로 치료할 수 있습니다.');
-      if (!safe) player.profile.supplies.heals -= 1;
+      rate(player, 'heal', 1000);
       player.profile = await store.save(Battle.healProfile(player.profile));
-      return { heals: player.profile.supplies.heals, safeCamp: safe };
+      return { heals: player.profile.supplies.heals, safeCamp: safe, message: '모든 곤충이 회복됐어요. 다시 도전해 보세요!' };
     }
     if (name === 'evolve') {
       if (player.busy) throw new Error('전투 중에는 성장시킬 수 없습니다.');
@@ -322,32 +367,31 @@ function createGameServer(options = {}) {
     }
     if (name === 'quest') {
       rate(player, 'quest', 500);
-      if (player.busy) throw new Error('전투 중에는 연구원과 대화할 수 없습니다.');
-      if (World.distance(player, World.GUIDE) > World.GUIDE.radius) throw new Error('미라 연구원에게 가까이 다가가 주세요.');
-      const quest = player.profile.quest || { id: 'dew-sample', status: 'available', progress: 0, target: 3 };
+      const quest = player.profile.quest;
       if (quest.status === 'available' || quest.status === 'complete') {
-        quest.progress = 0;
-        quest.status = 'active'; player.profile.quest = quest; player.profile = await store.save(player.profile);
-        return { quest, message: '의뢰 수락! 야생 곤충 3마리를 채집해 돌아오세요. 지도에서 연구소로 귀환할 수 있어요.' };
+        const definition = Data.quests[(quest.completed || 0) % Data.quests.length];
+        Object.assign(quest, {id:definition.id,status:'active',progress:0,target:definition.target});
+        player.profile = await store.save(player.profile);
+        return { quest, message: definition.name + ' 수락! ' + definition.description + ' · 보상 사료 ' + definition.feeds + '개' };
       }
-      if (quest.status === 'active') return { quest, message: `채집 기록 ${quest.progress}/${quest.target}. 곤충을 더 찾아보세요.` };
-      if (quest.status === 'ready') {
-        quest.status = 'complete'; quest.completed = (quest.completed || 0) + 1; player.profile.supplies.feeds = Math.min(99, (player.profile.supplies.feeds || 0) + 3);
-        player.profile.quest = quest; player.profile = await store.save(player.profile);
-        return { quest, feeds: player.profile.supplies.feeds, message: '의뢰 완료! 곤충 사료 3개를 받았어요. 다시 대화하면 다음 채집 의뢰를 받을 수 있어요.' };
-      }
-      return { quest, message: '첫 연구 의뢰를 이미 훌륭하게 마쳤어요. 사료로 곤충을 돌봐 주세요.' };
+      const definition = Data.quests.find(q => q.id === quest.id) || Data.quests[0];
+      if (quest.status === 'active') return {quest,message:definition.description + ' (' + quest.progress + '/' + quest.target + ')'};
+      quest.status = 'complete'; quest.completed = (quest.completed || 0) + 1;
+      player.profile.supplies.feeds = Math.min(9999, player.profile.supplies.feeds + definition.feeds);
+      player.profile = await store.save(player.profile);
+      return {quest,feeds:player.profile.supplies.feeds,message:'의뢰 완료! 사료 ' + definition.feeds + '개를 받았어요. 퀘스트 버튼에서 다음 의뢰를 받아 보세요.'};
     }
     if (name === 'feed') {
       rate(player, 'manage', 400);
       if (player.busy) throw new Error('전투 중에는 사료를 줄 수 없습니다.');
-      if ((player.profile.supplies.feeds || 0) < 1) throw new Error('곤충 사료가 없습니다. 미라 연구원의 의뢰를 완료해 보세요.');
+      if ((player.profile.supplies.feeds || 0) < 1) throw new Error('곤충 사료가 없습니다. 전투 승리나 도감 보상으로 사료를 모아 보세요.');
       const index = player.profile.collection.findIndex((item) => item.id === String(payload.creatureId));
       if (index < 0) throw new Error('보유하지 않은 곤충입니다.');
       if (player.profile.collection[index].level >= 50) throw new Error('이미 최고 레벨에 도달한 곤충입니다.');
       const applied = Battle.applyXp(player.profile.collection[index], 84);
       player.profile.collection[index] = applied.creature;
       player.profile.supplies.feeds -= 1;
+      progressQuest(player.profile, 'feed');
       player.profile = await store.save(player.profile);
       return { creature: applied.creature, levels: applied.levels, message: applied.levels.length ? `사료를 먹고 Lv.${applied.creature.level}로 성장했어요!` : '곤충 사료를 먹고 경험치를 얻었어요.' };
     }
@@ -363,33 +407,11 @@ function createGameServer(options = {}) {
       player.profile = await store.save(player.profile);
       return { biomeId: biome.id, location: point, message: `${biome.name}로 이동했어요.` };
     }
-    if (name === 'collect') {
-      rate(player, 'interact', 800);
-      if (player.busy) throw new Error('다른 활동 중입니다.');
-      const spawn = room.spawns.find((item) => item.id === String(payload.spawnId));
-      if (!spawn || !spawn.available || spawn.reservedBy || spawn.field) throw new Error('지금은 채집할 수 없는 대상입니다.');
-      if (World.distance(player, spawn) > 4 || World.segmentBlocked(player, spawn)) throw new Error('대상에게 더 가까이 다가가 주세요.');
-      const species = Data.speciesById[spawn.speciesId];
-      const base = Data.rarity[species.rarity].capture;
-      const chance = Math.max(0.08, Math.min(0.92, base + player.profile.bonuses.collection));
-      const roll = rng();
-      if (roll >= chance) return { success: false, chance, roll };
-      const captured = addCreature(player.profile, spawn.speciesId, spawn.level);
-      const quest = player.profile.quest;
-      let questReady = false;
-      if (quest && quest.status === 'active') {
-        quest.progress = Math.min(quest.target || 3, (quest.progress || 0) + 1);
-        if (quest.progress >= (quest.target || 3)) { quest.status = 'ready'; questReady = true; }
-      }
-      releaseSpawn(room, spawn, true);
-      player.profile = await store.save(player.profile);
-      return { success: true, chance, roll, questReady, ...captured };
-    }
-    if (name === 'encounter') {
+    if (name === 'encounter' || name === 'collect') {
       rate(player, 'interact', 800);
       if (player.busy || !selectedTeam(player.profile).length) throw new Error('전투 가능한 팀이 필요합니다.');
       const spawn = room.spawns.find((item) => item.id === String(payload.spawnId));
-      if (!spawn || !spawn.field || !spawn.available || spawn.reservedBy) throw new Error('이미 다른 탐험대가 상대 중이거나 사라진 몬스터입니다.');
+      if (!spawn || !spawn.available || spawn.reservedBy) throw new Error('이미 다른 탐험대가 상대 중이거나 사라진 몬스터입니다.');
       if (World.distance(player, spawn) > 7 || World.segmentBlocked(player, spawn)) throw new Error('몬스터까지 안전한 접근 경로가 없습니다.');
       spawn.reservedBy = player.uid;
       const gap = Math.max(0.001, World.distance(player, spawn));
@@ -432,6 +454,8 @@ function createGameServer(options = {}) {
     if (name === 'return') {
       const record = room.battles.get(String(payload.battleId || player.battleId));
       if (!record || !record.sides.has(player.uid) || record.state.status === 'active') throw new Error('아직 돌아갈 수 없습니다.');
+      if (!record.state.rewardProcessed) { await completeBattle(room, record); }
+      if (!record.state.rewardProcessed) throw new Error('보상을 저장하고 있습니다. 잠시 후 다시 시도해 주세요.');
       const origin = record.origins.get(player.uid) || player.profile.location || { x: 0, z: 22 };
       player.x = origin.x; player.z = origin.z; player.busy = false; player.battleId = null;
       player.profile.location = { x: player.x, z: player.z };
@@ -469,12 +493,16 @@ function createGameServer(options = {}) {
           if (!existing && connectedCount >= MAX_ROOM_PLAYERS) throw new Error('방의 동시 접속 인원이 가득 찼습니다.');
           if (existing && existing.connected && existing.ws !== ws) existing.ws.close(4002, 'reconnected');
           const profile = existing ? existing.profile : await store.get(joined.uid, joined.nickname);
+          if (!existing && profile.interruptedBattle) {
+            Object.assign(profile, Battle.healProfile(profile), { interruptedBattle: null });
+            await store.save(profile);
+          }
           const location = existing ? { x: existing.x, z: existing.z } : profile.location || { x: 0, z: 22 };
-          player = existing || { uid: joined.uid, rates: new Map(), commands: new Map(), inflight: new Map(), busy: false, battleId: null };
+          player = existing || { uid: joined.uid, rates: new Map(), commands: new Map(), inflight: new Map(), busy: false, battleId: null, stamina: 100, staminaAt: clock(), sprinting: false, moveActive: false };
           player.inflight ||= new Map();
           const character = Data.characters.some((item) => item.id === message.character) ? message.character : Data.characters.some((item) => item.id === profile.characterId) ? profile.characterId : Data.characters[0].id;
           profile.characterId = character;
-          Object.assign(player, { ws, connected: true, nickname: joined.nickname, profile, character, x: location.x, z: location.z, disconnectedAt: 0 });
+          Object.assign(player, { ws, connected: true, nickname: profile.adventurerName || joined.nickname, profile, character, x: location.x, z: location.z, disconnectedAt: 0 });
           room.players.set(player.uid, player);
           sessions.set(player.uid, { room, player });
           clearTimeout(joinTimer);
@@ -510,6 +538,7 @@ function createGameServer(options = {}) {
       if (!player || player.ws !== ws) return;
       player.connected = false;
       player.disconnectedAt = clock();
+      player.profile.lastSeenAt = clock();
       player.profile.location = { x: player.x, z: player.z };
       player.profile = await store.save(player.profile);
       room.challenges.forEach((item, id) => { if (item.from === player.uid || item.to === player.uid) room.challenges.delete(id); });
@@ -541,6 +570,11 @@ function createGameServer(options = {}) {
         } catch { record.state.status = 'finished'; record.state.result = { winner: null, reason: 'invalid' }; await completeBattle(room, record); }
       }
       for (const [uid, player] of room.players) {
+        World.updateStamina(player, now);
+        if (player.connected && !player.battleId && now - (player.checkpointAt || 0) >= 10000) {
+          player.profile.location = {x:player.x,z:player.z}; player.profile.lastSeenAt = now;
+          player.profile = await store.save(player.profile); player.checkpointAt = now;
+        }
         if (!player.connected && now - player.disconnectedAt > 60000) {
           const record = player.battleId && room.battles.get(player.battleId);
           if (record && record.state.status === 'active') {

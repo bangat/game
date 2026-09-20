@@ -5,7 +5,8 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const Data = require('../shared/data.js');
 
-const SCHEMA_VERSION = 3;
+const Battle = require('../shared/battle.cjs');
+const SCHEMA_VERSION = 4;
 const VALID_SPECIES = new Set(Data.species.map((item) => item.id));
 
 function clone(value) {
@@ -40,9 +41,12 @@ function createProfile(uid, nickname, starterIds = []) {
     uid,
     nickname: boundedText(nickname, '숲길 탐험가'),
     characterId: 'original',
+    adventurerName: '',
+    lastSeenAt: Date.now(),
     collection,
     team: collection.map((item) => item.id),
     discoveries: collection.map((item) => item.speciesId),
+    encyclopedia: { seen: collection.map(item => item.speciesId), claimed: [], milestones: [] },
     bonuses: { collection: 0 },
     supplies: { heals: 3, feeds: 0 },
     quest: { id: 'dew-sample', status: 'available', progress: 0, target: 3 },
@@ -67,25 +71,34 @@ function migrateProfile(input, uid, nickname, starterIds) {
     obtainedAt: Math.max(0, Number(item && item.obtainedAt) || Date.now())
   }));
   const normalizedCollection = collection.length ? collection : base.collection;
+  if (Number(old.version || 0) < 4) normalizedCollection.forEach(item => { item.hp = Battle.statsForCreature(item).maxHealth; });
   const ids = new Set(collection.map((item) => item.id));
+  const questDefinition = Data.quests.find(q => q.id === old.quest?.id) || Data.quests[0];
   const team = (Array.isArray(old.team) ? old.team : []).filter((id, i, all) => ids.has(id) && all.indexOf(id) === i).slice(0, 3);
   return {
     ...base,
     nickname: boundedText(old.nickname || nickname, base.nickname),
+    adventurerName: /^[가-힣]{1,6}$/.test(old.adventurerName || '') ? old.adventurerName : '',
+    lastSeenAt: Math.max(0, Number(old.lastSeenAt) || Date.now()),
     characterId: boundedText(old.characterId || old.character, base.characterId, 40),
     collection: normalizedCollection,
     team: Array.isArray(old.team) ? team : (collection.length ? collection.slice(0, 3).map((item) => item.id) : base.team),
     discoveries: [...new Set([...(Array.isArray(old.discoveries) ? old.discoveries.filter((id) => VALID_SPECIES.has(String(id))) : []), ...normalizedCollection.map((item) => item.speciesId)])].slice(0, 300),
+    encyclopedia: {
+      seen: [...new Set((Array.isArray(old.encyclopedia?.seen) ? old.encyclopedia.seen : [...(old.discoveries || []), ...normalizedCollection.map(c => c.speciesId)]).filter(id => VALID_SPECIES.has(id)))],
+      claimed: [...new Set((Array.isArray(old.encyclopedia?.claimed) ? old.encyclopedia.claimed : []).filter(id => VALID_SPECIES.has(id)))],
+      milestones: [...new Set((Array.isArray(old.encyclopedia?.milestones) ? old.encyclopedia.milestones : []).filter(n => Data.collectionMilestones.some(m => m.count === n)))]
+    },
     bonuses: { collection: Math.max(0, Math.min(0.35, Number(old.bonuses && old.bonuses.collection) || 0)) },
     supplies: {
       heals: Math.max(0, Math.min(99, Math.floor(finiteNumber(old.supplies && old.supplies.heals, base.supplies.heals)))),
-      feeds: Math.max(0, Math.min(99, Math.floor(finiteNumber(old.supplies && old.supplies.feeds, base.supplies.feeds))))
+      feeds: Math.max(0, Math.min(9999, Math.floor(finiteNumber(old.supplies && old.supplies.feeds, base.supplies.feeds))))
     },
     quest: {
-      id: 'dew-sample',
+      id: questDefinition.id,
       status: ['available', 'active', 'ready', 'complete'].includes(old.quest && old.quest.status) ? old.quest.status : base.quest.status,
-      progress: Math.max(0, Math.min(3, Math.floor(finiteNumber(old.quest && old.quest.progress, base.quest.progress)))),
-      target: 3,
+      progress: Math.max(0, Math.min(questDefinition.target, Math.floor(finiteNumber(old.quest && old.quest.progress, base.quest.progress)))),
+      target: questDefinition.target,
       completed: Math.max(0, Math.floor(finiteNumber(old.quest && old.quest.completed, 0)))
     },
     location: {

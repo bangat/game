@@ -45,6 +45,9 @@ test('실제 Chromium에서 탐험 월드와 전투 타격 프레임을 렌더�
     smoke.world.setState({ battle: { sides: { a: { uid: 'me', active: 0, team: [{ name: '이슬무당벌레', speciesId: 'dew_ladybird' }] }, b: { uid: 'field', active: 0, team: [{ name: '고목뿔장수', speciesId: 'ancient_rhino' }] } } } });
     smoke.done = smoke.world.playEvents([{ type: 'skill', actorSide: 'a', targetSide: 'b', skillId: 'test-skill' }]).then(() => { smoke.finished = true; });
   });
+  await page.waitForFunction(() => smoke.world.scene.transformNodes.some(n=>n.metadata?.side==='player'&&n.position.x>-5));
+  const movingMesh = await page.evaluate(()=>{const root=smoke.world.scene.transformNodes.find(n=>n.metadata?.side==='player');const mesh=root.getChildMeshes().find(m=>m.name!=='label');mesh.computeWorldMatrix(true);return {rootX:root.position.x,meshX:mesh.getAbsolutePosition().x};});
+  assert(movingMesh.rootX>-5 && movingMesh.meshX>-5,'실제 내 곤충 메시가 상대 방향으로 돌진');
   await page.waitForFunction(() => smoke.hits === 1);
   const sparkHeight = await page.evaluate(() => Math.max(...smoke.world.scene.meshes.filter((mesh) => mesh.name === 'hit-spark').map((mesh) => mesh.position.y)));
   assert.ok(sparkHeight > 40 && sparkHeight < 46, `타격 파티클 높이: ${sparkHeight}`);

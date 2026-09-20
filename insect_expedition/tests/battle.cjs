@@ -71,13 +71,9 @@ test('common creatures reject impossible special-skill commands', () => {
   assert.throws(() => Battle.submitAction(state, 'a', { type: 'skill' }), /고유 기술/);
 });
 
-test('server-injected RNG controls bounded field capture success and failure', () => {
-  const make = id => Battle.createBattle({ id, type: 'field', a: { uid: 'a', team: [creature('a1', 'sun_scarab')] }, b: { uid: 'wild', team: [creature('b1', 'ancient_rhino', { hp: 1 })] } });
-  const success = Battle.submitAction(make('capture-ok'), 'a', { type: 'capture' }, { rng: fixed(0), now: 2 });
-  assert.equal(success.result.reason, 'capture');
-  assert.ok(success.state.captureRoll.chance >= .03 && success.state.captureRoll.chance <= .1);
-  const failed = Battle.submitAction(make('capture-no'), 'a', { type: 'capture' }, { rng: fixed(.99), now: 2 });
-  assert.equal(failed.state.captureRoll.success, false);
+test('승리하기 전 직접 포획 명령은 허용하지 않는다', () => {
+  const state = Battle.createBattle({ id: 'no-direct-capture', type: 'field', a: { uid: 'a', team: [creature('a1', 'sun_scarab')] }, b: { uid: 'wild', team: [creature('b1', 'ancient_rhino', {hp:1})] } });
+  assert.throws(() => Battle.submitAction(state, 'a', {type:'capture'}), /승리/);
 });
 
 test('experience, healing and real metamorphosis update persisted compact creatures', () => {

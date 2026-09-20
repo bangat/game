@@ -280,7 +280,7 @@
     root.scaling.setAll(overallScale);
     if (target && Number.isFinite(Number(target.level))) {
       var creatureName = data && data.name ? data.name : '야생 곤충';
-      var nameplate = label(scene, root, 'Lv.' + Math.max(1, Math.floor(Number(target.level))) + ' ' + creatureName, Math.max(2.6, overallScale * 2) / overallScale, '#ffffff');
+      var nameplate = label(scene, root, '[' + global.InsectData.rarity[data.rarity].label + '] Lv.' + Math.max(1, Math.floor(Number(target.level))) + ' ' + creatureName, Math.max(2.6, overallScale * 2) / overallScale, '#ffffff');
       nameplate.scaling.setAll(1 / overallScale);
     }
     root.getChildMeshes().forEach(function (mesh) { mesh.isPickable = true; mesh.metadata = { selectTarget: { type: 'spawn', id: target.id } }; });
@@ -546,6 +546,11 @@
           camera.target.x = localAvatar.position.x; camera.target.z = localAvatar.position.z;
         }
         if (!battleMode && localRecord.character && localRecord.character !== localAvatar.metadata.id) setCharacter(localRecord.character);
+        if (localRecord.nickname && localAvatar.metadata.nickname !== localRecord.nickname) {
+          localAvatar.metadata.nickname = localRecord.nickname;
+          var plate = localAvatar.getChildMeshes().find(function(mesh){return mesh.name === 'label';});
+          if (plate && plate.material && plate.material.diffuseTexture) plate.material.diffuseTexture.drawText(localRecord.nickname, null, 55, 'bold 40px sans-serif', '#ffffff', 'rgba(14,30,25,.82)', true);
+        }
       }
       var quest = latest.profile && latest.profile.quest;
       var markerText = !quest || quest.status === 'available' ? '! 채집 의뢰' : quest.status === 'ready' ? '✓ 보상 받기' : quest.status === 'complete' ? '! 다음 의뢰' : '채집 ' + quest.progress + '/' + quest.target;
@@ -577,15 +582,17 @@
       var displayName = name || species && species.name || '미확인 곤충';
       var root = createCreature(scene, color || 'beetle', { id: 'arena-' + side + '-' + displayName }); root.parent = battleRoot; root.scaling.setAll(2.25); root.position.set(x, 40.5, z); root.metadata.home = root.position.clone(); root.metadata.side = side; label(scene, root, displayName, 1.55, side === 'player' ? '#bfffe0' : '#ffd1c7'); return root;
     }
-    function refreshBattleSide(rawSide) {
+    function refreshBattleSide(rawSide, creatureId) {
       var battle = latest.battle, sides = battle && battle.sides; if (!sides || !sides[rawSide]) return;
-      var viewSide = rawSide === battleViewSide ? 'player' : 'enemy', side = sides[rawSide], creature = side.team && side.team[side.active || 0]; if (!creature) return;
+      var viewSide = rawSide === battleViewSide ? 'player' : 'enemy', side = sides[rawSide], creature = side.team && (side.team.find(function(c){return c.id === creatureId;}) || side.team[side.active || 0]); if (!creature) return;
       var existing = battleActors[viewSide], displayName = creature.name || creature.nickname || creature.displayName || (global.InsectData.speciesById[creature.speciesId] || {}).name;
       if (existing && existing.metadata.speciesId === creature.speciesId && existing.name === 'creature-arena-' + viewSide + '-' + displayName && existing.scaling.x > 1) {
+        existing.metadata.creatureId = creature.id;
         existing.position.copyFrom(existing.metadata.home); existing.scaling.setAll(2.25); existing.rotation.set(0,viewSide === 'player' ? Math.PI/2 : -Math.PI/2,0); return;
       }
       disposeNode(battleActors[viewSide]);
       battleActors[viewSide] = arenaCreature(creature.name || creature.nickname || creature.displayName, viewSide === 'player' ? -7 : 7, 0, creature.speciesId, viewSide);
+      battleActors[viewSide].metadata.creatureId = creature.id;
       battleActors[viewSide].rotation.y = viewSide === 'player' ? Math.PI / 2 : -Math.PI / 2; addShadowModel(battleActors[viewSide]);
     }
     function refreshBattleActors() { refreshBattleSide(battleViewSide); refreshBattleSide(battleViewSide === 'a' ? 'b' : 'a'); }
@@ -614,9 +621,10 @@
         var foeSide = battleViewSide === 'a' ? 'b' : 'a', yourSide = battle && battle.sides && battle.sides[battleViewSide], enemySide = battle && battle.sides && battle.sides[foeSide];
         var your = yourSide && yourSide.team && yourSide.team[yourSide.active || 0] || battle && (battle.yourActive || battle.player || battle.you);
         var enemy = enemySide && enemySide.team && enemySide.team[enemySide.active || 0] || battle && (battle.enemyActive || battle.enemy || battle.opponent);
-        battleActors.player = arenaCreature(your && (your.name || your.displayName), -7, 0, your && your.speciesId, 'player');
-        battleActors.enemy = arenaCreature(enemy && (enemy.name || enemy.displayName), 7, 0, enemy && enemy.speciesId, 'enemy'); battleActors.enemy.rotation.y = -Math.PI / 2; battleActors.player.rotation.y = Math.PI / 2;
-        camera.setTarget(new B.Vector3(0, 41.4, 0)); camera.alpha = -Math.PI / 2; camera.beta = 1.12; camera.radius = 21;
+        battleActors.player = arenaCreature(your && (your.name || your.nickname || your.displayName), -7, 0, your && your.speciesId, 'player');
+        battleActors.enemy = arenaCreature(enemy && (enemy.name || enemy.nickname || enemy.displayName), 7, 0, enemy && enemy.speciesId, 'enemy'); battleActors.enemy.rotation.y = -Math.PI / 2; battleActors.player.rotation.y = Math.PI / 2;
+        battleActors.player.metadata.creatureId = your && your.id; battleActors.enemy.metadata.creatureId = enemy && enemy.id;
+        camera.setTarget(new B.Vector3(0, 41.4, 0)); camera.alpha = -Math.PI / 2; camera.beta = 1.12; camera.radius = 25;
       } else { camera.setTarget(localAvatar.position.add(new B.Vector3(0, 1.5, 0))); camera.alpha = explorationCamera.alpha; camera.beta = explorationCamera.beta; camera.radius = explorationCamera.radius; }
     }
     function playEvents(events) {
@@ -627,14 +635,20 @@
     }
     function finishBattleEvent() {
       if (activeEvent && activeEvent.effect) disposeNode(activeEvent.effect);
-      if (activeEvent && activeEvent.data && activeEvent.data.type === 'switch') refreshBattleSide(activeEvent.data.actorSide || activeEvent.data.side || battleViewSide);
+      if (activeEvent && activeEvent.data && activeEvent.data.type === 'switch') refreshBattleSide(activeEvent.data.actorSide || activeEvent.data.side || battleViewSide, activeEvent.data.creatureId);
       if (activeEvent && activeEvent.resolve) activeEvent.resolve(activeEvent.data);
       activeEvent = null;
     }
     function runBattleEvent(dt) {
       if (!activeEvent && eventQueue.length) { activeEvent = eventQueue.shift(); activeEvent.startedAt = performance.now(); activeEvent.time = 0; activeEvent.hit = false; }
       if (!activeEvent) return;
-      var ev = activeEvent.data, actorSide = ev.actorSide || ev.side || (ev.actor === 'enemy' ? 'enemy' : 'player'), targetSide = ev.targetSide || (actorSide === 'player' ? 'enemy' : 'player');
+      var ev = activeEvent.data;
+      if (!activeEvent.prepared) {
+        activeEvent.prepared = true;
+        if (ev.actorCreatureId && (ev.actorSide === 'a' || ev.actorSide === 'b')) refreshBattleSide(ev.actorSide, ev.actorCreatureId);
+        if (ev.targetCreatureId && (ev.targetSide === 'a' || ev.targetSide === 'b')) refreshBattleSide(ev.targetSide, ev.targetCreatureId);
+      }
+      var actorSide = ev.actorSide || ev.side || (ev.actor === 'enemy' ? 'enemy' : 'player'), targetSide = ev.targetSide || (actorSide === 'player' ? 'enemy' : 'player');
       if (actorSide === 'a' || actorSide === 'b') actorSide = actorSide === battleViewSide ? 'player' : 'enemy';
       if (targetSide === 'a' || targetSide === 'b') targetSide = targetSide === battleViewSide ? 'player' : 'enemy';
       var actor = battleActors[actorSide], target = battleActors[targetSide]; if (!actor || !target) { finishBattleEvent(); return; }
@@ -651,9 +665,16 @@
       var progress = t < 0.42 ? t / 0.42 : t < 0.82 ? 1 : t < 1.35 ? 1 - (t - 0.82) / 0.53 : 0;
       actor.position.copyFrom(home.add(direction.scale(Math.max(0, progress) * Math.max(0, distance - 3.2))));
       if (skill) { actor.rotation.z = Math.sin(t * (16 + skillStyle * 3)) * (0.14 + skillStyle * .04); actor.rotation.y = (actorSide === 'player' ? Math.PI / 2 : -Math.PI / 2) + Math.sin(t * (5 + skillStyle)) * (.12 + skillStyle * .05); actor.position.y += Math.max(0, Math.sin(Math.min(1, t / .72) * Math.PI)) * (.28 + skillStyle * .17); actor.scaling.setAll(2.25 + Math.max(0, Math.sin(Math.min(1, t / 0.65) * Math.PI)) * (0.52 + skillStyle * .1)); }
-      else { actor.rotation.x = Math.sin(t * 15) * 0.12; }
+      else {
+        actor.rotation.x = -Math.sin(Math.min(1, t / .56) * Math.PI) * .28;
+        actor.position.y += Math.sin(Math.min(1, t / .82) * Math.PI) * .85;
+        actor.rotation.z = Math.sin(t * 18) * .08;
+      }
+      (actor.metadata.wings || []).forEach(function(wing, wi){wing.rotation.z=(wi ? 1 : -1) * (.3 + Math.abs(Math.sin(t * 32)) * .9);});
       if (t >= 0.56 && !activeEvent.hit) {
-        activeEvent.hit = true; target.scaling.set(2.55, 1.75, 2.55); target.rotation.z += actorSide === 'player' ? -0.28 : 0.28;
+        activeEvent.hit = true;
+        if (ev.missed) { onBattleHit(ev); return; }
+        target.scaling.set(2.55, 1.75, 2.55); target.rotation.z += actorSide === 'player' ? -0.28 : 0.28;
         onBattleHit(ev);
         var skillColors = ['#c4a7ff', '#7de3c4', '#ff9f7d']; var burstMat = material(scene, 'hitBurst', skill ? skillColors[skillStyle] : '#ffe17a', 0.9);
         for (var i = 0; i < (skill ? 12 : 6); i += 1) { var spark = B.MeshBuilder.CreateSphere('hit-spark', { diameter: skill ? 0.34 : 0.24, segments: 5 }, scene); spark.parent = battleRoot; spark.position.copyFrom(target.position.add(new B.Vector3((i % 4 - 1.5) * 0.45, 1.0 + (i % 3) * 0.42, (i % 2 - 0.5) * 0.8))); spark.material = burstMat; setTimeout(function (mesh) { disposeNode(mesh); }, 440, spark); }
@@ -666,7 +687,7 @@
       var rig = avatar.metadata, weight = speed > 0.15 ? clamp(speed / 7, 0, 1) : 0;
       rig.walkWeight += (weight - rig.walkWeight) * Math.min(1, dt * 14);
       var previousStep = Math.floor((rig.walk + Math.PI / 2) / Math.PI);
-      rig.walk += dt * (3 + Math.min(speed, 9) * 1.25);
+      rig.walk += dt * (3 + Math.min(speed, 16) * 1.25);
       var swing = Math.sin(rig.walk) * 0.72 * rig.walkWeight;
       rig.legs[0].rotation.x = swing; rig.legs[1].rotation.x = -swing;
       rig.arms[0].rotation.x = -swing * 0.8; rig.arms[1].rotation.x = swing * 0.8;

@@ -93,7 +93,7 @@ function validateAction(state, sideKey, action) {
     const index = side.team.findIndex(c => c.id === String(action.creatureId));
     if (index < 0 || index === side.active || side.team[index].hp <= 0) throw new Error('교체할 수 없는 곤충입니다.');
   }
-  if (type === 'capture' && (state.type !== 'field' || sideKey !== 'a')) throw new Error('이 전투에서는 포획할 수 없습니다.');
+  if (type === 'capture') throw new Error('야생 곤충에게 승리하면 전투 성과에 따라 자동으로 채집합니다.');
   if (type === 'retreat' && state.type !== 'field') throw new Error('대인전에서는 도주할 수 없습니다.');
 }
 

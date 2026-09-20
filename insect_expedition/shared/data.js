@@ -6,12 +6,12 @@
   'use strict';
 
   const rarity = {
-    common: { label: '흔함', color: '#9fc99b', capture: 0.86 },
-    uncommon: { label: '눈에 띔', color: '#69c5a3', capture: 0.68 },
-    rare: { label: '희귀', color: '#70a8ff', capture: 0.38 },
-    evolved: { label: '성충', color: '#b28cff', capture: 0.29 },
-    elite: { label: '우두머리', color: '#ffad55', capture: 0.16 },
-    monster: { label: '거대종', color: '#ff647e', capture: 0.09 }
+    common: { label: '하급', color: '#9fc99b', capture: 0.86, reward: 2 },
+    uncommon: { label: '중급', color: '#69c5a3', capture: 0.68, reward: 3 },
+    rare: { label: '레어', color: '#70a8ff', capture: 0.38, reward: 5 },
+    evolved: { label: '고급', color: '#b28cff', capture: 0.52, reward: 4 },
+    elite: { label: '에픽', color: '#ffad55', capture: 0.24, reward: 7 },
+    monster: { label: '전설', color: '#ff647e', capture: 0.14, reward: 10 }
   };
 
   const attack = (id, name, power, accuracy, kind) => ({ id, name, power, accuracy, kind: kind || 'physical' });
@@ -79,7 +79,15 @@
     { id: 'miner', name: '조약돌 탐사대', role: '동굴 조사', body: '#6582b8', accent: '#bde6ff', skin: '#e5b58e', hair: '#46352e', shape: 'sturdy', accessory: 'lamp', free: true },
     { id: 'river', name: '물결 기록가', role: '습지와 강 관찰', body: '#3ea6a0', accent: '#a7f3d0', skin: '#c98962', hair: '#233747', shape: 'light', accessory: 'satchel', free: true }
   ];
-  const rarityOrder = ['common', 'uncommon', 'rare', 'evolved', 'elite', 'monster'];
+  const rarityOrder = ['common', 'uncommon', 'evolved', 'rare', 'elite', 'monster'];
+  const quests = [
+    {id:'dew-sample',name:'첫 채집 기록',type:'capture',target:3,feeds:3,description:'전투에서 승리해 곤충 3마리 채집'},
+    {id:'battle-practice',name:'자신감 쑥쑥',type:'victory',target:3,feeds:4,description:'야생 곤충과 전투에서 3회 승리'},
+    {id:'feed-friends',name:'든든한 탐험대',type:'feed',target:2,feeds:5,description:'보유 곤충에게 사료 2회 주기'},
+    {id:'forest-collection',name:'숲 친구 모으기',type:'capture',target:4,feeds:6,description:'전투에서 승리해 곤충 4마리 채집'},
+    {id:'battle-veteran',name:'숙련 탐험가',type:'victory',target:5,feeds:7,description:'야생 곤충과 전투에서 5회 승리'}
+  ];
+  const collectionMilestones = [{ count: 5, feeds: 5 }, { count: 10, feeds: 10 }, { count: 15, feeds: 15 }, { count: 21, feeds: 25 }];
 
-  return Object.freeze({ title: '이슬숲 탐험대', world: { minX: -120, maxX: 120, minZ: -120, maxZ: 120, spawn: { x: 0, y: 1, z: 0 }, arena: { x: 0, y: 1, z: 0 } }, rarity, rarityOrder, species, speciesById, biomes, obstacles, characters });
+  return Object.freeze({ title: '이슬숲 탐험대', world: { minX: -120, maxX: 120, minZ: -120, maxZ: 120, spawn: { x: 0, y: 1, z: 0 }, arena: { x: 0, y: 1, z: 0 } }, rarity, rarityOrder, quests, collectionMilestones, species, speciesById, biomes, obstacles, characters });
 });

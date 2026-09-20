@@ -6,6 +6,7 @@ const WORLD_LIMIT = 120;
 const SAFE_RADIUS = 22;
 const PLAYER_RADIUS = 1.15;
 const MOVE_SPEED = 9;
+const SPRINT_SPEED = 16;
 const OBSTACLES = Object.freeze([
   { id: 'lab', type: 'box', x: 0, z: -6, width: 18, depth: 10 },
   { id: 'forest-log', type: 'box', x: -68, z: -62, width: 18, depth: 4 },
@@ -41,14 +42,27 @@ function segmentBlocked(a, b) {
   return false;
 }
 
+function updateStamina(player, now = Date.now()) {
+  if (!Number.isFinite(player.stamina)) player.stamina = 100;
+  const since = Number.isFinite(player.staminaAt) ? player.staminaAt : now;
+  const seconds = Math.max(0, (now - since) / 1000);
+  const movingSeconds = player.sprinting && player.moveActive && !player.busy
+    ? Math.max(0, (Math.min(now, (player.lastMoveAt || since) + 350) - since) / 1000) : 0;
+  player.stamina = clamp(player.stamina - movingSeconds * 16 + (seconds - movingSeconds) * 9, 0, 100);
+  if (player.stamina <= 0) player.sprinting = false;
+  player.staminaAt = now;
+}
+
 function movePlayer(player, intent, now = Date.now()) {
+  updateStamina(player, now);
   const ix = clamp(Number(intent.x) || 0, -1, 1);
   const iz = clamp(Number(intent.z) || 0, -1, 1);
   const magnitude = Math.hypot(ix, iz);
   const elapsed = clamp((now - (player.lastMoveAt || now - 50)) / 1000, 0.016, 0.25);
   player.lastMoveAt = now;
+  player.moveActive = magnitude > 0;
   if (!magnitude) return false;
-  const factor = MOVE_SPEED * elapsed / Math.max(1, magnitude);
+  const factor = (player.sprinting && player.stamina > 0 ? SPRINT_SPEED : MOVE_SPEED) * elapsed / Math.max(1, magnitude);
   const candidate = {
     x: clamp(player.x + ix * factor, -WORLD_LIMIT, WORLD_LIMIT),
     z: clamp(player.z + iz * factor, -WORLD_LIMIT, WORLD_LIMIT)
@@ -106,6 +120,6 @@ function publicSpawn(spawn) {
 }
 
 module.exports = {
-  WORLD_LIMIT, SAFE_RADIUS, MOVE_SPEED, OBSTACLES, distance, inSafeZone, pointBlocked,
+  WORLD_LIMIT, SAFE_RADIUS, MOVE_SPEED, SPRINT_SPEED, updateStamina, OBSTACLES, distance, inSafeZone, pointBlocked,
   segmentBlocked, movePlayer, makeSpawns, updateSpawns, publicSpawn, GUIDE
 };

@@ -53,3 +53,16 @@ test('렌더링 API는 Babylon과 canvas 누락을 명확히 거절한다', () =
   const fakeBabylon = load('world.js', { BABYLON: {} });
   assert.throws(() => fakeBabylon.InsectWorld.create({}), /canvas/);
 });
+
+
+test('달리기는 실제로 빠르고 스태미나 소진 후 자동 해제·점진 회복한다', () => {
+  const World = require('../server/world.cjs');
+  const walk={x:0,z:40,lastMoveAt:1000,stamina:100,staminaAt:1000};
+  const run={...walk,sprinting:true};
+  World.movePlayer(walk,{x:1,z:0},1200); World.movePlayer(run,{x:1,z:0},1200);
+  assert(run.x > walk.x * 1.7);
+  for(let now=1400;now<=8000;now+=200) { run.x=0;run.z=40;World.movePlayer(run,{x:1,z:0},now); }
+  assert.equal(run.sprinting,false);assert(run.stamina<15);
+  World.movePlayer(run,{x:0,z:0},8200);const depleted=run.stamina;
+  World.updateStamina(run,10200);assert(run.stamina>depleted&&run.stamina<100);
+});

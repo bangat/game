@@ -48,7 +48,7 @@ function openClient(url) {
 
 test('프로필 구버전 자료를 제한된 최신 스키마로 이관하고 원자 저장한다', () => {
   const migrated = migrateProfile({ collection: [{ id: 'c1', speciesId: 'dew_ladybird', level: 999, xp: -3 }], team: ['c1', 'c1'], location: { x: 999, z: -999 } }, 'u1', '테스터', ['dew_ladybird']);
-  assert.equal(migrated.version, 3);
+  assert.equal(migrated.version, 4);
   assert.equal(migrated.collection[0].level, 50);
   assert.deepEqual(migrated.team, ['c1']);
   assert.deepEqual(migrated.location, { x: 120, z: -120 });
@@ -152,18 +152,16 @@ test('두 WebSocket 클라이언트의 권위 명령, 중복 제거, PvP와 재�
   a.send(duplicateHeal); a.send(duplicateHeal);
   await a.next((m) => m.type === 'ack' && m.id === 'heal-once' && m.ok);
   await new Promise((resolve) => setTimeout(resolve, 30));
-  assert.equal(room.players.get('a').profile.supplies.heals, 2);
+  assert.equal(room.players.get('a').profile.supplies.heals, 3);
   const ordinary = room.spawns.find((spawn) => !spawn.field);
   room.players.get('a').x = ordinary.x + 2; room.players.get('a').z = ordinary.z;
-  rngValue = 0.99;
-  a.send({ type: 'command', id: 'collect-fail', name: 'collect', payload: { spawnId: ordinary.id } });
-  const failedCollection = await a.next((m) => m.type === 'ack' && m.id === 'collect-fail');
-  assert.equal(failedCollection.result.success, false);
-  await new Promise((resolve) => setTimeout(resolve, 825));
-  rngValue = 0.01;
-  a.send({ type: 'command', id: 'collect-ok', name: 'collect', payload: { spawnId: ordinary.id } });
-  const successfulCollection = await a.next((m) => m.type === 'ack' && m.id === 'collect-ok');
-  assert.equal(successfulCollection.result.success, true);
+  a.send({ type: 'command', id: 'collect-battle', name: 'collect', payload: { spawnId: ordinary.id } });
+  const collectBattle=await a.next(m=>m.type==='ack'&&m.id==='collect-battle');
+  assert.equal(collectBattle.ok,true,collectBattle.error);
+  a.send({type:'command',id:'collect-retreat',name:'action',payload:{battleId:collectBattle.result.battleId,turn:1,action:'retreat'}});
+  assert.equal((await a.next(m=>m.type==='ack'&&m.id==='collect-retreat')).ok,true);
+  a.send({type:'command',id:'collect-return',name:'return',payload:{}});
+  assert.equal((await a.next(m=>m.type==='ack'&&m.id==='collect-return')).ok,true);
   const field = room.spawns.find((spawn) => spawn.field);
   room.players.get('a').x = field.x + 3; room.players.get('a').z = field.z;
   await new Promise((resolve) => setTimeout(resolve, 825));

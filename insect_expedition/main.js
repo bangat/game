@@ -64,7 +64,7 @@
           if (request) {
             clearTimeout(request.timer); pending.delete(value.id);
             if (value.ok) {
-              if (request.name === 'collect' && value.result) {
+              if (request.name === 'collect' && value.result && !value.result.battleId) {
                 InsectAudio.play(value.result.success ? 'capture' : 'failure');
                 ui.notify(value.result.success ? (value.result.isNew ? '새로운 곤충을 발견했어요! 도감에 기록했습니다.' : '포획 성공! 탐험대에 새로운 친구가 생겼어요.') : '포획에 실패했어요. 잠시 뒤 다시 시도해 보세요.');
               }
@@ -86,7 +86,7 @@
             if (seenEvents.has(key)) return false; seenEvents.add(key); return true;
           });
           if (fresh.length && previous && previous.battle && previous.battle.id === battle.id) {
-            animating = true; animationBatches += 1;
+            animating = true; ui.setAnimating(true); animationBatches += 1;
             if (!animationView) animationView = JSON.parse(JSON.stringify(shownState || previous));
             const motions = fresh.filter(item => item.type !== 'hit' && item.type !== 'miss').map((item, index, list) => {
               if (item.type !== 'attack' && item.type !== 'skill') return item;
@@ -95,7 +95,7 @@
             });
             Promise.resolve(world.playEvents(motions)).finally(() => {
               animationBatches -= 1; animating = animationBatches > 0;
-              if (!animating) { animationView = null; if (snapshot) { ui.setState(snapshot); shownState = snapshot; } }
+              if (!animating) { ui.setAnimating(false); animationView = null; if (snapshot) { ui.setState(snapshot); shownState = snapshot; } }
               if (!animating && snapshot && snapshot.battle && snapshot.battle.status === 'finished') {
                 const ownSide = snapshot.battle.sides.a.uid === snapshot.you ? 'a' : 'b';
                 InsectAudio.play(snapshot.battle.result && snapshot.battle.result.winner === ownSide ? 'victory' : 'failure');
@@ -130,6 +130,7 @@
       const side = animationView.battle.sides && animationView.battle.sides[event.targetSide];
       const target = side && (side.team.find(creature => creature.id === event.targetCreatureId) || side.team[side.active]);
       if (target) target.hp = Number.isFinite(event.remainingHp) ? event.remainingHp : Math.max(0, target.hp - (event.amount || 0));
+      animationView.battle.events = [{...event, type:'hit', message: event.missed ? '공격이 빗나갔어요.' : `${event.amount || 0} 피해${event.critical ? ' · 치명타!' : ''}`}];
       ui.setState(animationView);
     } });
     world.setCharacter(selectedCharacter); app.world = world; app.ui = ui;
