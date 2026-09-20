@@ -59,6 +59,14 @@
     const source=species.find(s=>s.id===base);
     species.push({...source,id,name,rarity:rank,habitat:'알 동굴',eggOnly:true,modelId:base,evolvesTo:null,baseStats:Object.fromEntries(Object.entries(source.baseStats).map(([k,v])=>[k,Math.round(v*1.18)]))});
   });
+  const awakeningNames={dew_ladybird:'별무늬무당벌레',reed_cricket:'청명귀뚜라미',clover_grasshopper:'비취메뚜기',bark_ant:'호위나무개미',pond_skater:'은빛소금쟁이',granary_weevil:'황금바구미',stone_ground_beetle:'강철먼지벌레',orchard_longhorn:'청옥하늘소',honey_mason_bee:'여왕꽃담벌'};
+  for(const [id,name] of Object.entries(awakeningNames)){
+    const source=species.find(s=>s.id===id),nextId=id+'_awakened';source.evolvesTo=nextId;source.evolutionLevel=source.rarity==='common'?8:12;
+    species.push({...source,id:nextId,name,stage:'각성체',rarity:'evolved',modelId:id,evolutionOnly:true,evolvesTo:null,evolutionLevel:null,scale:source.scale*1.18,
+      baseStats:Object.fromEntries(Object.entries(source.baseStats).map(([k,v])=>[k,Math.round(v*1.45)])),
+      normalAttack:{...source.normalAttack,power:source.normalAttack.power+8},
+      skill:skill('awakening_burst','생명의 섬광',35,.95,2,{status:'swift',turns:2},'빛 입자를 터뜨리고 빨라지는 각성 기술')});
+  }
   const rangedNormals = new Set(['honey_mason_bee','moon_moth','mist_butterfly','storm_cicada','marsh_spitter']);
   const rangedSkills = new Set(['sky_current','moon_drowse','mist_mirror','storm_chorus','venom_comet','ember_blast','tyrant_roar','crystal_quake']);
   species.forEach(s=>{if(rangedNormals.has(s.id))s.normalAttack.kind='ranged';if(s.skill)s.skill.kind=rangedSkills.has(s.skill.id)?'ranged':'physical';});
@@ -134,7 +142,7 @@
   ];
   const xpForLevel=level=>36+Math.max(0,level-1)*18+Math.max(0,level-10)**2*3;
   const constructionCamps=[{id:'lumber',name:'솔향 벌목장',kind:'wood',x:-214,z:-214},{id:'quarry',name:'조약돌 채석장',kind:'stone',x:214,z:-214},{id:'sandpit',name:'은모래 채집장',kind:'sand',x:-214,z:214}];
-  Object.assign(resources,{wood:{name:'건축 목재',icon:'🪵',sell:0,construction:true},stone:{name:'건축 석재',icon:'🪨',sell:0,construction:true},sand:{name:'고운 모래',icon:'⏳',sell:0,construction:true}});
+  Object.assign(resources,{wood:{name:'건축 목재',icon:'🪵',sell:8,construction:true},stone:{name:'건축 석재',icon:'🪨',sell:10,construction:true},sand:{name:'고운 모래',icon:'⏳',sell:6,construction:true}});
   constructionCamps.forEach(c=>{biomes.push({id:c.id,name:c.name,habitat:'건축 자재',center:{x:c.x,z:c.z},radius:20,safe:false,special:true,color:c.kind==='wood'?'#53764a':c.kind==='stone'?'#93938b':'#c7b47e',levels:[1,1],description:resources[c.kind].name+' 채집'});[-8,0,8].forEach((dx,i)=>resourceNodes.push({id:c.id+'-'+i,kind:c.kind,name:resources[c.kind].name+' 채집터',x:c.x+dx,z:c.z+(i%2)*6}));});
   const mounts = {motorcycle:{name:'숲길 오토바이',icon:'🏍️',speed:22},handcart:{name:'탐험 리어카',icon:'🛒',speed:18}};
   const shop = [
@@ -149,6 +157,7 @@
     {id:'stag-egg',name:'동굴의 알',price:650,speciesId:'cave_stag',level:3,description:'Lv.3 동굴사슴벌레가 바로 부화해요'}
   ];
   const skillEffects = {
+    awakening_burst:{color:'#f6da87',style:'wave',pitch:620},
     sky_current:{color:'#75e6ff',style:'wave',pitch:520}, moon_drowse:{color:'#d5b2ff',style:'wave',pitch:660},
     golden_guard:{color:'#ffe077',style:'guard',pitch:220}, violet_cross:{color:'#d884ff',style:'slash',pitch:880},
     mist_mirror:{color:'#a0ffe3',style:'wave',pitch:740}, crystal_clamp:{color:'#83caff',style:'slash',pitch:330},

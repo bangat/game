@@ -1,7 +1,7 @@
 (function () {
   'use strict';
   let context, footNoise, lastStep = -1, enabled = true;
-  let battleActive=false,musicBus,musicTimer=null,musicStep=0,nextBeat=0;
+  let battleActive=false,musicBus,analyser,musicTimer=null,musicStep=0,nextBeat=0;
   const musicVoices=new Set();
   try { enabled = localStorage.getItem('insect.sound') !== 'off'; } catch (_) {}
   function unlock() {
@@ -9,7 +9,7 @@
     const Audio = window.AudioContext || window.webkitAudioContext;
     if (!Audio) return;
     if (!context) context = new Audio();
-    if (context.state === 'suspended') context.resume().catch(() => {});
+    if (context.state !== 'running') context.resume().then(()=>{if(battleActive&&enabled)startMusic();}).catch(() => {});
     if (battleActive && enabled && !document.hidden && !musicTimer) startMusic();
   }
   function musicNote(frequency,at,duration,type,volume) {
@@ -22,21 +22,22 @@
   }
   function scheduleMusic() {
     if(!context||!enabled||document.hidden||!battleActive)return;
-    // Original minor-key ostinato, bass pulse and timpani-like accents (132 BPM).
-    const eighth=60/132/2,roots=[65.41,65.41,51.91,58.27],pattern=[0,7,12,3,7,15,12,7];
+    // Original minor-key ostinato, bass pulse and timpani-like accents (140 BPM).
+    const eighth=60/140/2,roots=[65.41,65.41,51.91,58.27],pattern=[0,7,12,3,7,15,12,7];
     if(nextBeat<context.currentTime-.2)nextBeat=context.currentTime+.025;
     while(nextBeat<context.currentTime+.25){
       const root=roots[Math.floor(musicStep/16)%roots.length],accent=musicStep%8===0;
       musicNote(root*2*Math.pow(2,pattern[musicStep%8]/12),nextBeat,eighth*.83,'triangle',accent?.17:.11);
       if(musicStep%2===0){musicNote(root,nextBeat,eighth*1.7,'triangle',.2);musicNote(48,nextBeat,.09,'sine',.23);}
+      if(musicStep%4===2){musicNote(96,nextBeat,.08,'triangle',.14);musicNote(1600,nextBeat,.03,'square',.013);}
       if(accent){musicNote(root*4,nextBeat,eighth*3,'sine',.06);musicNote(root*4*Math.pow(2,3/12),nextBeat,eighth*3,'sine',.05);}
       nextBeat+=eighth;musicStep++;
     }
   }
   function startMusic() {
-    if(musicTimer||!context||!enabled||!battleActive||document.hidden)return;
-    if(!musicBus){musicBus=context.createGain();musicBus.connect(context.destination);}
-    musicBus.gain.cancelScheduledValues(context.currentTime);musicBus.gain.setValueAtTime(.0001,context.currentTime);musicBus.gain.linearRampToValueAtTime(.2,context.currentTime+.35);
+    if(musicTimer||!context||context.state!=='running'||!enabled||!battleActive||document.hidden)return;
+    if(!musicBus){musicBus=context.createGain();analyser=context.createAnalyser();analyser.fftSize=256;musicBus.connect(analyser);analyser.connect(context.destination);}
+    musicBus.gain.cancelScheduledValues(context.currentTime);musicBus.gain.setValueAtTime(.0001,context.currentTime);musicBus.gain.linearRampToValueAtTime(.48,context.currentTime+.25);
     nextBeat=context.currentTime+.04;musicStep=0;scheduleMusic();musicTimer=setInterval(scheduleMusic,100);
   }
   function stopMusic() {
@@ -58,6 +59,8 @@
   }
   function play(kind, skillId) {
     unlock();
+    if(kind==='battle-enter'){tone(62,.7,0,'sawtooth',.065,210);tone(780,.35,.2,'triangle',.07,95);tone(42,.55,.28,'sine',.14);}
+    if(kind==='portal'){tone(180,.6,0,'triangle',.06,980);tone(920,.5,.22,'sine',.05,440);}
     if(kind==='chop'){tone(105,.1,0,'triangle',.09,42);tone(320,.045,0,'square',.025,90);}
     if(kind==='mine'){tone(920,.12,0,'triangle',.05,390);tone(180,.07,0,'sine',.055,60);}
     if (kind === 'hit') { tone(160,.16,0,'triangle',.08,48); tone(820,.055,0,'sine',.025,170); }
@@ -100,5 +103,5 @@
   window.addEventListener('pagehide',()=>{battleActive=false;stopMusic();});
   document.addEventListener('pointerdown', unlock, {passive:true});
   document.addEventListener('keydown', unlock, {passive:true});
-  window.InsectAudio = { play, footstep, unlock, toggle, setBattle, isMusicPlaying:()=>!!musicTimer, isEnabled: () => enabled };
+  window.InsectAudio = { play, footstep, unlock, toggle, setBattle, getStatus:()=>{let rms=0;if(analyser){const data=new Float32Array(analyser.fftSize);analyser.getFloatTimeDomainData(data);rms=Math.sqrt(data.reduce((n,v)=>n+v*v,0)/data.length);}return {enabled,battleActive,state:context?.state||'locked',musicPlaying:!!musicTimer,voices:musicVoices.size,rms};}, isMusicPlaying:()=>!!musicTimer, isEnabled: () => enabled };
 })();

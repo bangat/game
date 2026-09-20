@@ -350,6 +350,7 @@
       nameplate.scaling.setAll(1 / overallScale);
     }
     root.getChildMeshes().forEach(function (mesh) { mesh.isPickable = true; mesh.metadata = { selectTarget: { type: 'spawn', id: target.id } }; });
+    if(data?.evolutionOnly){const auraMat=material(scene,'awakened-crest','#ffe6a0',.7);for(var ai=0;ai<5;ai++){var spike=part(scene,root,'awakened-crest','cylinder',{height:.35,diameterTop:0,diameterBottom:.13,tessellation:5},[(ai-2)*.12,.65+Math.sin(ai/4*Math.PI)*.3,0],auraMat);}bodyMat.emissiveColor=hex('#e9c97b').scale(.12);}
     root.metadata = { speciesId: speciesId, ownedMaterials: [bodyMat,darkMat,accentMat,wingMat,eyeMat], wings: wings, dinoLegs: dinoLegs, dinoTail: dinoTail, baseY: 0, phase: Math.random() * 10 };
     return root;
   }
@@ -363,6 +364,7 @@
     var onFootstep = typeof options.onFootstep === 'function' ? options.onFootstep : function () {};
     var engine = new B.Engine(canvas, true, { preserveDrawingBuffer: false, stencil: true, adaptToDeviceRatio: true });
     var scene = new B.Scene(engine); scene.clearColor = new B.Color4(0.48, 0.63, 0.65, 1);
+    var presentation=global.InsectPresentation?.create(scene),battleIntroUntil=0;
     scene.imageProcessingConfiguration.contrast = 1.08; scene.imageProcessingConfiguration.exposure = 1.0;
     scene.fogMode = B.Scene.FOGMODE_LINEAR; scene.fogColor = new B.Color3(0.48, 0.63, 0.65); scene.fogStart = 75; scene.fogEnd = 185;
     var savedRadius = 29;
@@ -385,7 +387,7 @@
     var viewPointers = new Map(), pinchStart = null, cameraDragged = false;
     function contactDistance() { var points = Array.from(viewPointers.values()); return Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y); }
     function cameraDown(event) {
-      if (!controlsEnabled || battleMode || (event.pointerType === 'mouse' && event.button !== 0)) return;
+      if (!controlsEnabled || battleMode || (event.pointerType === 'mouse' && event.button !== 2)) return;
       if (!viewPointers.size) cameraDragged = false;
       viewPointers.set(event.pointerId, { x: event.clientX, y: event.clientY, startX: event.clientX, startY: event.clientY });
       canvas.setPointerCapture(event.pointerId);
@@ -407,6 +409,9 @@
       event.preventDefault();
     }
     function cameraUp(event) { viewPointers.delete(event.pointerId); pinchStart = null; }
+    function contextMenu(event){event.preventDefault();}
+    canvas.addEventListener('contextmenu',contextMenu);
+    canvas.addEventListener('pointerdown',function(e){if(e.button===0)cameraDragged=false;});
     canvas.addEventListener('pointerdown', cameraDown);
     canvas.addEventListener('pointermove', cameraMove, { passive: false });
     canvas.addEventListener('pointerup', cameraUp);
@@ -425,6 +430,8 @@
     var rand = seeded(20260920);
     function worldPart(name, kind, opts, pos, mat, parent) { var mesh = part(scene, parent || worldRoot, name, kind, opts, pos, mat); mesh.receiveShadows = true; return mesh; }
 
+    var cloudMat=material(scene,'region-cloud','#f4fff9',.08,.8);
+    if(!global.InsectRegionWorld){
     BIOMES.forEach(function (biome) {
       // Adjacent tiles share one edge instead of overlapping coplanar surfaces.
       var minX = biome.x < 0 ? -120 : biome.x === 0 ? -36 : 36, maxX = biome.x < 0 ? -36 : biome.x === 0 ? 36 : 120;
@@ -570,6 +577,10 @@
     mergeByMaterial(worldRoot, 'world-static');
     worldRoot.getChildMeshes().forEach(function (staticMesh) { staticMesh.freezeWorldMatrix(); });
 
+    }
+    var regionView=global.InsectRegionWorld?.create(scene,worldRoot,{part:part,material:material,label:label,disposeNode:disposeNode,groundMaterial:groundMaterial});
+    if(regionView)regionView.setRegion('safe');
+    function heightAt(x,z){return latest?.realm?0:global.InsectRegions?.terrain(latest?.regionId||'safe',x,z)||0;}
     var guide = createAvatar(scene, 'botanist', '미라 연구원', { type: 'npc', id: 'guide-mira' }); guide.parent = worldRoot; guide.position.set(7, 0.4, 11); addShadowModel(guide);
     var questMarker = label(scene, guide, '! 채집 의뢰', 3.9, '#ffe99b');
     var driftingClouds = new B.TransformNode('drifting-clouds', scene); driftingClouds.parent = worldRoot;
@@ -646,7 +657,7 @@
     function pointerUp(event) { if (joystick && joystick.id === event.pointerId) { joystick = null; input.joyX = 0; input.joyZ = 0; if (joystickKnob) joystickKnob.style.transform = 'translate(0,0)'; event.stopPropagation(); } }
     if (joystickElement) { joystickElement.addEventListener('pointerdown', pointerDown); joystickElement.addEventListener('pointermove', pointerMove, { passive: false }); joystickElement.addEventListener('pointerup', pointerUp); joystickElement.addEventListener('pointercancel', pointerUp); joystickElement.addEventListener('lostpointercapture', pointerUp); }
     scene.onPointerObservable.add(function (info) {
-      if (cameraDragged || viewPointers.size > 1 || info.type !== B.PointerEventTypes.POINTERPICK || !info.pickInfo || !info.pickInfo.hit) return;
+      if (info.event?.button===2 || cameraDragged || viewPointers.size > 1 || info.type !== B.PointerEventTypes.POINTERPICK || !info.pickInfo || !info.pickInfo.hit) return;
       var target = info.pickInfo.pickedMesh && info.pickInfo.pickedMesh.metadata && info.pickInfo.pickedMesh.metadata.selectTarget;
       if (target) onSelect(Object.assign({},target));
     });
@@ -663,7 +674,7 @@
       Object.keys(map).forEach(function (id) { if (!present[id]) { disposeNode(map[id]); delete map[id]; } });
     }
     function createResource(node) {
-      var root = new B.TransformNode('resource-' + node.id, scene); root.parent = worldRoot; root.position.set(node.x,0,node.z);root.metadata={kind:node.kind};
+      var root = new B.TransformNode('resource-' + node.id, scene); root.parent = worldRoot; root.position.set(node.x,heightAt(node.x,node.z),node.z);root.metadata={kind:node.kind};
       if(node.kind==='wood'){
         part(scene,root,'timber-trunk','cylinder',{height:4,diameter:1,tessellation:9},[0,2,0],mats.wood);
         part(scene,root,'timber-crown','sphere',{diameterX:4,diameterY:3.5,diameterZ:4,segments:8},[0,5,0],mats.leaf);
@@ -721,12 +732,14 @@
         else {var blend=1-Math.exp(-dt*10);model.position.x+=dx*blend;model.position.z+=dz*blend;}
         if(Math.hypot(dx,dz)>.06){var angle=Math.atan2(dx,dz)-model.rotation.y;model.rotation.y+=Math.atan2(Math.sin(angle),Math.cos(angle))*(1-Math.exp(-dt*12));}
         (model.metadata.dinoLegs||[]).forEach(function(leg,li){leg.rotation.x=Math.sin(now/120+(li%2?Math.PI:0))*Math.min(.4,Math.hypot(dx,dz)*.2);});
-        model.position.y=.25+Math.abs(Math.sin(now/150+model.metadata.slot))*Math.min(.14,Math.hypot(dx,dz)*.07);
+        model.position.y=heightAt(model.position.x,model.position.z)+.25+Math.abs(Math.sin(now/150+model.metadata.slot))*Math.min(.14,Math.hypot(dx,dz)*.07);
         (model.metadata.wings||[]).forEach(function(wing,wi){wing.rotation.z=(wi?1:-1)*(.3+Math.abs(Math.sin(now/100))*.55);});
       });
     }
     function setState(snapshot) {
-      snapshot = snapshot || {}; latest = Object.assign({}, latest, snapshot);
+      snapshot = snapshot || {}; var previousRegion=latest.regionId;var regionChanged=!!snapshot.regionId&&snapshot.regionId!==latest.regionId;latest = Object.assign({}, latest, snapshot);
+      if(regionChanged){if(previousRegion&&!snapshot.realm)presentation?.transition(global.InsectRegions.get(snapshot.regionId).name,false);regionView?.setRegion(latest.regionId);global.InsectNavigation.setRegion?.(latest.regionId);setNavigation(null);followTrail=[];releaseInput();Object.keys(resourceModels).forEach(function(id){disposeNode(resourceModels[id]);delete resourceModels[id];});}
+      guide.setEnabled(!latest.realm&&(!latest.regionId||latest.regionId==='safe'));driftingClouds.setEnabled(!['cave','mine','nest'].includes(latest.regionId));
       document.body.classList.toggle('is-home',!!latest.realm);homeView.setState(Object.assign({},latest,{receivedAt:Date.now()}));
       var realmChanged=lastRealm!==(latest.realm||'');
       if(realmChanged){lastRealm=latest.realm||'';setNavigation(null);followTrail=[];releaseInput();camera.radius=latest.realm?24:savedRadius;camera.beta=1.03;}
@@ -737,7 +750,7 @@
       if (localRecord) {
         serverPositionAt = performance.now(); localSprint = !!localRecord.sprinting;localMount=localRecord.mount||'';equipVehicle(localAvatar,localMount);
         localAvatar.metadata.targetX = clamp(localRecord.x, -238, 238); localAvatar.metadata.targetZ = clamp(localRecord.z, -238, 238);
-        if (!battleMode && (realmChanged || Math.hypot(localAvatar.position.x - localRecord.x, localAvatar.position.z - localRecord.z) > 30)) {
+        if (!battleMode && (regionChanged || realmChanged || Math.hypot(localAvatar.position.x - localRecord.x, localAvatar.position.z - localRecord.z) > 30)) {
           followTrail = [];
           localAvatar.position.x = localAvatar.metadata.targetX; localAvatar.position.z = localAvatar.metadata.targetZ;
           camera.target.x = localAvatar.position.x; camera.target.z = localAvatar.position.z;
@@ -806,6 +819,7 @@
     }
     function refreshBattleActors(){refreshReserves();refreshBattleSide(battleViewSide);refreshBattleSide(battleViewSide==='a'?'b':'a');}
     function switchBattle(enabled, battle) {
+      if(enabled){presentation?.transition('',true);battleIntroUntil=performance.now()+(global.matchMedia('(prefers-reduced-motion:reduce)').matches?0:800);}
       if (enabled) explorationCamera = { alpha: camera.alpha, beta: camera.beta, radius: camera.radius };
       camera.inertialAlphaOffset = camera.inertialBetaOffset = camera.inertialRadiusOffset = 0;
       if(activeEvent?.data?.remainingHp===0){var down=battleModels[activeEvent.data.targetCreatureId];if(down)down.setEnabled(false);}
@@ -841,7 +855,7 @@
         var enemy = enemySide && enemySide.team && enemySide.team[enemySide.active || 0] || battle && (battle.enemyActive || battle.enemy || battle.opponent);
         refreshBattleActors();
         camera.setTarget(new B.Vector3(0, 41.4, 0)); camera.alpha = -Math.PI / 2; camera.beta = 1.12; camera.radius = 31;
-      } else { scene.clearColor=new B.Color4(.48,.63,.65,1);scene.fogColor=new B.Color3(.48,.63,.65);camera.setTarget(localAvatar.position.add(new B.Vector3(0, 1.5, 0))); camera.alpha = explorationCamera.alpha; camera.beta = explorationCamera.beta; camera.radius = explorationCamera.radius; }
+      } else { scene.clearColor=new B.Color4(.48,.63,.65,1);scene.fogColor=new B.Color3(.48,.63,.65);camera.setTarget(localAvatar.position.add(new B.Vector3(0, 1.5, 0))); camera.alpha = explorationCamera.alpha; camera.beta = explorationCamera.beta; camera.radius = explorationCamera.radius;regionView?.applyAtmosphere(); }
     }
     function playEvents(events) {
       if (!Array.isArray(events)) events = events ? [events] : [];
@@ -858,6 +872,8 @@
       activeEvent = null;
     }
     function runBattleEvent(dt) {
+      if(performance.now()<battleIntroUntil){var intro=1-(battleIntroUntil-performance.now())/800,ease=1-Math.pow(1-intro,3);camera.alpha=-Math.PI/2-(1-ease)*.75;camera.radius=31+(1-ease)*14;camera.beta=1.12-(1-ease)*.2;return;}
+      camera.alpha=-Math.PI/2;camera.radius=31;camera.beta=1.12;
       if (!activeEvent && eventQueue.length) { activeEvent = eventQueue.shift(); activeEvent.startedAt = performance.now(); activeEvent.time = 0; activeEvent.hit = false; }
       if (!activeEvent) return;
       var ev = activeEvent.data;
@@ -872,7 +888,7 @@
       if (actorSide === 'a' || actorSide === 'b') actorSide = actorSide === battleViewSide ? 'player' : 'enemy';
       if (targetSide === 'a' || targetSide === 'b') targetSide = targetSide === battleViewSide ? 'player' : 'enemy';
       var actor = battleActors[actorSide], target = battleActors[targetSide]; if (!actor || !target) { finishBattleEvent(); return; }
-      activeEvent.time = (performance.now() - activeEvent.startedAt) / 1000; var t = activeEvent.time, type = ev.type || ev.action || 'attack', skill = type === 'skill', ranged = ev.attackKind === 'ranged' || ev.attackKind === 'sonic';
+      activeEvent.time = (performance.now() - activeEvent.startedAt) / 1000 * 1.2; var t = activeEvent.time, type = ev.type || ev.action || 'attack', skill = type === 'skill', ranged = ev.attackKind === 'ranged' || ev.attackKind === 'sonic';
       var skillCode = String(ev.skillId || ''), skillSeed = 0; for (var si = 0; si < skillCode.length; si += 1) skillSeed += skillCode.charCodeAt(si); var skillStyle = skillSeed % 3;
       if (type === 'victory' || type === 'defeat') { actor.rotation.y += dt * 7; actor.position.y = 40.5 + Math.abs(Math.sin(t * 8)) * 1.3; if (t > 1.6) finishBattleEvent(); return; }
       if (type === 'switch') { actor.rotation.y += dt * 9; actor.scaling.setAll(Math.max(.08, 2.25 * (1 - t / .68))); if (t > .68) finishBattleEvent(); return; }
@@ -884,6 +900,7 @@
       var fx = global.InsectData.skillEffects[ev.skillId] || {color:'#d5b2ff',style:'wave'};
       if(skill){
         if(!activeEvent.effect){
+          presentation?.burst(actor.position.add(new B.Vector3(0,1.4,0)),fx.color,'charge');
           var effect=new B.TransformNode('skill-effect-'+ev.skillId,scene);effect.parent=battleRoot;
           var effectMat=material(scene,'skill-light-'+ev.skillId,fx.color,1);effectMat.disableLighting=true;
           for(var f=0;f<3;f++){
@@ -922,6 +939,7 @@
         if (ev.missed) { onBattleHit(ev); return; }
         target.scaling.set(2.55, 1.75, 2.55); target.rotation.z += actorSide === 'player' ? -0.28 : 0.28;
         onBattleHit(ev);
+        presentation?.burst(target.position.add(new B.Vector3(0,1.5,0)),skill?fx.color:'#ffe4b1',ev.skillId==='ember_blast'?'fire':'impact');
         var skillColors = ['#c4a7ff', '#7de3c4', '#ff9f7d']; var burstMat = material(scene, 'hitBurst', skill ? fx.color : '#ffe17a', 0.9);
         for (var i = 0; i < (skill ? 12 : 6); i += 1) { var spark = B.MeshBuilder.CreateSphere('hit-spark', { diameter: skill ? 0.34 : 0.24, segments: 5 }, scene); spark.parent = battleRoot; spark.position.copyFrom(target.position.add(new B.Vector3((i % 4 - 1.5) * 0.45, 1.0 + (i % 3) * 0.42, (i % 2 - 0.5) * 0.8))); spark.material = burstMat; setTimeout(function (mesh) { disposeNode(mesh); }, 440, spark); }
       }
@@ -985,7 +1003,7 @@
       if (latest.you) {
         var lead = length > .05 ? Math.min(.12,Math.max(0,(now-serverPositionAt)/1000)+.04) : 0;
         var visualX=clamp(localAvatar.metadata.targetX+x*(global.InsectData.mounts[localMount]?.speed||(localSprint?16:9))*lead,-238,238),visualZ=clamp(localAvatar.metadata.targetZ+z*(global.InsectData.mounts[localMount]?.speed||(localSprint?16:9))*lead,-238,238);
-        var blocked=latest.realm?global.InsectHousing.segmentBlocked(latest.home,{x:localAvatar.metadata.targetX,z:localAvatar.metadata.targetZ},{x:visualX,z:visualZ}):OBSTACLES.some(function(o){return o.type==='circle'?Math.hypot(visualX-o.x,visualZ-o.z)<o.radius+1.15:Math.abs(visualX-o.x)<o.width/2+1.15&&Math.abs(visualZ-o.z)<o.depth/2+1.15;});
+        var blocked=latest.realm?global.InsectHousing.segmentBlocked(latest.home,{x:localAvatar.metadata.targetX,z:localAvatar.metadata.targetZ},{x:visualX,z:visualZ}):global.InsectRegions&&latest.regionId?global.InsectRegions.blocked(latest.regionId,{x:visualX,z:visualZ}):OBSTACLES.some(function(o){return o.type==='circle'?Math.hypot(visualX-o.x,visualZ-o.z)<o.radius+1.15:Math.abs(visualX-o.x)<o.width/2+1.15&&Math.abs(visualZ-o.z)<o.depth/2+1.15;});
         if(blocked){visualX=localAvatar.metadata.targetX;visualZ=localAvatar.metadata.targetZ;}
         var smooth=1-Math.exp(-dt*22);localAvatar.position.x+=(visualX-localAvatar.position.x)*smooth;localAvatar.position.z+=(visualZ-localAvatar.position.z)*smooth;
       }
@@ -994,6 +1012,8 @@
       if (Math.hypot(actualX,actualZ)>.002 || length>.05) { var facing=Math.atan2(length>.05?x:actualX,length>.05?z:actualZ)-localAvatar.rotation.y;localAvatar.rotation.y+=Math.atan2(Math.sin(facing),Math.cos(facing))*(1-Math.exp(-dt*20)); }
       followCompanions(dt,now);
       var stepped = animateAvatar(localAvatar, dt, Math.hypot(actualX, actualZ) / Math.max(dt, 0.001));
+      localAvatar.position.y+=heightAt(localAvatar.position.x,localAvatar.position.z);
+      regionView?.frame(now);
       if (stepped && controlsEnabled && length > 0.05 && !document.hidden) {
         var onPath = [-144, 0, 144].some(function (axis) { return Math.abs(localAvatar.position.x - axis) < 4.5 || Math.abs(localAvatar.position.z - axis) < 4.5; });
         onFootstep({ surface: onPath ? 'path' : 'grass', foot: Math.floor((localAvatar.metadata.walk + Math.PI / 2) / Math.PI) % 2 });
@@ -1003,10 +1023,10 @@
         var radiusToSave = clamp(camera.radius, 16, 52);
         radiusSaveTimer = setTimeout(function () { try { global.localStorage.setItem('insect.cameraRadius', String(radiusToSave)); } catch (_) {} }, 300);
       }
-      camera.target.x += (localAvatar.position.x - camera.target.x) * Math.min(1, dt * 6); camera.target.z += (localAvatar.position.z - camera.target.z) * Math.min(1, dt * 6); camera.target.y = 1.4;
+      camera.target.x += (localAvatar.position.x - camera.target.x) * Math.min(1, dt * 6); camera.target.z += (localAvatar.position.z - camera.target.z) * Math.min(1, dt * 6); camera.target.y = heightAt(localAvatar.position.x,localAvatar.position.z)+1.4;
       homeView.frame(localAvatar,camera);
-      Object.keys(remote).forEach(function (id) { var avatar = remote[id], dx = avatar.metadata.targetX - avatar.position.x, dz = avatar.metadata.targetZ - avatar.position.z, moving = Math.abs(dx) + Math.abs(dz) > 0.025, blend = Math.min(1, dt * 8); avatar.position.x += dx * blend; avatar.position.z += dz * blend; if (moving) avatar.rotation.y = Math.atan2(dx, dz); animateAvatar(avatar, dt, Math.hypot(dx, dz) * blend / Math.max(dt, 0.001)); });
-      Object.keys(spawns).forEach(function (id) { var creature = spawns[id]; creature.position.x += (creature.metadata.targetX - creature.position.x) * Math.min(1, dt * 7); creature.position.z += (creature.metadata.targetZ - creature.position.z) * Math.min(1, dt * 7); creature.metadata.phase += dt * 4; (creature.metadata.dinoLegs||[]).forEach(function(leg,li){leg.rotation.x=Math.sin(creature.metadata.phase+(li%2?Math.PI:0))*.25;}); if(creature.metadata.dinoTail)creature.metadata.dinoTail.rotation.y=Math.sin(creature.metadata.phase*.6)*.1; creature.position.y = 0.25 + Math.abs(Math.sin(creature.metadata.phase)) * 0.17; creature.metadata.wings.forEach(function (wing, wi) { wing.rotation.z = (wi ? 1 : -1) * (0.3 + Math.abs(Math.sin(creature.metadata.phase * 3)) * 0.55); }); });
+      Object.keys(remote).forEach(function (id) { var avatar = remote[id], dx = avatar.metadata.targetX - avatar.position.x, dz = avatar.metadata.targetZ - avatar.position.z, moving = Math.abs(dx) + Math.abs(dz) > 0.025, blend = Math.min(1, dt * 8); avatar.position.x += dx * blend; avatar.position.z += dz * blend; if (moving) avatar.rotation.y = Math.atan2(dx, dz); animateAvatar(avatar, dt, Math.hypot(dx, dz) * blend / Math.max(dt, 0.001)); avatar.position.y+=heightAt(avatar.position.x,avatar.position.z); });
+      Object.keys(spawns).forEach(function (id) { var creature = spawns[id]; creature.position.x += (creature.metadata.targetX - creature.position.x) * Math.min(1, dt * 7); creature.position.z += (creature.metadata.targetZ - creature.position.z) * Math.min(1, dt * 7); creature.metadata.phase += dt * 4; (creature.metadata.dinoLegs||[]).forEach(function(leg,li){leg.rotation.x=Math.sin(creature.metadata.phase+(li%2?Math.PI:0))*.25;}); if(creature.metadata.dinoTail)creature.metadata.dinoTail.rotation.y=Math.sin(creature.metadata.phase*.6)*.1; creature.position.y = heightAt(creature.position.x,creature.position.z)+0.25 + Math.abs(Math.sin(creature.metadata.phase)) * 0.17; creature.metadata.wings.forEach(function (wing, wi) { wing.rotation.z = (wi ? 1 : -1) * (0.3 + Math.abs(Math.sin(creature.metadata.phase * 3)) * 0.55); }); });
     });
     function resize() { engine.resize(); } global.addEventListener('resize', resize);
     engine.runRenderLoop(function () { if (!document.body.classList.contains('is-customizing')) scene.render(); });
@@ -1017,6 +1037,7 @@
       eventQueue.forEach(function (queued) { if (queued.resolve) queued.resolve(queued.data); });
       global.removeEventListener('keydown', keyDown); global.removeEventListener('keyup', keyUp); global.removeEventListener('blur', releaseInput); global.removeEventListener('resize', resize);
       if (joystickElement) { joystickElement.removeEventListener('pointerdown', pointerDown); joystickElement.removeEventListener('pointermove', pointerMove); joystickElement.removeEventListener('pointerup', pointerUp); joystickElement.removeEventListener('pointercancel', pointerUp); joystickElement.removeEventListener('lostpointercapture', pointerUp); joystickElement.remove(); }
+      presentation?.dispose();regionView?.dispose();canvas.removeEventListener('contextmenu',contextMenu);
       homeView.dispose();navHud.remove();skillBanner.remove();radar.remove();
       scene.dispose(); engine.dispose();
     }

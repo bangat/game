@@ -3,6 +3,7 @@
 const crypto = require('node:crypto');
 
 const Data = require('../shared/data.js');
+const Regions = require('../shared/regions.js');
 const WORLD_LIMIT = Data.world.maxX;
 const SAFE_RADIUS = 22;
 const PLAYER_RADIUS = 1.15;
@@ -16,9 +17,10 @@ const GUIDE = Object.freeze({ id: 'guide-mira', name: '미라 연구원', x: 7, 
 
 function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
 function distance(a, b) { return Math.hypot(a.x - b.x, a.z - b.z); }
-function inSafeZone(point) { return Math.hypot(point.x, point.z) <= SAFE_RADIUS; }
+function inSafeZone(point) { if(point.regionId)return point.regionId==='safe'; return Math.hypot(point.x, point.z) <= SAFE_RADIUS; }
 
 function pointBlocked(point, padding = PLAYER_RADIUS) {
+  if(point.regionId)return Regions.blocked(point.regionId,point,padding);
   return OBSTACLES.some((obstacle) => {
     if (obstacle.type === 'circle') return Math.hypot(point.x - obstacle.x, point.z - obstacle.z) < obstacle.radius + padding;
     return Math.abs(point.x - obstacle.x) < obstacle.width / 2 + padding && Math.abs(point.z - obstacle.z) < obstacle.depth / 2 + padding;
@@ -29,7 +31,7 @@ function segmentBlocked(a, b) {
   const length = Math.max(1, Math.ceil(distance(a, b) / 1.25));
   for (let index = 1; index < length; index += 1) {
     const t = index / length;
-    if (pointBlocked({ x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t }, 0.25)) return true;
+    if (pointBlocked({ regionId:a.regionId, x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t }, 0.25)) return true;
   }
   return false;
 }
@@ -56,6 +58,7 @@ function movePlayer(player, intent, now = Date.now()) {
   if (!magnitude) return false;
   const factor = (Data.mounts[player.mount]?.speed || (player.sprinting && player.stamina > 0 ? SPRINT_SPEED : MOVE_SPEED)) * elapsed / Math.max(1, magnitude);
   const candidate = {
+    regionId:player.regionId,
     x: clamp(player.x + ix * factor, -WORLD_LIMIT, WORLD_LIMIT),
     z: clamp(player.z + iz * factor, -WORLD_LIMIT, WORLD_LIMIT)
   };
@@ -68,14 +71,14 @@ function movePlayer(player, intent, now = Date.now()) {
 function makeSpawns(species, biomes) {
   const catalog = Array.isArray(species) ? species : [];
   const regions = Array.isArray(biomes) ? biomes : [];
-  const fieldCatalog = catalog.filter(item=>!item.eggOnly).filter((item) => ['uncommon', 'rare', 'evolved', 'elite', 'monster'].includes(item.rarity));
+  const fieldCatalog = catalog.filter(item=>!item.eggOnly&&!item.evolutionOnly).filter((item) => ['uncommon', 'rare', 'evolved', 'elite', 'monster'].includes(item.rarity));
   const commonCatalog = catalog.filter((item) => item.rarity === 'common');
   const tutorial = TUTORIAL_POINTS.map(([x, z], index) => {
     const creature = index === 4 ? fieldCatalog[0] : commonCatalog[index % Math.max(1, commonCatalog.length)];
     return makeSpawn(`tutorial-${index + 1}`, creature && creature.id, x, z, index === 4, 1);
   });
   const counts = new Map();
-  const habitat = catalog.filter(c=>!c.eggOnly).flatMap((creature) => {
+  const habitat = catalog.filter(c=>!c.eggOnly&&!c.evolutionOnly).flatMap((creature) => {
     const biome = regions.find(b=>!b.safe&&(b.habitats||[b.habitat]).includes(creature.habitat));
     if(!biome)return [];
     return [0,1,2].map(pack=>{
@@ -94,7 +97,7 @@ function makeSpawns(species, biomes) {
   });
   const bosses = require('../shared/data.js').fieldBosses.map(b => ({...makeSpawn(b.id,b.speciesId,b.x,b.z,true,b.level),boss:true,biomeId:b.biomeId,bossName:b.name}));
   const groups=regions.filter(b=>!b.safe&&!b.special).map(b=>{
-    const local=catalog.filter(c=>(b.habitats||[b.habitat]).includes(c.habitat));
+    const local=catalog.filter(c=>!c.eggOnly&&!c.evolutionOnly).filter(c=>(b.habitats||[b.habitat]).includes(c.habitat));
     const members=[0,1,2].map((n)=>({speciesId:local[(local.length-1+n)%local.length].id,level:b.levels[0]+n}));
     let point={x:b.center.x+36,z:b.center.z+24};if(pointBlocked(point,4))point={x:b.center.x-36,z:b.center.z-24};
     return {...makeSpawn('group-'+b.id,members[0].speciesId,point.x,point.z,true,members[0].level),biomeId:b.id,members,group:true};

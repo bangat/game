@@ -1,5 +1,6 @@
 'use strict';
 const Appearance = require('../shared/appearance.js');
+const Regions = require('../shared/regions.js');
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -69,11 +70,11 @@ function progressQuest(profile, type) {
 }
 
 function createRoom(id) {
-  return { id, players: new Map(), spawns: World.makeSpawns(Data.species, Data.biomes), resources: Data.resourceNodes.map(n => ({...n,respawnAt:0})), challenges: new Map(), battles: new Map(), lastBroadcastAt: 0, broadcastTimer: null };
+  return { id, players: new Map(), spawns: World.makeSpawns(Data.species, Data.biomes).map(Regions.spawnRecord), resources: Data.resourceNodes.map(n => ({...Regions.resourceRecord(n),respawnAt:0})), challenges: new Map(), battles: new Map(), lastBroadcastAt: 0, broadcastTimer: null };
 }
 
 function publicPlayer(player) {
-  return { uid: player.uid, nickname: player.nickname, x: player.x, z: player.z, character: player.character, appearance: player.profile.appearance, realm:player.realm||'',harvest:player.harvest||null, mount: player.mount || '', busy: Boolean(player.busy), stamina: Math.floor(player.stamina ?? 100), sprinting: !!player.sprinting };
+  return { uid: player.uid, nickname: player.nickname, x: player.x, z: player.z, character: player.character, appearance: player.profile.appearance, regionId:player.regionId||'safe',realm:player.realm||'',harvest:player.harvest||null, mount: player.mount || '', busy: Boolean(player.busy), stamina: Math.floor(player.stamina ?? 100), sprinting: !!player.sprinting };
 }
 
 function challengeList(room, uid) {
@@ -88,19 +89,20 @@ function makeState(room, player, now = nowMs()) {
   }
   const homeOwner=player.realm?room.players.get(player.realm):null,home=homeOwner?.profile.housing;
   return {
+    regionId:player.regionId||'safe',portals:player.realm?[]:Regions.portals(player.regionId||'safe'),
     realm:player.realm||'',home:homeOwner?{ownerUid:homeOwner.uid,name:homeOwner.nickname,...home}:null,
     neighbors:[...room.players.values()].filter(p=>p.connected&&p.profile.housing.plot).map(p=>({uid:p.uid,name:p.nickname})),
     type: 'state',
     you: player.uid,
-    players: [...room.players.values()].filter((item) => item.connected && (item.realm||'')===(player.realm||'')).map(publicPlayer),
-    spawns: player.realm?[]:room.spawns.map(World.publicSpawn),
-    resources: player.realm?[]:room.resources.map(n => ({...n,available:n.respawnAt<=now&&(!n.harvestBy||n.harvestUntil<now||n.harvestBy===player.uid)})),
+    players: [...room.players.values()].filter((item) => item.connected && (item.realm||'')===(player.realm||'') && (!!player.realm || item.regionId===player.regionId)).map(publicPlayer),
+    spawns: player.realm?[]:room.spawns.filter(n=>n.regionId===player.regionId).map(World.publicSpawn),
+    resources: player.realm?[]:room.resources.filter(n=>n.regionId===player.regionId).map(n => ({...n,available:n.respawnAt<=now&&(!n.harvestBy||n.harvestUntil<now||n.harvestBy===player.uid)})),
     profile: publicProfile(player.profile),
     battle,
     challenges: challengeList(room, player.uid),
     serverTime: now,
     safeRadius: World.SAFE_RADIUS,
-    locationName: player.realm?(homeOwner?.nickname||'탐험가')+'의 정원':locationName(player)
+    locationName: player.realm?(homeOwner?.nickname||'탐험가')+'의 정원':Regions.get(player.regionId).name
   };
 }
 
@@ -123,7 +125,7 @@ function createGameServer(options = {}) {
 
   app.disable('x-powered-by');
   app.get('/insect_expedition/api/health', (_req, res) => {
-    res.json({ ok: true, release: '2026.09.20.13', storage: process.env.INSECT_PROFILE_BUCKET ? 'cloud' : 'local', now: clock(), rooms: rooms.size, online: [...rooms.values()].reduce((sum, room) => sum + [...room.players.values()].filter((p) => p.connected).length, 0) });
+    res.json({ ok: true, release: '2026.09.20.14', storage: process.env.INSECT_PROFILE_BUCKET ? 'cloud' : 'local', now: clock(), rooms: rooms.size, online: [...rooms.values()].reduce((sum, room) => sum + [...room.players.values()].filter((p) => p.connected).length, 0) });
   });
   app.get('*path', (req, res, next) => {
     let requested;
@@ -268,13 +270,13 @@ function createGameServer(options = {}) {
     }
     const state = Battle.createBattle({ id, type, a: { uid: aPlayer.uid, name: aPlayer.nickname, team: selectedTeam(aPlayer.profile) }, b, now: clock() });
     state.boss = !!spawn?.boss;
-    state.biomeId = spawn?.biomeId || Data.biomes.reduce((best,b)=>World.distance(aPlayer,b.center)<World.distance(aPlayer,best.center)?b:best,Data.biomes[0]).id;
+    state.biomeId = aPlayer.regionId || spawn?.biomeId || Data.biomes.reduce((best,b)=>World.distance(aPlayer,b.center)<World.distance(aPlayer,best.center)?b:best,Data.biomes[0]).id;
     for(const side of ['a','b'])state.sides[side].auto=true;
     const record = { id, state, sides, spawn, nextAutoAt:clock()+1200, origins: new Map(), finishedAt: 0 };
     for (const uid of sides.keys()) {
       const player = room.players.get(uid);
       record.origins.set(uid, { x: player.x, z: player.z });
-      World.updateStamina(player, clock()); player.sprinting = false; player.moveActive = false;
+      World.updateStamina(player, clock()); player.moveActive = false;
       player.busy = true;
       player.battleId = id;
       player.profile.interruptedBattle = { roomId: room.id, battleId: id, at: clock() };
@@ -294,7 +296,7 @@ function createGameServer(options = {}) {
   async function execute(room, player, name, payload = {}) {
     if (player.battleId && !['action', 'return', 'auto-battle'].includes(name)) throw new Error('전투 결과에서 돌아가기를 눌러 탐험을 계속해 주세요.');
     if(player.harvest&&!['move','gather','gather-cancel'].includes(name))throw Error('자재 채집을 마치거나 취소한 뒤 이용해 주세요.');
-    if(player.realm&&!['move','home-travel','land-claim','house-place','house-remove','house-door','character','appearance','rename','feed','team','team-slot','dex-seen','dex-claim','incubate','hatch','research-claim','heal','fuse','evolve'].includes(name))throw Error('탐험지로 돌아간 뒤 이용해 주세요.');
+    if(player.realm&&!['move','home-travel','land-claim','house-place','house-remove','house-door','character','appearance','sell-resource','sell-materials','rename','feed','team','team-slot','dex-seen','dex-claim','incubate','hatch','research-claim','heal','fuse','evolve'].includes(name))throw Error('탐험지로 돌아간 뒤 이용해 주세요.');
     if(name==='home-travel'){
       rate(player,'home-travel',600);
       const destination=String(payload.destination||'home');
@@ -305,7 +307,7 @@ function createGameServer(options = {}) {
       }else{
         const camp=Data.constructionCamps.find(c=>c.id===destination);
         if(destination!=='field'&&!camp)throw Error('이동할 장소를 선택해 주세요.');
-        player.realm='';player.x=camp?camp.x-8:Data.startVillage.x;player.z=camp?camp.z-3:Data.startVillage.z;
+        player.realm='';player.regionId=camp?camp.id:'safe';const entrance=Regions.spawn(player.regionId);player.x=entrance.x;player.z=entrance.z;player.profile.regionId=player.regionId;player.profile.location={...entrance};player.profile=await store.save(player.profile);
       }
       player.moveActive=false;player.sprinting=false;player.mount='';player.lastMoveAt=clock();
       room.challenges.forEach((c,id)=>{if(c.from===player.uid||c.to===player.uid)room.challenges.delete(id);});
@@ -332,7 +334,7 @@ function createGameServer(options = {}) {
     if(name==='gather-start'){
       rate(player,'gather-start',400);
       const node=room.resources.find(n=>n.id===payload.nodeId);
-      if(!node||!Data.resources[node.kind]?.construction||node.respawnAt>clock()||(node.harvestBy&&node.harvestUntil>clock()))throw Error('지금은 채집할 수 없는 자재입니다.');
+      if(!node||node.regionId!==player.regionId||!Data.resources[node.kind]?.construction||node.respawnAt>clock()||(node.harvestBy&&node.harvestUntil>clock()))throw Error('지금은 채집할 수 없는 자재입니다.');
       if(World.distance(player,node)>4||World.segmentBlocked(player,node))throw Error('채집물 가까이 다가가 주세요.');
       player.harvest={nodeId:node.id,kind:node.kind,startedAt:clock(),finishAt:clock()+2400};player.moveActive=false;player.sprinting=false;player.mount='';
       node.harvestBy=player.uid;node.harvestUntil=clock()+15000;return {...player.harvest};
@@ -375,7 +377,7 @@ function createGameServer(options = {}) {
     if (name === 'gather') {
       rate(player, 'gather', 600);
       const node = room.resources.find(n => n.id === payload.nodeId);
-      if (!node || node.respawnAt > clock()) throw new Error('아직 다시 채집할 수 없어요. 다른 채집물을 찾아보세요.');
+      if (!node || node.regionId!==player.regionId || node.respawnAt > clock()) throw new Error('아직 다시 채집할 수 없어요. 다른 채집물을 찾아보세요.');
       if (World.distance(player,node)>4 || World.segmentBlocked(player,node)) throw new Error('채집물 가까이 다가가 주세요.');
       if (player.profile.resources[node.kind]>=9999) throw new Error('상점에서 재료를 판매한 뒤 채집해 주세요.');
       const building=Data.resources[node.kind].construction;
@@ -419,13 +421,20 @@ function createGameServer(options = {}) {
       player.profile = await store.save(next);
       return {itemId:item.id,creature:captured?.creature,isNew:captured?.isNew,message:captured ? Data.speciesById[item.speciesId].name+' 부화! 팀 편성에서 배치하세요.' : item.name+(item.mountId?' 구입 완료! 상점에서 탑승할 수 있어요.':item.deed?' 구입 완료! 가방에서 땅문서를 사용하세요.':' 구입 완료! 성장 메뉴에서 사용할 수 있어요.')};
     }
+    if(name==='sell-resource'){
+      rate(player,'manage',300);const kind=String(payload.kind),item=Data.resources[kind],owned=player.profile.resources[kind]||0,count=payload.count==='all'?owned:Number(payload.count);
+      if(!item||!item.sell||!Number.isSafeInteger(count)||count<1||count>owned)throw Error('판매할 재료와 수량을 확인해 주세요.');
+      const value=item.sell*count;if(player.profile.gold+value>999999)throw Error('골드를 사용한 뒤 판매해 주세요.');
+      const next={...player.profile,resources:{...player.profile.resources,[kind]:owned-count},gold:player.profile.gold+value};player.profile=await store.save(next);
+      return {gold:value,message:item.name+' '+count+'개 판매 · 골드 +'+value};
+    }
     if (name === 'sell-materials') {
       rate(player, 'shop', 400);
       const next = JSON.parse(JSON.stringify(player.profile));
-      const value = Object.entries(Data.resources).reduce((n,[id,item])=>n+next.resources[id]*item.sell,0);
+      const value = Object.entries(Data.resources).reduce((n,[id,item])=>n+(item.construction?0:next.resources[id]*item.sell),0);
       if (!value) throw new Error('팔 수 있는 채집 재료가 없어요.');
       if (next.gold+value>999999) throw new Error('골드를 사용한 뒤 재료를 판매해 주세요.');
-      next.gold += value; Object.keys(Data.resources).forEach(id=>{if(Data.resources[id].sell>0)next.resources[id]=0;});
+      next.gold += value; Object.keys(Data.resources).forEach(id=>{if(Data.resources[id].sell>0&&!Data.resources[id].construction)next.resources[id]=0;});
       player.profile = await store.save(next);
       return {gold:value,message:'채집 재료 판매 완료! 골드 +'+value};
     }
@@ -570,28 +579,25 @@ function createGameServer(options = {}) {
       player.profile=await store.save(next);
       return {creature:applied.creature,levels:applied.levels,used:count,message:'사료 '+count+'개 사용 · Lv.'+applied.creature.level+' · 경험치 +'+(84*count)};
     }
-    if (name === 'travel') {
-      rate(player, 'travel', 1200);
-      if (player.busy) throw new Error('전투 중에는 사냥터를 이동할 수 없습니다.');
-      const biome = Data.biomes.find((item) => item.id === String(payload.biomeId));
-      if (!biome) throw new Error('이동할 수 없는 지역입니다.');
-      const point = travelPoint(biome);
-      room.challenges.forEach((item, id) => { if (item.from === player.uid || item.to === player.uid) room.challenges.delete(id); });
-      player.lastMoveAt = clock();
-      player.x = point.x; player.z = point.z; player.profile.location = point;
-      player.profile = await store.save(player.profile);
-      return { biomeId: biome.id, location: point, message: `${biome.name}로 이동했어요.` };
+    if (name === 'portal' || name === 'travel') {
+      rate(player,'travel',900);
+      const portal=Regions.portals(player.regionId).find(p=>name==='portal'?p.id===payload.portalId:p.to===payload.biomeId);
+      if(!portal||World.distance(player,portal)>7)throw Error('빛나는 포탈 가까이에서 입장해 주세요. 지도에서 포탈까지 안내받을 수 있어요.');
+      const point=Regions.spawn(portal.to),next={...player.profile,regionId:portal.to,location:{...point}};
+      player.profile=await store.save(next);player.regionId=portal.to;player.x=point.x;player.z=point.z;player.lastMoveAt=clock();player.moveActive=false;
+      room.challenges.forEach((item,id)=>{if(item.from===player.uid||item.to===player.uid)room.challenges.delete(id);});
+      return {regionId:portal.to,message:Regions.get(portal.to).name+'에 도착했어요.'};
     }
     if (name === 'encounter' || name === 'collect') {
       rate(player, 'interact', 800);
       if (player.busy || !selectedTeam(player.profile).length) throw new Error('전투 가능한 팀이 필요합니다.');
       const spawn = room.spawns.find((item) => item.id === String(payload.spawnId));
-      if (!spawn || !spawn.available || spawn.reservedBy) throw new Error('이미 다른 탐험대가 상대 중이거나 사라진 몬스터입니다.');
+      if (!spawn || spawn.regionId!==player.regionId || !spawn.available || spawn.reservedBy) throw new Error('이미 다른 탐험대가 상대 중이거나 사라진 몬스터입니다.');
       if (World.distance(player, spawn) > 7 || World.segmentBlocked(player, spawn)) throw new Error('몬스터까지 안전한 접근 경로가 없습니다.');
       if(spawn.id==='boss-sanctum'&&(player.profile.expedition.bosses.filter(id=>id!=='boss-sanctum').length<4||player.profile.expedition.hatched<2))throw Error('지역 보스 4종 연구와 동굴 알 부화 2회를 마치면 도전할 수 있어요.');
       spawn.reservedBy = player.uid;
       const gap = Math.max(0.001, World.distance(player, spawn));
-      const approach = { x: spawn.x + (player.x - spawn.x) * 3 / gap, z: spawn.z + (player.z - spawn.z) * 3 / gap };
+      const approach = { regionId:player.regionId, x: spawn.x + (player.x - spawn.x) * 3 / gap, z: spawn.z + (player.z - spawn.z) * 3 / gap };
       if (!World.pointBlocked(approach)) { player.x = approach.x; player.z = approach.z; }
       try { return { battleId: (await createBattleRecord(room, 'field', player, spawn)).id }; }
       catch (error) { releaseSpawn(room, spawn, false); throw error; }
@@ -600,7 +606,7 @@ function createGameServer(options = {}) {
       rate(player, 'challenge', 5000);
       const target = room.players.get(String(payload.targetUid));
       if (!target || !target.connected || target.uid === player.uid) throw new Error('대전 상대를 찾을 수 없습니다.');
-      if (player.realm || target.realm || player.busy || target.busy || target.battleId || World.inSafeZone(player) || World.inSafeZone(target)) throw new Error('현재 위치에서는 대전을 신청할 수 없습니다.');
+      if (player.realm || target.realm || player.regionId!==target.regionId || player.busy || target.busy || target.battleId || World.inSafeZone(player) || World.inSafeZone(target)) throw new Error('현재 위치에서는 대전을 신청할 수 없습니다.');
       if (World.distance(player,target)>10 || World.segmentBlocked(player,target)) throw new Error('상대 탐험가 10m 이내로 다가가 주세요.');
       if (!selectedTeam(player.profile).length || !selectedTeam(target.profile).length) throw new Error('양쪽 모두 전투 가능한 팀이 필요합니다.');
       const item = { id: crypto.randomUUID(), from: player.uid, to: target.uid, createdAt: clock(), expiresAt: clock() + 15000 };
@@ -613,7 +619,7 @@ function createGameServer(options = {}) {
       room.challenges.delete(item.id);
       if (!payload.accept) return { accepted: false };
       const challenger = room.players.get(item.from);
-      if (player.realm || challenger?.realm || !challenger || !challenger.connected || challenger.busy || challenger.battleId || player.busy || World.inSafeZone(challenger) || World.inSafeZone(player)) throw new Error('대전을 시작할 수 없는 상태입니다.');
+      if (player.realm || challenger?.realm || player.regionId!==challenger?.regionId || !challenger || !challenger.connected || challenger.busy || challenger.battleId || player.busy || World.inSafeZone(challenger) || World.inSafeZone(player)) throw new Error('대전을 시작할 수 없는 상태입니다.');
       if (World.distance(player,challenger)>10 || World.segmentBlocked(player,challenger)) throw new Error('상대가 멀어졌어요. 가까이에서 다시 신청해 주세요.');
       return { accepted: true, battleId: (await createBattleRecord(room, 'pvp', challenger, player)).id };
     }
@@ -626,7 +632,7 @@ function createGameServer(options = {}) {
       if (action.type === 'capture' && player.profile.collection.length >= 120) throw new Error('곤충 보관함이 가득 찼습니다.');
       const outcome = Battle.submitAction(record.state, side, action, { now: clock(), rng });
       record.state = outcome.state;
-      if(outcome.resolved)record.nextAutoAt=clock()+4200;
+      if(outcome.resolved)record.nextAutoAt=clock()+3500;
       if (record.state.status !== 'active') { record.finishedAt = clock(); await completeBattle(room, record); }
       return { resolved: outcome.resolved, events: outcome.events, result: outcome.result };
     }
@@ -676,13 +682,14 @@ function createGameServer(options = {}) {
             Object.assign(profile, Battle.healProfile(profile), { interruptedBattle: null });
             await store.save(profile);
           }
-          const location = existing ? { x: existing.x, z: existing.z } : { ...Data.startVillage };
+          const regionId=existing?.regionId||profile.regionId||'safe';
+          const location = existing ? { x: existing.x, z: existing.z } : {...profile.location};
           profile.location = { ...location };
           player = existing || { uid: joined.uid, rates: new Map(), commands: new Map(), inflight: new Map(), busy: false, battleId: null, stamina: 100, staminaAt: clock(), sprinting: false, moveActive: false };
           player.inflight ||= new Map();
           const character = Data.characters.some((item) => item.id === profile.characterId) ? profile.characterId : Data.characters[0].id;
           profile.characterId = character;
-          Object.assign(player, { ws, connected: true, nickname: profile.adventurerName || joined.nickname, profile, character, mount:profile.mounts.equipped, x: location.x, z: location.z, disconnectedAt: 0 });
+          Object.assign(player, { ws, connected: true, regionId, nickname: profile.adventurerName || joined.nickname, profile, character, mount:profile.mounts.equipped, x: location.x, z: location.z, disconnectedAt: 0 });
           room.players.set(player.uid, player);
           sessions.set(player.uid, { room, player });
           clearTimeout(joinTimer);
@@ -749,7 +756,7 @@ function createGameServer(options = {}) {
           for (const side of ['a', 'b']) if (!record.state.sides[side].pending) record.state.sides[side].pending = Battle.autoAction(record.state, side, rng);
           const outcome = Battle.resolveTurn(record.state, { now, rng });
           record.state = outcome.state;
-          record.nextAutoAt=now+4200;
+          record.nextAutoAt=now+3500;
           if (record.state.status !== 'active') { record.finishedAt = now; await completeBattle(room, record); }
         } catch { record.state.status = 'finished'; record.state.result = { winner: null, reason: 'invalid' }; await completeBattle(room, record); }
       }

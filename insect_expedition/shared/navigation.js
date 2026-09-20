@@ -4,8 +4,11 @@
   root.InsectNavigation = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (Data) {
   'use strict';
+  let activeRegion=null;
+  const Regions=typeof module==='object'&&module.exports?require('./regions.js'):globalThis.InsectRegions;
   const distance = (a,b) => Math.hypot(a.x-b.x,a.z-b.z);
   function blocked(p) {
+    if(activeRegion&&Regions)return Regions.blocked(activeRegion,p,1.6);
     return Math.abs(p.x)>Data.world.maxX-2 || Math.abs(p.z)>Data.world.maxZ-2 || Data.obstacles.some(o=>o.type==='circle'
       ? distance(p,o)<o.radius+1.6 : Math.abs(p.x-o.x)<o.width/2+1.6 && Math.abs(p.z-o.z)<o.depth/2+1.6);
   }
@@ -14,7 +17,8 @@
     for(let i=1;i<=steps;i++) if(blocked({x:a.x+(b.x-a.x)*i/steps,z:a.z+(b.z-a.z)*i/steps}))return false;
     return true;
   }
-  function destination(id) {
+  function destination(id,regionId) {
+    if(regionId&&Regions){const boss=Data.fieldBosses.find(b=>b.id===id);if(boss&&boss.biomeId===regionId)return {...Regions.localize(boss,regionId),name:boss.name};const target=boss?.biomeId||id;const gates=Regions.portals(regionId),gate=gates.find(p=>p.id===target||p.to===target)||gates.find(p=>p.to==='safe');return gate?{...gate,name:gate.name+' 포탈'}:null;}
     const boss=Data.fieldBosses.find(b=>b.id===id);
     if(boss)return {id,name:boss.name,x:boss.x,z:boss.z};
     const biome=Data.biomes.find(b=>b.id===id);
@@ -54,5 +58,5 @@
     while(index<points.length){let furthest=index;while(furthest+1<points.length&&clear(current,points[furthest+1]))furthest++;result.push(points[furthest]);current=points[furthest];index=furthest+1;}
     return result;
   }
-  return {distance,blocked,clear,destination,route};
+  return {distance,blocked,clear,destination,route,setRegion:id=>{activeRegion=id;}};
 });

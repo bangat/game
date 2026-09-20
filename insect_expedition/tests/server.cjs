@@ -11,6 +11,7 @@ const { createStore, migrateProfile } = require('../server/data-store.cjs');
 const { authorizeJoin } = require('../server/auth.cjs');
 const { createGameServer } = require('../server/index.cjs');
 const World = require('../server/world.cjs');
+const Regions = require('../shared/regions.js');
 
 function tempDb() {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'insect-server-'));
@@ -48,10 +49,11 @@ function openClient(url) {
 
 test('프로필 구버전 자료를 제한된 최신 스키마로 이관하고 원자 저장한다', () => {
   const migrated = migrateProfile({ collection: [{ id: 'c1', speciesId: 'dew_ladybird', level: 999, xp: -3 }], team: ['c1', 'c1'], location: { x: 999, z: -999 } }, 'u1', '테스터', ['dew_ladybird']);
-  assert.equal(migrated.version, 8);
+  assert.equal(migrated.version, 9);
   assert.equal(migrated.collection[0].level, 50);
   assert.deepEqual(migrated.team, ['c1']);
-  assert.deepEqual(migrated.location, { x: 240, z: -240 });
+  assert.equal(migrated.regionId,'safe');
+  assert.deepEqual(migrated.location, { x: 7, z: 14 });
   const dbPath = tempDb();
   const store = createStore({ dbPath, starterIds: ['dew_ladybird'] });
   const profile = store.get('u1', '테스터');
@@ -59,7 +61,7 @@ test('프로필 구버전 자료를 제한된 최신 스키마로 이관하고 �
   store.save(profile);
   assert.equal(JSON.parse(fs.readFileSync(dbPath, 'utf8')).profiles.u1.nickname, '저장됨');
   assert.equal(fs.readdirSync(path.dirname(dbPath)).filter((name) => name.endsWith('.tmp')).length, 0);
-  const zero = migrateProfile({ supplies: { heals: 0 }, location: { x: 0, z: 0 } }, 'zero', '영', ['dew_ladybird']);
+  const zero = migrateProfile({ supplies: { heals: 0 }, regionId:'grassland', location: { x: 0, z: 0 } }, 'zero', '영', ['dew_ladybird']);
   assert.equal(zero.supplies.heals, 0);
   assert.deepEqual(zero.location, { x: 0, z: 0 });
   const intentionalEmpty = migrateProfile({ collection: [{ id: 'kept', speciesId: 'dew_ladybird' }], team: [] }, 'empty', '빈 팀', ['dew_ladybird']);
@@ -88,8 +90,8 @@ test('방 종류, 상태, 멤버십을 모두 검증한다', async () => {
 test('모든 종을 실제 서식지에 장애물과 겹치지 않게 배치한다', () => {
   const spawns = World.makeSpawns(Data.species, Data.biomes);
   const habitatSpawns = spawns.filter((spawn) => spawn.id.startsWith('habitat-'));
-  assert.equal(habitatSpawns.length, Data.species.filter(s=>!s.eggOnly).length * 3);
-  for (const species of Data.species.filter(s=>!s.eggOnly)) {
+  assert.equal(habitatSpawns.length, Data.species.filter(s=>!s.eggOnly&&!s.evolutionOnly).length * 3);
+  for (const species of Data.species.filter(s=>!s.eggOnly&&!s.evolutionOnly)) {
     const spawn = habitatSpawns.find((item) => item.speciesId === species.id);
     const biome = Data.biomes.find((item) => (item.habitats || [item.habitat]).includes(species.habitat));
     assert.ok(spawn && biome, `${species.id} 서식지 누락`);
@@ -135,6 +137,7 @@ test('두 WebSocket 클라이언트의 권위 명령, 중복 제거, PvP와 재�
   assert.equal((await a.next((m) => m.type === 'ack' && m.id === 'feed-creature')).ok, true);
   assert.equal(room.players.get('a').profile.supplies.feeds, 2);
   assert.ok(room.players.get('a').profile.collection.find((item) => item.id === fedId).xp > oldXp);
+  const gate=Regions.portals('safe').find(p=>p.to==='forest');room.players.get('a').x=gate.x;room.players.get('a').z=gate.z;
   a.send({ type: 'command', id: 'travel-map', name: 'travel', payload: { biomeId: 'forest' } });
   const travel = await a.next((m) => m.type === 'ack' && m.id === 'travel-map');
   assert.equal(travel.ok, true, travel.error);
@@ -154,6 +157,7 @@ test('두 WebSocket 클라이언트의 권위 명령, 중복 제거, PvP와 재�
   await new Promise((resolve) => setTimeout(resolve, 30));
   assert.equal(room.players.get('a').profile.supplies.heals, 3);
   const ordinary = room.spawns.find((spawn) => !spawn.field);
+  room.players.get('a').regionId=ordinary.regionId;
   room.players.get('a').x = ordinary.x + 2; room.players.get('a').z = ordinary.z;
   a.send({ type: 'command', id: 'collect-battle', name: 'collect', payload: { spawnId: ordinary.id } });
   const collectBattle=await a.next(m=>m.type==='ack'&&m.id==='collect-battle');
@@ -163,13 +167,14 @@ test('두 WebSocket 클라이언트의 권위 명령, 중복 제거, PvP와 재�
   a.send({type:'command',id:'collect-return',name:'return',payload:{}});
   assert.equal((await a.next(m=>m.type==='ack'&&m.id==='collect-return')).ok,true);
   const field = room.spawns.find((spawn) => spawn.field);
+  room.players.get('a').regionId=field.regionId;
   room.players.get('a').x = field.x + 3; room.players.get('a').z = field.z;
   await new Promise((resolve) => setTimeout(resolve, 825));
   a.send({ type: 'command', id: 'encounter', name: 'encounter', payload: { spawnId: field.id } });
   const encounter = await a.next((m) => m.type === 'ack' && m.id === 'encounter');
   assert.equal(encounter.ok, true, encounter.error);
   const fieldRecord = room.battles.get(encounter.result.battleId);
-  room.players.get('c').x = field.x + 3; room.players.get('c').z = field.z;
+  room.players.get('c').regionId=field.regionId;room.players.get('c').x = field.x + 3; room.players.get('c').z = field.z;
   third.send({ type: 'command', id: 'reserved-field', name: 'encounter', payload: { spawnId: field.id } });
   assert.equal((await third.next((m) => m.type === 'ack' && m.id === 'reserved-field')).ok, false);
   third.send({ type: 'command', id: 'foreign-action', name: 'action', payload: { battleId: fieldRecord.id, turn: 1, action: 'attack' } });
@@ -190,6 +195,7 @@ test('두 WebSocket 클라이언트의 권위 명령, 중복 제거, PvP와 재�
   a.send({ type: 'command', id: 'return-field', name: 'return', payload: { battleId: fieldRecord.id } });
   assert.equal((await a.next((m) => m.type === 'ack' && m.id === 'return-field')).ok, true);
   room.players.get('a').x = -30; room.players.get('a').z = 0;
+  room.players.get('b').regionId=room.players.get('a').regionId;
   room.players.get('b').x = -35; room.players.get('b').z = 0;
   a.send({ type: 'command', id: 'decline-request', name: 'challenge', payload: { targetUid: 'b' } });
   const declineRequest = await a.next((m) => m.type === 'ack' && m.id === 'decline-request');

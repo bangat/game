@@ -295,7 +295,7 @@ function healProfile(profile) {
 function evolveCreature(creature) {
   const source = Data.speciesById[creature.speciesId];
   if (!source || !source.evolvesTo) throw new Error('진화할 수 없는 곤충입니다.');
-  if ((Number(creature.level) || 1) < 5) throw new Error('진화하려면 5레벨이 필요합니다.');
+  if ((Number(creature.level) || 1) < (source.evolutionLevel||5)) throw new Error('진화하려면 '+(source.evolutionLevel||5)+'레벨이 필요합니다.');
   const next = { ...creature, speciesId: source.evolvesTo, nickname: Data.speciesById[source.evolvesTo].name };
   next.hp = statsForCreature(next).maxHealth;
   return next;

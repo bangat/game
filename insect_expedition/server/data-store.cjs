@@ -8,7 +8,8 @@ const Data = require('../shared/data.js');
 const Battle = require('../shared/battle.cjs');
 const H=require('../shared/housing.js');
 const Appearance=require('../shared/appearance.js');
-const SCHEMA_VERSION = 8;
+const Regions=require('../shared/regions.js');
+const SCHEMA_VERSION = 9;
 const VALID_SPECIES = new Set(Data.species.map((item) => item.id));
 
 function clone(value) {
@@ -45,6 +46,7 @@ function createProfile(uid, nickname, starterIds = []) {
     characterId: 'original',
     adventurerName: '',
     characterCreated: false,
+    regionId:'safe',
     appearance: Appearance.normalize(),
     lastSeenAt: Date.now(),
     collection,
@@ -83,12 +85,16 @@ function migrateProfile(input, uid, nickname, starterIds) {
   const ids = new Set(collection.map((item) => item.id));
   const questDefinition = Data.quests.find(q => q.id === old.quest?.id) || Data.quests[0];
   const team = (Array.isArray(old.team) ? old.team : []).filter((id, i, all) => ids.has(id) && all.indexOf(id) === i).slice(0, 3);
+  const regionId=Data.biomes.some(b=>b.id===old.regionId)?old.regionId:'safe';
+  let location=Regions.spawn(regionId);
+  if(old.regionId===regionId){const p={x:finiteNumber(old.location?.x,location.x),z:finiteNumber(old.location?.z,location.z)};if(!Regions.blocked(regionId,p))location=p;}
   return {
     ...base,
     nickname: boundedText(old.nickname || nickname, base.nickname),
     adventurerName: /^[가-힣]{1,6}$/.test(old.adventurerName || '') ? old.adventurerName : '',
     characterCreated: old.characterCreated === true || /^[가-힣]{1,6}$/.test(old.adventurerName || ''),
     appearance: Appearance.normalize(old.appearance, old.characterId || old.character),
+    regionId,
     lastSeenAt: Math.max(0, Number(old.lastSeenAt) || Date.now()),
     characterId: boundedText(old.characterId || old.character, base.characterId, 40),
     collection: normalizedCollection,
@@ -127,10 +133,7 @@ function migrateProfile(input, uid, nickname, starterIds) {
       target: questDefinition.target,
       completed: Math.max(0, Math.floor(finiteNumber(old.quest && old.quest.completed, 0)))
     },
-    location: {
-      x: Math.max(Data.world.minX, Math.min(Data.world.maxX, finiteNumber(old.location && old.location.x, base.location.x))),
-      z: Math.max(Data.world.minX, Math.min(Data.world.maxX, finiteNumber(old.location && old.location.z, base.location.z)))
-    },
+    location,
     processedRewards: (Array.isArray(old.processedRewards) ? old.processedRewards : []).filter((id) => typeof id === 'string').slice(-100),
     interruptedBattle: old.interruptedBattle && typeof old.interruptedBattle === 'object' ? old.interruptedBattle : null,
     version: SCHEMA_VERSION,
