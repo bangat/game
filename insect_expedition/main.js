@@ -27,7 +27,7 @@
   function request(name, payload) {
     if (name === 'navigate') { if(snapshot?.battle)return Promise.reject(new Error('전투를 마친 뒤 길 안내를 시작해 주세요.')); const target=(snapshot?.ecology?.sites||[]).find(s=>s.id===payload.id)||(snapshot?.ecology?.event?.id===payload.id?snapshot.ecology.event:null)||(snapshot?.resources||[]).find(n=>n.id===payload.id)||InsectNavigation.destination(payload.id,snapshot?.regionId); if(!target)return Promise.reject(new Error('목적지를 찾지 못했어요.')); world.setNavigation(target); return Promise.resolve({message:target.name+' 길 안내를 시작합니다. 화살표를 따라 이동하세요.'}); }
     if (name === 'exit') return leave();
-    if (name === 'sound') return Promise.resolve({message: InsectAudio.toggle() ? '효과음을 켰습니다.' : '효과음을 껐습니다.'});
+    if (name === 'sound') return Promise.resolve({message: InsectAudio.toggle() ? '음악과 효과음을 켰습니다.' : '음악과 효과음을 껐습니다.'});
     if (animating && (name === 'action' || name === 'return')) return Promise.reject(new Error('전투 연출이 끝나면 다음 행동을 선택해 주세요.'));
     if (!connected || !socket || socket.readyState !== WebSocket.OPEN) return Promise.reject(new Error('서버에 다시 연결한 뒤 시도해 주세요.'));
     const id = (window.crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + '-' + (++sequence));
@@ -38,7 +38,7 @@
     });
   }
   async function leave() {
-    InsectAudio.setBattle(false);
+    InsectAudio.setChase(false);InsectAudio.setBattle(false);
     stopped = true; clearTimeout(retryTimer);
     if (socket) socket.close();
     window.top.location.href = new URL('../대기실.html', location.href).href;
@@ -50,7 +50,7 @@
       const token = await user.getIdToken();
       const configured = window.InsectConfig && InsectConfig.socketUrl;
       socket = new WebSocket(configured || `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/insect_expedition/ws`);
-      socket.onopen = () => socket.send(JSON.stringify({ type: 'join', token, roomId }));
+      socket.onopen = () => socket.send(JSON.stringify({ type: 'join', token, roomId, features:{zombies:true} }));
       socket.onmessage = event => {
         let value; try { value = JSON.parse(event.data); } catch (_) { return; }
         if (value.type === 'ack') {
@@ -69,7 +69,7 @@
         } else if (value.type === 'state') {
           const previous = snapshot;
           if(previous&&(previous.regionId!==value.regionId||previous.realm!==value.realm)){moveIntent={x:0,z:0};world.setNavigation(null);}
-          snapshot = value; connection('연결됨', true); app.ready = true;
+          snapshot = value;InsectAudio.setChase(!value.battle && (value.zombies||[]).some(z=>z.available&&z.mode==='chase'&&z.targetUid===value.you));window.InsectZombieUI?.setState(value); connection('연결됨', true); app.ready = true;
           if (!previous && value.profile && value.profile.characterId) {
             selectedCharacter = InsectCharacters.select(value.profile.characterId).id;
             world.setCharacter(selectedCharacter,value.profile.appearance);
@@ -107,7 +107,7 @@
         }
       };
       socket.onclose = () => {
-        InsectAudio.setBattle(false);
+        InsectAudio.setChase(false);InsectAudio.setBattle(false);
         connection('연결이 끊겼습니다. 기록을 보존하고 다시 연결합니다…', false);
         for (const request of pending.values()) { clearTimeout(request.timer); request.reject(new Error('연결이 끊겼습니다. 서버 기록을 복원합니다.')); }
         pending.clear();

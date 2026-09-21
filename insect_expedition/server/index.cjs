@@ -13,6 +13,7 @@ const Data = require('../shared/data.js');
 const Battle = require('../shared/battle.cjs');
 const Expedition = require('./expedition.cjs');
 const Trials=require('./trials.cjs');
+const Zombies=require('./zombies.cjs');
 const H=require('../shared/housing.js'),Housing=require('./housing.cjs');
 const { createStore } = require('./data-store.cjs');
 const { createCloudStore } = require('./cloud-store.cjs');
@@ -73,7 +74,7 @@ function progressQuest(profile, type) {
 }
 
 function createRoom(id) {
-  return { id, players: new Map(), spawns: EcologyServer.spawns(World.makeSpawns(Data.species, Data.biomes).map(Regions.spawnRecord)), resources: [...Data.resourceNodes.map(n => ({...Regions.resourceRecord(n),respawnAt:0})),...Data.biomes.flatMap(b=>Ecology.nodes(b.id)).filter(n=>!Regions.blocked(n.regionId,n,2))], challenges: new Map(), battles: new Map(), lastBroadcastAt: 0, broadcastTimer: null };
+  return { id, players: new Map(), zombies:Zombies.create(), spawns: EcologyServer.spawns(World.makeSpawns(Data.species, Data.biomes).map(Regions.spawnRecord)), resources: [...Data.resourceNodes.map(n => ({...Regions.resourceRecord(n),respawnAt:0})),...Data.biomes.flatMap(b=>Ecology.nodes(b.id)).filter(n=>!Regions.blocked(n.regionId,n,2))], challenges: new Map(), battles: new Map(), lastBroadcastAt: 0, broadcastTimer: null };
 }
 
 function publicPlayer(player) {
@@ -92,6 +93,7 @@ function makeState(room, player, now = nowMs()) {
   }
   const homeOwner=player.realm?room.players.get(player.realm):null,home=homeOwner?.profile.housing;
   return {
+    zombies:Zombies.publicState(room,player),
     ecology:player.realm?null:EcologyServer.state(player,room,now),
     regionId:player.regionId||'safe',portals:[],
     worldId:room.id,worldName:room.id===PUBLIC_ROOM_ID?'이슬숲 공용 탐험':'이슬숲 탐험',
@@ -132,7 +134,7 @@ function createGameServer(options = {}) {
 
   app.disable('x-powered-by');
   app.get('/insect_expedition/api/health', (_req, res) => {
-    res.json({ ok: true, release: '2026.09.20.16', storage: process.env.INSECT_PROFILE_BUCKET ? 'cloud' : 'local', now: clock(), rooms: rooms.size, online: [...rooms.values()].reduce((sum, room) => sum + [...room.players.values()].filter((p) => p.connected).length, 0) });
+    res.json({ ok: true, release: '2026.09.21.1', storage: process.env.INSECT_PROFILE_BUCKET ? 'cloud' : 'local', now: clock(), rooms: rooms.size, online: [...rooms.values()].reduce((sum, room) => sum + [...room.players.values()].filter((p) => p.connected).length, 0) });
   });
   app.get('*path', (req, res, next) => {
     let requested;
@@ -209,7 +211,15 @@ function createGameServer(options = {}) {
       if (!nextProfile.processedRewards.includes(record.state.id)) {
         nextProfile.processedRewards.push(record.state.id);
         nextProfile.processedRewards = nextProfile.processedRewards.slice(-100);
-        if(record.state.trial){
+        if(record.state.zombie){
+          if(result.winner===sideKey&&result.reason==='defeat'){result.gold=Math.min(12,999999-nextProfile.gold);nextProfile.gold+=result.gold;}
+          if(result.winner&&result.winner!==sideKey&&['defeat','disconnect'].includes(result.reason)){
+            record.state.zombieDefeatedAt ||= clock();
+            nextProfile.movementLockedUntil=record.state.zombieDefeatedAt+Zombies.LOCK_MS;
+            result.movementLockedUntil=nextProfile.movementLockedUntil;
+          }
+          nextProfile.zombieGraceUntil=Math.max(nextProfile.zombieGraceUntil||0,nextProfile.movementLockedUntil||0,clock())+8000;
+        }else if(record.state.trial){
           if(result.winner===sideKey&&result.reason==='defeat')Trials.award(nextProfile,record.state.trial.stage,result);
         }else if (record.state.type === 'field') {
           result.xpPerCreature = 0; result.totalXp = 0; result.levelUps = []; result.captureSummary = null; result.feeds = 0; result.gold = 0;
@@ -262,7 +272,8 @@ function createGameServer(options = {}) {
       player.busy = false;
     }
     result.recovered = true;
-    if (record.spawn) releaseSpawn(room, record.spawn, result.winner === 'a' && result.reason === 'defeat');
+    if(record.spawn?.zombie)Zombies.release(record.spawn,clock(),result.winner==='a');
+    else if (record.spawn) releaseSpawn(room, record.spawn, result.winner === 'a' && result.reason === 'defeat');
     record.state.rewardProcessed = true;
   }
 
@@ -280,8 +291,11 @@ function createGameServer(options = {}) {
       b = { uid: opponent.uid, name: opponent.nickname, team: selectedTeam(opponent.profile) };
       sides.set(opponent.uid, 'b');
     }
-    const state = Battle.createBattle({ id, type, a: { uid: aPlayer.uid, name: aPlayer.nickname, team: selectedTeam(aPlayer.profile) }, b, now: clock() });
+    const combatTeam=selectedTeam(aPlayer.profile);
+    if(spawn?.zombie&&!combatTeam.length)combatTeam.push(...aPlayer.profile.collection.filter(c=>c.hp==null||c.hp>0).slice(0,3));
+    const state = Battle.createBattle({ id, type, a: { uid: aPlayer.uid, name: aPlayer.nickname, team: combatTeam }, b, now: clock() });
     state.boss = !!spawn?.boss;
+    state.zombie=!!spawn?.zombie;
     if(spawn?.trial)Trials.prepare(state,spawn.trial);
     state.biomeId = aPlayer.regionId || spawn?.biomeId || Data.biomes.reduce((best,b)=>World.distance(aPlayer,b.center)<World.distance(aPlayer,best.center)?b:best,Data.biomes[0]).id;
     for(const side of ['a','b'])state.sides[side].auto=true;
@@ -290,7 +304,7 @@ function createGameServer(options = {}) {
       const player = room.players.get(uid);
       record.origins.set(uid, { x: player.x, z: player.z });
       World.updateStamina(player, clock()); player.moveActive = false;
-      const nextProfile=await store.save({...player.profile,interruptedBattle:{roomId:room.id,battleId:id,at:clock()}});
+      const nextProfile=await store.save({...player.profile,interruptedBattle:{roomId:room.id,battleId:id,at:clock(),zombie:!!state.zombie}});
       player.busy=true;player.battleId=id;player.profile=nextProfile;
     }
     room.battles.set(id, record);
@@ -305,6 +319,10 @@ function createGameServer(options = {}) {
   }
 
   async function execute(room, player, name, payload = {}) {
+    if((player.profile.movementLockedUntil||0)>clock()){
+      if(name==='move'){player.moveActive=false;player.lastMoveAt=clock();return {x:player.x,z:player.z,changed:false};}
+      if(['travel','portal','home-travel','encounter','collect','trial-start','challenge','respond','land-claim'].includes(name))throw Error('좀비 패배 후 회복 중입니다. '+Math.ceil((player.profile.movementLockedUntil-clock())/1000)+'초 뒤 이동할 수 있어요.');
+    }
     if (player.battleId && !['action', 'return', 'auto-battle'].includes(name)) throw new Error('전투 결과에서 돌아가기를 눌러 탐험을 계속해 주세요.');
     if(player.harvest&&!['move','gather','gather-cancel'].includes(name))throw Error('자재 채집을 마치거나 취소한 뒤 이용해 주세요.');
     if(player.realm&&!['move','travel','home-travel','land-claim','house-place','house-remove','house-door','character','appearance','sell-resource','sell-materials','rename','feed','team','team-slot','dex-seen','dex-claim','incubate','hatch','research-claim','heal','fuse','evolve'].includes(name))throw Error('탐험지로 돌아간 뒤 이용해 주세요.');
@@ -635,7 +653,7 @@ function createGameServer(options = {}) {
       rate(player, 'challenge', 5000);
       const target = room.players.get(String(payload.targetUid));
       if (!target || !target.connected || target.uid === player.uid) throw new Error('대전 상대를 찾을 수 없습니다.');
-      if (player.realm || target.realm || player.regionId!==target.regionId || player.busy || target.busy || target.battleId || World.inSafeZone(player) || World.inSafeZone(target)) throw new Error('현재 위치에서는 대전을 신청할 수 없습니다.');
+      if ((target.profile.movementLockedUntil||0)>clock() || player.realm || target.realm || player.regionId!==target.regionId || player.busy || target.busy || target.battleId || World.inSafeZone(player) || World.inSafeZone(target)) throw new Error('현재 위치에서는 대전을 신청할 수 없습니다.');
       if (World.distance(player,target)>10 || World.segmentBlocked(player,target)) throw new Error('상대 탐험가 10m 이내로 다가가 주세요.');
       if (!selectedTeam(player.profile).length || !selectedTeam(target.profile).length) throw new Error('양쪽 모두 전투 가능한 팀이 필요합니다.');
       const item = { id: crypto.randomUUID(), from: player.uid, to: target.uid, createdAt: clock(), expiresAt: clock() + 15000 };
@@ -648,7 +666,7 @@ function createGameServer(options = {}) {
       room.challenges.delete(item.id);
       if (!payload.accept) return { accepted: false };
       const challenger = room.players.get(item.from);
-      if (player.realm || challenger?.realm || player.regionId!==challenger?.regionId || !challenger || !challenger.connected || challenger.busy || challenger.battleId || player.busy || World.inSafeZone(challenger) || World.inSafeZone(player)) throw new Error('대전을 시작할 수 없는 상태입니다.');
+      if ((challenger?.profile.movementLockedUntil||0)>clock() || player.realm || challenger?.realm || player.regionId!==challenger?.regionId || !challenger || !challenger.connected || challenger.busy || challenger.battleId || player.busy || World.inSafeZone(challenger) || World.inSafeZone(player)) throw new Error('대전을 시작할 수 없는 상태입니다.');
       if (World.distance(player,challenger)>10 || World.segmentBlocked(player,challenger)) throw new Error('상대가 멀어졌어요. 가까이에서 다시 신청해 주세요.');
       return { accepted: true, battleId: (await createBattleRecord(room, 'pvp', challenger, player)).id };
     }
@@ -710,6 +728,7 @@ function createGameServer(options = {}) {
           if (existing && existing.connected && existing.ws !== ws) existing.ws.close(4002, 'reconnected');
           const profile = existing ? existing.profile : await store.get(joined.uid, joined.nickname);
           if (!existing && profile.interruptedBattle) {
+            if(profile.interruptedBattle.zombie){profile.movementLockedUntil=Math.max(profile.movementLockedUntil||0,clock()+Zombies.LOCK_MS);profile.zombieGraceUntil=profile.movementLockedUntil+8000;}
             Object.assign(profile, Battle.healProfile(profile), { interruptedBattle: null });
             await store.save(profile);
           }
@@ -720,7 +739,7 @@ function createGameServer(options = {}) {
           player.inflight ||= new Map();
           const character = Data.characters.some((item) => item.id === profile.characterId) ? profile.characterId : Data.characters[0].id;
           profile.characterId = character;
-          Object.assign(player, { ws, connected: true, regionId, nickname: profile.adventurerName || joined.nickname, profile, character, mount:profile.mounts.equipped, x: location.x, z: location.z, disconnectedAt: 0 });
+          Object.assign(player, { ws, connected: true, zombieClient:message.features?.zombies===true, regionId, nickname: profile.adventurerName || joined.nickname, profile, character, mount:profile.mounts.equipped, x: location.x, z: location.z, disconnectedAt: 0 });
           room.players.set(player.uid, player);
           sessions.set(player.uid, { room, player });
           clearTimeout(joinTimer);
@@ -764,6 +783,14 @@ function createGameServer(options = {}) {
     }).catch(() => { /* Original cloud record is preserved on save failure. */ }); });
   });
 
+  let zombieTicking=false;
+  intervals.push(setInterval(()=>{
+    if(zombieTicking)return;zombieTicking=true;
+    serialize(async()=>{for(const room of rooms.values()){
+      if(![...room.players.values()].some(p=>p.connected))continue;
+      await Zombies.tick(room,clock(),(player,zombie)=>createBattleRecord(room,'field',player,zombie));queueBroadcast(room);
+    }}).catch(error=>console.error('좀비 처리 오류:',error.message)).finally(()=>{zombieTicking=false;});
+  },200));
   let ticking = false;
   intervals.push(setInterval(() => {
     if (ticking) return;
@@ -789,7 +816,7 @@ function createGameServer(options = {}) {
           record.state = outcome.state;
           record.nextAutoAt=now+3500;
           if (record.state.status !== 'active') { record.finishedAt = now; await completeBattle(room, record); }
-        } catch { record.state.status = 'finished'; record.state.result = { winner: null, reason: 'invalid' }; await completeBattle(room, record); }
+        } catch { if(record.state.status==='active'){record.state.status='finished';record.state.result={winner:null,reason:'invalid'};} try{await completeBattle(room,record);}catch{/* 확정된 전투 결과를 보존하고 다음 주기에 저장을 재시도합니다. */} }
       }
       for (const [uid, player] of room.players) {
         if(player.harvest&&now>player.harvest.finishAt+12000)player.harvest=null;

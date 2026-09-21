@@ -100,6 +100,8 @@ function migrateProfile(input, uid, nickname, starterIds) {
     characterCreated: old.characterCreated === true || /^[가-힣]{1,6}$/.test(old.adventurerName || ''),
     appearance: Appearance.normalize(old.appearance, old.characterId || old.character),
     regionId,
+    movementLockedUntil:Math.max(0,finiteNumber(old.movementLockedUntil,0)),
+    zombieGraceUntil:Math.max(0,finiteNumber(old.zombieGraceUntil,0)),
     lastSeenAt: Math.max(0, Number(old.lastSeenAt) || Date.now()),
     characterId: boundedText(old.characterId || old.character, base.characterId, 40),
     collection: normalizedCollection,

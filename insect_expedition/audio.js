@@ -1,7 +1,7 @@
 (function () {
   'use strict';
   let context, footNoise, lastStep = -1, enabled = true;
-  let battleActive=false,musicBus,analyser,musicTimer=null,musicStep=0,nextBeat=0;
+  let battleActive=false,chaseActive=false,musicMode=null,musicBus,analyser,musicTimer=null,musicStep=0,nextBeat=0;
   const musicVoices=new Set();
   try { enabled = localStorage.getItem('insect.sound') !== 'off'; } catch (_) {}
   function unlock() {
@@ -9,19 +9,33 @@
     const Audio = window.AudioContext || window.webkitAudioContext;
     if (!Audio) return;
     if (!context) context = new Audio();
-    if (context.state !== 'running') context.resume().then(()=>{if(battleActive&&enabled)startMusic();}).catch(() => {});
-    if (battleActive && enabled && !document.hidden && !musicTimer) startMusic();
+    if (context.state !== 'running') context.resume().then(syncMusic).catch(() => {});
+    syncMusic();
   }
-  function musicNote(frequency,at,duration,type,volume) {
+  function musicNote(frequency,at,duration,type,volume,attack=.012,end) {
     const oscillator=context.createOscillator(),envelope=context.createGain();
-    oscillator.type=type;oscillator.frequency.setValueAtTime(frequency,at);
-    envelope.gain.setValueAtTime(.0001,at);envelope.gain.exponentialRampToValueAtTime(volume,at+.012);envelope.gain.exponentialRampToValueAtTime(.0001,at+duration);
+    oscillator.type=type;oscillator.frequency.setValueAtTime(frequency,at);if(end)oscillator.frequency.exponentialRampToValueAtTime(end,at+duration);
+    envelope.gain.setValueAtTime(.0001,at);envelope.gain.exponentialRampToValueAtTime(volume,at+attack);envelope.gain.exponentialRampToValueAtTime(.0001,at+duration);
     oscillator.connect(envelope);envelope.connect(musicBus);musicVoices.add(oscillator);
     oscillator.onended=()=>{musicVoices.delete(oscillator);oscillator.disconnect();envelope.disconnect();};
     oscillator.start(at);oscillator.stop(at+duration+.02);
   }
   function scheduleMusic() {
-    if(!context||!enabled||document.hidden||!battleActive)return;
+    if(!context||!enabled||document.hidden||!musicMode)return;
+    if(musicMode==='chase'){
+      // Original suspense score: paired heartbeats, slow dissonant drones and a sparse minor motif.
+      const beat=60/108,notes=[0,1,7,6,0,1,3,6];
+      if(nextBeat<context.currentTime-.2)nextBeat=context.currentTime+.025;
+      while(nextBeat<context.currentTime+.25){
+        musicNote(78,nextBeat,.18,'sine',.29,.012,38);
+        musicNote(65,nextBeat+.19,.16,'sine',.21,.012,34);
+        if(musicStep%4===0){musicNote(55,nextBeat,beat*4.5,'triangle',.105,.42);musicNote(58.27,nextBeat,beat*4.5,'sine',.075,.5);}
+        if(musicStep%2===0)musicNote(220*Math.pow(2,notes[(musicStep/2)%8]/12),nextBeat+.06,beat*1.7,'triangle',.045,.14);
+        if(musicStep%8===6)musicNote(622.25,nextBeat,beat*2,'sine',.026,.2,587.33);
+        nextBeat+=beat;musicStep++;
+      }
+      return;
+    }
     // Original minor-key ostinato, bass pulse and timpani-like accents (140 BPM).
     const eighth=60/140/2,roots=[65.41,65.41,51.91,58.27],pattern=[0,7,12,3,7,15,12,7];
     if(nextBeat<context.currentTime-.2)nextBeat=context.currentTime+.025;
@@ -35,18 +49,27 @@
     }
   }
   function startMusic() {
-    if(musicTimer||!context||context.state!=='running'||!enabled||!battleActive||document.hidden)return;
+    if(musicTimer||!context||context.state!=='running'||!enabled||!(battleActive||chaseActive)||document.hidden)return;
+    musicMode=battleActive?'battle':'chase';
     if(!musicBus){musicBus=context.createGain();analyser=context.createAnalyser();analyser.fftSize=256;musicBus.connect(analyser);analyser.connect(context.destination);}
     musicBus.gain.cancelScheduledValues(context.currentTime);musicBus.gain.setValueAtTime(.0001,context.currentTime);musicBus.gain.linearRampToValueAtTime(.48,context.currentTime+.25);
     nextBeat=context.currentTime+.04;musicStep=0;scheduleMusic();musicTimer=setInterval(scheduleMusic,100);
   }
   function stopMusic() {
-    clearInterval(musicTimer);musicTimer=null;
+    clearInterval(musicTimer);musicTimer=null;musicMode=null;
     if(!context)return;
     if(musicBus){musicBus.gain.cancelScheduledValues(context.currentTime);musicBus.gain.setValueAtTime(musicBus.gain.value,context.currentTime);musicBus.gain.linearRampToValueAtTime(.0001,context.currentTime+.18);}
     for(const voice of musicVoices)try{voice.stop(context.currentTime+.2);}catch(_){}
+    const retiringBus=musicBus,retiringAnalyser=analyser;musicBus=null;analyser=null;
+    if(retiringBus)setTimeout(()=>{retiringBus.disconnect();retiringAnalyser.disconnect();},250);
   }
-  function setBattle(value) {battleActive=!!value;if(battleActive&&enabled&&!document.hidden){unlock();startMusic();}else stopMusic();}
+  function syncMusic() {
+    const desired=enabled&&!document.hidden?(battleActive?'battle':chaseActive?'chase':null):null;
+    if(desired===musicMode)return;
+    stopMusic();if(desired)startMusic();
+  }
+  function setBattle(value) {battleActive=!!value;unlock();syncMusic();}
+  function setChase(value) {chaseActive=!!value;unlock();syncMusic();}
   function tone(frequency, duration, delay, type, volume, end) {
     if (!enabled || !context || context.state !== 'running') return;
     const now = context.currentTime + (delay || 0), osc = context.createOscillator(), gain = context.createGain();
@@ -99,9 +122,9 @@
     tone((path ? 125 : 95) * alternate, 0.1, 0, 'sine', path ? 0.065 : 0.045, 42);
   }
   function toggle() { enabled = !enabled; try { localStorage.setItem('insect.sound',enabled?'on':'off'); } catch (_) {} if(enabled)unlock();else stopMusic(); return enabled; }
-  document.addEventListener('visibilitychange',()=>{if(document.hidden)stopMusic();else if(battleActive&&enabled){unlock();startMusic();}});
-  window.addEventListener('pagehide',()=>{battleActive=false;stopMusic();});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)stopMusic();else{unlock();syncMusic();}});
+  window.addEventListener('pagehide',()=>{battleActive=false;chaseActive=false;stopMusic();});
   document.addEventListener('pointerdown', unlock, {passive:true});
   document.addEventListener('keydown', unlock, {passive:true});
-  window.InsectAudio = { play, footstep, unlock, toggle, setBattle, getStatus:()=>{let rms=0;if(analyser){const data=new Float32Array(analyser.fftSize);analyser.getFloatTimeDomainData(data);rms=Math.sqrt(data.reduce((n,v)=>n+v*v,0)/data.length);}return {enabled,battleActive,state:context?.state||'locked',musicPlaying:!!musicTimer,voices:musicVoices.size,rms};}, isMusicPlaying:()=>!!musicTimer, isEnabled: () => enabled };
+  window.InsectAudio = { play, footstep, unlock, toggle, setBattle, setChase, getStatus:()=>{let rms=0;if(analyser){const data=new Float32Array(analyser.fftSize);analyser.getFloatTimeDomainData(data);rms=Math.sqrt(data.reduce((n,v)=>n+v*v,0)/data.length);}return {enabled,battleActive,chaseActive,musicMode,state:context?.state||'locked',musicPlaying:!!musicTimer,voices:musicVoices.size,rms};}, isMusicPlaying:()=>!!musicTimer, isEnabled: () => enabled };
 })();

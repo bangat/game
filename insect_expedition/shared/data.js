@@ -71,6 +71,8 @@
   const rangedSkills = new Set(['sky_current','moon_drowse','mist_mirror','storm_chorus','venom_comet','ember_blast','tyrant_roar','crystal_quake']);
   species.forEach(s=>{if(rangedNormals.has(s.id))s.normalAttack.kind='ranged';if(s.skill)s.skill.kind=rangedSkills.has(s.skill.id)?'ranged':'physical';});
   const speciesById = Object.fromEntries(species.map(item => [item.id, item]));
+  // 적 전용 데이터는 수집 도감·부화·야생 곤충 목록에 포함하지 않습니다.
+  speciesById.forest_zombie={...row('forest_zombie','숲길 좀비','좀비','배회자','전 지역',{near:'숲길'},'uncommon',[95,18,8,9],attack('zombie_swing','비틀거리는 강타',23,.91),null,100,1,'zombie'),enemyOnly:true};
   const biomes = [
     { id:'forest', name:'솔방울 숲', habitat:'숲', habitats:['숲','고목숲'], center:{x:-72,z:-72}, radius:36, safe:false, color:'#315f45' },
     { id:'grassland', name:'바람 초원', habitat:'초원', center:{x:0,z:-72}, radius:36, safe:false, color:'#78a95a' },

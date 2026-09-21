@@ -187,7 +187,35 @@
     part(scene,vehicle,'ride-handle','box',{width:1.45,height:.1,depth:.12},[0,bike?1.61:1.46,.77],rubber);
   }
 
+  function createZombie(scene,target){
+    var root=new B.TransformNode('zombie-'+target.id,scene),skin=material(scene,'zombie-skin','#7d9766'),cloth=material(scene,'zombie-rags','#665568'),pants=material(scene,'zombie-pants','#394746'),dark=material(scene,'zombie-dark','#25362d'),eyes=material(scene,'zombie-eyes','#ff443b',.8);
+    var box=function(name,w,h,d,pos,mat,parent){return part(scene,parent||root,name,'box',{width:w,height:h,depth:d},pos,mat);};
+    box('zombie-torso',.8,.95,.46,[0,1.43,0],cloth).rotation.z=.08;
+    box('zombie-neck',.25,.24,.24,[.08,1.99,.03],skin);
+    box('zombie-head',.67,.7,.56,[.11,2.32,.06],skin).rotation.z=.15;
+    box('zombie-hair',.69,.15,.58,[.1,2.68,.02],dark);
+    for(var i=0;i<3;i++)box('zombie-fringe',.14,.2,.12,[-.15+i*.23,2.59,.33],dark);
+    for(var side of [-1,1]){box('zombie-eye',.15,.095,.05,[.1+side*.17,2.36,.36],eyes);}
+    box('zombie-mouth',.3,.08,.05,[.1,2.14,.365],dark);box('zombie-tooth',.07,.1,.06,[.07,2.15,.39],skin);
+    var legs=[],arms=[];
+    for(var side of [-1,1]){
+      var leg=new B.TransformNode('zombie-leg',scene);leg.parent=root;leg.position.set(side*.23,1.05,0);legs.push(leg);
+      box('zombie-trouser',.26,.68,.3,[0,-.34,0],pants,leg);box('zombie-boot',.29,.23,.46,[0,-.79,.08],dark,leg);
+      var arm=new B.TransformNode('zombie-arm',scene);arm.parent=root;arm.position.set(side*.53,1.79,.04);arm.rotation.x=-1.15;arms.push(arm);
+      box('zombie-sleeve',.24,.4,.25,[0,-.19,0],cloth,arm);box('zombie-hand',.22,.42,.22,[0,-.55,.01],skin,arm);
+    }
+    box('zombie-torn-patch',.26,.28,.04,[-.18,1.22,.26],skin);
+    var alert=B.MeshBuilder.CreatePlane('zombie-alert',{width:1.8,height:2},scene);alert.parent=root;alert.position.y=4;alert.billboardMode=B.Mesh.BILLBOARDMODE_ALL;alert.isPickable=false;alert.setEnabled(false);
+    if(typeof document!=='undefined'||typeof OffscreenCanvas!=='undefined'){
+      var tex=new B.DynamicTexture('zombie-alert-texture',{width:256,height:256},scene,false),ctx=tex.getContext();tex.hasAlpha=true;ctx.clearRect(0,0,256,256);ctx.font='900 230px sans-serif';ctx.textAlign='center';ctx.lineJoin='round';ctx.strokeStyle='#fff3de';ctx.lineWidth=12;ctx.strokeText('!',128,211);ctx.fillStyle='#ff263b';ctx.fillText('!',128,211);tex.update();
+      var alertMat=material(scene,'zombie-alert-material','#ffffff',1);alertMat.diffuseTexture=tex;alertMat.opacityTexture=tex;alertMat.disableLighting=true;alert.material=alertMat;
+    }
+    if(Number.isFinite(target.level))label(scene,root,'좀비 · Lv.'+target.level,2.95,'#ffd0be');
+    root.getChildMeshes().forEach(m=>{m.isPickable=false;});
+    root.metadata={speciesId:'forest_zombie',wings:[],dinoLegs:[],phase:0,zombieLegs:legs,zombieArms:arms,zombieAlert:alert,ownedMaterials:[skin,cloth,pants,dark,eyes]};return root;
+  }
   function createCreature(scene, speciesId, target) {
+    if(speciesId==='forest_zombie')return createZombie(scene,target);
     var root = new B.TransformNode('creature-' + target.id, scene);
     var data = global.InsectData && (global.InsectData.speciesById ? global.InsectData.speciesById[speciesId] : null);
     var category = String((data && (data.category || data.species)) || speciesId || 'beetle').toLowerCase();
@@ -597,7 +625,7 @@
     addShadowModel(localAvatar);
     var companions = {}, resourceModels = {}, eventModels = {}, followTrail = [], serverPositionAt = 0, localSprint = false, localMount = '';
     var homeView=global.InsectHousingWorld.create(scene,{select:onSelect}),lastRealm='';
-    var remote = {}, spawns = {}, latest = { players: [], spawns: [] }, battleActors = {}, battleViewSide = 'a', arenaDecor = [], eventQueue = [], activeEvent = null, battleMode = false;
+    var zombieModels={},remote = {}, spawns = {}, latest = { players: [], spawns: [] }, battleActors = {}, battleViewSide = 'a', arenaDecor = [], eventQueue = [], activeEvent = null, battleMode = false;
     var navTarget=null,navRoute=[],navUpdated=0;
     var navArrow = new B.TransformNode('navigation-arrow',scene);navArrow.parent=worldRoot;navArrow.setEnabled(false);
     var arrowMat=material(scene,'navigation-gold','#ffe284',1);
@@ -789,6 +817,8 @@
       Object.values(remote).forEach(function(a){a.parent=latest.realm?homeView.root:worldRoot;});
       if(regionChanged){Object.values(eventModels).forEach(disposeNode);eventModels={};}
       syncEntityMap(latest.ecology?.event?[latest.ecology.event]:[],eventModels,createEvent,'id');
+      syncEntityMap((latest.zombies||[]).filter(z=>z.available),zombieModels,z=>{var model=createZombie(scene,z);model.parent=worldRoot;model.position.set(z.x,0,z.z);addShadowModel(model);return model;},'id');
+      (latest.zombies||[]).forEach(z=>{var model=zombieModels[z.id];if(model){model.metadata.zombieAlert.setEnabled(z.mode==='chase');model.metadata.chasing=z.mode==='chase';}});
       syncCompanions();
       var shouldBattle = !!latest.battle;
       if (shouldBattle !== battleMode) switchBattle(shouldBattle, latest.battle);
@@ -1006,7 +1036,7 @@
       questMarker.position.y = 3.9 + Math.sin(now / 550) * .12;
       var x = clamp((input.right ? 1 : 0) - (input.left ? 1 : 0) + input.joyX, -1, 1), z = clamp((input.down ? 1 : 0) - (input.up ? 1 : 0) + input.joyZ, -1, 1), length = Math.hypot(x, z);
       if (length > 1) { x /= length; z /= length; }
-      if (!controlsEnabled || (document.querySelector('.ix-modal-backdrop,.ix-drawer,.ix-build-toolbar,.ix-land-picker')||(latest.players||[]).find(function(p){return p.uid===latest.you;})?.harvest)) { x = z = 0; length = 0; }
+      if ((latest.profile?.movementLockedUntil||0)>(latest.serverTime||0) || !controlsEnabled || (document.querySelector('.ix-modal-backdrop,.ix-drawer,.ix-build-toolbar,.ix-land-picker')||(latest.players||[]).find(function(p){return p.uid===latest.you;})?.harvest)) { x = z = 0; length = 0; }
       // Map screen right/down to the camera's horizontal world axes, also while orbiting.
       var strength = Math.hypot(x, z);
       var screenX = x, screenZ = z, alpha = camera.alpha;
@@ -1044,6 +1074,13 @@
       Object.values(eventModels).forEach(n=>n.getChildMeshes().filter(m=>m.name==='discovery-mote').forEach((m,i)=>{m.position.y=1+i*.6+Math.sin(now/700+i)*.3;}));
       homeView.frame(localAvatar,camera);
       Object.keys(remote).forEach(function (id) { var avatar = remote[id], dx = avatar.metadata.targetX - avatar.position.x, dz = avatar.metadata.targetZ - avatar.position.z, moving = Math.abs(dx) + Math.abs(dz) > 0.025, blend = Math.min(1, dt * 8); avatar.position.x += dx * blend; avatar.position.z += dz * blend; if (moving) avatar.rotation.y = Math.atan2(dx, dz); animateAvatar(avatar, dt, Math.hypot(dx, dz) * blend / Math.max(dt, 0.001)); avatar.position.y+=heightAt(avatar.position.x,avatar.position.z); });
+      Object.values(zombieModels).forEach(function(model){
+        var dx=model.metadata.targetX-model.position.x,dz=model.metadata.targetZ-model.position.z,moving=Math.hypot(dx,dz)>.025,blend=Math.min(1,dt*9);
+        model.position.x+=dx*blend;model.position.z+=dz*blend;model.position.y=heightAt(model.position.x,model.position.z);
+        if(moving)model.rotation.y=Math.atan2(dx,dz);model.metadata.phase+=dt*(moving?7:1.3);
+        model.metadata.zombieLegs.forEach((leg,i)=>{leg.rotation.x=moving?Math.sin(model.metadata.phase+i*Math.PI)*.38:0;});
+        model.metadata.zombieArms.forEach((arm,i)=>{arm.rotation.x=-1.15+Math.sin(model.metadata.phase+i)*.13;});
+      });
       Object.keys(spawns).forEach(function (id) { var creature = spawns[id]; creature.position.x += (creature.metadata.targetX - creature.position.x) * Math.min(1, dt * 7); creature.position.z += (creature.metadata.targetZ - creature.position.z) * Math.min(1, dt * 7); creature.metadata.phase += dt * 4; (creature.metadata.dinoLegs||[]).forEach(function(leg,li){leg.rotation.x=Math.sin(creature.metadata.phase+(li%2?Math.PI:0))*.25;}); if(creature.metadata.dinoTail)creature.metadata.dinoTail.rotation.y=Math.sin(creature.metadata.phase*.6)*.1; creature.position.y = heightAt(creature.position.x,creature.position.z)+0.25 + Math.abs(Math.sin(creature.metadata.phase)) * 0.17; creature.metadata.wings.forEach(function (wing, wi) { wing.rotation.z = (wi ? 1 : -1) * (0.3 + Math.abs(Math.sin(creature.metadata.phase * 3)) * 0.55); }); });
     });
     function resize() { engine.resize(); } global.addEventListener('resize', resize);
