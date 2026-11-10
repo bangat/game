@@ -1,0 +1,666 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#10121c">
+  <title>블록 블라스트 | 미니게임지옥</title>
+  <style>
+    :root { color-scheme: dark; --bg:#10121c; --panel:#1b1e2b; --line:#34394e; --text:#f5f6ff; --muted:#aeb5cc; --cyan:#50d7ff; --pink:#ff668c; --yellow:#ffd166; }
+    * { box-sizing:border-box; }
+    html, body { margin:0; min-height:100%; }
+    body {
+      min-height:100vh; min-height:100svh; overflow-x:hidden;
+      background:radial-gradient(circle at 50% -10%,rgba(92,91,183,.25),transparent 42%),linear-gradient(180deg,#151827 0%,var(--bg) 60%);
+      color:var(--text); font-family:system-ui,-apple-system,"Malgun Gothic",sans-serif; touch-action:manipulation;
+    }
+    button { font:inherit; color:inherit; }
+    .app { width:min(100%,720px); min-height:100vh; min-height:100svh; margin:0 auto; padding:max(10px,env(safe-area-inset-top)) 14px max(12px,env(safe-area-inset-bottom)); display:flex; flex-direction:column; gap:clamp(7px,1.2svh,12px); }
+    .topbar { min-height:46px; display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:10px; }
+    .back-button,.room-badge { border:1px solid var(--line); border-radius:13px; background:rgba(27,30,43,.92); }
+    .back-button { padding:8px 12px; cursor:pointer; font-weight:800; }
+    .game-title { text-align:center; line-height:1.05; }
+    .game-title strong { display:block; font-size:clamp(16px,4vw,21px); letter-spacing:.08em; }
+    .game-title span { color:var(--muted); font-size:11px; }
+    .room-badge { padding:7px 9px; color:var(--muted); font-size:11px; max-width:110px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .summary { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .summary-card { min-width:0; padding:9px 12px; border:1px solid var(--line); border-radius:15px; background:linear-gradient(145deg,rgba(35,39,56,.98),rgba(25,28,41,.98)); box-shadow:0 8px 20px rgba(0,0,0,.16); }
+    .summary-card label { display:block; color:var(--muted); font-size:11px; }
+    .summary-card strong { display:block; margin-top:1px; font-size:clamp(21px,6vw,29px); line-height:1.05; font-variant-numeric:tabular-nums; }
+    .summary-card small { color:var(--muted); font-size:10px; }
+    #timer-card.urgent strong { color:var(--pink); animation:pulse .7s infinite alternate; }
+    @keyframes pulse { to { opacity:.55; } }
+    .players { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; max-height:90px; overflow:auto; }
+    .player-card { min-width:0; min-height:37px; display:flex; align-items:center; gap:7px; padding:5px 8px; border:1px solid var(--line); border-radius:12px; background:rgba(27,30,43,.82); }
+    .player-card.me { border-color:rgba(80,215,255,.75); box-shadow:inset 0 0 0 1px rgba(80,215,255,.18); }
+    .player-card.done { opacity:.65; }
+    .avatar { width:25px; height:25px; flex:0 0 25px; display:grid; place-items:center; overflow:hidden; border-radius:50%; background:#32384e; font-size:16px; }
+    .avatar img { width:100%; height:100%; object-fit:cover; }
+    .player-name { min-width:0; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; font-weight:700; }
+    .player-score { color:var(--cyan); font-size:12px; font-weight:900; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .stage { display:flex; flex:1 0 auto; flex-direction:column; align-items:center; gap:7px; }
+    .status-line { width:min(100%,460px); min-height:22px; color:var(--muted); text-align:center; font-size:12px; line-height:1.3; }
+    .board-wrap { position:relative; width:min(100%,460px,48vh); width:min(100%,460px,48svh); aspect-ratio:1; padding:clamp(7px,2vw,11px); border:1px solid #454b66; border-radius:19px; background:linear-gradient(145deg,#292e42,#1d2131); box-shadow:0 16px 36px rgba(0,0,0,.36),inset 0 1px 0 rgba(255,255,255,.06); touch-action:none; }
+    .board { width:100%; height:100%; display:grid; grid-template-columns:repeat(8,minmax(0,1fr)); grid-template-rows:repeat(8,minmax(0,1fr)); gap:clamp(3px,.9vw,6px); }
+    .cell { min-width:0; min-height:0; border-radius:clamp(4px,1.4vw,8px); background:#111522; box-shadow:inset 0 2px 3px rgba(0,0,0,.28); transition:background .1s,transform .1s,box-shadow .1s; }
+    .cell.filled { background:var(--cell-color); box-shadow:inset 0 2px 0 rgba(255,255,255,.24),inset 0 -3px 0 rgba(0,0,0,.16),0 1px 5px rgba(0,0,0,.18); }
+    .cell.preview-ok { background:color-mix(in srgb,var(--preview-color) 72%,white); box-shadow:0 0 10px color-mix(in srgb,var(--preview-color) 70%,transparent); }
+    .cell.preview-no { background:rgba(255,74,100,.72); }
+    .board-wrap.locked::after { content:""; position:absolute; inset:0; border-radius:inherit; background:rgba(10,12,20,.36); pointer-events:none; }
+    .tray { width:min(100%,460px); min-height:83px; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+    .piece-slot { min-width:0; min-height:76px; display:grid; place-items:center; border:1px solid var(--line); border-radius:15px; background:linear-gradient(160deg,#24293b,#1a1d2b); cursor:grab; touch-action:none; user-select:none; -webkit-user-select:none; transition:transform .12s,border-color .12s,opacity .12s; }
+    .piece-slot:active { cursor:grabbing; transform:scale(.97); }
+    .piece-slot.selected { border-color:var(--cyan); box-shadow:0 0 0 2px rgba(80,215,255,.16); }
+    .piece-slot.used { opacity:.2; cursor:default; }
+    .piece-preview { display:grid; gap:3px; pointer-events:none; }
+    .mini-block { width:clamp(13px,4vw,18px); aspect-ratio:1; border-radius:4px; background:var(--piece-color); box-shadow:inset 0 2px 0 rgba(255,255,255,.22),inset 0 -2px 0 rgba(0,0,0,.14); }
+    .help { min-height:17px; margin:0; color:var(--muted); text-align:center; font-size:11px; }
+    .toast { position:fixed; left:50%; bottom:max(18px,env(safe-area-inset-bottom)); z-index:5; max-width:calc(100vw - 32px); padding:10px 14px; border:1px solid #555d78; border-radius:13px; background:#272c40; color:var(--text); font-size:13px; text-align:center; opacity:0; transform:translate(-50%,10px); pointer-events:none; transition:opacity .16s,transform .16s; }
+    .toast.show { opacity:1; transform:translate(-50%,0); }
+    .modal { position:fixed; inset:0; z-index:10; display:none; align-items:center; justify-content:center; padding:18px; background:rgba(5,7,13,.78); backdrop-filter:blur(8px); }
+    .modal.show { display:flex; }
+    .dialog { width:min(100%,430px); max-height:min(85svh,650px); overflow:auto; padding:22px 18px 18px; border:1px solid #464d68; border-radius:22px; background:linear-gradient(160deg,#24293b,#171a27); box-shadow:0 20px 60px rgba(0,0,0,.45); text-align:center; }
+    .dialog h2 { margin:0 0 5px; font-size:24px; }
+    .dialog p { margin:0 0 16px; color:var(--muted); font-size:13px; }
+    .result-list { display:grid; gap:7px; margin:12px 0 18px; text-align:left; }
+    .result-row { display:flex; align-items:center; gap:9px; padding:9px 10px; border-radius:12px; background:#171b29; }
+    .result-row.winner { outline:1px solid var(--yellow); background:rgba(255,209,102,.1); }
+    .rank { width:26px; color:var(--yellow); font-weight:900; }
+    .result-score { margin-left:auto; color:var(--cyan); font-weight:900; }
+    .primary-button { width:100%; padding:12px 16px; border:0; border-radius:14px; background:linear-gradient(100deg,#4ecfff,#7b83ff); color:#10121c; font-weight:900; cursor:pointer; }
+    .primary-button:active { transform:scale(.985); }
+    @media (max-height:740px) {
+      .app { gap:6px; padding-top:max(7px,env(safe-area-inset-top)); padding-bottom:max(8px,env(safe-area-inset-bottom)); }
+      .summary-card { padding:6px 10px; }
+      .players { max-height:72px; }
+      .board-wrap { width:min(100%,430px,42vh); width:min(100%,430px,42svh); }
+      .tray { min-height:68px; }
+      .piece-slot { min-height:64px; }
+    }
+    @media (min-width:700px) {
+      .app { padding-left:24px; padding-right:24px; }
+      .board-wrap { width:min(100%,450px,49vh); width:min(100%,450px,49svh); }
+      .players { grid-template-columns:repeat(4,minmax(0,1fr)); }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <button class="back-button" id="leave-button" type="button">나가기</button>
+      <div class="game-title"><strong>BLOCK BLAST</strong><span>같은 조각으로 겨루는 4인 점수전</span></div>
+      <div class="room-badge" id="room-badge">방 연결 중</div>
+    </header>
+    <section class="summary" aria-label="점수와 남은 시간">
+      <div class="summary-card" id="timer-card"><label>남은 시간</label><strong id="timer">--:--</strong><small id="timer-hint">대전 준비 중</small></div>
+      <div class="summary-card"><label>내 점수</label><strong id="score">0</strong><small id="best-score">최고 0점</small></div>
+    </section>
+    <section class="players" id="players" aria-label="참가자 점수"></section>
+    <section class="stage">
+      <div class="status-line" id="status-line">방에 연결하고 있어요…</div>
+      <div class="board-wrap locked" id="board-wrap"><div class="board" id="board" role="grid" aria-label="8 곱하기 8 블록 보드"></div></div>
+    </section>
+    <section class="tray" id="tray" aria-label="놓을 블록"></section>
+    <p class="help" id="help-text">조각을 선택한 뒤 보드의 빈칸을 눌러 놓으세요.</p>
+  </main>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="modal" id="result-modal" role="dialog" aria-modal="true" aria-labelledby="result-title">
+    <div class="dialog">
+      <h2 id="result-title">대전 결과</h2>
+      <p id="result-summary">점수가 높은 플레이어가 승리합니다.</p>
+      <div class="result-list" id="result-list"></div>
+      <button type="button" class="primary-button" id="result-leave-button">대기실로 돌아가기</button>
+    </div>
+  </div>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+  <script>
+    const firebaseConfig = {
+                apiKey: "AIzaSyCmNAKmgF_L3o0QyOGh_oFAq_rMRtUyklw",
+                authDomain: "goodluck-7c14b.firebaseapp.com",
+                databaseURL: "https://goodluck-7c14b-default-rtdb.firebaseio.com",
+                projectId: "goodluck-7c14b",
+                storageBucket: "goodluck-7c14b.firebasestorage.app",
+                messagingSenderId: "858281658455",
+                appId: "1:858281658455:web:9131280a459be983933b12"
+            };
+    const GAME_KEY = 'blockBlast';
+    const GRID_SIZE = 8;
+    const MAX_PLAYERS = 4;
+    const MATCH_DURATION_MS = 120000;
+    const START_DELAY_MS = 5000;
+    const BLOCK_COLORS = ['#4fc9ff','#ff668c','#ffd166','#62dfa4','#ad8cff','#ff985f'];
+    const SHAPES = [
+      [[0,0],[0,1],[0,2]], [[0,0],[1,0],[2,0]], [[0,0],[0,1],[1,0]], [[0,0],[0,1],[1,1]],
+      [[0,0],[1,0],[1,1]], [[0,1],[1,0],[1,1]], [[0,0],[0,1],[0,2],[0,3]], [[0,0],[1,0],[2,0],[3,0]],
+      [[0,0],[0,1],[1,0],[1,1]], [[0,0],[0,1],[0,2],[1,1]], [[0,1],[1,0],[1,1],[2,1]],
+      [[0,0],[1,0],[2,0],[2,1]], [[0,1],[1,1],[2,0],[2,1]], [[0,0],[0,1],[1,1],[1,2]],
+      [[0,1],[0,2],[1,0],[1,1]], [[0,0],[0,1],[0,2],[1,0],[1,1]], [[0,0],[0,1],[0,2],[1,2],[2,2]],
+      [[0,0],[1,0],[1,1],[1,2],[2,2]], [[0,0],[0,1],[0,2],[1,1],[2,1]], [[0,1],[1,0],[1,1],[1,2],[2,1]],
+      [[0,0],[1,0],[2,0],[3,0],[4,0]], [[0,0],[0,1],[0,2],[0,3],[0,4]]
+    ];
+
+    const boardEl = document.getElementById('board');
+    const boardWrapEl = document.getElementById('board-wrap');
+    const trayEl = document.getElementById('tray');
+    const statusLineEl = document.getElementById('status-line');
+    const helpTextEl = document.getElementById('help-text');
+    const playersEl = document.getElementById('players');
+    const timerEl = document.getElementById('timer');
+    const timerHintEl = document.getElementById('timer-hint');
+    const timerCardEl = document.getElementById('timer-card');
+    const scoreEl = document.getElementById('score');
+    const bestScoreEl = document.getElementById('best-score');
+    const roomBadgeEl = document.getElementById('room-badge');
+    const toastEl = document.getElementById('toast');
+    const resultModalEl = document.getElementById('result-modal');
+    const resultListEl = document.getElementById('result-list');
+    const resultSummaryEl = document.getElementById('result-summary');
+
+    const roomId = new URLSearchParams(location.search).get('roomId');
+    let db = null, auth = null, roomRef = null, matchRef = null, roomData = null, matchData = null;
+    let myUid = '', myNickname = '플레이어', myAvatar = '🙂', isHost = false;
+    let matchListenerAttached = false, matchInitPending = false, activeMatchId = '', rngState = 1;
+    let board = newBoard(), tray = [null,null,null], score = 0, clearedLines = 0, placedBlocks = 0, clearStreak = 0;
+    let selectedPieceIndex = -1, dragPieceIndex = -1, previewSpot = null, suppressBoardClickUntil = 0;
+    let localFinished = false, localRunReady = false, clockTimer = null, scoreSyncTimer = null, toastTimer = null;
+    const pendingParticipants = new Set();
+
+    function setStatus(message) { statusLineEl.textContent = message; }
+    function showToast(message) {
+      toastEl.textContent = message;
+      toastEl.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(function () { toastEl.classList.remove('show'); }, 1500);
+    }
+    function showProblem(message) { helpTextEl.textContent = message; }
+    function newBoard() {
+      const result = [];
+      for (let row = 0; row < GRID_SIZE; row++) result.push(Array(GRID_SIZE).fill(null));
+      return result;
+    }
+    function nextRandom() {
+      rngState = (rngState + 0x6D2B79F5) >>> 0;
+      let value = rngState;
+      value = Math.imul(value ^ (value >>> 15), value | 1);
+      value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+      return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+    }
+    function randomPiece() {
+      const shape = SHAPES[Math.floor(nextRandom() * SHAPES.length)];
+      const color = BLOCK_COLORS[Math.floor(nextRandom() * BLOCK_COLORS.length)];
+      return { cells:shape.map(function (cell) { return cell.slice(); }), color:color };
+    }
+    function localRunStorageKey() { return 'blockBlastRun_' + activeMatchId; }
+    function saveLocalRun() {
+      if (!activeMatchId || !localRunReady) return;
+      try {
+        sessionStorage.setItem(localRunStorageKey(), JSON.stringify({
+          rngState:rngState, board:board, tray:tray, score:score, clearedLines:clearedLines,
+          placedBlocks:placedBlocks, clearStreak:clearStreak, localFinished:localFinished
+        }));
+      } catch (error) {}
+    }
+    function resetLocalRun(seed) {
+      rngState = (Number(seed) >>> 0) || 1;
+      board = newBoard();
+      tray = [randomPiece(),randomPiece(),randomPiece()];
+      score = 0; clearedLines = 0; placedBlocks = 0; clearStreak = 0;
+      selectedPieceIndex = -1; localFinished = false; localRunReady = true;
+      saveLocalRun(); renderAll();
+    }
+    function loadLocalRun(seed) {
+      try {
+        const saved = sessionStorage.getItem(localRunStorageKey());
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed && Array.isArray(parsed.board) && parsed.board.length === GRID_SIZE && Array.isArray(parsed.tray) && parsed.tray.length === 3) {
+            rngState = Number(parsed.rngState) >>> 0; board = parsed.board; tray = parsed.tray;
+            score = Number(parsed.score) || 0; clearedLines = Number(parsed.clearedLines) || 0;
+            placedBlocks = Number(parsed.placedBlocks) || 0; clearStreak = Number(parsed.clearStreak) || 0;
+            localFinished = !!parsed.localFinished; localRunReady = true; return;
+          }
+        }
+      } catch (error) {}
+      resetLocalRun(seed);
+    }
+    function getDimensions(cells) {
+      let maxRow = 0, maxCol = 0;
+      cells.forEach(function (cell) { maxRow = Math.max(maxRow,cell[0]); maxCol = Math.max(maxCol,cell[1]); });
+      return { rows:maxRow+1, cols:maxCol+1 };
+    }
+    function canPlace(piece,row,col) {
+      if (!piece || !Array.isArray(piece.cells)) return false;
+      for (let i=0;i<piece.cells.length;i++) {
+        const targetRow=row+piece.cells[i][0], targetCol=col+piece.cells[i][1];
+        if (targetRow<0 || targetRow>=GRID_SIZE || targetCol<0 || targetCol>=GRID_SIZE || board[targetRow][targetCol]) return false;
+      }
+      return true;
+    }
+    function hasAnyMoves() {
+      for (let index=0;index<tray.length;index++) {
+        const piece=tray[index]; if (!piece) continue;
+        for (let row=0;row<GRID_SIZE;row++) for (let col=0;col<GRID_SIZE;col++) if (canPlace(piece,row,col)) return true;
+      }
+      return false;
+    }
+    function getPreviewForCell(row,col,pieceIndex) {
+      const index=typeof pieceIndex==='number' ? pieceIndex : selectedPieceIndex;
+      if (index<0 || !tray[index]) return null;
+      const piece=tray[index], keys=new Set();
+      piece.cells.forEach(function (cell) { keys.add((row+cell[0])+','+(col+cell[1])); });
+      return { keys:keys, valid:canPlace(piece,row,col), color:piece.color };
+    }
+    function renderBoard() {
+      boardEl.textContent='';
+      const preview=previewSpot ? getPreviewForCell(previewSpot.row,previewSpot.col,previewSpot.pieceIndex) : null;
+      for (let row=0;row<GRID_SIZE;row++) for (let col=0;col<GRID_SIZE;col++) {
+        const cell=document.createElement('div');
+        cell.className='cell'; cell.dataset.row=String(row); cell.dataset.col=String(col); cell.setAttribute('role','gridcell');
+        const color=board[row][col];
+        if (color) { cell.classList.add('filled'); cell.style.setProperty('--cell-color',color); }
+        else if (preview && preview.keys.has(row+','+col)) {
+          cell.classList.add(preview.valid ? 'preview-ok' : 'preview-no');
+          if (preview.valid) cell.style.setProperty('--preview-color',preview.color);
+        }
+        boardEl.appendChild(cell);
+      }
+      boardWrapEl.classList.toggle('locked',!isGameActive());
+    }
+    function renderTray() {
+      trayEl.textContent='';
+      for (let index=0;index<3;index++) {
+        const piece=tray[index], slot=document.createElement('button');
+        slot.type='button'; slot.className='piece-slot'; slot.dataset.index=String(index);
+        slot.setAttribute('aria-label',piece ? '블록 조각 '+(index+1)+' 선택' : '사용한 조각');
+        if (!piece) slot.classList.add('used');
+        if (index===selectedPieceIndex) slot.classList.add('selected');
+        if (piece) {
+          const size=getDimensions(piece.cells), preview=document.createElement('span');
+          preview.className='piece-preview';
+          preview.style.gridTemplateColumns='repeat('+size.cols+', auto)';
+          preview.style.gridTemplateRows='repeat('+size.rows+', auto)';
+          piece.cells.forEach(function (cell) {
+            const block=document.createElement('i');
+            block.className='mini-block'; block.style.setProperty('--piece-color',piece.color);
+            block.style.gridRow=String(cell[0]+1); block.style.gridColumn=String(cell[1]+1);
+            preview.appendChild(block);
+          });
+          slot.appendChild(preview);
+        }
+        trayEl.appendChild(slot);
+      }
+    }
+    function getPlayersForDisplay() {
+      const participants=(matchData && matchData.participants) || {};
+      const records=(matchData && matchData.players) || {};
+      const roomPlayers=(roomData && roomData.players) || {};
+      const ids=new Set(Object.keys(participants).concat(Object.keys(roomPlayers)));
+      if (myUid) ids.add(myUid);
+      const list=Array.from(ids).map(function (uid) {
+        const saved=participants[uid] || {}, roomPlayer=roomPlayers[uid] || {}, record=records[uid] || {};
+        return {
+          uid:uid,
+          nickname:String(record.nickname || saved.nickname || roomPlayer.nickname || (uid===myUid ? myNickname : '플레이어')),
+          avatar:String(record.avatar || saved.avatar || roomPlayer.avatar || (uid===myUid ? myAvatar : '🙂')),
+          score:uid===myUid ? score : (Number(record.score) || 0),
+          finished:uid===myUid ? localFinished : !!record.finished,
+          isMe:uid===myUid
+        };
+      });
+      list.sort(function (a,b) { return b.score-a.score || a.nickname.localeCompare(b.nickname); });
+      return list;
+    }
+    function createAvatar(value) {
+      const element=document.createElement('span');
+      element.className='avatar';
+      const avatar=String(value || '🙂');
+      let safeImage=false;
+      try {
+        const parsed=new URL(avatar,location.href);
+        safeImage=parsed.protocol==='https:' || parsed.origin===location.origin;
+      } catch (error) {}
+      if (safeImage && (avatar.indexOf('/')>=0 || /\.(png|jpe?g|webp|gif)(\?|$)/i.test(avatar))) {
+        const image=document.createElement('img');
+        image.alt=''; image.src=avatar; image.onerror=function () { element.textContent='🙂'; };
+        element.appendChild(image);
+      } else element.textContent=avatar;
+      return element;
+    }
+    function renderPlayers() {
+      playersEl.textContent='';
+      const list=getPlayersForDisplay();
+      list.slice(0,MAX_PLAYERS).forEach(function (player) {
+        const card=document.createElement('div');
+        card.className='player-card'+(player.isMe?' me':'')+(player.finished?' done':'');
+        card.appendChild(createAvatar(player.avatar));
+        const name=document.createElement('span');
+        name.className='player-name'; name.textContent=player.nickname+(player.isMe?' (나)':'');
+        const points=document.createElement('span');
+        points.className='player-score'; points.textContent=String(player.score);
+        card.appendChild(name); card.appendChild(points); playersEl.appendChild(card);
+      });
+      if (!list.length) {
+        const waiting=document.createElement('div');
+        waiting.className='player-card'; waiting.textContent='참가자를 기다리는 중…'; playersEl.appendChild(waiting);
+      }
+    }
+    function renderSummary() {
+      scoreEl.textContent=score.toLocaleString('ko-KR');
+      const best=Number(localStorage.getItem('blockBlastBest_'+(myUid || 'guest'))) || 0;
+      bestScoreEl.textContent='최고 '+best.toLocaleString('ko-KR')+'점';
+    }
+    function renderAll() {
+      renderBoard(); renderTray(); renderPlayers(); renderSummary();
+      if (resultModalEl.classList.contains('show')) renderResults();
+    }
+    function isGameActive() {
+      if (!matchData || !localRunReady || localFinished) return false;
+      const now=Date.now();
+      return now>=Number(matchData.startAt || Infinity) && now<Number(matchData.endAt || 0);
+    }
+    function allPlayersFinished() {
+      const participants=(matchData && matchData.participants) || {};
+      const records=(matchData && matchData.players) || {};
+      const ids=Object.keys(participants);
+      if (!ids.length) return false;
+      return ids.every(function (uid) { return uid===myUid ? localFinished : !!(records[uid] && records[uid].finished); });
+    }
+    function shouldShowResults() {
+      if (!matchData) return false;
+      return Date.now()>=(Number(matchData.endAt) || 0) || allPlayersFinished() || matchData.status==='finished';
+    }
+    function renderResults() {
+      const list=getPlayersForDisplay();
+      resultListEl.textContent='';
+      list.forEach(function (player,index) {
+        const row=document.createElement('div'), rank=document.createElement('span'), name=document.createElement('span'), points=document.createElement('span');
+        row.className='result-row'+(index===0?' winner':'');
+        rank.className='rank'; rank.textContent=(index+1)+'위';
+        name.className='player-name'; name.textContent=player.nickname;
+        points.className='result-score'; points.textContent=player.score.toLocaleString('ko-KR')+'점';
+        row.appendChild(rank); row.appendChild(createAvatar(player.avatar)); row.appendChild(name); row.appendChild(points);
+        resultListEl.appendChild(row);
+      });
+      const own=list.find(function (player) { return player.isMe; });
+      resultSummaryEl.textContent=own ? (own.nickname+'님 '+(list.indexOf(own)+1)+'위 · 총 '+own.score.toLocaleString('ko-KR')+'점') : '점수가 높은 플레이어가 승리합니다.';
+      resultModalEl.classList.add('show');
+    }
+    function updateClock() {
+      if (!matchData) return;
+      const now=Date.now(), startAt=Number(matchData.startAt) || 0;
+      const endAt=Number(matchData.endAt) || (startAt+MATCH_DURATION_MS);
+      const beforeStart=now<startAt;
+      const remaining=Math.max(0,beforeStart ? endAt-startAt : endAt-now);
+      const seconds=Math.ceil(remaining/1000);
+      timerEl.textContent=String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0');
+      timerCardEl.classList.toggle('urgent',!beforeStart && seconds<=15);
+      if (beforeStart) {
+        timerHintEl.textContent='같은 조각으로 시작해요';
+        setStatus('대전 준비 중 · '+Math.max(1,Math.ceil((startAt-now)/1000))+'초');
+      } else if (now<endAt) {
+        timerHintEl.textContent=localFinished ? '내 게임 종료 · 결과 대기' : '남은 시간';
+        if (!localFinished && localRunReady && !hasAnyMoves()) finishGame('blocked');
+        if (!localFinished) setStatus('조각을 놓아 줄과 칸을 완성하세요.');
+      } else {
+        timerEl.textContent='00:00'; timerHintEl.textContent='대전 종료';
+        if (!localFinished) finishGame('time');
+      }
+      if (localFinished && !shouldShowResults()) setStatus('내 게임은 끝났어요. 다른 플레이어의 결과를 기다리는 중…');
+      boardWrapEl.classList.toggle('locked',!isGameActive());
+      if (shouldShowResults() && !resultModalEl.classList.contains('show')) renderResults();
+    }
+    function saveBestScore() {
+      const key='blockBlastBest_'+(myUid || 'guest'), previous=Number(localStorage.getItem(key)) || 0;
+      if (score>previous) localStorage.setItem(key,String(score));
+    }
+    function persistRunAndUpdateHud() { saveLocalRun(); renderSummary(); renderPlayers(); }
+    function syncScoreNow() {
+      if (!matchRef || !myUid) return Promise.resolve();
+      return matchRef.child('players/'+myUid).update({
+        nickname:myNickname, avatar:myAvatar, score:score, lines:clearedLines,
+        blocks:placedBlocks, finished:localFinished, updatedAt:Date.now()
+      }).catch(function (error) {
+        console.warn('점수 전송 실패:',error);
+        showProblem('점수 연결이 잠시 끊겼어요. 다시 연결되면 이어서 저장됩니다.');
+      });
+    }
+    function queueScoreSync(force) {
+      clearTimeout(scoreSyncTimer);
+      if (force) { syncScoreNow(); return; }
+      scoreSyncTimer=setTimeout(syncScoreNow,300);
+    }
+    function finishGame(reason) {
+      if (localFinished) return;
+      localFinished=true; selectedPieceIndex=-1; previewSpot=null;
+      saveBestScore(); persistRunAndUpdateHud(); queueScoreSync(true);
+      setStatus(reason==='blocked' ? '놓을 자리가 없어졌어요. 결과를 기다립니다.' : '시간 종료! 최종 점수를 저장했어요.');
+      updateClock();
+    }
+    function clearCompletedLines() {
+      const fullRows=[], fullCols=[];
+      for (let row=0;row<GRID_SIZE;row++) if (board[row].every(Boolean)) fullRows.push(row);
+      for (let col=0;col<GRID_SIZE;col++) {
+        let full=true;
+        for (let row=0;row<GRID_SIZE;row++) if (!board[row][col]) full=false;
+        if (full) fullCols.push(col);
+      }
+      const cleared=new Set();
+      fullRows.forEach(function (row) { for (let col=0;col<GRID_SIZE;col++) cleared.add(row+','+col); });
+      fullCols.forEach(function (col) { for (let row=0;row<GRID_SIZE;row++) cleared.add(row+','+col); });
+      cleared.forEach(function (key) {
+        const pair=key.split(',');
+        board[Number(pair[0])][Number(pair[1])]=null;
+      });
+      return fullRows.length+fullCols.length;
+    }
+    function placePiece(index,row,col) {
+      if (!isGameActive()) return false;
+      const piece=tray[index];
+      if (!piece) return false;
+      if (!canPlace(piece,row,col)) { showToast('그 자리에 놓을 수 없어요.'); return false; }
+      piece.cells.forEach(function (cell) { board[row+cell[0]][col+cell[1]]=piece.color; });
+      const lineCount=clearCompletedLines();
+      score+=piece.cells.length*10+lineCount*80;
+      if (lineCount>1) score+=(lineCount-1)*40;
+      if (lineCount>0) { clearStreak+=1; if (clearStreak>1) score+=(clearStreak-1)*20; }
+      else clearStreak=0;
+      clearedLines+=lineCount; placedBlocks+=piece.cells.length;
+      tray[index]=null; selectedPieceIndex=-1; previewSpot=null;
+      if (tray.every(function (item) { return !item; })) tray=[randomPiece(),randomPiece(),randomPiece()];
+      saveBestScore(); persistRunAndUpdateHud(); queueScoreSync(false);
+      if (navigator.vibrate) navigator.vibrate(16);
+      if (!hasAnyMoves()) finishGame('blocked');
+      else showProblem(lineCount ? ('줄 '+lineCount+'개 삭제! 계속 이어가세요.') : '조각을 선택하고 보드에 놓으세요.');
+      updateClock();
+      return true;
+    }
+    function selectPiece(index) {
+      if (!tray[index] || !isGameActive()) return;
+      selectedPieceIndex=index; previewSpot=null; renderBoard(); renderTray();
+      showProblem('선택한 조각을 놓을 보드 칸을 눌러 주세요.');
+    }
+    function updatePreviewFromPoint(x,y,pieceIndex) {
+      const element=document.elementFromPoint(x,y);
+      const cell=element && element.closest ? element.closest('.cell') : null;
+      if (!cell || !boardEl.contains(cell)) {
+        if (previewSpot) { previewSpot=null; renderBoard(); }
+        return;
+      }
+      const nextSpot={ row:Number(cell.dataset.row), col:Number(cell.dataset.col), pieceIndex:typeof pieceIndex==='number' ? pieceIndex : selectedPieceIndex };
+      if (!previewSpot || previewSpot.row!==nextSpot.row || previewSpot.col!==nextSpot.col || previewSpot.pieceIndex!==nextSpot.pieceIndex) {
+        previewSpot=nextSpot; renderBoard();
+      }
+    }
+    function makeParticipants(roomPlayers) {
+      const result={};
+      Object.keys(roomPlayers || {}).forEach(function (uid) {
+        const player=roomPlayers[uid] || {};
+        result[uid]={ nickname:String(player.nickname || '플레이어'), avatar:String(player.avatar || '🙂') };
+      });
+      if (myUid && !result[myUid]) result[myUid]={ nickname:myNickname, avatar:myAvatar };
+      return result;
+    }
+    async function ensureMatch(room) {
+      if (!matchRef || matchInitPending || !room || room.status!=='playing') return;
+      if (room.gameData && room.gameData[GAME_KEY]) return;
+      matchInitPending=true;
+      try {
+        const transaction=await matchRef.transaction(function (current) {
+          if (current && current.matchId) return;
+          const now=Date.now(), seed=Math.floor(Math.random()*4294967295) >>> 0;
+          return {
+            version:1, matchId:now.toString(36)+'_'+seed.toString(36), status:'starting', seed:seed,
+            startAt:now+START_DELAY_MS, endAt:now+START_DELAY_MS+MATCH_DURATION_MS,
+            durationMs:MATCH_DURATION_MS, participants:makeParticipants(room.players || {}),
+            players:{}, createdAt:now
+          };
+        });
+        if (!transaction.committed && transaction.snapshot && transaction.snapshot.exists()) acceptMatchData(transaction.snapshot.val());
+      } catch (error) {
+        console.error('대전 준비 실패:',error);
+        setStatus('대전 정보를 불러오지 못했어요. 연결을 확인해 주세요.');
+      } finally { matchInitPending=false; }
+    }
+    function syncParticipants(roomPlayers) {
+      if (!matchRef || !matchData) return;
+      Object.keys(roomPlayers || {}).forEach(function (uid) {
+        if ((matchData.participants || {})[uid] || pendingParticipants.has(uid)) return;
+        pendingParticipants.add(uid);
+        const player=roomPlayers[uid] || {};
+        matchRef.child('participants/'+uid).set({
+          nickname:String(player.nickname || '플레이어'), avatar:String(player.avatar || '🙂')
+        }).catch(function (error) { console.warn('참가자 정보 저장 실패:',error); })
+          .finally(function () { pendingParticipants.delete(uid); });
+      });
+    }
+    function acceptMatchData(data) {
+      if (!data || !data.matchId) return;
+      matchData=data;
+      if (activeMatchId!==matchData.matchId) {
+        activeMatchId=matchData.matchId; localRunReady=false; localFinished=false;
+        loadLocalRun(matchData.seed);
+      }
+      if (roomData && roomData.players) syncParticipants(roomData.players);
+      renderAll(); updateClock();
+    }
+    function onMatchSnapshot(snapshot) { if (snapshot.exists()) acceptMatchData(snapshot.val()); }
+    function onRoomSnapshot(snapshot) {
+      if (!snapshot.exists()) {
+        setStatus('방이 종료되었습니다.');
+        setTimeout(function () { location.replace('대기실.html'); },1200);
+        return;
+      }
+      roomData=snapshot.val() || {};
+      roomBadgeEl.textContent='방 '+roomId;
+      isHost=roomData.hostId===myUid;
+      if (roomData.gameType!==GAME_KEY) { setStatus('이 방은 블록 블라스트 방이 아닙니다.'); return; }
+      if (roomData.status!=='playing') { setStatus('방장이 게임을 시작할 때까지 기다리는 중…'); return; }
+      if (!matchRef) matchRef=roomRef.child('gameData/'+GAME_KEY);
+      if (!matchListenerAttached) { matchListenerAttached=true; matchRef.on('value',onMatchSnapshot); }
+      if (roomData.gameData && roomData.gameData[GAME_KEY]) acceptMatchData(roomData.gameData[GAME_KEY]);
+      else ensureMatch(roomData);
+    }
+    async function startPage() {
+      if (!roomId) {
+        setStatus('대기실에서 블록 블라스트 방에 들어와 주세요.');
+        roomBadgeEl.textContent='멀티 전용';
+        return;
+      }
+      roomBadgeEl.textContent='방 '+roomId;
+      if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+      db=firebase.database(); auth=firebase.auth();
+      auth.onAuthStateChanged(async function (user) {
+        if (!user) { location.replace('index.html'); return; }
+        if (myUid) return;
+        myUid=user.uid;
+        try {
+          const profileSnapshot=await db.ref('users/'+myUid+'/profile').once('value');
+          const profile=profileSnapshot.val() || {};
+          myNickname=String(profile.nickname || localStorage.getItem('userNickname') || '플레이어');
+          myAvatar=String(profile.avatar || localStorage.getItem('userAvatar') || '🙂');
+        } catch (error) {
+          myNickname=localStorage.getItem('userNickname') || '플레이어';
+          myAvatar=localStorage.getItem('userAvatar') || '🙂';
+        }
+        roomRef=db.ref('rooms/'+roomId);
+        const roomSnapshot=await roomRef.once('value');
+        if (!roomSnapshot.exists()) { alert('방을 찾을 수 없습니다.'); location.replace('대기실.html'); return; }
+        const existingRoom=roomSnapshot.val() || {}, currentPlayers=existingRoom.players || {};
+        const alreadyJoined=!!currentPlayers[myUid];
+        const existingMatch=(existingRoom.gameData || {})[GAME_KEY];
+        const knownParticipant=alreadyJoined || !!(existingMatch && existingMatch.participants && existingMatch.participants[myUid]);
+        const matchAlreadyRunning=existingRoom.status==='playing' && existingMatch && Date.now()>=Number(existingMatch.startAt || 0) && !knownParticipant;
+        if (matchAlreadyRunning) {
+          alert('이미 시작된 경기는 새로 참가할 수 없습니다.'); location.replace('대기실.html'); return;
+        }
+        if (!alreadyJoined && Object.keys(currentPlayers).length>=MAX_PLAYERS) {
+          alert('이 방은 최대 4명까지 참여할 수 있습니다.'); location.replace('대기실.html'); return;
+        }
+        isHost=existingRoom.hostId===myUid;
+        await roomRef.child('players/'+myUid).update({ nickname:myNickname, avatar:myAvatar, isHost:isHost });
+        roomRef.child('players/'+myUid).onDisconnect().remove();
+        roomRef.on('value',onRoomSnapshot);
+      });
+    }
+    async function leaveToLobby() {
+      if (clockTimer) clearInterval(clockTimer);
+      if (roomRef && myUid) {
+        try {
+          roomRef.off('value',onRoomSnapshot);
+          if (matchRef) matchRef.off('value',onMatchSnapshot);
+          await roomRef.child('players/'+myUid).remove();
+        } catch (error) {}
+      }
+      location.replace('대기실.html');
+    }
+    function bindGameInput() {
+      document.getElementById('leave-button').addEventListener('click',leaveToLobby);
+      document.getElementById('result-leave-button').addEventListener('click',leaveToLobby);
+      trayEl.addEventListener('click',function (event) {
+        const slot=event.target.closest('.piece-slot');
+        if (!slot) return;
+        selectPiece(Number(slot.dataset.index));
+      });
+      trayEl.addEventListener('pointerdown',function (event) {
+        const slot=event.target.closest('.piece-slot');
+        if (!slot || !tray[Number(slot.dataset.index)]) return;
+        dragPieceIndex=Number(slot.dataset.index);
+      });
+      document.addEventListener('pointermove',function (event) {
+        if (dragPieceIndex>=0) updatePreviewFromPoint(event.clientX,event.clientY,dragPieceIndex);
+        else if (boardEl.contains(event.target)) updatePreviewFromPoint(event.clientX,event.clientY,selectedPieceIndex);
+      },{passive:true});
+      document.addEventListener('pointerup',function (event) {
+        if (dragPieceIndex<0) return;
+        const pieceIndex=dragPieceIndex;
+        dragPieceIndex=-1;
+        const element=document.elementFromPoint(event.clientX,event.clientY);
+        const cell=element && element.closest ? element.closest('.cell') : null;
+        if (cell && boardEl.contains(cell)) {
+          const didPlace=placePiece(pieceIndex,Number(cell.dataset.row),Number(cell.dataset.col));
+          if (didPlace) suppressBoardClickUntil=Date.now()+350;
+          else selectPiece(pieceIndex);
+        } else selectPiece(pieceIndex);
+        previewSpot=null; renderBoard();
+      });
+      boardEl.addEventListener('click',function (event) {
+        if (Date.now()<suppressBoardClickUntil) return;
+        const cell=event.target.closest('.cell');
+        if (!cell) return;
+        if (selectedPieceIndex<0) { showProblem('먼저 아래 조각을 선택해 주세요.'); return; }
+        placePiece(selectedPieceIndex,Number(cell.dataset.row),Number(cell.dataset.col));
+      });
+      boardEl.addEventListener('pointerleave',function () {
+        if (dragPieceIndex<0 && previewSpot) { previewSpot=null; renderBoard(); }
+      });
+    }
+
+    bindGameInput();
+    startPage();
+    clockTimer=setInterval(updateClock,250);
+    renderAll();
+  </script>
+</body>
+</html>
