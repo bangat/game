@@ -159,6 +159,7 @@
     const resultSummaryEl = document.getElementById('result-summary');
 
     const roomId = new URLSearchParams(location.search).get('roomId');
+    const isSoloMode = new URLSearchParams(location.search).get('mode') === 'solo';
     let db = null, auth = null, roomRef = null, matchRef = null, roomData = null, matchData = null;
     let myUid = '', myNickname = '플레이어', myAvatar = '🙂', isHost = false;
     let matchListenerAttached = false, matchInitPending = false, activeMatchId = '', rngState = 1;
@@ -357,6 +358,7 @@
     }
     function isGameActive() {
       if (!matchData || !localRunReady || localFinished) return false;
+      if (isSoloMode) return true;
       const now=Date.now();
       return now>=Number(matchData.startAt || Infinity) && now<Number(matchData.endAt || 0);
     }
@@ -369,6 +371,7 @@
     }
     function shouldShowResults() {
       if (!matchData) return false;
+      if (isSoloMode) return localFinished;
       return Date.now()>=(Number(matchData.endAt) || 0) || allPlayersFinished() || matchData.status==='finished';
     }
     function renderResults() {
@@ -389,6 +392,16 @@
     }
     function updateClock() {
       if (!matchData) return;
+      if (isSoloMode) {
+        timerEl.textContent='∞'; timerHintEl.textContent='끝날 때까지 계속';
+        timerCardEl.classList.remove('urgent');
+        if (!localFinished && localRunReady && !hasAnyMoves()) { finishGame('blocked'); return; }
+        if (!localFinished) setStatus('조각을 놓아 줄과 칸을 완성하세요.');
+        else setStatus('놓을 자리가 없어졌어요. 최종 점수 '+score.toLocaleString('ko-KR')+'점!');
+        boardWrapEl.classList.toggle('locked',!isGameActive());
+        if (shouldShowResults() && !resultModalEl.classList.contains('show')) renderResults();
+        return;
+      }
       const now=Date.now(), startAt=Number(matchData.startAt) || 0;
       const endAt=Number(matchData.endAt) || (startAt+MATCH_DURATION_MS);
       const beforeStart=now<startAt;
@@ -435,7 +448,7 @@
       if (localFinished) return;
       localFinished=true; selectedPieceIndex=-1; previewSpot=null;
       saveBestScore(); persistRunAndUpdateHud(); queueScoreSync(true);
-      setStatus(reason==='blocked' ? '놓을 자리가 없어졌어요. 결과를 기다립니다.' : '시간 종료! 최종 점수를 저장했어요.');
+      setStatus(isSoloMode ? '놓을 자리가 없어졌어요. 최종 점수를 저장했어요.' : reason==='blocked' ? '놓을 자리가 없어졌어요. 결과를 기다립니다.' : '시간 종료! 최종 점수를 저장했어요.');
       updateClock();
     }
     function clearCompletedLines() {
@@ -563,6 +576,25 @@
       else ensureMatch(roomData);
     }
     async function startPage() {
+      if (isSoloMode) {
+        myUid='solo';
+        myNickname=String(localStorage.getItem('userNickname') || '플레이어');
+        myAvatar=String(localStorage.getItem('userAvatar') || '🙂');
+        const seed=Math.floor(Math.random()*4294967295) >>> 0;
+        activeMatchId='solo_'+Date.now().toString(36)+'_'+seed.toString(36);
+        matchData={
+          version:1, matchId:activeMatchId, status:'playing', seed:seed,
+          startAt:Date.now(), endAt:0, durationMs:0,
+          participants:{ solo:{ nickname:myNickname, avatar:myAvatar } }, players:{}
+        };
+        roomBadgeEl.textContent='혼자 하기';
+        document.querySelector('.game-title span').textContent='기록을 세우는 혼자 하기';
+        document.querySelector('#timer-card label').textContent='플레이 시간';
+        document.getElementById('result-title').textContent='혼자 하기 결과';
+        document.getElementById('result-leave-button').textContent='대기실로 돌아가기';
+        localRunReady=false; loadLocalRun(seed); renderAll(); updateClock();
+        return;
+      }
       if (!roomId) {
         setStatus('대기실에서 블록 블라스트 방에 들어와 주세요.');
         roomBadgeEl.textContent='멀티 전용';
